@@ -34,6 +34,6 @@ $(DEPSFILE):
 clean:
 	rm -rf $(BINDIR)
 
-ifneq (clean,$(MAKECMDGOALS)))
+ifneq (clean,$(MAKECMDGOALS))
 include $(DEPSFILE)
 endif
