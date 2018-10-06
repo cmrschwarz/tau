@@ -1,28 +1,28 @@
 #pragma once
 #include "types.h"
+#include "allocator.h"
 
-struct sbuffer_s;
-
-typedef struct sbuffer_segment_s{
+typedef struct sbuffer_segment{
     u8* start;
     u8* head;
     u8* end;
-    struct sbuffer_segment_s* next;
-    struct sbuffer_segment_s* prev;
+    struct sbuffer_segment* next;
+    struct sbuffer_segment* prev;
 }sbuffer_segment;
 
-typedef struct sbuffer_s{
+typedef struct sbuffer{
     sbuffer_segment* first;
     sbuffer_segment* last;
+    thread_allocator* tal;
 }sbuffer;
 
 int sbuffer_init(sbuffer* sb, ureg pages_per_segment);
 void sbuffer_fin(sbuffer* sb);
-sbuffer_segment* sbuffer_segment_create(ureg size);
+sbuffer_segment* sbuffer_segment_create(sbuffer* sb, ureg size);
 int sbuffer_segment_append(sbuffer* sb, ureg size);
 
 //Segmented Buffer Iterator -->sbi
-typedef struct sbi_s{
+typedef struct sbi{
     sbuffer_segment* seg;
     u8* pos;
 }sbi;
@@ -46,7 +46,7 @@ static inline void sbi_init(sbi* sbi, sbuffer* sb){
     sbi->pos = sbi->seg->start;
 }
 static inline void* sbi_get(sbi* sbi, ureg size){
-    if(sbi->seg->head  >= sbi->pos + size) return sbi->pos;
+    if(sbi->seg->head >= sbi->pos + size) return sbi->pos;
     return NULL;
 }
 static inline void* sbi_next(sbi* sbi, ureg step, ureg expected_item_size){

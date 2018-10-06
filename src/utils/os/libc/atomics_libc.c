@@ -1,4 +1,6 @@
-#include "threading.h"
+#include "../../threading.h"
+#ifdef USE_LIBC_ATOMICS
+
 void atomic_ureg_init(atomic_ureg* a, ureg value){
     atomic_init(a, value);
 }
@@ -37,3 +39,4 @@ bool atomic_bool_load(atomic_ureg* a, bool value){
 void atomic_bool_fin(atomic_ureg* a, bool value){
 
 }
+#endif

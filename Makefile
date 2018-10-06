@@ -1,6 +1,6 @@
 PROJECT := tauc
-CFLAGS := -g -Wall -O0 #DEBUG
-#CFLAGS: = -O3 -Wall   #RELEASE
+#CFLAGS := -g -Wall -O0 #DEBUG
+CFLAGS:= -O3 -Wall   #RELEASE
 SRCDIR := src
 BINDIR := bin
 OBJDIR := $(BINDIR)/obj
@@ -13,27 +13,26 @@ SRCS := $(shell find $(SRCDIR) -name "*.c")
 OBJS := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(SRCS))
 
 all: $(PROJECT)
-$(PROJECT): depend $(OBJS)
+$(PROJECT): $(DEPSFILE) $(OBJS)
 	@cd $(BINDIR)
-	gcc $(CFLAGS) $(LDFLAGS) -o $(EXECFILE) $(OBJS)
+	@gcc $(CFLAGS) $(LDFLAGS) -pthread -o $(EXECFILE) $(OBJS)
 
 run: $(PROJECT)
 	@$(EXECFILE)
 
-depend: $(DEPSFILE)
-$(DEPSFILE):
-	@mkdir $(BINDIR)
-	@mkdir $(OBJDIR)
+$(DEPSFILE): 
+	@mkdir -p $(OBJDIR)
 	@find $(SRCDIR) -name "*.c" | sed -e 's|^$(SRCDIR)\(.*\)\.c|\1\t\1|' \
 		-e 's|\(.*\)\t\(.*\)\/\(.*\)|\
 		gcc -MT $(OBJDIR)\2/\3.o -MM $(SRCDIR)\1.c \
-		printf "\\tmkdir -p $(OBJDIR)\2 \&\& cd $(OBJDIR)\2 \&\& "\
+		printf "\\t@mkdir -p $(OBJDIR)\2 \&\& cd $(OBJDIR)\2 \&\& "\
 		printf "gcc $(CFLAGS) -c $(ROOT)/$(SRCDIR)\1.c\\n"|'\
 		|sh > $(DEPSFILE)
 
 clean:
 	rm -rf $(BINDIR)
 
-ifneq (clean,$(MAKECMDGOALS))
-include $(DEPSFILE)
+
+ifneq (clean, $(MAKECMDGOALS))
+-include $(DEPSFILE)
 endif

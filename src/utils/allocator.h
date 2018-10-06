@@ -1,34 +1,46 @@
+#pragma once
 #include "types.h"
-#include <pthread.h>
+#include "threading.h"
+
+/*
+typedef int (*alloc_fn)(void* al, ureg size, memblock* b);
+typedef int (*allocv_fn)(void* al, ureg size, memblock* b);
+typedef int (*realloc_fn)(void* al, ureg used_size, ureg size, memblock* b);
+typedef int (*free_fn)(void* al, memblock* b);
+
+typedef struct {
+    void* allocator;
+    alloc_fn alloc;
+    allocv_fn allocv;
+    realloc_fn realloc;
+    free_fn free;
+}allocator;
+*/
+
+typedef struct thread_allocator thread_allocator;
+
 typedef struct{
-    memblock* next;
     void* start;
-    ureg size;
+    void* end;
 }memblock;
 
-typedef struct {
-    arena* next;   
-    memblock* blocks;
-}arena;
-
-typedef struct{
-    thread_allocator* next;
-    arena* arenas;
-    memblock* free_list;
-}thread_allocator;
-
-typedef struct {
-    thread_allocator* threads;
-    pthread_mutex_t lock;
-}allocator;
-
-
-
-extern allocator ALLOCATOR;
+int allocator_init();
+void allocator_fin();
+ureg allocator_get_segment_size();
 
 int tal_init(thread_allocator* tal);
 void tal_fin(thread_allocator* tal);
-int arena_init(arena* a, thread_allocator* tal);
-void arena_fin(arena* a, thread_allocator* tal);
-void* arena_alloc(arena* a, ureg size);
-void arena_clear(arena* a);
+
+int tal_alloc(thread_allocator* tal, ureg size, memblock* b);
+//like alloc, but guarantees that the memory is zeroed
+int tal_allocz(thread_allocator* tal, ureg size, memblock* b);
+int tal_realloc(thread_allocator* tal, ureg used_size, ureg new_size, memblock* b);
+void tal_free(thread_allocator* tal, memblock* b);
+
+#if OS_LINUX
+#include "os/linux/allocator_linux.h"
+#elif USE_LIBC
+#include "os/libc/allocator_libc.h"
+#else
+#error no allocator present for the configured plattform
+#endif

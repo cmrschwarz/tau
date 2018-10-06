@@ -23,9 +23,10 @@ typedef struct{
     token* loaded_tokens_head;
     dbuffer file_buffer;
     char* file_buffer_pos;
+    thread_allocator* tal;
 }tokenizer;
 
-int tk_init(tokenizer* tk);
+int tk_init(tokenizer* tk, thread_allocator* tal);
 void tk_fin(tokenizer* tk);
  
 int tk_open_file(tokenizer* tk, char* filename);

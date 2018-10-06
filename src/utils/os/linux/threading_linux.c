@@ -1,5 +1,6 @@
-#include "threading.h"
+#include "../../threading.h"
 #if OS_LINUX
+
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>
@@ -20,15 +21,16 @@ void mutex_fin(mutex* m){
 }
 
 int thread_yield(){
-    thrd_yield();
+    return sched_yield();
 }
-int thread_sleep(ureg millis){
-    usleep(millis * 1000);
+int thread_sleep(ureg microsecs){
+    return usleep(microsecs);
 }
 
 static void* thread_wrapper(void* ctx){
     thread* t = ctx;
     t->thread_fn(t->context);
+    return NULL;
 }
 
 int thread_launch(thread* t, thread_function_ptr thread_fn, void* context){
@@ -37,10 +39,10 @@ int thread_launch(thread* t, thread_function_ptr thread_fn, void* context){
     return pthread_create(&t->pthread, NULL, thread_wrapper, (void*)t);
 }
 int thread_join(thread* t){
-    return pthread_join(&t->pthread, NULL);
+    return pthread_join(t->pthread, NULL);
 }
 int thread_detach(thread* t){
-    return pthread_detach(&t->pthread);
+    return pthread_detach(t->pthread);
 }
 
 #endif
