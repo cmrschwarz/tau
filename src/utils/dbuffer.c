@@ -84,6 +84,9 @@ void* dbuffer_claim(dbuffer* db, ureg space){
 void dbuffer_pop(dbuffer* db, ureg size){
 	db->head -= size;
 }
+void dbuffer_clear(dbuffer* db){
+	db->head = db->start;
+}
 
 void dbuffer_remove_at(dbuffer* db, void* pos, ureg size){
 	memmove(pos, (u8*)pos + size, db->head - (u8*)pos - size);

@@ -43,6 +43,7 @@ void dbuffer_remove_at(dbuffer* db, void* pos, ureg size);
 void dbuffer_swap(dbuffer* db, void* posa, void* posb, ureg size);
 
 void dbuffer_pop(dbuffer* db, ureg size);
+void dbuffer_clear(dbuffer* db);
 
 //0: success, -1: allocation failiure
 int dbuffer_append(dbuffer* db, const void* data, ureg size);

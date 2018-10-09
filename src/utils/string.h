@@ -56,3 +56,16 @@ static inline int str_cmpz(string l, char* r){
     }
 }
 
+static inline char* str_to_cstr(string s){
+    //this is temporary until we get rid of c strings entirely
+    ureg path_len = str_len(s);
+    char* path = malloc(path_len + 1);
+    if(!path) return NULL;
+    memcpy(path, s.start, path_len);
+    path[path_len] = '\0';
+    return path;
+}
+
+static inline void str_free_cstr(char* s){
+    free(s);
+}
