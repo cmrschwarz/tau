@@ -42,7 +42,7 @@ int dbuffer_set_capacity(dbuffer* db, ureg capacity){
 	b.start = db->start;
 	b.end = db->end;
 	ureg filled_space = dbuffer_get_size(db);
-	if(tal_realloc(db->tal, filled_space, &b, capacity)) return -1;
+	if(tal_realloc(db->tal, filled_space, capacity, &b)) return -1;
 	if(ptrdiff(b.end, b.start) >= filled_space){
 		db->head = (u8*)b.start + filled_space;
 	}

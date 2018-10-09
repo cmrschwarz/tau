@@ -1,6 +1,6 @@
 PROJECT := tauc
-#CFLAGS := -g -Wall -O0 #DEBUG
-CFLAGS:= -O3 -Wall   #RELEASE
+CFLAGS := -g -Wall -O0 #DEBUG
+#CFLAGS:= -O3 -Wall   #RELEASE
 SRCDIR := src
 BINDIR := bin
 OBJDIR := $(BINDIR)/obj

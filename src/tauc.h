@@ -2,7 +2,13 @@
 #include "utils/allocator.h"
 #include "utils/pool.h"
 #include "utils/threading.h"
-#include "file.h"
+#include "tokenizer.h"
+
+typedef struct stage_1_share{
+    mutex share_lock;
+    sbuffer files;
+    sbi unparsed_file;
+}stage_1_share;
 
 typedef struct stage_1{
     tokenizer tk;
@@ -15,24 +21,18 @@ typedef struct thread_context{
     thread_allocator tal;
     pool permmem;
     pool stagemem;
-    union stage{
+    union{
         stage_1 s1;
-    }
+    } stage;
 }thread_context;
 
-typedef struct stage_1_share{
-    mutex share_lock;
-    sbuffer files;
-    sbi unparsed_file;
-}stage_1;
 
 typedef struct{
     thread_allocator* tal;
     thread_context* threads;
 
     pool permmem;
-    union stage_share{
+    union {
         stage_1_share s1;
-
-    }
+    }stage_share;
 }tauc;

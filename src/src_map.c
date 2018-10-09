@@ -1,20 +1,22 @@
 #include "src_map.h"
 #include "tauc.h"
 #include "utils/pool.h"
-static const ureg LINE_STORE_MIN_LINES  = 32;
+#include "utils/math_utils.h"
+
+#define LINE_STORE_MIN_LINES 32
 static const ureg LINE_STORE_MIN_SIZE = 
     LINE_STORE_MIN_LINES * sizeof(ureg) + sizeof(line_store);
 
-static const ureg SRC_RANGE_LENGTH_BITS = 7;
-static const ureg SRC_RANGE_MAX_LENGTH = 1<<(SRC_RANGE_LENGTH_BITS) - 1;
-static const ureg SRC_RANGE_START_BITS = REG_BITS - SRC_RANGE_LENGTH_BITS - 1;
-static const ureg SRC_RANGE_MAX_START = 1<<(SRC_RANGE_START_BITS) - 1;
-static const ureg SRC_RANGE_NEW_MAP_BIT = 1<<(SRC_RANGE_START_BITS - 2);
-static const ureg SRC_RANGE_EXTERN_BIT = 1<<(SRC_RANGE_START_BITS - 1);
+#define SRC_RANGE_LENGTH_BITS 7
+static const ureg SRC_RANGE_MAX_LENGTH = (((ureg)1) << SRC_RANGE_LENGTH_BITS) - 1;
+#define SRC_RANGE_START_BITS (REG_BITS - SRC_RANGE_LENGTH_BITS - 1)
+static const ureg SRC_RANGE_MAX_START = (((ureg)1) << SRC_RANGE_START_BITS) - 1;
+static const ureg SRC_RANGE_NEW_MAP_BIT = ((ureg)1) << (SRC_RANGE_START_BITS - 2);
+static const ureg SRC_RANGE_EXTERN_BIT = ((ureg)1) << (SRC_RANGE_START_BITS - 1);
 
-static inline int apppend_line_store(src_map* m, thread_context* tc, ureg size){
+static inline int append_line_store(src_map* m, thread_context* tc, ureg size){
     line_store* s = pool_alloc(
-        tc->permmem,
+        &tc->permmem,
         size
     );
     if(!s)return -1;
@@ -22,16 +24,17 @@ static inline int apppend_line_store(src_map* m, thread_context* tc, ureg size){
     s->prev = m->last_line_store;
     m->last_line_store = s;
     m->last_line = ptradd(s, sizeof(line_store));
+    return 0;
 }
 int src_map_init(src_map* m, thread_context* tc, bool is_paste_area){
-    m->tc = tc;
     m->is_paste_area = is_paste_area;
     m->last_line_store = NULL;
-    return  append_line_store(m, LINE_STORE_MIN_SIZE);
+    return append_line_store(m, tc, LINE_STORE_MIN_SIZE);
 }
 
 int src_map_fin(src_map* m){
     //nothing to do here for now
+    return 0;
 }
 
 int src_map_add_line(src_map* m, thread_context* tc, ureg line_start){
@@ -45,6 +48,7 @@ int src_map_add_line(src_map* m, thread_context* tc, ureg line_start){
     }
     *m->last_line = line_start;
     m->last_line++;
+    return 0;
 }
 
 src_range src_map_create_src_range(thread_context* tc, src_range_data d){

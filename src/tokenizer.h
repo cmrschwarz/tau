@@ -6,6 +6,7 @@
 #include "src_map.h"
 
 #define TK_TOKEN_BUFFER_SIZE 32
+#define TK_MIN_FILE_READ_SIZE 4096
 typedef struct{
     FILE* file_stream;
     file* file;
@@ -13,8 +14,9 @@ typedef struct{
     token* token_buffer_end;
     token* loaded_tokens_start;
     token* loaded_tokens_head;
-    dbuffer file_buffer;
-    char* string_to_keep;
+    char* file_buffer_start;
+    char* file_buffer_head;
+    char* file_buffer_end;
     char* file_buffer_pos;
     thread_allocator* tal;
     int status;

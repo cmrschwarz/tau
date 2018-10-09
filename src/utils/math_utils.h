@@ -64,3 +64,13 @@ static inline void* ptrsub(void* ptr, ureg val){
 static inline void* ptrsubs(void* ptr, sreg val){
     return (void*)((ureg)ptr - val);
 }
+static inline void ptrswap(void** a, void** b){
+    void* a_tmp = *a;
+    *a = *b;
+    *b = a_tmp;
+}
+static inline void ptrswapt(void** a, void** b, void** c){
+    *c = *a;
+    *a = *b;
+    *b = *c;
+}

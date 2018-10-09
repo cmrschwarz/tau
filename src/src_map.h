@@ -9,7 +9,7 @@ typedef ureg src_range;
 static const ureg SRC_RANGE_INVALID = ((ureg)0x1) << (REG_BITS - 1);
 
 typedef struct line_store{
-    struct lines_store* prev;
+    struct line_store* prev;
     ureg* end;
 }line_store;
 
@@ -19,18 +19,6 @@ typedef struct src_map{
     bool is_paste_area;
 }src_map;
 
-typedef struct src_range_data{
-    src_map* map;
-    ureg start;
-    ureg end;
-}src_range_data;
-
-typedef struct paste_area{
-    src_map src_map;
-    file* origin_file;
-    src_range pasted_from;
-}paste_area;
-
 typedef struct file{
     src_map src_map;
     string path;
@@ -38,7 +26,19 @@ typedef struct file{
     char* ext_start; //index into path indicating the beginning of the file extension
 }file;
 
-int src_map_init(src_map* m, bool is_paste_area);
+typedef struct paste_area{
+    src_map src_map;
+    struct file* origin_file;
+    src_range pasted_from;
+}paste_area;
+
+typedef struct src_range_data{
+    src_map* map;
+    ureg start;
+    ureg end;
+}src_range_data;
+
+int src_map_init(src_map* m, thread_context* tc, bool is_paste_area);
 int src_map_fin(src_map* m);
 int src_map_add_line(src_map* m, thread_context* tc, ureg line_start);
 

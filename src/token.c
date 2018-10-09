@@ -1,4 +1,4 @@
-#include "token_type.h"
+#include "token.h"
 const char* token_strings[255] = {
    [TT_IF]                          = "if",
    [TT_ELSE]                        = "else",
