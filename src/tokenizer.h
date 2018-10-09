@@ -1,37 +1,32 @@
-#include "token_type.h"
+#include "token.h"
 #include "utils/dbuffer.h"
 #include "utils/sbuffer.h"
 #include <stdio.h>
 #include "utils/string.h"
-
-
-typedef struct {
-    token_type type;
-    string str;
-    ureg filepos;
-    ureg column;
-    ureg line;
-}token;
+#include "src_map.h"
 
 #define TK_TOKEN_BUFFER_SIZE 32
 typedef struct{
-    char* filename;
-    FILE* file;
+    FILE* file_stream;
+    file* file;
     token token_buffer[TK_TOKEN_BUFFER_SIZE];
     token* token_buffer_end;
     token* loaded_tokens_start;
     token* loaded_tokens_head;
     dbuffer file_buffer;
+    char* string_to_keep;
     char* file_buffer_pos;
     thread_allocator* tal;
+    int status;
 }tokenizer;
 
 int tk_init(tokenizer* tk, thread_allocator* tal);
 void tk_fin(tokenizer* tk);
  
-int tk_open_file(tokenizer* tk, char* filename);
-void tk_close_file(tokenizer* tk);
+int tk_open_file(tokenizer* tk, file* f);
+int tk_close_file(tokenizer* tk);
 
+token* tk_consume(tokenizer* tk);
 token* tk_peek(tokenizer* tk);
 token* tk_peek_2nd(tokenizer* p);
 token* tk_peek_3rd(tokenizer* p);

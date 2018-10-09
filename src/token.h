@@ -1,5 +1,14 @@
 #pragma once
+#include "utils/types.h"
+#include "utils/string.h"
+
 typedef enum{
+    TT_NUMBER = 0,
+    TT_LITERAL = 1,
+    TT_BINARY_LITERAL = 2,
+    TT_STRING = 3,
+    TT_EOF,
+
     TT_IF,
     TT_ELSE,
     TT_MATCH,
@@ -49,12 +58,6 @@ typedef enum{
     TT_TILDE,
     TT_TILDE_EQUALS,
 
-    TT_NUMBER,
-    TT_LITERAL,
-    TT_BINARY_LITERAL,
-    TT_STRING,
-    TT_EOF,
-
     TT_PLUS,
     TT_DOUBLE_PLUS,
     TT_MINUS,
@@ -80,4 +83,17 @@ typedef enum{
 }token_type;
 
 extern const char* token_strings[255];
+
+typedef struct token{
+    token_type type;
+    string str;
+    ureg filepos;
+    ureg column;
+    ureg line;
+}token;
+
+
+static inline bool token_has_string(token* t){
+    return t->type < 4;
+}
 
