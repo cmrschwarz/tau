@@ -16,7 +16,6 @@ typedef struct line_store{
 typedef struct src_map{
     ureg* last_line;
     line_store* last_line_store;
-    thread_context* tc;
     bool is_paste_area;
 }src_map;
 
@@ -34,13 +33,14 @@ typedef struct paste_area{
 
 typedef struct file{
     src_map src_map;
-    string directory;
-    string name;
+    string path;
+    char* name_start; //index into path indicating the beginning of the file name
+    char* ext_start; //index into path indicating the beginning of the file extension
 }file;
 
-int src_map_init(src_map* m, thread_context* tc, bool is_paste_area);
+int src_map_init(src_map* m, bool is_paste_area);
 int src_map_fin(src_map* m);
-int src_map_add_line(src_map* m, ureg line_start);
+int src_map_add_line(src_map* m, thread_context* tc, ureg line_start);
 
 src_range src_map_create_src_range(thread_context* tc, src_range_data d);
 src_range_data src_range_get_data(src_range r);

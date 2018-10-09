@@ -12,37 +12,36 @@ static const ureg SRC_RANGE_MAX_START = 1<<(SRC_RANGE_START_BITS) - 1;
 static const ureg SRC_RANGE_NEW_MAP_BIT = 1<<(SRC_RANGE_START_BITS - 2);
 static const ureg SRC_RANGE_EXTERN_BIT = 1<<(SRC_RANGE_START_BITS - 1);
 
-static inline line_store* create_line_store(src_map* m, ureg size){
+static inline int apppend_line_store(src_map* m, thread_context* tc, ureg size){
     line_store* s = pool_alloc(
-        &m->tc->permmem,
+        tc->permmem,
         size
     );
-    if(!m->last_line_store)return NULL;
-    m->last_line_store->end = ptradd(m->last_line_store, LINE_STORE_MIN_SIZE);
+    if(!s)return -1;
+    s->end = ptradd(s, size);
+    s->prev = m->last_line_store;
+    m->last_line_store = s;
+    m->last_line = ptradd(s, sizeof(line_store));
 }
 int src_map_init(src_map* m, thread_context* tc, bool is_paste_area){
     m->tc = tc;
     m->is_paste_area = is_paste_area;
-    m->last_line_store = create_line_store(m, LINE_STORE_MIN_SIZE);
-    if(!m->last_line_store) return -1;
-    m->last_line_store->prev = NULL;
-    m->last_line = ptradd(m->last_line_store, sizeof(line_store));   
+    m->last_line_store = NULL;
+    return  append_line_store(m, LINE_STORE_MIN_SIZE);
 }
 
 int src_map_fin(src_map* m){
     //nothing to do here for now
 }
 
-int src_map_add_line(src_map* m, ureg line_start){
+int src_map_add_line(src_map* m, thread_context* tc, ureg line_start){
     if(m->last_line + 1 > m->last_line_store->end){
-        line_store* ls = create_line_store(
-            m,
-            ptrdiff(m->last_line_store->end, m->last_line_store)
-        );
-        if(!ls) return -1;
-        ls->prev = m->last_line_store;
-        m->last_line_store = ls;
-        m->last_line = ptradd(m->last_line_store, sizeof(line_store));
+        if(append_line_store(
+            m, tc,
+            ptrdiff(m->last_line_store->end, m->last_line_store) * 2
+        )){
+            return -1;
+        } 
     }
     *m->last_line = line_start;
     m->last_line++;
