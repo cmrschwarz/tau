@@ -7,7 +7,7 @@ OBJDIR := $(BINDIR)/obj
 DEPSFILE := $(BINDIR)/dependencies
 EXECFILE := $(BINDIR)/$(PROJECT)
 
-SHELL := /bin/bash
+SHELL := /bin/sh
 ROOT := $(shell pwd)
 SRCS := $(shell find $(SRCDIR) -name "*.c")
 OBJS := $(patsubst $(SRCDIR)/%.c, $(OBJDIR)/%.o, $(SRCS))
