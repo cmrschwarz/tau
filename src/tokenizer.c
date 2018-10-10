@@ -83,7 +83,7 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding){
     token* t = tk->loaded_tokens_start;  
     ureg size_to_keep = 0;
     while (t != tk->loaded_tokens_head){
-        if(token_has_string(t))size_to_keep += str_len(t->str);
+        if(token_has_string(t))size_to_keep += string_len(t->str);
         tk_inc_iter(tk, &t);
     }
     if(holding){
@@ -102,7 +102,7 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding){
     t = tk->loaded_tokens_start;  
     while (t != tk->loaded_tokens_head){
         if(token_has_string(t)){
-            ureg slen = str_len(t->str); 
+            ureg slen = string_len(t->str); 
             memcpy(tk->file_buffer_head, t->str.start, slen);
             tk->file_buffer_head = ptradd(tk->file_buffer_head, slen);
         }
@@ -169,10 +169,10 @@ void tk_fin(tokenizer* tk){
 
 
 int tk_open_file(tokenizer* tk, file* f){
-    char* path_str = str_to_cstr(f->path);
+    char* path_str = string_to_cstr(f->path);
     if(!path_str)return -1;
     FILE* fs = fopen(path_str, "r");
-    str_free_cstr(path_str);
+    string_free_cstr(path_str);
     if(!fs) return -1;
     tk->file = f;
     tk->file_stream = fs;

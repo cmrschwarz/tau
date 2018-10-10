@@ -38,6 +38,9 @@ typedef struct src_range_data{
     ureg end;
 }src_range_data;
 
+int file_init_cpath(file* f, char* path);
+int file_init(file* f, string path);
+
 int src_map_init(src_map* m, thread_context* tc, bool is_paste_area);
 int src_map_fin(src_map* m);
 int src_map_add_line(src_map* m, thread_context* tc, ureg line_start);

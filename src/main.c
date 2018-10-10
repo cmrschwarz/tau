@@ -15,7 +15,7 @@ int main(int argc, char** argv){
     tal_init(&tal);
     tk_init(&tk, &tal);
 
-    str_set(&f.path, "/media/nas_mirror/projects/tau/test/test.tau");
+    string_set(&f.path, "/media/nas_mirror/projects/tau/test/test.tau");
     tk_open_file(&tk, &f);
 
     token* t;
