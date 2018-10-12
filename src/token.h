@@ -87,13 +87,14 @@ extern const char* token_strings[255];
 typedef struct token{
     token_type type;
     string str;
-    ureg filepos;
-    ureg column;
-    ureg line;
+    ureg start;
+    ureg end;
 }token;
 
 
 static inline bool token_has_string(token* t){
     return t->type < 4;
 }
+
+void token_print(token* t);
 

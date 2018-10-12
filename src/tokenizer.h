@@ -1,3 +1,4 @@
+#pragma once
 #include "token.h"
 #include "utils/dbuffer.h"
 #include "utils/sbuffer.h"
@@ -18,13 +19,14 @@ typedef struct{
     char* file_buffer_head;
     char* file_buffer_end;
     char* file_buffer_pos;
-    thread_allocator* tal;
+    thread_context* tc;
     int status;
 }tokenizer;
 
-int tk_init(tokenizer* tk, thread_allocator* tal);
+int tk_init(tokenizer* tk, thread_context* tc);
 void tk_fin(tokenizer* tk);
  
+int tk_open_stdin(tokenizer* tk, file* f);
 int tk_open_file(tokenizer* tk, file* f);
 int tk_close_file(tokenizer* tk);
 

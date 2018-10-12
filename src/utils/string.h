@@ -1,7 +1,7 @@
 #pragma once
 #include "types.h"
 #include <string.h>
-
+#include "stdio.h"
 typedef struct{
     char* start;
     char* end;
@@ -69,3 +69,11 @@ static inline char* string_to_cstr(string s){
 static inline void string_free_cstr(char* s){
     free(s);
 }
+
+static inline void string_print(string str){
+    char* c = str.start;
+    while(c != str.end){
+        putchar(*c);
+        c++;
+    }
+} 

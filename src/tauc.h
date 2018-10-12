@@ -16,8 +16,6 @@ typedef struct stage_1{
 }stage_1;
 
 typedef struct thread_context{
-    struct thread_context* next;
-    thread thread;
     thread_allocator tal;
     pool permmem;
     pool stagemem;
@@ -25,6 +23,12 @@ typedef struct thread_context{
         stage_1 s1;
     } stage;
 }thread_context;
+
+typedef struct worker_thread{
+    struct worker_thread* next;
+    thread_context tc;
+    thread thread;
+}worker_thread;
 
 
 typedef struct{
@@ -36,3 +40,9 @@ typedef struct{
         stage_1_share s1;
     }stage_share;
 }tauc;
+
+int thread_context_init(thread_context* tc);
+void thread_context_fin(thread_context* tc);
+
+int worker_thread_init(worker_thread* tc);
+void worker_thread_fin(worker_thread* tc);

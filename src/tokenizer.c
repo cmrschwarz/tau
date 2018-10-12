@@ -1,5 +1,6 @@
 #include "tokenizer.h"
 #include "utils/math_utils.h"
+#include "tauc.h"
 
 static const int STATUS_OK = 0;
 static const int STATUS_IO_ERROR = 0;
@@ -94,7 +95,7 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding){
     bool realloc = buff_size - size_to_keep < TK_MIN_FILE_READ_SIZE; 
     if(realloc){
         buff_size *= 2;   
-        if(tal_alloc(tk->tal, buff_size, &b))return -1;
+        if(tal_alloc(&tk->tc->tal, buff_size, &b))return -1;
         ptrswap(&b.start, (void**)&tk->file_buffer_start);
         ptrswap(&b.end, (void**)&tk->file_buffer_end);
     }
@@ -113,10 +114,9 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding){
         memcpy(tk->file_buffer_head, *holding, slen);
         *holding = tk->file_buffer_head;
         tk->file_buffer_head = ptradd(tk->file_buffer_head, slen);
-    
     }
     if(realloc){
-        tal_free(tk->tal, &b);
+        tal_free(&tk->tc->tal, &b);
     }
     tk->file_buffer_pos = tk->file_buffer_head;
     ureg siz = fread(tk->file_buffer_head, 1, buff_size - size_to_keep, tk->file_stream);
@@ -148,10 +148,10 @@ static inline void tk_void_char_peek(tokenizer* tk){
     tk->file_buffer_pos++;
 }
 
-int tk_init(tokenizer* tk, thread_allocator* tal){
+int tk_init(tokenizer* tk, thread_context* tc){
     memblock b;
-    if(tal_alloc(tal, allocator_get_segment_size() * 8, &b)) return-1;
-    tk->tal = tal;
+    if(tal_alloc(&tk->tc->tal, allocator_get_segment_size() * 8, &b)) return-1;
+    tk->tc = tc;
     tk->file_buffer_start = b.start;
     tk->file_buffer_end = b.end;
     tk->token_buffer_end = tk->token_buffer + TK_TOKEN_BUFFER_SIZE;
@@ -163,27 +163,33 @@ void tk_fin(tokenizer* tk){
     memblock b;
     b.start = tk->file_buffer_start;
     b.end = tk->file_buffer_end;
-    tal_free(tk->tal, &b);
+    tal_free(&tk->tc->tal, &b);
     if(tk->file != NULL)tk_close_file(tk);
 }
 
-
-int tk_open_file(tokenizer* tk, file* f){
-    char* path_str = string_to_cstr(f->path);
-    if(!path_str)return -1;
-    FILE* fs = fopen(path_str, "r");
-    string_free_cstr(path_str);
-    if(!fs) return -1;
+static inline int tk_open_stream(tokenizer* tk, file* f, FILE* stream){
     tk->file = f;
-    tk->file_stream = fs;
+    tk->file_stream = stream;
     tk->file_buffer_pos = tk->file_buffer_start;
     tk->loaded_tokens_head = tk->loaded_tokens_start;
+    tk->loaded_tokens_start->start = 0;
     if(tk_load_file_buffer(tk, NULL)){
         fclose(tk->file_stream);
         return -1;
     }
     tk->status = STATUS_OK;
     return 0;
+}
+int tk_open_stdin(tokenizer* tk, file* f){
+    return tk_open_stream(tk, f, stdin);
+}
+int tk_open_file(tokenizer* tk, file* f){
+    char* path_str = string_to_cstr(f->path);
+    if(!path_str)return -1;
+    FILE* fs = fopen(path_str, "r");
+    string_free_cstr(path_str);
+    if(!fs) return -1;
+    return tk_open_stream(tk, f, fs);
 }
 int tk_close_file(tokenizer* tk){
     return fclose(tk->file_stream);
@@ -217,22 +223,18 @@ static token* tk_load(tokenizer* tk)
             case '.': tok->type = TT_DOT; goto exit_1_char;
             case '\t': {
                 curr = tk_peek_char(tk);
-                while(curr == '\t'){
-                    tk_void_char_peek(tk);
-                    curr = tk_peek_char(tk);
-                    tok->column++; //should this be 2/4/8? 
-                }
+                tok->start++; //should this be 2/4/8? 
                 continue;
             }
             case ' ': {
                 curr = tk_peek_char(tk);
-                tok->column++;
+                tok->start++;
                 continue;
             }
             case '\n':{
                 curr = tk_peek_char(tk);
-                tok->line++;
-                tok->column=0;
+                tok->start++;
+                src_map_add_line(&tk->file->src_map, tk->tc, tok->start);
                 continue;
             }
             case ':':{
@@ -388,56 +390,50 @@ static token* tk_load(tokenizer* tk)
             case '/': {
                 char peek = tk_peek_char(tk);
                 if(peek == '/'){
-                    do{
-                        tk_void_char_peek(tk);
-                        curr = tk_peek_char(tk);
-                        while(curr == '\\'){
-                            tk_void_char_peek(tk);
-                            curr = tk_peek_char(tk);
-                            if(curr == '\0')return tk_load_error_eof(tk);
-                            tk_void_char_peek(tk);
-                            curr = tk_peek_char(tk);
-                            if(curr == '\0')return tk_load_error_eof(tk);
-                        }
-                    }while(curr != '\n' && curr != '\0');
+                    tok->start+=2;
                     tk_void_char_peek(tk);
+                    do{
+                        curr = tk_peek_char(tk);
+                        tk_void_char_peek(tk);
+                        tok->start++;
+                        //THINK: should backslash newline extend the comment?
+                    }while(curr != '\n' && curr != '\0');
                     if(curr == '\n'){
-                        tok->line++;
-                        tok->column = 0;
+                        src_map_add_line(&tk->file->src_map, tk->tc, tok->start);
                         continue;
                     }
                     else{
-                        tok->type = TT_EOF;
-                        goto exit_1_char;
+                        if(tk->status == STATUS_EOF){
+                            tok->start--;
+                            tok->type = TT_EOF;
+                            goto exit_1_char;
+                        }
+                        else{
+                            //TODO: print error
+                            tk_dec_iter(tk, &tk->loaded_tokens_start);
+                            return NULL;
+                        }
                     }
                 }
                 if(peek == '*'){
-                    tok->column+=2;
                     tk_void_char_peek(tk);
-                    curr = tk_peek_char(tk);
+                    tok->start+=2;
                     do{
                         do{
-                            tok->column++;
-                            if(curr == '\\'){
-                                tk_void_char_peek(tk);
-                                curr = tk_peek_char(tk);
-                                if(curr == '\0')return tk_load_error_eof(tk);
-                                tok->column++;
-                            }
+                            curr = tk_peek_char(tk);
+                            tk_void_char_peek(tk);
+                            tok->start++;
                             if(curr == '\n'){
-                                tok->line++;
-                                tok->column = 0;
+                                src_map_add_line(&tk->file->src_map, tk->tc, tok->start);
                             }
                             if(curr == '\0')return tk_load_error_eof(tk);
-                            tk_void_char_peek(tk);
                             curr = tk_peek_char(tk);
                         }while(curr != '*');
-                        tok->column++;
+                        curr = tk_peek_char(tk);
                         tk_void_char_peek(tk);
-                        peek = tk_peek_char(tk);
-                    }while(peek != '/');
-                    tk_void_char_peek(tk);
-                    tok->column++;
+                        tok->start++;
+                        if(curr == '\0')return tk_load_error_eof(tk);
+                    }while(curr != '/');
                     continue;
                 }
                 if(peek == '='){
@@ -532,58 +528,57 @@ static token* tk_load(tokenizer* tk)
                 }
             } 
             case '\'':{
-                char* str_start = tk->file_buffer_pos;
-                curr = tk_peek_char_holding(tk, &str_start);
-                next->line = tok->line;
+                char* str_start = tk->file_buffer_pos - 1;
                 do{
+                    curr = tk_peek_char_holding(tk, &str_start);
+                    tk_void_char_peek(tk);
                     if(curr == '\0')return tk_load_error_eof(tk);
                     if(curr == '\\'){
                         //TODO: think about converting escaped chars
-                        tk_void_char_peek(tk);
                         curr = tk_peek_char_holding(tk, &str_start);
+                        tk_void_char_peek(tk);
                         if(curr == '\0')return tk_load_error_eof(tk);
                     }
                     if(curr == '\n'){
-                        next->line++; 
-                        curr = tk_peek_char_holding(tk, &str_start);
-                        if(curr == '\0')return tk_load_error_eof(tk);
+                        src_map_add_line(
+                            &tk->file->src_map,
+                            tk->tc,
+                            tok->start + ptrdiff(tk->file_buffer_pos, str_start)
+                        );
                     }
-                    tk_void_char_peek(tk);
-                    curr = tk_peek_char_holding(tk, &str_start);
                 }while(curr != '\'');
-                tk_void_char_peek(tk);
                 tok->type = TT_BINARY_LITERAL;
-                tok->str.start = str_start;
-                tok->str.end = tk->file_buffer_pos;
-                next->column = tok->column + tk->file_buffer_pos - str_start;
+                tok->str.start = str_start + 1;
+                tok->str.end = tk->file_buffer_pos - 1;
+                tok->end = tok->start + ptrdiff(tk->file_buffer_pos, str_start);
+                next->start = tok->end;
                 return tok;
             }
-            case '\"':{
-                char* str_start = tk->file_buffer_pos;
-                next->line = tok->line;
+            case '"':{
+                char* str_start = tk->file_buffer_pos - 1;
                 do{
                     curr = tk_peek_char_holding(tk, &str_start);
+                    tk_void_char_peek(tk);
                     if(curr == '\0')return tk_load_error_eof(tk);
                     if(curr == '\\'){
                         //TODO: think about converting escaped chars
-                        tk_void_char_peek(tk);
                         curr = tk_peek_char_holding(tk, &str_start);
-                        if(curr == '\0')return tk_load_error_eof(tk);
                         tk_void_char_peek(tk);
-                        curr = tk_peek_char_holding(tk, &str_start);
                         if(curr == '\0')return tk_load_error_eof(tk);
                     }
                     if(curr == '\n'){
-                        next->line++; 
-                        curr = tk_peek_char_holding(tk, &str_start);
-                        if(curr == '\0')return tk_load_error_eof(tk);
+                        src_map_add_line(
+                            &tk->file->src_map,
+                            tk->tc,
+                            tok->start + ptrdiff(tk->file_buffer_pos, str_start)
+                        );
                     }
-                    tk_void_char_peek(tk);
-                }while(curr != '\"');
-                tok->str.start = str_start;
-                tok->str.end = tk->file_buffer_pos-1;
-                tok->type = TT_LITERAL;
-                next->column = tok->column + tk->file_buffer_pos - str_start;
+                }while(curr != '"');
+                tok->type = TT_BINARY_LITERAL;
+                tok->str.start = str_start + 1;
+                tok->str.end = tk->file_buffer_pos - 1;
+                tok->end = tok->start + ptrdiff(tk->file_buffer_pos, str_start);
+                next->start = tok->end;
                 return tok;
             }
             case 'a':case 'b':case 'c':case 'd':case 'e':case 'f':case 'g':case 'h':
@@ -596,21 +591,22 @@ static token* tk_load(tokenizer* tk)
             case 'Y':case 'Z':
             case '_':
             {
-                char* str_start = tk->file_buffer_pos -1;
+                char* str_start = tk->file_buffer_pos - 1;
                 curr = tk_peek_char_holding(tk, &str_start);
-                while((curr >= 'a' && curr <= 'z') ||
+                while(
+                    (curr >= 'a' && curr <= 'z') ||
                     (curr >= 'A' && curr <= 'Z') ||
                     (curr >= '0' && curr <= '9') ||
-                    (curr == '_'))
-                {
+                    (curr == '_')
+                ){
                     tk_void_char_peek(tk);
                     curr = tk_peek_char_holding(tk, &str_start);
                 }
                 tok->type = TT_STRING;
                 tok->str.start = str_start;
                 tok->str.end = tk->file_buffer_pos;
-                next->line = tok->line; 
-                next->column = tok->column + tk->file_buffer_pos - str_start;
+                tok->end = tok->start + ptrdiff(tk->file_buffer_pos, str_start);
+                next->start = tok->end;
                 return tok;
             }
             case '0':
@@ -624,38 +620,36 @@ static token* tk_load(tokenizer* tk)
             case '8':
             case '9':
             {
-                char* str_start = tk->file_buffer_pos-1;
+                char* str_start = tk->file_buffer_pos - 1;
                 curr = tk_peek_char_holding(tk, &str_start);
                 while(curr >= '0' && curr <= '9'){
                     tk_void_char_peek(tk);
                     curr = tk_peek_char_holding(tk, &str_start);
-                    if(curr == '\0')return tk_load_error_eof(tk);
                 }
                 tok->type = TT_NUMBER;
                 tok->str.start = str_start;
                 tok->str.end = tk->file_buffer_pos;
-                next->line = tok->line; 
-                next->column = tok->column + tk->file_buffer_pos - str_start;
-                next->str.start = tok->str.end;
+                tok->end = tok->start + ptrdiff(tk->file_buffer_pos, str_start);
+                next->start = tok->end;
                 return tok;
             }
             default:{
                 //TODO: print error here
-                tk_dec_iter(tk, &tk->loaded_tokens_head);
+                tk_dec_iter(tk, &tk->loaded_tokens_start);
                 return NULL;
             }
         }
     }
 exit_1_char:
-    next->line = tok->line;
-    next->column = tok->column+1;
+    tok->end = tok->start + 1;
+    next->start = tok->end;
     return tok;
 exit_2_char:
-    next->line = tok->line;
-    next->column = tok->column+2;
+    tok->end = tok->start + 2;
+    next->start = tok->end;
     return tok;
 exit_3_char:
-    next->line = tok->line;
-    next->column = tok->column+3;
+    tok->end = tok->start + 3;
+    next->start = tok->end;
     return tok;
 }

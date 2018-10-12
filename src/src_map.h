@@ -11,6 +11,7 @@ static const ureg SRC_RANGE_INVALID = ((ureg)0x1) << (REG_BITS - 1);
 typedef struct line_store{
     struct line_store* prev;
     ureg* end;
+    ureg first_line;
 }line_store;
 
 typedef struct src_map{
@@ -22,8 +23,6 @@ typedef struct src_map{
 typedef struct file{
     src_map src_map;
     string path;
-    char* name_start; //index into path indicating the beginning of the file name
-    char* ext_start; //index into path indicating the beginning of the file extension
 }file;
 
 typedef struct paste_area{
@@ -33,17 +32,23 @@ typedef struct paste_area{
 }paste_area;
 
 typedef struct src_range_data{
-    src_map* map;
+    src_map* map; //this is NULL if the src_range doesn't change it
     ureg start;
     ureg end;
 }src_range_data;
 
-int file_init_cpath(file* f, char* path);
-int file_init(file* f, string path);
+typedef struct src_pos{
+    ureg line;
+    ureg column;
+}src_pos;
+//THINK: who manages memory of the string here
+int file_init(file* f, thread_context* tc, string path); 
+void file_fin(file* f);
 
 int src_map_init(src_map* m, thread_context* tc, bool is_paste_area);
 int src_map_fin(src_map* m);
 int src_map_add_line(src_map* m, thread_context* tc, ureg line_start);
+src_pos src_map_get_pos(src_map* m, ureg pos);
 
-src_range src_map_create_src_range(thread_context* tc, src_range_data d);
-src_range_data src_range_get_data(src_range r);
+src_range src_map_create_src_range(thread_context* tc, src_range_data* d);
+void src_range_get_data(src_range r, src_range_data* d);

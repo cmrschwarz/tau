@@ -1,4 +1,5 @@
 #include "token.h"
+#include "stdio.h"
 const char* token_strings[255] = {
    [TT_IF]                          = "if",
    [TT_ELSE]                        = "else",
@@ -76,6 +77,27 @@ const char* token_strings[255] = {
     [TT_LITERAL]                    = 0,
     [TT_BINARY_LITERAL]             = 0,
     [TT_STRING]                     = 0,
-    [TT_EOF]                        = 0,
-
+    [TT_EOF]                        = "EOF",
 };
+void token_print(token* t){
+    switch(t->type){
+        case TT_NUMBER:
+        case TT_STRING:{
+            string_print(t->str);
+        }break;
+        case TT_LITERAL:{
+            putchar('"');
+            string_print(t->str);
+            putchar('"');
+        }break;
+        case TT_BINARY_LITERAL:{
+            putchar('\'');
+            string_print(t->str);
+            putchar('\'');
+        }break;
+        default:{
+            fputs(token_strings[t->type], stdout);
+        }break;
+    }
+    printf("[%llu; %llu]", t->start, t->end);
+}
