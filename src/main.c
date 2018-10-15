@@ -15,10 +15,10 @@ int main(int argc, char** argv){
     EO(thread_context_init(&tc));
     EO(tk_init(&tk, &tc));
     
-    string_set(&f.path, "/media/nas_mirror/projects/tau/test/test.tau");
+    string_set(&f.path, "test/test.tau");
     EO(file_init(&f, &tc, f.path));
     EO(tk_open_file(&tk, &f));
-    EO(tk_open_stdin(&tk, &f));
+//    EO(tk_open_stdin(&tk, &f));
     token* t;
     for (int i=1;i<5;i++){
         token_print(tk_peek_nth(&tk, i));
