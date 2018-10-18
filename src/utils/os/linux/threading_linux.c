@@ -1,4 +1,5 @@
 #include "../../threading.h"
+#include "../../panic.h"
 #if OS_LINUX
 
 #include <stdio.h>
@@ -13,11 +14,11 @@ bool mutex_try_lock(mutex* m){
 int mutex_lock(mutex* m){
     return pthread_mutex_lock(m);
 }
-int mutex_unlock(mutex* m){
-    return pthread_mutex_unlock(m);
+void mutex_unlock(mutex* m){
+    if(pthread_mutex_unlock(m))panic();
 }
 void mutex_fin(mutex* m){
-    pthread_mutex_destroy(m);
+    if(pthread_mutex_destroy(m))panic();
 }
 
 int thread_yield(){

@@ -1,5 +1,5 @@
 #include "src_map.h"
-#include "utils/error.h"
+#include "utils/panic.h"
 #include "tauc.h"
 #include "utils/pool.h"
 #include "utils/math_utils.h"

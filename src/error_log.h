@@ -1,7 +1,7 @@
+#pragma once
 #include "utils/threading.h"
 
-typedef struct thread_error_log;
-typedef struct error;
+struct thread_context;
 
 typedef enum error_type{
     TOKENIZER_IO_ERROR,
@@ -17,22 +17,26 @@ typedef enum error_type{
 
 typedef struct error{
     error_type type;
-    error* follow_up;
+    struct error* previous;
 }error;
 
+typedef struct thread_error_log{
+    struct thread_error_log* next;
+    error* errors;
+    error* allocation_failure_point;
+}thread_error_log;
+
 typedef struct error_log{
+    atomic_bool error_occured;
     mutex mtx;
-    bool error_occured;
     thread_error_log* thread_error_logs;
 }error_log;
 
-typedef struct thread_error_log{
-    thread_error_log* next;
-    error_log* error_log;
-    error* error;
-    //store this type of error here so we don't have to allocate on allocation failiure
-    error alloc_failiure; 
-}thread_error_log;
+int error_log_init(error_log* el);
+void error_log_fin(error_log* el);
+int thread_error_log_init(error_log* el, thread_error_log* tel);
+void thread_error_log_fin(thread_error_log* tel);
 
-void error_emit(thread_context* tc, error* e);
-void error_allocation_failiure(thread_context* tc);
+
+void error_log_report(struct thread_context* tc, error* e);
+void error_log_report_allocation_failiure(struct thread_context* tc);
