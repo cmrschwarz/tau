@@ -6,36 +6,44 @@
 #include "utils/debug_utils.h"
 #include "tokenizer.h"
 #include "tauc.h"
-#define EO(arg) if(arg)return -1
+
+int puts_or_mangle_error(int r, char* text){
+    if(puts(text) == EOF) return  0xDEAD0000;
+    return r;
+}
 int main(int argc, char** argv){
-    tokenizer tk;
-    thread_context tc;
-    file f;
-    EO(allocator_init());
-    EO(thread_context_init(&tc));
-    EO(tk_init(&tk, &tc));
-    
-    string_set(&f.path, "test/test.tau");
-    EO(file_init(&f, &tc, f.path));
-    EO(tk_open_file(&tk, &f));
-//    EO(tk_open_stdin(&tk, &f));
-    token* t;
-    for (int i=1;i<5;i++){
-        token_print(tk_peek_nth(&tk, i));
-        putchar('\n');
-        fflush(stdout);
+    //error code storage
+    int r;
+
+    //init master error log
+    r = master_error_log_init();
+    if(r){
+        return puts_or_mangle_error(
+            r,
+            "Fatal Error: Failed to aquire synchronization primitives from OS"
+        );
     }
-    do{
-        t = tk_peek_nth(&tk, 5);
-        token_print(t);
-        src_pos p = src_map_get_pos(&f.src_map, t->start);
-        printf("{%llu, %llu}", p.line, p.column);
-        putchar('\n');
-        fflush(stdout);
-        tk_void(&tk);
-    }while(t!= NULL && t->type != TT_EOF);
-    tk_fin(&tk);
-    file_fin(&f);
-    thread_context_fin(&tc);
+
+    //init root allocator
+    r = allocator_init();
+    if(r){
+        master_error_log_fin();
+        return puts_or_mangle_error(
+            r,
+            "Fatal Error: Failed to initialize memory allocation on the OS"
+        );
+    }
+
+    //main programm
+    tauc tauc;
+    r = tauc_init(&tauc, argc, argv);
+    if(!r) tauc_fin(&tauc);
+    
+    //report any erros that occured
+    r = master_error_log_unwind(r);
+
+    //terminate gracefully
     allocator_fin();
+    master_error_log_fin();
+    return r;
 }

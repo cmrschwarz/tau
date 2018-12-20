@@ -1,8 +1,9 @@
 #include "../../threading.h"
 #ifdef USE_LIBC_ATOMICS
 
-void atomic_ureg_init(atomic_ureg* a, ureg value){
+int atomic_ureg_init(atomic_ureg* a, ureg value){
     atomic_init(a, value);
+    return 0;
 }
 void atomic_ureg_store(atomic_ureg* a, ureg value){
     atomic_store(a, value);
@@ -14,8 +15,9 @@ void atomic_ureg_fin(atomic_ureg* a){
 
 }
 
-void atomic_sreg_init(atomic_sreg* a, sreg value){
+int atomic_sreg_init(atomic_sreg* a, sreg value){
     atomic_init(a, value);
+    return 0;
 }
 void atomic_sreg_store(atomic_sreg* a, sreg value){
     atomic_store(a, value);
@@ -27,8 +29,9 @@ void atomic_sreg_fin(atomic_sreg* a){
 
 }
 
-void atomic_bool_init(atomic_bool* a, bool value){
+int atomic_bool_init(atomic_bool* a, bool value){
     atomic_init(a, value);
+    return 0;
 }
 void atomic_bool_store(atomic_bool* a, bool value){
     atomic_store(a, value);

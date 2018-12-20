@@ -1,7 +1,7 @@
 #pragma once
 #include "utils/threading.h"
-
-struct thread_context;
+#include "utils/allocator.h"
+#include "utils/pool.h"
 
 typedef enum error_type{
     TOKENIZER_IO_ERROR,
@@ -20,23 +20,28 @@ typedef struct error{
     struct error* previous;
 }error;
 
-typedef struct thread_error_log{
-    struct thread_error_log* next;
-    error* errors;
-    error* allocation_failure_point;
-}thread_error_log;
+typedef struct master_error_log master_error_log;
 
 typedef struct error_log{
-    atomic_bool error_occured;
-    mutex mtx;
-    thread_error_log* thread_error_logs;
+    struct error_log* next;
+    error* errors;
+    error* allocation_failure_point;
 }error_log;
 
-int error_log_init(error_log* el);
-void error_log_fin(error_log* el);
-int thread_error_log_init(error_log* el, thread_error_log* tel);
-void thread_error_log_fin(thread_error_log* tel);
+typedef struct master_error_log{
+    atomic_bool error_occured;
+    mutex mtx;
+    error_log* error_logs;
+    int error_log_error;
+}master_error_log;
+
+int master_error_log_init();
+int master_error_log_unwind(int r);
+
+void master_error_log_fin();
+error_log* error_log_aquire();
+void error_log_release(error_log* tel);
 
 
-void error_log_report(struct thread_context* tc, error* e);
-void error_log_report_allocation_failiure(struct thread_context* tc);
+void error_log_report(error_log* tel, error* e);
+void error_log_report_allocation_failiure(error_log* tel);

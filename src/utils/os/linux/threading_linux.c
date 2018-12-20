@@ -15,10 +15,10 @@ int mutex_lock(mutex* m){
     return pthread_mutex_lock(m);
 }
 void mutex_unlock(mutex* m){
-    if(pthread_mutex_unlock(m))panic();
+    if(pthread_mutex_unlock(m))panic("mutex unlock failed");
 }
 void mutex_fin(mutex* m){
-    if(pthread_mutex_destroy(m))panic();
+    if(pthread_mutex_destroy(m))panic("mutex deallocation failed");
 }
 
 int thread_yield(){

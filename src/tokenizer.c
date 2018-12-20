@@ -1,6 +1,7 @@
 #include "tokenizer.h"
 #include "utils/math_utils.h"
 #include "tauc.h"
+#include "error_log.h"
 
 static const int STATUS_OK = 0;
 static const int STATUS_IO_ERROR = 0;
@@ -95,7 +96,10 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding){
     bool realloc = buff_size - size_to_keep < TK_MIN_FILE_READ_SIZE; 
     if(realloc){
         buff_size *= 2;   
-        if(tal_alloc(&tk->tc->tal, buff_size, &b))return -1;
+        if(tal_alloc(&tk->tc->tal, buff_size, &b)){
+            error_log_report_allocation_failiure(&tk->tc->error_log);
+            return -1;
+        }
         ptrswap(&b.start, (void**)&tk->file_buffer_start);
         ptrswap(&b.end, (void**)&tk->file_buffer_end);
     }

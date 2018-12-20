@@ -16,3 +16,5 @@
 
 //could point to a (caching)function returning this at runtime
 #define PAGE_SIZE 4096 
+
+#define DEBUG 1
