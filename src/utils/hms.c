@@ -44,8 +44,8 @@ int hms_init_with_capacity(hms* h, ureg capacity, thread_allocator* tal){
     //elements after that size will be used for colliding elements,
     //but the hash function will not give out their indices directly
     h->size_bits = ulog2(capacity);    
-    h->map = b.start;
-    h->map_end = b.end;
+    h->map = (hms_node*)b.start;
+    h->map_end = (hms_node*)b.end;
     h->hash_mask = (1 << h->size_bits) - 1;
     h->elem_count = 0;
     h->grow_on_elem_count = capacity / 4 * 3;
@@ -74,6 +74,8 @@ int hms_set(hms* h, const char* key, void* value){
     while(n->key != NULL){
         if(n->key == TOMBSTONE_KEY)break;
         n++;
+        //no need to worry about infinite loop becuase
+        //we realloc at a certain fillpercentage
         if(n == h->map_end)n = h->map;
     }
     n->key = key;
@@ -87,7 +89,7 @@ void* hms_get(hms* h, const char* key){
     while(true){
         if(n->key == NULL)return NULL;
         if(strcmp(n->key, key) == 0){
-            //if we don't want "" to be a valid key, we
+            //if we don't want TOMBSTONE_KEY's value to be a valid key, we
             //can remove this check for performance
             if(n->key != TOMBSTONE_KEY)break;
         }
@@ -130,8 +132,8 @@ int hms_grow(hms* h){
     if(tal_alloc(h->tal, ptrdiff(h->map_end, h->map) * 2, &b)) return -1;
     hms_node* old = h->map;
     hms_node* old_end = h->map_end;
-    h->map = b.start;
-    h->map_end = b.end;
+    h->map = (hms_node*)b.start;
+    h->map_end = (hms_node*)b.end;
     ureg size = ptrdiff(b.end, b.start);
     h->size_bits = ulog2(size);
     h->hash_mask = size - 1;

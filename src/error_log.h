@@ -2,23 +2,49 @@
 #include "utils/threading.h"
 #include "utils/allocator.h"
 #include "utils/pool.h"
+#include "src_map.h"
+
+#define OK 0 //zero to allow error handling like if(res){errorhandling} 
+#define ERR -1
+#define TAUC_MAX_GLOBAL_ERRORS 64
+typedef enum error_stage{
+    ES_TOKENIZER,
+    ES_PARSER,
+    ES_TYPESETTER,
+    ES_SIZER,
+    //...
+}error_stage;
 
 typedef enum error_type{
-    TOKENIZER_IO_ERROR,
-    TOKENIZER_INVALID_TOKEN,
-    TOKENIZER_UNEXPECTED_EOF,
-    TOKENIZER_ALLOCATION_FAILIURE,
-    PARSER_UNEXPECTED_TOKEN,
-    PARSER_UNEXPECTED_EOF,
-    PARSER_ALLOCATION_FAILIURE,
-    TYPESETTER_NAME_CLASH,
-    TYPESETTER_ALLOCATION_FAILIURE,
+    ET_ERROR,
+    ET_1_ANNOT,
+    ET_2_ANNOT,
 }error_type;
 
 typedef struct error{
-    error_type type;
     struct error* previous;
+    bool warn;
+    error_stage stage;
+    error_type type;
+    file* file;
+    ureg position;
+    char* message;
 }error;
+
+typedef struct error_1_annotation{
+    error error;
+    ureg length;
+    char* annotation;
+}error_1_annotation;
+
+typedef struct error_2_annotations{
+    error error;
+    ureg length1;
+    char* annotation1;
+    ureg position2;
+    ureg length2;
+    char* annotation2;
+}error_2_annotations;
 
 typedef struct master_error_log master_error_log;
 
@@ -26,22 +52,61 @@ typedef struct error_log{
     struct error_log* next;
     error* errors;
     error* allocation_failure_point;
+    error* synchronization_failure_point;
+    pool* error_mem_pool;
 }error_log;
 
 typedef struct master_error_log{
-    atomic_bool error_occured;
-    mutex mtx;
     error_log* error_logs;
-    int error_log_error;
+    char* global_errors[TAUC_MAX_GLOBAL_ERRORS];
+    ureg global_error_count;
+    ureg tab_size;
+    char* tab_spaces;
+    bool err_tty;
 }master_error_log;
 
+//MAIN THREAD ONLY
 int master_error_log_init();
-int master_error_log_unwind(int r);
-
+void master_error_log_report(char* critical_error);
+void master_error_log_unwind(pool* memory);
 void master_error_log_fin();
-error_log* error_log_aquire();
-void error_log_release(error_log* tel);
+void error_log_init(error_log* el, pool* error_mem_pool);
+void error_log_fin(error_log* el);
+void error_log_report_error(
+    error_log* el,
+    error_stage stage,
+    bool warn,
+    char* message,
+    file* file,
+    ureg position
+);
+void error_log_report_error_1_annotation(
+    error_log* el,
+    error_stage stage,
+    bool warn,
+    char* message,
+    file* file,
+    ureg position,
+    ureg length,
+    char* annotation
+);
+void error_log_report_error_2_annotations(
+    error_log* el,
+    error_stage stage,
+    bool warn,
+    char* message,
+    file* file,
+    ureg position,
+    ureg length1,
+    char* annotation1,
+    ureg position2,
+    ureg length2,
+    char* annotation2
+);
+//THREAD SAFE
+error* error_log_alloc(error_log* e, ureg size);
+void error_log_report(error_log* el, error* e);
+void error_log_report_allocation_failiure(error_log* el);
+void error_log_report_synchronization_failiure(error_log* el);
 
 
-void error_log_report(error_log* tel, error* e);
-void error_log_report_allocation_failiure(error_log* tel);

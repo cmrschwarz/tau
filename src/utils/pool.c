@@ -1,13 +1,13 @@
 #include "pool.h"
 #include "math_utils.h"
 #include "allocator.h"
-
+#include "../error_log.h"
 static inline pool_segment* pool_alloc_segment(pool* p, ureg size){
     memblock b;
     if(tal_alloc(p->tal, size, &b)) return NULL;
-    pool_segment* seg = b.start;
-    seg->head = ptradd(seg, sizeof(pool_segment));
-    seg->end = b.end;
+    pool_segment* seg = (pool_segment*)b.start;
+    seg->head = (u8*)ptradd(seg, sizeof(pool_segment));
+    seg->end = (u8*)b.end;
     return seg;
 }
 static inline void pool_free_segment(pool* p, pool_segment* s){
@@ -19,7 +19,7 @@ static inline void pool_free_segment(pool* p, pool_segment* s){
 int pool_init(pool* p, thread_allocator* tal){
     p->tal = tal;
     pool_segment* seg = pool_alloc_segment(p, PAGE_SIZE);
-    if(!seg)return -1;
+    if(!seg)return ERR;
     p->segments = seg;
     seg->next = NULL;
     return 0;
@@ -61,5 +61,5 @@ void pool_clear(pool* p){
         segs = segs->next;
     }
     p->segments = segs;
-    segs->head = ptradd(segs, sizeof(pool_segment));
+    segs->head = (u8*)ptradd(segs, sizeof(pool_segment));
 }

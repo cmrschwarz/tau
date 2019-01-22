@@ -1,4 +1,5 @@
 #include "../../plattform.h"
+#include "../../../error_log.h"
 #if OS_LINUX
 #include "../../allocator.h"
 #include <linux/mman.h> 
@@ -17,7 +18,7 @@ static struct allocator{
 
 int allocator_init(){
     ALLOCATOR.segment_size = sysconf(_SC_PAGESIZE);
-    return 0;
+    return OK;
 }
 
 //TODO(cmrs): debugging feature counting allocations
@@ -29,7 +30,7 @@ ureg allocator_get_segment_size(){
 }
 
 int tal_init(thread_allocator* tal){
-    return 0;
+    return OK;
 }
 
 void tal_fin(thread_allocator* tal){}
@@ -40,9 +41,9 @@ int tal_alloc(thread_allocator* tal, ureg size, memblock* b){
         NULL, size, PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_UNINITIALIZED, -1, 0
     );
-    if(b->start == MAP_FAILED)return -1;
+    if(b->start == MAP_FAILED)return ERR;
     b->end = ptradd(b->start, size);
-    return 0;
+    return OK;
 }
 int tal_allocz(thread_allocator* tal, ureg size, memblock* b){
     //removing the MAP_UNITIALIZED flag guarantees that the memory will be cleared
@@ -50,18 +51,18 @@ int tal_allocz(thread_allocator* tal, ureg size, memblock* b){
         NULL, size, PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0
     );
-    if(b->start == MAP_FAILED)return -1;
+    if(b->start == MAP_FAILED)return ERR;
     b->end = ptradd(b->start, size);
-    return 0;
+    return OK;
 }
 
 int tal_realloc(thread_allocator* tal, ureg used_size, ureg new_size, memblock* b) {
-    memblock new;
-    if(tal_alloc(tal, new_size, &new)) return -1;
-    memcpy(new.start, b->start, used_size);
+    memblock mbnew;
+    if(tal_alloc(tal, new_size, &mbnew)) return ERR;
+    memcpy(mbnew.start, b->start, used_size);
     tal_free(tal, b);
-    *b = new;
-    return 0;
+    *b = mbnew;
+    return OK;
 }
 
 void tal_free(thread_allocator* tal, memblock* b){

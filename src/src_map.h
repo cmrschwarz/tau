@@ -22,7 +22,7 @@ typedef struct src_map{
 
 typedef struct file{
     src_map src_map;
-    string path;
+    char* path;
 }file;
 
 typedef struct paste_area{
@@ -42,13 +42,14 @@ typedef struct src_pos{
     ureg column;
 }src_pos;
 //THINK: who manages memory of the string here
-int file_init(file* f, thread_context* tc, string path); 
+int file_init(file* f, thread_context* tc, char* path); 
 void file_fin(file* f);
 
 int src_map_init(src_map* m, thread_context* tc, bool is_paste_area);
 int src_map_fin(src_map* m);
 int src_map_add_line(src_map* m, thread_context* tc, ureg line_start);
 src_pos src_map_get_pos(src_map* m, ureg pos);
+int src_pos_get_line_bounds(src_map* m, ureg line, ureg* start_pos, ureg* length);
 
 src_range src_map_create_src_range(thread_context* tc, src_range_data* d);
 void src_range_get_data(src_range r, src_range_data* d);

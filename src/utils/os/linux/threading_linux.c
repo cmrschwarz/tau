@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <time.h>
 #include <unistd.h>
+#include <pthread.h>
 int mutex_init(mutex* m){
     return pthread_mutex_init(m, NULL);
 }
@@ -29,11 +30,10 @@ int thread_sleep(ureg microsecs){
 }
 
 static void* thread_wrapper(void* ctx){
-    thread* t = ctx;
+    thread* t = (thread*)ctx;
     t->thread_fn(t->context);
     return NULL;
 }
-
 int thread_launch(thread* t, thread_function_ptr thread_fn, void* context){
     t->thread_fn = thread_fn;
     t->context = context;

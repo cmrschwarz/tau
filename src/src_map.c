@@ -3,7 +3,7 @@
 #include "tauc.h"
 #include "utils/pool.h"
 #include "utils/math_utils.h"
-
+#include <assert.h>
 #define LINE_STORE_MIN_LINES 32
 static const ureg LINE_STORE_MIN_SIZE = 
     LINE_STORE_MIN_LINES * sizeof(ureg) + sizeof(line_store);
@@ -16,7 +16,7 @@ static const ureg SRC_RANGE_NEW_MAP_BIT = ((ureg)1) << (SRC_RANGE_START_BITS - 2
 static const ureg SRC_RANGE_EXTERN_BIT = ((ureg)1) << (SRC_RANGE_START_BITS - 1);
 
 static inline int append_line_store(src_map* m, thread_context* tc, ureg size){
-    line_store* s = pool_alloc(
+    line_store* s = (line_store*)pool_alloc(
         &tc->permmem,
         size
     );
@@ -55,11 +55,38 @@ int src_map_add_line(src_map* m, thread_context* tc, ureg line_start){
     return 0;
 }
 
+int src_pos_get_line_bounds(src_map* m, ureg line_nr, ureg* start_pos, ureg* length){
+    line_store* ls = m->last_line_store;
+    line_store* next_ls = NULL;
+    while(ls->first_line > line_nr){
+        next_ls = ls;
+        ls = ls->prev;
+        assert(ls);
+    }
+    ureg* line = ((ureg*)ptradd(ls, sizeof(line_store))) + (line_nr - ls->first_line);
+    ureg* next_line = line + 1;
+    if(next_ls == NULL){
+        if (next_line >= m->last_line) next_line = NULL;
+    }
+    else{
+        if(next_line >= ls->end){
+            next_line = (ureg*)ptradd(next_ls, sizeof(line_store));
+        }
+    }
+    *start_pos = *line;
+    if(next_line != NULL){
+        *length = (*next_line - *line);
+    }
+    else{
+        *length = 0; //otherwise impossible, because of newlines counting towards old line
+    }
+    return OK;
+}
 src_pos src_map_get_pos(src_map* m, ureg pos){
     line_store* ls = m->last_line_store;
     ureg* first = ptradd(ls, sizeof(line_store));
     ureg* end;
-    if(*first < pos){
+    if(*first <= pos){
         end = m->last_line;
     }
     else{
@@ -108,7 +135,7 @@ src_range src_map_create_src_range(thread_context* tc, src_range_data* d){
         }
     }
     else{
-        src_map** tgt = pool_alloc(&tc->permmem, sizeof(ureg) * 3);
+        src_map** tgt = (src_map**)pool_alloc(&tc->permmem, sizeof(ureg) * 3);
         if(!tgt)return SRC_RANGE_INVALID;
         *tgt = d->map;
         ureg* range = (void*)(tgt+1);
@@ -146,11 +173,10 @@ void src_range_get_data(src_range r, src_range_data* d){
 }
 
 
-int file_init(file* f, thread_context* tc, string path){
+int file_init(file* f, thread_context* tc, char* path){
     f->path = path;
     return src_map_init(&f->src_map, tc, false);
 }
 void file_fin(file* f){
     src_map_fin(&f->src_map);
-    //THINK: fin string here?
 }

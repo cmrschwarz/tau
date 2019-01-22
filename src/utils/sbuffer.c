@@ -26,8 +26,8 @@ void sbuffer_fin(sbuffer* sb){
 sbuffer_segment* sbuffer_segment_create(sbuffer* sb, ureg size){
     memblock b;
     if(tal_alloc(sb->tal, size, &b)) return NULL;
-    sbuffer_segment* seg = b.start;
-    seg->end = b.end;
+    sbuffer_segment* seg = (sbuffer_segment*)b.start;
+    seg->end = (u8*)b.end;
     seg->start = (u8*)b.start + sizeof(sbuffer_segment);
     seg->head = seg->start;
     return seg;

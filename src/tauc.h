@@ -43,8 +43,14 @@ typedef struct tauc{
     }stage_share;
 }tauc;
 
-int tauc_init(tauc* tauc, int argc, char** argv);
-void tauc_fin(tauc* tauc);
+extern struct tauc TAUC;
 
-int worker_thread_init(worker_thread* wt, tauc* tauc);
+//MAIN THREAD ONLY
+int tauc_init();
+int tauc_run(int argc, char** argv);
+void tauc_fin_temps();
+void tauc_fin();
+
+int thread_context_init(thread_context* tc);
+void thread_context_fin(thread_context* tc);
 void worker_thread_fin(worker_thread* wt);

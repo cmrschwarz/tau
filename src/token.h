@@ -1,7 +1,7 @@
 #pragma once
 #include "utils/types.h"
 #include "utils/string.h"
-
+#include "src_map.h"
 typedef enum{
     TT_NUMBER = 0,
     TT_LITERAL = 1,
@@ -96,5 +96,5 @@ static inline bool token_has_string(token* t){
     return t->type < 4;
 }
 
-void token_print(token* t);
+void token_print(file* f, token* t);
 

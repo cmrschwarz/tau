@@ -1,3 +1,7 @@
 func main(args: Slice[String]){
-	println("Hello, World");
+	//this is a comment//
+	/*äöü*/	äöü
+	//this is another comment**/
+    println("Hello, World");
 }
+ 

@@ -26,7 +26,7 @@ typedef struct{
 int tk_init(tokenizer* tk, thread_context* tc);
 void tk_fin(tokenizer* tk);
  
-int tk_open_stdin(tokenizer* tk, file* f);
+int tk_open_stream(tokenizer* tk, file* f, FILE* stream);
 int tk_open_file(tokenizer* tk, file* f);
 int tk_close_file(tokenizer* tk);
 

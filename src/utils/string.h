@@ -7,14 +7,27 @@ typedef struct{
     char* end;
 }string;
 
-static inline void string_assign(string* s, char* start, char* end){
+
+static inline void string_set(string* s, char* start, char* end){
     s->start = start;
     s->end = end;
 }
 
-static inline void string_set(string* s, char* zstring){
+static inline void string_set_cstr(string* s, char* zstring){
     s->start = zstring;
     s->end = zstring + strlen(zstring);
+}
+
+static inline string string_from_cstr(char* s){
+    string str;
+    string_set_cstr(&str, s);
+    return str;
+}
+
+static inline string string_create(char* start, char* end){
+    string s;
+    string_set(&s, start, end);
+    return s;
 }
 
 static inline ureg string_len(string s){
@@ -43,7 +56,7 @@ static inline int string_cmp(string l, string r){
     }
 }
 
-static inline int string_cmpz(string l, char* r){
+static inline int string_cmp_cstr(string l, char* r){
     while (true){
         if(*r == 0){
             if(l.start == l.end) return 0;
@@ -59,7 +72,7 @@ static inline int string_cmpz(string l, char* r){
 static inline char* string_to_cstr(string s){
     //this is temporary until we get rid of c strings entirely
     ureg path_len = string_len(s);
-    char* path = malloc(path_len + 1);
+    char* path = (char*)malloc(path_len + 1);
     if(!path) return NULL;
     memcpy(path, s.start, path_len);
     path[path_len] = '\0';

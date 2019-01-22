@@ -79,7 +79,11 @@ const char* token_strings[255] = {
     [TT_STRING]                     = 0,
     [TT_EOF]                        = "EOF",
 };
-void token_print(token* t){
+void token_print(file* f, token* t){
+    if(t == NULL){
+        puts("ERROR");
+        return;
+    }
     switch(t->type){
         case TT_NUMBER:
         case TT_STRING:{
@@ -99,5 +103,6 @@ void token_print(token* t){
             fputs(token_strings[t->type], stdout);
         }break;
     }
-    printf("[%llu; %llu]", t->start, t->end);
+    src_pos p = src_map_get_pos(&f->src_map, t->start);
+    printf("[%llu; %llu | l: %llu c: %llu]\n", t->start, t->end, p.line, p.column);
 }

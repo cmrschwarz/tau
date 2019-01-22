@@ -8,7 +8,6 @@
 #else
 #include <cstdint>
 #include <cstdlib>
-#include <float>
 #endif
 
 typedef uint8_t u8;

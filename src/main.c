@@ -7,43 +7,31 @@
 #include "tokenizer.h"
 #include "tauc.h"
 
-int puts_or_mangle_error(int r, char* text){
-    if(puts(text) == EOF) return  0xDEAD0000;
-    return r;
-}
 int main(int argc, char** argv){
-    //error code storage
     int r;
+    r = allocator_init();
+    if(r) return EXIT_FAILURE;
 
-    //init master error log
     r = master_error_log_init();
     if(r){
-        return puts_or_mangle_error(
-            r,
-            "Fatal Error: Failed to aquire synchronization primitives from OS"
-        );
-    }
-
-    //init root allocator
-    r = allocator_init();
-    if(r){
-        master_error_log_fin();
-        return puts_or_mangle_error(
-            r,
-            "Fatal Error: Failed to initialize memory allocation on the OS"
-        );
+        allocator_fin();
+        return EXIT_FAILURE;
     }
 
     //main programm
-    tauc tauc;
-    r = tauc_init(&tauc, argc, argv);
-    if(!r) tauc_fin(&tauc);
+    r = tauc_init();
+    if(!r){
+        r = tauc_run(argc, argv);
+        //report any erros that occured
+        master_error_log_unwind(&TAUC.permmem);
+        tauc_fin();
+    }
+    else{
+        master_error_log_unwind(&TAUC.permmem);
+    }
     
-    //report any erros that occured
-    r = master_error_log_unwind(r);
-
     //terminate gracefully
     allocator_fin();
     master_error_log_fin();
-    return r;
+    return r ? EXIT_FAILURE : EXIT_SUCCESS;
 }
