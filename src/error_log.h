@@ -63,6 +63,8 @@ typedef struct master_error_log{
     ureg tab_size;
     char* tab_spaces;
     bool err_tty;
+    ureg max_err_line_length;
+    ureg sane_err_line_length
 }master_error_log;
 
 //MAIN THREAD ONLY

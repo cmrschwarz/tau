@@ -228,6 +228,17 @@ static inline token* tk_return_head(tokenizer* tk, ureg tok_length){
     next->start = tok->end;
     return tok;
 }
+static inline token* tk_unterminated_string_error(tokenizer* tk, char* string_start,ureg tok_pos){
+    error_log_report_error_2_annotations(
+        &tk->tc->error_log, ES_TOKENIZER, false,
+        "unterminated string",
+        tk->file,
+        tok_pos + ptrdiff(tk->file_buffer_pos, string_start) - 1, 1,
+        "reached eof before the string was closed",
+        tok_pos, 1, "string starts here"
+    );
+    return tk_load_error_eof(tk);
+}
 static token* tk_load(tokenizer* tk)
 {
     char curr = tk_peek_char(tk);
@@ -474,9 +485,8 @@ static token* tk_load(tokenizer* tk)
                             case '\0': {
                                 tok->start--;
                                 error_log_report_error_2_annotations(
-                                    &tk->tc->error_log, ES_TOKENIZER, true,
-                                    "unterminated block comment",
-                                    tk->file,
+                                    &tk->tc->error_log, ES_TOKENIZER, false,
+                                    "unterminated block comment", tk->file,
                                     tok->start, 1, "reached eof before the comment was closed",
                                     comment_start, 2, "comment starts here"
                                 );
@@ -583,12 +593,12 @@ static token* tk_load(tokenizer* tk)
                 do{
                     curr = tk_peek_char_holding(tk, &str_start);
                     tk_void_char_peek(tk);
-                    if(curr == '\0')return tk_load_error_eof(tk);
+                    if(curr == '\0')return tk_unterminated_string_error(tk, str_start, tok->start);
                     if(curr == '\\'){
                         //TODO: think about converting escaped chars
                         curr = tk_peek_char_holding(tk, &str_start);
                         tk_void_char_peek(tk);
-                        if(curr == '\0')return tk_load_error_eof(tk);
+                        if(curr == '\0')return tk_unterminated_string_error(tk, str_start, tok->start);
                     }
                     if(curr == '\n'){
                         src_map_add_line(
@@ -608,12 +618,12 @@ static token* tk_load(tokenizer* tk)
                 do{
                     curr = tk_peek_char_holding(tk, &str_start);
                     tk_void_char_peek(tk);
-                    if(curr == '\0')return tk_load_error_eof(tk);
+                    if(curr == '\0')return tk_unterminated_string_error(tk, str_start, tok->start);
                     if(curr == '\\'){
                         //TODO: think about converting escaped chars
                         curr = tk_peek_char_holding(tk, &str_start);
                         tk_void_char_peek(tk);
-                        if(curr == '\0')return tk_load_error_eof(tk);
+                        if(curr == '\0')return tk_unterminated_string_error(tk, str_start, tok->start);
                     }
                     if(curr == '\n'){
                         src_map_add_line(
@@ -677,12 +687,12 @@ static token* tk_load(tokenizer* tk)
                 return tk_return_head(tk, ptrdiff(tk->file_buffer_pos, str_start));
             }
             default:{
-                //TODO: fix for non ascii characters
+                //TODO: fix overflow if non utf-8 character
                 error_log_report_error_1_annotation(
                     &tk->tc->error_log, ES_TOKENIZER, false,
                     "unknown token",
                     tk->file,
-                    tok->start, get_utf8_seq_len_from_head(curr), "no start for any existing token"
+                    tok->start, get_utf8_seq_len_from_head(curr), "not the start for any valid token"
                 );
                 tk_dec_iter(tk, &tk->loaded_tokens_start);
                 return NULL;

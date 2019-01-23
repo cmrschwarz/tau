@@ -31,6 +31,8 @@ int master_error_log_init(){
     MASTER_ERROR_LOG.tab_size = 4; //TODO: make configurable
     MASTER_ERROR_LOG.tab_spaces = "    ";
     MASTER_ERROR_LOG.err_tty = isatty(fileno(stderr));
+    MASTER_ERROR_LOG.max_err_line_length = 120;
+    MASTER_ERROR_LOG.sane_err_line_length = 80;
     return OK;
 }
 void master_error_log_fin(){
@@ -169,6 +171,8 @@ ureg get_line_nr_offset(ureg max_line){
 int print_filepath(ureg line_nr_offset, src_pos pos, file* file){
     for(ureg r = 0; r < line_nr_offset; r++)pe(" ");
     pectc(ANSICOLOR_BLUE, "==>", ANSICOLOR_CLEAR); 
+    // TODO: the column index is currently based on the number of byte,
+    // not the number of unicode code points, but tools expect the latter
     fprintf(
         stderr,
         " %s:%llu:%llu\n",
@@ -242,6 +246,22 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
                 }
             }
         }
+        if(end && length > MASTER_ERROR_LOG.max_err_line_length){
+            r = MASTER_ERROR_LOG.max_err_line_length - pos;
+            length = pos + r;
+            end = true;
+            buffer[r-3] = '.';
+            buffer[r-2] = '.';
+            buffer[r-1] = '.';
+        }
+        else if(pos + r > MASTER_ERROR_LOG.max_err_line_length){
+            r = MASTER_ERROR_LOG.max_err_line_length - pos;
+            length = pos + r;
+            end = true;
+            buffer[r-3] = '.';
+            buffer[r-2] = '.';
+            buffer[r-1] = '.';
+        }
         ureg bpos = 0;
         if(ep_pos != ep_end){
             ureg end = pos + r;
@@ -272,7 +292,7 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
                 ureg after_tab = bpos;
                 while(bpos < next){
                     if(is_utf8_head(buffer[bpos])){
-                        ucount+=get_utf8_seq_len_from_head(buffer[bpos]) - 1;
+                        ucount += get_utf8_seq_len_from_head(buffer[bpos]) - 1;
                     }
                     else if(buffer[bpos] == '\t'){
                         if(bpos > after_tab){
@@ -283,6 +303,7 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
                         after_tab = bpos + 1;
                         tab_count++;
                     }
+                    else if(buffer[bpos] == '\0' || buffer[bpos] == '\r')buffer[bpos] = ' ';
                     bpos++;
                 }
                 if(next > after_tab){
@@ -328,18 +349,21 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
                 pe(MASTER_ERROR_LOG.tab_spaces);
                 after_tab = bpos + 1;
             }
+            else if(buffer[bpos] == '\0' || buffer[bpos] == '\r')buffer[bpos] = ' ';
             bpos++;
         }
         if(r > after_tab){
             buffer[r] = '\0';
             pe(&buffer[after_tab]);
         }
-        pos += bpos - r;
+        pos += r;
     }
     ep_pos = ep_start;
     if(
         ep_pos->c_start >= length && 
-        length - ucount + tab_count * (MASTER_ERROR_LOG.tab_size - 1) + 4 + strlen(ep_pos->message) + 4 <= 80
+        length - ucount + tab_count * (MASTER_ERROR_LOG.tab_size - 1) + 4 + strlen(ep_pos->message) + 4 
+        <= 
+        MASTER_ERROR_LOG.sane_err_line_length
     ){
         pec(ep_pos->message_color);
         pe(" <- ");
@@ -359,11 +383,32 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
                     - ep_pos->ucount_start 
         );
         ureg msg_len = strlen(ep_pos->message);
-        bool msg_before = space_before > msg_len + 2;
+        bool msg_before = space_before > msg_len + 2 ||  space_before > MASTER_ERROR_LOG.max_err_line_length;
         if(msg_before){
-            for(ureg i = 0; i< space_before - msg_len - 1; i++)pe(" ");
+            if(space_before > MASTER_ERROR_LOG.max_err_line_length){
+                if(msg_len < MASTER_ERROR_LOG.max_err_line_length){
+                    for(ureg i = 0; i< MASTER_ERROR_LOG.max_err_line_length - msg_len - 5; i++)pe(" ");
+                }
+            }
+            else{
+                for(ureg i = 0; i< space_before - msg_len - 1; i++)pe(" ");
+            }    
             pec(ep_pos->message_color);
-            pe(ep_pos->message);
+            if(msg_len > MASTER_ERROR_LOG.max_err_line_length){
+                for(ureg i = 0; i < MASTER_ERROR_LOG.max_err_line_length - 4 - 3; i++){
+                    fputc(ep_pos->message[i], stderr);
+                }
+                pe("...");
+            }
+            else{
+                pe(ep_pos->message);
+            }
+            if(space_before > MASTER_ERROR_LOG.max_err_line_length){
+                pe("  ...^");
+                pect(ANSICOLOR_CLEAR, "\n");
+                ep_pos++;
+                continue;
+            }
             pec(ANSICOLOR_CLEAR);
             pe(" ");
         }
@@ -375,8 +420,10 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
             //minus one because each tab is already represented as one character
             for(ureg j = 0; j < MASTER_ERROR_LOG.tab_size - 1; j++) pe("^");
         }
+        ureg ucount_diff = ep_pos->ucount_end - ep_pos->ucount_start;
+        if(ucount_diff >= ep_pos->c_end - ep_pos->c_start)ucount_diff = 0;
         for(ureg i = ep_pos->c_start;
-            i < ep_pos->c_end - (ep_pos->ucount_end - ep_pos->ucount_start);
+            i < ep_pos->c_end - ucount_diff;
             i++
         ){
             pe("^");
