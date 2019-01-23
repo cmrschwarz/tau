@@ -199,8 +199,8 @@ typedef struct err_point{
 }err_point;
 int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_point* ep_start, err_point* ep_end){
     pec(ANSICOLOR_BOLD ANSICOLOR_BLUE);
-    fprintf(stderr, "%llu", line);
-    ureg space = max_line_length - get_line_nr_offset(line);
+    fprintf(stderr, "%llu", line + 1);
+    ureg space = max_line_length - get_line_nr_offset(line + 1);
     for(ureg i = 0; i< space; i++)pe(" ");
     pe(" |");
     pec(ANSICOLOR_CLEAR);
@@ -230,7 +230,8 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
             };
         }
         else{
-            r = fread(buffer, 1, LINE_BUFFER_SIZE - 1, fh);
+            ureg tgt = LINE_BUFFER_SIZE - 1;
+            r = fread(buffer, 1, tgt, fh);
             if(r == 0){
                 length = pos;
                 break;
@@ -243,6 +244,10 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
                         end = true;
                         break;
                     }
+                }
+                if(!end && r != tgt){
+                    end =  true;
+                    length = pos + r;
                 }
             }
         }
@@ -268,13 +273,22 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
             while(pos < end && ep_pos != ep_end){
                 int  mode;
                 ureg next;
-                if (ep_pos->c_start > pos){
-                    next = ep_pos->c_start;
-                    if(ep_pos + 1 != ep_end && (ep_pos + 1)->c_start){
-                        mode = 3;
+                if (ep_pos->c_start >= pos){
+                    if(ep_pos->c_start == pos){
+                        ep_pos->tabs_start = tab_count;
+                        ep_pos->ucount_start = ucount;
+                        pec(ep_pos->squigly_color);
+                        next = ep_pos->c_end;
+                        mode = 2;
                     }
                     else{
-                        mode = 0;
+                        next = ep_pos->c_start;
+                        if(ep_pos + 1 != ep_end && (ep_pos + 1)->c_start == ep_pos->c_start){
+                            mode = 3;
+                        }
+                        else{
+                            mode = 0;
+                        }
                     }
                 }
                 else{
@@ -360,13 +374,13 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
     }
     ep_pos = ep_start;
     if(
-        ep_pos->c_start >= length && 
+        ep_pos->c_start + 1 >= length && 
         length - ucount + tab_count * (MASTER_ERROR_LOG.tab_size - 1) + 4 + strlen(ep_pos->message) + 4 
         <= 
         MASTER_ERROR_LOG.sane_err_line_length
     ){
+        pectc(ANSICOLOR_BLUE ANSICOLOR_BOLD, " <- ", ANSICOLOR_CLEAR);
         pec(ep_pos->message_color);
-        pe(" <- ");
         pe(ep_pos->message);
         ep_pos++;
         pect(ANSICOLOR_CLEAR, "\n");
