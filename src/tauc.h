@@ -13,7 +13,7 @@ typedef struct stage_1_share{
 
 typedef struct stage_1{
     tokenizer tk;
-    stage_1_share* share;
+    
 }stage_1;
 
 struct tauc;
