@@ -24,7 +24,7 @@ set(TAUC_SRCS
 add_executable(tauc ${TAUC_SRCS})
 target_include_directories(tauc PUBLIC "./src" "./deps")
 set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-Wall -pthread -lm")
-target_compile_options(tauc PUBLIC )
+target_compile_options(tauc PUBLIC)
 
 
 

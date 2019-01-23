@@ -90,3 +90,19 @@ static inline void string_print(string str){
         c++;
     }
 } 
+
+static inline bool is_utf8_continuation(char c){
+    return(c & 0xC0 == 0x80);
+}
+static inline bool is_utf8_head(char c){
+    return (((unsigned char)c & (unsigned char)0xC0) == (unsigned char)0xC0);
+}
+static inline int get_utf8_seq_len_from_head(char c){
+    int r = 1;
+    if((unsigned char)c > 127)c <<= 1;;
+    while((unsigned char)c > 127){
+        c <<= 1;
+        r++;
+    }
+    return r;
+}

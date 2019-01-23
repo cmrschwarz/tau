@@ -682,7 +682,7 @@ static token* tk_load(tokenizer* tk)
                     &tk->tc->error_log, ES_TOKENIZER, false,
                     "unknown token",
                     tk->file,
-                    tok->start, 1, "no start for any existing token"
+                    tok->start, get_utf8_seq_len_from_head(curr), "no start for any existing token"
                 );
                 tk_dec_iter(tk, &tk->loaded_tokens_start);
                 return NULL;
