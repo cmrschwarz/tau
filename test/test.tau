@@ -5,4 +5,3 @@ func main(args: Slice[String]){
 	//this is another comment**/
     println("Hello, World");
 }
- foo \

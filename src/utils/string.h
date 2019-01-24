@@ -92,7 +92,7 @@ static inline void string_print(string str){
 } 
 
 static inline bool is_utf8_continuation(char c){
-    return(c & 0xC0 == 0x80);
+    return((c & 0xC0) == 0x80);
 }
 static inline bool is_utf8_head(char c){
     return (((unsigned char)c & (unsigned char)0xC0) == (unsigned char)0xC0);

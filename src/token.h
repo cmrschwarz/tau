@@ -2,7 +2,9 @@
 #include "utils/types.h"
 #include "utils/string.h"
 #include "src_map.h"
-typedef enum{
+#include "utils/c_extensions.h"
+
+typedef enum PACK_ENUM{
     TT_NUMBER = 0,
     TT_LITERAL = 1,
     TT_BINARY_LITERAL = 2,

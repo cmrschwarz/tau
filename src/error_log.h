@@ -3,11 +3,12 @@
 #include "utils/allocator.h"
 #include "utils/pool.h"
 #include "src_map.h"
+#include "utils/c_extensions.h"
 
 #define OK 0 //zero to allow error handling like if(res){errorhandling} 
 #define ERR -1
 #define TAUC_MAX_GLOBAL_ERRORS 64
-typedef enum error_stage{
+typedef enum PACK_ENUM error_stage{
     ES_TOKENIZER,
     ES_PARSER,
     ES_TYPESETTER,
@@ -64,7 +65,7 @@ typedef struct master_error_log{
     char* tab_spaces;
     bool err_tty;
     ureg max_err_line_length;
-    ureg sane_err_line_length
+    ureg sane_err_line_length;
 }master_error_log;
 
 //MAIN THREAD ONLY
