@@ -279,7 +279,7 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
                         ep_pos->ucount_start = ucount;
                         pec(ep_pos->squigly_color);
                         next = ep_pos->c_end;
-                        mode = 2;
+                        mode = 1;
                     }
                     else{
                         next = ep_pos->c_start;
