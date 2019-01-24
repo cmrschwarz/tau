@@ -159,6 +159,7 @@ void error_log_report_synchronization_failiure(error_log* el){
 
 int pe(char* msg){
     fputs(msg, stderr);
+    return OK;
 }
 ureg get_line_nr_offset(ureg max_line){
     if (max_line > 10){//this is to avoid line zero

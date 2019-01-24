@@ -105,9 +105,22 @@ typedef struct var_decl{
     expr_node* type;
 }var_decl;
 
+typedef struct var_decl_list{
+    struct var_decl_list* next;
+    var_decl decl;
+}var_decl_list;
+
 typedef struct ast_node{
     ast_node_type type;
     struct ast_node* next;
+}ast_node;
+
+typedef struct named_ast_node{
+    ast_node_type type;
+    struct ast_node* next;
+    char* name;
+    named_ast_node* left_child;
+    named_ast_node* right_child;
 }ast_node;
 
 typedef struct astn_expr{
@@ -116,15 +129,77 @@ typedef struct astn_expr{
 }astn_expr;
 
 typedef struct astn_module{
-    ast_node astn;
-    char* name;
+    named_ast_node astn;
     ast_node* body;
 }astn_module;
 
 typedef struct astn_function{
-    ast_node astn;
-    char* name;
+    named_ast_node astn;
+    var_decl_list parameters;
 }astn_function;
+/*
+ ASTNT_GENERIC_FUNCTION,
+    ASTNT_STRUCT,
+    ASTNT_GENERIC_STRUCT,
+
+    ASTNT_VAR_DECLARATION,
+    
+    ASTNT_FOR,
+    ASTNT_FOR_EACH,
+    ASTNT_WHILE,
+    ASTNT_DO_WHILE,
+    ASTNT_LOOP,
+    
+    ASTNT_CONTINUE,
+    ASTNT_BREAK,
+    
+    ASTNT_RETURN,
+    ASTNT_GIVE,
+
+    ASTNT_LABEL,
+    ASTNT_GOTO,
+    
+    ASTNT_IF,
+    ASTNT_SWITCH,
+    ASTNT_IF_LET,
+
+    ASTNT_EXPRESSION,*/
+
+typedef struct astn_generic_function{
+    named_ast_node astn;
+    var_decl_list generic_parameters;
+    var_decl_list parameters;
+}astn_generic_function;
+
+typedef struct astn_struct{
+    named_ast_node astn;
+    ast_node* body;
+}astn_struct;
+
+typedef struct astn_generic_struct{
+    named_ast_node astn;
+    var_decl_list generic_parameters;
+    ast_node* body;
+}astn_generic_struct;
+
+typedef struct astn_var_declaration{
+    named_ast_node astn;
+    var_decl decl;
+}astn_var_declaration;
+
+typedef struct astn_if{
+    ast_node astn;
+    expr_node* condition;
+    ast_node* then_body;
+    ast_node* else_body;
+}astn_if;
+
+typedef struct astn_while{
+    ast_node astn;
+    expr_node* condition;
+    ast_node* body;
+    ast_node* finally_body;
+}astn_while;
 
 typedef struct expr_node{
     expr_node_type type;
@@ -204,7 +279,10 @@ typedef struct en_lambda{
     ast_node* body;
 }en_lambda;
 
-struct lexer{
+struct parser{
     tokenizer tk;
+    ast_node* root;
+}parser;
 
-}lexer;
+parser_parse_file(parser* p, file* f){
+}
