@@ -128,7 +128,7 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding){
     if (siz == 0){
         if (ferror(tk->file_stream)) {
             tk->status = STATUS_IO_ERROR;
-            error* e = error_log_alloc(&tk->tc->error_log, sizeof(error));
+            error* e = (error*)error_log_alloc(&tk->tc->error_log, sizeof(error));
             if(!e) return ERR;
             e->file = tk->file;
             e->stage = ES_TOKENIZER;
@@ -179,7 +179,6 @@ int tk_init(tokenizer* tk, thread_context* tc){
     tk->file_buffer_end = (char*)b.end;
     tk->token_buffer_end = tk->token_buffer + TK_TOKEN_BUFFER_SIZE;
     tk->loaded_tokens_start = tk->token_buffer; //head is set on open_file
-    tk->file_buffer_pos = tk->file_buffer_start;
     return 0;
 }
 void tk_fin(tokenizer* tk){
@@ -194,8 +193,10 @@ int tk_open_stream(tokenizer* tk, file* f, FILE* stream){
     tk->file = f;
     tk->file_stream = stream;
     tk->file_buffer_pos = tk->file_buffer_start;
-    tk->loaded_tokens_head = tk->loaded_tokens_start;
+    tk->file_buffer_head = tk->file_buffer_start;
     tk->loaded_tokens_start->start = 0;
+    tk->loaded_tokens_head = tk->loaded_tokens_start;
+   
     if(tk_load_file_buffer(tk, NULL)){
         fclose(tk->file_stream);
         return ERR;
@@ -205,7 +206,7 @@ int tk_open_stream(tokenizer* tk, file* f, FILE* stream){
 }
 int tk_open_file(tokenizer* tk, file* f){
     FILE* fs = fopen(f->path, "r");
-    if(!fs) return -1;
+    if(fs == NULL) return ERR;
     return tk_open_stream(tk, f, fs);
 }
 int tk_close_file(tokenizer* tk){
@@ -214,12 +215,6 @@ int tk_close_file(tokenizer* tk){
     return r;
 }
 
-static inline token* tk_load_error_eof(tokenizer* tk){
-    //TODO: make this print error msg etc.
-    //TODO: only call this if the 0 is not part of a binary literal
-    tk_dec_iter(tk, &tk->loaded_tokens_head);
-    return NULL;  
-}
 static inline token* tk_return_head(tokenizer* tk, ureg tok_length){
     token* tok = tk->loaded_tokens_head;
     tk_inc_iter(tk, &tk->loaded_tokens_head);   
@@ -229,15 +224,17 @@ static inline token* tk_return_head(tokenizer* tk, ureg tok_length){
     return tok;
 }
 static inline token* tk_unterminated_string_error(tokenizer* tk, char* string_start,ureg tok_pos){
+    ureg start1 = tok_pos + ptrdiff(tk->file_buffer_pos, string_start) - 1;
+    ureg start2 = tok_pos;
     error_log_report_error_2_annotations(
         &tk->tc->error_log, ES_TOKENIZER, false,
         "unterminated string",
         tk->file,
-        tok_pos + ptrdiff(tk->file_buffer_pos, string_start) - 1, 1,
+        start1, start1 + 1,
         "reached eof before the string was closed",
-        tok_pos, 1, "string starts here"
+        start2, start2 + 1, "string starts here"
     );
-    return tk_load_error_eof(tk);
+    return NULL;
 }
 static token* tk_load(tokenizer* tk)
 {
@@ -487,10 +484,10 @@ static token* tk_load(tokenizer* tk)
                                 error_log_report_error_2_annotations(
                                     &tk->tc->error_log, ES_TOKENIZER, false,
                                     "unterminated block comment", tk->file,
-                                    tok->start, 1, "reached eof before the comment was closed",
-                                    comment_start, 2, "comment starts here"
+                                    tok->start, tok->start + 1, "reached eof before the comment was closed",
+                                    comment_start, comment_start + 2, "comment starts here"
                                 );
-                                return tk_load_error_eof(tk);
+                                return NULL;
                             }
                         }
                     }while(nest_count > 0);
@@ -689,12 +686,11 @@ static token* tk_load(tokenizer* tk)
             default:{
                 //TODO: fix overflow if non utf-8 character
                 error_log_report_error_1_annotation(
-                    &tk->tc->error_log, ES_TOKENIZER, false,
-                    "unknown token",
-                    tk->file,
-                    tok->start, get_utf8_seq_len_from_head(curr), "not the start for any valid token"
+                    &tk->tc->error_log, ES_TOKENIZER, false, "unknown token", tk->file,
+                    tok->start, 
+                    tok->start + get_utf8_seq_len_from_head(curr),
+                    "not the start for any valid token"
                 );
-                tk_dec_iter(tk, &tk->loaded_tokens_start);
                 return NULL;
             }
         }

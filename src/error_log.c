@@ -60,8 +60,8 @@ void error_log_init(error_log* el, pool* error_mem_pool){
 void error_log_fin(error_log* el){
 }
 
-error* error_log_alloc(error_log* el, ureg size){
-    error* e =  (error*)pool_alloc(el->error_mem_pool, size);
+void* error_log_alloc(error_log* el, ureg size){
+    void* e = pool_alloc(el->error_mem_pool, size);
     if(!e) error_log_report_allocation_failiure(el);
     return e;
 }
@@ -101,14 +101,14 @@ void error_log_report_error_1_annotation(
     bool warn,
     char* message,
     file* file,
-    ureg position,
-    ureg length,
+    ureg start,
+    ureg end,
     char* annotation
 ){
     error_1_annotation* e = (error_1_annotation*)error_log_alloc(el, sizeof(error_1_annotation));
     if(!e) return;
-    error_fill((error*)e, stage, warn, ET_1_ANNOT, message, file, position);
-    e->length = length;
+    error_fill((error*)e, stage, warn, ET_1_ANNOT, message, file, start);
+    e->end = end;
     e->annotation = annotation;
     error_log_report(el, (error*)e);
 }
@@ -118,20 +118,20 @@ void error_log_report_error_2_annotations(
     bool warn,
     char* message,
     file* file,
-    ureg position,
-    ureg length1,
+    ureg start1,
+    ureg end1,
     char* annotation1,
-    ureg position2,
-    ureg length2,
+    ureg start2,
+    ureg end2,
     char* annotation2
 ){
     error_2_annotations* e = (error_2_annotations*)error_log_alloc(el, sizeof(error_2_annotations));
     if(!e) return;
-    error_fill((error*)e, stage, warn, ET_2_ANNOT, message, file, position);
-    e->length1 = length1;
+    error_fill((error*)e, stage, warn, ET_2_ANNOT, message, file, start1);
+    e->end1 = end1;
     e->annotation1 = annotation1;
-    e->position2 = position2;
-    e->length2 = length2;
+    e->start2 = start2;
+    e->end2 = end2;
     e->annotation2 = annotation2;
     error_log_report(el, (error*)e);
 }
@@ -189,15 +189,48 @@ typedef struct err_point{
     ureg line;
     ureg c_start;
     ureg c_end;
-    ureg tabs_start;
-    ureg tabs_end;
-    ureg ucount_start;
-    ureg ucount_end;
+    sreg length_diff_start;
+    sreg length_diff_end;
     char* message;
     char* text_color;
     char* squigly_color;
     char* message_color;
 }err_point;
+void print_until(ureg* bpos, ureg* next, char* buffer, ureg* after_tab, ureg* length_diff){
+    while(*bpos < *next){
+        unsigned char curr = (unsigned char)buffer[*bpos];
+        if(curr > 126 || curr < 32){
+            if(bpos > after_tab){
+                buffer[*bpos] = '\0';
+                pe(&buffer[*after_tab]);
+            }
+            if(curr < 16){
+                fprintf(stderr, "\\x0%x", (int)curr);
+            }
+            else{
+                fprintf(stderr, "\\x%x", (int)curr);
+            }
+            *length_diff = *length_diff + 3;
+            *after_tab = *bpos + 1;
+        }
+        else if(curr == '\t'){
+            if(*bpos > *after_tab){
+                buffer[*bpos] = '\0';
+                pe(&buffer[*after_tab]);
+            }
+            pe(MASTER_ERROR_LOG.tab_spaces);
+            *after_tab = *bpos + 1;
+            *length_diff = *length_diff + (MASTER_ERROR_LOG.tab_size - 1);
+        }
+        *bpos = *bpos + 1;
+    }
+    if(*next > *after_tab){
+        char temp = buffer[*next];
+        buffer[*next] = '\0';
+        pe(&buffer[*after_tab]);
+        buffer[*next] = temp;
+    }
+}
 int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_point* ep_start, err_point* ep_end){
     pec(ANSICOLOR_BOLD ANSICOLOR_BLUE);
     fprintf(stderr, "%llu", line + 1);
@@ -209,12 +242,11 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
     ureg start, length;
     src_pos_get_line_bounds(&file->src_map, line, &start, &length);
     if(fseek(fh, start, SEEK_SET)) return ERR;
-    bool end = false;
+    bool end_of_line = false;
     ureg pos = 0;
-    ureg tab_count = 0;
     err_point* ep_pos = ep_start;
-    ureg ucount = 0;
-    while(!end){
+    sreg length_diff = 0;
+    while(!end_of_line){
         ureg r;
         if(length != 0){
             ureg tgt = length - 1;
@@ -222,7 +254,7 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
                 tgt = LINE_BUFFER_SIZE - 1;
             }
             else{
-                end = true;
+                end_of_line = true;
             }
             r = fread(buffer, 1, tgt, fh);
             if(r != tgt){
@@ -242,141 +274,91 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
                     if(buffer[i] == '\n'){
                         r = i;
                         length = pos + r;
-                        end = true;
+                        end_of_line = true;
                         break;
                     }
                 }
-                if(!end && r != tgt){
-                    end =  true;
+                if(!end_of_line && r != tgt){
+                    end_of_line = true;
                     length = pos + r;
                 }
             }
         }
-        if(end && length > MASTER_ERROR_LOG.max_err_line_length){
+        if(pos + r > MASTER_ERROR_LOG.max_err_line_length){
             r = MASTER_ERROR_LOG.max_err_line_length - pos;
             length = pos + r;
-            end = true;
-            buffer[r-3] = '.';
-            buffer[r-2] = '.';
-            buffer[r-1] = '.';
-        }
-        else if(pos + r > MASTER_ERROR_LOG.max_err_line_length){
-            r = MASTER_ERROR_LOG.max_err_line_length - pos;
-            length = pos + r;
-            end = true;
+            end_of_line = true;
             buffer[r-3] = '.';
             buffer[r-2] = '.';
             buffer[r-1] = '.';
         }
         ureg bpos = 0;
-        if(ep_pos != ep_end){
-            ureg end = pos + r;
-            while(pos < end && ep_pos != ep_end){
-                int  mode;
-                ureg next;
-                if (ep_pos->c_start >= pos){
-                    if(ep_pos->c_start == pos){
-                        ep_pos->tabs_start = tab_count;
-                        ep_pos->ucount_start = ucount;
-                        pec(ep_pos->squigly_color);
-                        next = ep_pos->c_end;
-                        mode = 1;
-                    }
-                    else{
-                        next = ep_pos->c_start;
-                        if(ep_pos + 1 != ep_end && (ep_pos + 1)->c_start == ep_pos->c_start){
-                            mode = 3;
-                        }
-                        else{
-                            mode = 0;
-                        }
-                    }
+        ureg end = pos + r;
+        while(pos < end && ep_pos != ep_end){
+            int  mode;
+            ureg next;
+            if (ep_pos->c_start >= pos){
+                if(ep_pos->c_start == pos){
+                    ep_pos->length_diff_start = length_diff;
+                    pec(ep_pos->squigly_color);
+                    next = ep_pos->c_end;
+                    mode = 1;
                 }
                 else{
-                    if(ep_pos + 1 != ep_end && (ep_pos + 1)->c_start < ep_pos->c_end && next < (ep_pos + 1)->c_start){
-                        mode = 2;
-                        next = (ep_pos + 1)->c_start;
+                    next = ep_pos->c_start;
+                    if(ep_pos + 1 != ep_end && (ep_pos + 1)->c_start == ep_pos->c_start){
+                        mode = 3;
                     }
                     else{
-                        mode = 1;
-                        next = ep_pos->c_end;
+                        mode = 0;
                     }
                 }
-                ureg d = next - pos;
-                if(d >= r - bpos) break;
-                ureg after_tab = bpos;
-                while(bpos < next){
-                    if(is_utf8_head(buffer[bpos])){
-                        ucount += get_utf8_seq_len_from_head(buffer[bpos]) - 1;
-                    }
-                    else if(buffer[bpos] == '\t'){
-                        if(bpos > after_tab){
-                            buffer[bpos] = '\0';
-                            pe(&buffer[after_tab]);
-                        }
-                        pe(MASTER_ERROR_LOG.tab_spaces);
-                        after_tab = bpos + 1;
-                        tab_count++;
-                    }
-                    else if(buffer[bpos] == '\0' || buffer[bpos] == '\r')buffer[bpos] = ' ';
-                    bpos++;
-                }
-                if(next > after_tab){
-                    char temp = buffer[next];
-                    buffer[next] = '\0';
-                    pe(&buffer[after_tab]);
-                    buffer[next] = temp;
-                }
-                switch(mode){
-                    case 3:
-                        (ep_pos + 1)->tabs_start = tab_count;
-                        (ep_pos + 1)->ucount_start = ucount;
-                        //fallthrough
-                    case 0:
-                        ep_pos->tabs_start = tab_count;
-                        ep_pos->ucount_start = ucount;
-                        pec(ep_pos->squigly_color);
-                        break;
-                    case 1: 
-                        ep_pos->tabs_end = tab_count;
-                        pec(ANSICOLOR_CLEAR);
-                        ep_pos->ucount_end = ucount; 
-                        ep_pos++;
-                        break;
-                    case 2:
-                        (ep_pos + 1)->tabs_start = tab_count;
-                        (ep_pos + 1)->ucount_start = ucount;
-                        pec((ep_pos + 1)->squigly_color);
-                        break;
-                    default: assert(false);
-                }
-                pos = next;
-            } 
-            if(pos == end) continue;
-        }
-        ureg after_tab = bpos;
-        while(bpos < r){
-            if(buffer[bpos] == '\t'){
-                if(bpos > after_tab){
-                    buffer[bpos] = '\0';
-                    pe(&buffer[after_tab]);
-                }
-                pe(MASTER_ERROR_LOG.tab_spaces);
-                after_tab = bpos + 1;
             }
-            else if(buffer[bpos] == '\0' || buffer[bpos] == '\r')buffer[bpos] = ' ';
-            bpos++;
-        }
-        if(r > after_tab){
-            buffer[r] = '\0';
-            pe(&buffer[after_tab]);
-        }
+            else{
+                if(ep_pos + 1 != ep_end && (ep_pos + 1)->c_start < ep_pos->c_end && next < (ep_pos + 1)->c_start){
+                    mode = 2;
+                    next = (ep_pos + 1)->c_start;
+                }
+                else{
+                    mode = 1;
+                    next = ep_pos->c_end;
+                }
+            }
+            ureg d = next - pos;
+            if(d > r - bpos) break;
+            ureg after_tab = bpos;
+            print_until(&bpos, &next, buffer, &after_tab, &length_diff); 
+            switch(mode){
+                case 3:
+                    (ep_pos + 1)->length_diff_start = length_diff;
+                    //fallthrough
+                case 0:
+                    ep_pos->length_diff_start = length_diff;
+                    pec(ep_pos->squigly_color);
+                    break;
+                case 1: 
+                    ep_pos->length_diff_end = length_diff;
+                    ep_pos++;
+                    pec(ANSICOLOR_CLEAR);
+                    break;
+                case 2:
+                    (ep_pos + 1)->length_diff_start = length_diff;
+                    pec((ep_pos + 1)->squigly_color);
+                    break;
+                default: assert(false);
+            }
+            pos = next;
+        } 
+        if(end == pos) continue;
+        ureg after_tab = bpos;
+        print_until(&bpos, &r, buffer, &after_tab, &length_diff);
         pos += r;
     }
-    ep_pos = ep_start;
+    if(ep_end != ep_start) ep_pos = ep_end - 1;
     if(
-        ep_pos->c_start + 1 >= length && 
-        length - ucount + tab_count * (MASTER_ERROR_LOG.tab_size - 1) + 4 + strlen(ep_pos->message) + 4 
+        ep_end != ep_start &&
+        ep_pos->c_end + 1  >= length && 
+        length + length_diff + 4 + strlen(ep_pos->message) + 4 
         <= 
         MASTER_ERROR_LOG.sane_err_line_length
     ){
@@ -385,18 +367,16 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
         pe(ep_pos->message);
         ep_pos++;
         pect(ANSICOLOR_CLEAR, "\n");
+        ep_end--;
     }
     else{
         pe("\n");
     }
+    ep_pos = ep_start;
     while(ep_pos < ep_end){
         for(ureg i = 0; i< max_line_length; i++)pe(" ");
         pectc(ANSICOLOR_BOLD ANSICOLOR_BLUE, " |", ANSICOLOR_CLEAR);
-        ureg space_before = (
-             ep_pos->c_start 
-                    + ep_pos->tabs_start * (MASTER_ERROR_LOG.tab_size - 1) 
-                    - ep_pos->ucount_start 
-        );
+        ureg space_before = ep_pos->c_start + ep_pos->length_diff_start;
         ureg msg_len = strlen(ep_pos->message);
         bool msg_before = space_before > msg_len + 2 ||  space_before > MASTER_ERROR_LOG.max_err_line_length;
         if(msg_before){
@@ -431,14 +411,8 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
             for(ureg i = 0; i< space_before;i++)pe(" ");
         }
         pec(ep_pos->squigly_color);
-        for(ureg i=ep_pos->tabs_start;i<ep_pos->tabs_end;i++){
-            //minus one because each tab is already represented as one character
-            for(ureg j = 0; j < MASTER_ERROR_LOG.tab_size - 1; j++) pe("^");
-        }
-        ureg ucount_diff = ep_pos->ucount_end - ep_pos->ucount_start;
-        if(ucount_diff >= ep_pos->c_end - ep_pos->c_start)ucount_diff = 0;
-        for(ureg i = ep_pos->c_start;
-            i < ep_pos->c_end - ucount_diff;
+        for(ureg i = ep_pos->c_start + ep_pos->length_diff_start;
+            i < ep_pos->c_end + ep_pos->length_diff_end;
             i++
         ){
             pe("^");
@@ -482,12 +456,13 @@ int report_error(error* e, FILE* fh, file* file){
     if(fh != NULL){
         ureg err_point_count = 2;
         src_pos pos = src_map_get_pos(&e->file->src_map, e->position);
+        //TODO: multiline errors
         switch(e->type){
             case ET_1_ANNOT:{
                 error_1_annotation* e1annot = (error_1_annotation*)e;
                 err_points[0].line = pos.line;
                 err_points[0].c_start = pos.column;
-                err_points[0].c_end = pos.column + e1annot->length;
+                err_points[0].c_end = pos.column + (e1annot->end - e1annot->error.position); 
                 err_points[0].message = e1annot->annotation;
                 err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
                 err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
@@ -497,14 +472,14 @@ int report_error(error* e, FILE* fh, file* file){
                 error_2_annotations* e2annot = (error_2_annotations*)e;
                 err_points[0].line = pos.line;
                 err_points[0].c_start = pos.column;
-                err_points[0].c_end = pos.column + e2annot->length1;
+                err_points[0].c_end = pos.column + (e2annot->end1 - e2annot->error.position);
                 err_points[0].message = e2annot->annotation1;
                 err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
                 err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
-                src_pos pos2 = src_map_get_pos(&e->file->src_map, e2annot->position2);
+                src_pos pos2 = src_map_get_pos(&e->file->src_map, e2annot->start2);
                 err_points[1].line = pos2.line;
                 err_points[1].c_start = pos2.column;
-                err_points[1].c_end = pos2.column + + e2annot->length2;
+                err_points[1].c_end = pos2.column + (e2annot->end2 - e2annot->start2);
                 err_points[1].message = e2annot->annotation2;
                 err_points[1].message_color = ANSICOLOR_BOLD ANSICOLOR_MAGENTA;
                 err_points[1].squigly_color = ANSICOLOR_BOLD ANSICOLOR_MAGENTA;

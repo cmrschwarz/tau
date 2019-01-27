@@ -34,16 +34,16 @@ typedef struct error{
 
 typedef struct error_1_annotation{
     error error;
-    ureg length;
+    ureg end;
     char* annotation;
 }error_1_annotation;
 
 typedef struct error_2_annotations{
     error error;
-    ureg length1;
+    ureg end1;
     char* annotation1;
-    ureg position2;
-    ureg length2;
+    ureg start2;
+    ureg end2;
     char* annotation2;
 }error_2_annotations;
 
@@ -64,8 +64,8 @@ typedef struct master_error_log{
     ureg tab_size;
     char* tab_spaces;
     bool err_tty;
-    ureg max_err_line_length;
-    ureg sane_err_line_length;
+    sreg max_err_line_length;
+    sreg sane_err_line_length;
 }master_error_log;
 
 //MAIN THREAD ONLY
@@ -89,8 +89,8 @@ void error_log_report_error_1_annotation(
     bool warn,
     char* message,
     file* file,
-    ureg position,
-    ureg length,
+    ureg start,
+    ureg end,
     char* annotation
 );
 void error_log_report_error_2_annotations(
@@ -99,15 +99,16 @@ void error_log_report_error_2_annotations(
     bool warn,
     char* message,
     file* file,
-    ureg position,
-    ureg length1,
+    ureg start1,
+    ureg end1,
     char* annotation1,
-    ureg position2,
-    ureg length2,
+    ureg start2,
+    ureg end2,
     char* annotation2
 );
+
 //THREAD SAFE
-error* error_log_alloc(error_log* e, ureg size);
+void* error_log_alloc(error_log* e, ureg size);
 void error_log_report(error_log* el, error* e);
 void error_log_report_allocation_failiure(error_log* el);
 void error_log_report_synchronization_failiure(error_log* el);
