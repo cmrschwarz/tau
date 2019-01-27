@@ -2,14 +2,6 @@
 #include "string.h"
 #include "stdio.h"
 #include "math_utils.h"
-#ifdef __linux__
-#   include <linux/mman.h>
-#   include <sys/mman.h>
-#elif defined(_WIN32) || defined(_WIN16)
-#   include <windows.h>
-#else
-#   include <malloc.h>
-#endif
 
 // we use this value to indicate a removed key so hms_get doesn't return
 // on nodes that were removed and are potentially followed by valid content

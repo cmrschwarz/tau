@@ -2,7 +2,7 @@
 #include "utils/allocator.h"
 #include "utils/pool.h"
 #include "utils/threading.h"
-#include "tokenizer.h"
+#include "parser.h"
 #include "error_log.h"
 
 typedef struct stage_1_share{
@@ -12,7 +12,7 @@ typedef struct stage_1_share{
 }stage_1_share;
 
 typedef struct stage_1{
-    tokenizer tk;
+    parser p;
     
 }stage_1;
 

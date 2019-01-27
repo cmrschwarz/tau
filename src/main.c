@@ -6,7 +6,8 @@
 #include "utils/debug_utils.h"
 #include "tokenizer.h"
 #include "tauc.h"
-#include "lexer.h"
+#include "parser.h"
+
 int main(int argc, char** argv){
     int r;
     r = allocator_init();

@@ -3,6 +3,8 @@ project(tau C)
 
 set(TAUC_SRCS
     ./src/tokenizer.c
+    ./src/parser.c
+    ./src/keywords.c
     ./src/utils/dbuffer.c
     ./src/utils/panic.c
     ./src/utils/os/libc/atomics_libc.c
@@ -23,7 +25,7 @@ set(TAUC_SRCS
 )
 add_executable(tauc ${TAUC_SRCS})
 target_include_directories(tauc PUBLIC "./src" "./deps")
-set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-Wall -pthread -lm")
+set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-pthread -lm")
 target_compile_options(tauc PUBLIC)
 
 

@@ -18,19 +18,19 @@ int tauc_init(){
 }
 
 int tauc_run(int argc, char** argv){  
-    int r = tk_init(&TAUC.main_thread_context.stage.s1.tk, &TAUC.main_thread_context);
+    int r = parser_init(&TAUC.main_thread_context.stage.s1.p, &TAUC.main_thread_context);
     if(r) return ERR;
     file* f = (file*)pool_alloc(&TAUC.permmem, sizeof(file));
     if(!f)return -1;
-    if(file_init(f,&TAUC.main_thread_context, "./test/test.tau")) return ERR;
-    if(tk_open_file(&TAUC.main_thread_context.stage.s1.tk, f)) return ERR;
+    if(file_init(f,&TAUC.main_thread_context, "/dev/urandom")) return ERR;
+    if(tk_open_file(&TAUC.main_thread_context.stage.s1.p.tk, f)) return ERR;
     token* t;
     do{
-        t = tk_consume(&TAUC.main_thread_context.stage.s1.tk);
-        token_print(f, t);
+        t = tk_consume(&TAUC.main_thread_context.stage.s1.p.tk);
+        token_debug_print(f, t);
     }while(t != NULL && t->type != TT_EOF);
-    tk_close_file(&TAUC.main_thread_context.stage.s1.tk);
-    tk_fin(&TAUC.main_thread_context.stage.s1.tk);
+    r = tk_close_file(&TAUC.main_thread_context.stage.s1.p.tk);
+    if(parser_parse_file(&TAUC.main_thread_context.stage.s1.p, f)) return ERR;
     return OK;
 }
 

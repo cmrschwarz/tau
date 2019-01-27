@@ -1,28 +1,6 @@
-typedef enum keyword_id{
-    KW_MODULE,
-    KW_FUNC,
-    KW_STRUCT,
-    KW_AUTO,
-    KW_FOR,
-    KW_WHILE,
-    KW_DO,
-    KW_LOOP,
-    KW_CONTINUE,
-    KW_BREAK,
-    KW_RETURN,
-    KW_LABEL,
-    KW_GOTO,
-    KW_IF,
-    KW_SWITCH,
-    KW_LET,
-    KW_CONST,
-    KW_EXTEND,
-    KW_PUBLIC,
-    KW_PROTECTED,
-    KW_PRIVATE,
-    KW_STATIC,
-    KW_VIRTUAL,
-}keyword_id;
+#include <string.h>
+#include "keywords.h"
+#include "utils/math_utils.h"
 
 char* keyword_strings[] = {
     [KW_MODULE] = "module",
@@ -48,4 +26,17 @@ char* keyword_strings[] = {
     [KW_PRIVATE] = "private",
     [KW_STATIC] = "static",
     [KW_VIRTUAL] = "virtual",
+    [KW_INVALID_KEYWORD] = NULL,
+};
+
+bool kw_equals(keyword_id id, string str){
+    return (strncmp(keyword_strings[id], str.start, ptrdiff(str.end, str.start)) == 0);
+}
+
+keyword_id is_kw(string str){
+    //PERF(0): you could write a fancy tree match here
+    keyword_id i = KW_MODULE;
+    while(keyword_strings[i] != NULL){
+        if(kw_equals(i, str))return i;
+    }
 }

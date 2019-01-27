@@ -1,5 +1,8 @@
 #include "utils/c_extensions.h"
-typedef enum PACk_STRUCT keyword_id{
+#include "stdbool.h"
+#include "utils/string.h"
+
+typedef enum PACK_ENUM keyword_id{
     KW_MODULE,
     KW_FUNC,
     KW_STRUCT,
@@ -24,6 +27,10 @@ typedef enum PACk_STRUCT keyword_id{
     KW_STATIC,
     KW_VIRTUAL,
     KW_COUNT,
+    KW_INVALID_KEYWORD,
 }keyword_id;
+
+bool kw_equals(keyword_id id, string str);
+keyword_id kw_match(string str);
 
 extern char* keyword_strings[];

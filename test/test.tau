@@ -1,3 +1,4 @@
+extend foo asdf
 func main(args: Slice[String]){
 	'asdfasdfadsf'
 	//this is a comment//
