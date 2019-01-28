@@ -96,9 +96,18 @@ int parser_search_extend(parser* p){
         );
         if(!t)return ERR;
         astn_extend* e = (astn_extend*)alloc_stage(p, sizeof(astn_extend));
-        if(!p)return ERR;
+        if(!e)return ERR;
         e->astn.type = ASTNT_EXTEND;
         e->astn.parent = &p->root;
+        e->astn.name = alloc_string_stage(p, t->str);
+        if(e->astn.name) return ERR;
+        e->body = NULL;
+        e->imports = NULL;
+        e->next = NULL;
+        p->curr_parent->next = e;
+        p->curr_parent = e;
+
+        return OK;
     }
 }
 
