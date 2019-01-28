@@ -4,10 +4,6 @@
 #include "error_log.h"
 #include "utils/panic.h"
 
-static const int STATUS_OK = 0;
-static const int STATUS_IO_ERROR = 0;
-static const int STATUS_EOF = 1;
-
 static token* tk_load(tokenizer* tk);
 
 static inline void tk_inc_iter(tokenizer* tk, token** t){
@@ -127,7 +123,7 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding){
     ureg siz = fread(tk->file_buffer_head, 1, buff_size - size_to_keep, tk->file_stream);
     if (siz == 0){
         if (ferror(tk->file_stream)) {
-            tk->status = STATUS_IO_ERROR;
+            tk->status = TK_STATUS_IO_ERROR;
             error* e = (error*)error_log_alloc(&tk->tc->error_log, sizeof(error));
             if(!e) return ERR;
             e->file = tk->file;
@@ -138,13 +134,13 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding){
             error_log_report(&tk->tc->error_log, e);
             return ERR;
         }
-        if(tk->status == STATUS_EOF) return 0;
+        if(tk->status == TK_STATUS_EOF) return 0;
         *tk->file_buffer_pos = '\0';
         tk->file_buffer_head++; 
-        tk->status = STATUS_EOF;
+        tk->status = TK_STATUS_EOF;
     }
     else{
-        if(tk->status == STATUS_EOF) tk->status = STATUS_OK;
+        if(tk->status == TK_STATUS_EOF) tk->status = TK_STATUS_OK;
         tk->file_buffer_head+= siz;
     }
     return 0;
@@ -152,7 +148,7 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding){
 static inline char tk_peek_char_holding(tokenizer* tk, char** hold){
     if(tk->file_buffer_pos == tk->file_buffer_head){
         if(tk_load_file_buffer(tk, hold)){
-            tk->status = STATUS_IO_ERROR;
+            tk->status = TK_STATUS_IO_ERROR;
             return '\0';
         }
     }
@@ -201,7 +197,7 @@ int tk_open_stream(tokenizer* tk, file* f, FILE* stream){
         fclose(tk->file_stream);
         return ERR;
     }
-    tk->status = STATUS_OK;
+    tk->status = TK_STATUS_OK;
     return OK;
 }
 int tk_open_file(tokenizer* tk, file* f){
@@ -234,6 +230,7 @@ static inline token* tk_unterminated_string_error(tokenizer* tk, char* string_st
         "reached eof before the string was closed",
         start2, start2 + 1, "string starts here"
     );
+    tk->status = TK_STATUS_TOKENIZATION_ERROR;
     return NULL;
 }
 static token* tk_load(tokenizer* tk)
@@ -244,7 +241,7 @@ static token* tk_load(tokenizer* tk)
         tk_void_char_peek(tk);
         switch(curr){
             case '\0': {
-                if(tk->status == STATUS_IO_ERROR)return NULL;
+                if(tk->status == TK_STATUS_IO_ERROR)return NULL;
                 tok->type = TT_EOF;
                 return tk_return_head(tk, 0);
             }
@@ -440,7 +437,7 @@ static token* tk_load(tokenizer* tk)
                         continue;
                     }
                     else{
-                        if(tk->status == STATUS_EOF){
+                        if(tk->status == TK_STATUS_EOF){
                             tok->start--;
                             tok->type = TT_EOF;
                             return tk_return_head(tk, 1);
@@ -487,6 +484,7 @@ static token* tk_load(tokenizer* tk)
                                     tok->start, tok->start + 1, "reached eof before the comment was closed",
                                     comment_start, comment_start + 2, "comment starts here"
                                 );
+                                tk->status = TK_STATUS_TOKENIZATION_ERROR;
                                 return NULL;
                             }
                         }

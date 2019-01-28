@@ -22,7 +22,7 @@ int tauc_run(int argc, char** argv){
     if(r) return ERR;
     file* f = (file*)pool_alloc(&TAUC.permmem, sizeof(file));
     if(!f)return -1;
-    if(file_init(f,&TAUC.main_thread_context, "/dev/urandom")) return ERR;
+    if(file_init(f,&TAUC.main_thread_context, "./test/test.tau")) return ERR;
     if(tk_open_file(&TAUC.main_thread_context.stage.s1.p.tk, f)) return ERR;
     token* t;
     do{

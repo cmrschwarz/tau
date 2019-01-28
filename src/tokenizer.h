@@ -5,6 +5,14 @@
 #include <stdio.h>
 #include "utils/string.h"
 #include "src_map.h"
+#include "utils/c_extensions.h"
+
+typedef enum PACK_ENUM tk_status{
+    TK_STATUS_OK,
+    TK_STATUS_EOF,
+    TK_STATUS_TOKENIZATION_ERROR,
+    TK_STATUS_IO_ERROR,
+} tk_status;
 
 #define TK_TOKEN_BUFFER_SIZE 32
 #define TK_MIN_FILE_READ_SIZE 4096
@@ -20,7 +28,7 @@ typedef struct{
     char* file_buffer_end;
     char* file_buffer_pos;
     thread_context* tc;
-    int status;
+    tk_status status;
 }tokenizer;
 
 int tk_init(tokenizer* tk, thread_context* tc);

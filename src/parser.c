@@ -4,6 +4,121 @@
 #include "keywords.h"
 #include "tauc.h"
 
+static const unsigned char op_precedence[] = {
+    [OP_POST_INCREMENT] = 15,
+    [OP_POST_DECREMENT] = 15,
+    [OP_CALL] = 15,
+    [OP_ACCESS] = 15,
+    [OP_SCOPE_ACCESS] = 15,
+    [OP_MEMBER_ACCESS] = 15,
+
+    [OP_PRE_INCREMENT] = 14,
+    [OP_PRE_DECREMENT] = 14,
+    [OP_UNARY_PLUS] = 14,
+    [OP_UNARY_MINUS] = 14,
+    [OP_NOT] = 14,
+    [OP_BITWISE_NOT] = 14,
+    [OP_DEREF] = 14,
+    [OP_POINTER_OF] = 14, 
+    [OP_REF_OF] = 14,
+    [OP_RREF_OF] = 14,     
+    [OP_VAL_OF] = 14,
+    [OP_TYPE_MODIFIER] = 14,
+    
+    [OP_BITWISE_AND] = 13,
+
+    [OP_BITWISE_XOR] = 12,
+
+    [OP_BITWISE_OR] = 11,
+
+    [OP_MUL] = 10,
+    [OP_DIV] = 10,
+    [OP_MOD] = 10,
+
+    [OP_ADD] = 9,
+    [OP_SUB] = 9,
+
+    [OP_LSHIFT] = 8,
+    [OP_RSHIFT] = 8,
+
+    [OP_CAST] = 7,
+
+    [OP_LESS_THAN] = 6,
+    [OP_LESS_THAN_OR_EQUAL] = 6,
+    [OP_GREATER_THAN] = 6,
+    [OP_GREATER_THAN_OR_EQUAL] = 6,
+    
+    [OP_EQUAL] = 5,
+    [OP_UNEQAL] = 5,
+
+    [OP_AND] = 4,
+
+    [OP_XOR] = 3,
+
+    [OP_OR] = 2,
+   
+
+    [OP_ASSIGN] = 1,
+    [OP_ADD_ASSIGN] = 1,
+    [OP_SUB_ASSIGN] = 1,
+    [OP_MUL_ASSIGN] = 1,
+    [OP_DIV_ASSIGN] = 1,
+    [OP_MOD_ASSIGN] = 1,
+    [OP_LSHIFT_ASSIGN] = 1,
+    [OP_RSHIFT_ASSIGN] = 1,
+
+};
+#define PREC_BASELINE 0
+
+static inline bool is_right_associative(expr_node_type t){
+    switch(t){
+        case OP_ASSIGN:
+        case OP_ADD_ASSIGN:
+        case OP_SUB_ASSIGN:
+        case OP_MUL_ASSIGN:
+        case OP_DIV_ASSIGN:
+        case OP_MOD_ASSIGN:
+        case OP_LSHIFT_ASSIGN:
+        case OP_RSHIFT_ASSIGN:
+            return true;
+        default: return false;
+    }
+}
+
+static inline expr_node_type token_to_binary_op(token_type t){
+    switch(t){
+        case TT_PLUS: return OP_ADD;
+        case TT_MINUS: return OP_SUB;
+        case TT_STAR: return OP_MUL;
+        case TT_DOT: return OP_MEMBER_ACCESS;
+        case TT_DOUBLE_COLON: return OP_SCOPE_ACCESS;
+        case TT_AND: return OP_BITWISE_AND;
+        case TT_DOUBLE_AND: return OP_AND;
+        case TT_CARET: return OP_BITWISE_XOR;
+        case TT_DOUBLE_CARET: return OP_XOR;
+        case TT_PIPE: return OP_BITWISE_OR;
+        case TT_DOUBLE_PIPE: return OP_OR;
+        //TODO: ...
+        default: return OP_NOOP;
+    }
+}
+static inline expr_node_type token_to_prefix_unary_op(token_type t){
+    switch (t){
+        case TT_MINUS: return OP_UNARY_MINUS;
+        case TT_PLUS: return OP_UNARY_PLUS;
+        //TODO: ...
+        default: return OP_NOOP;
+    }
+}
+static inline expr_node_type token_to_prefix_postfix_op(token_type t){
+    switch (t){
+        case TT_DOUBLE_PLUS: return OP_POST_INCREMENT;
+        case TT_DOUBLE_MINUS: return OP_POST_DECREMENT;
+        //TODO: ...
+        default: return OP_NOOP;
+    }
+}
+
 static inline void* alloc_ppool(parser* p, ureg size, pool* pool){
     void* mem = pool_alloc(pool, size);
     if(!mem) error_log_report_allocation_failiure(&p->tk.tc->error_log);
@@ -99,24 +214,35 @@ int parser_search_extend(parser* p){
         if(!e)return ERR;
         e->astn.type = ASTNT_EXTEND;
         e->astn.parent = &p->root;
-        e->astn.name = alloc_string_stage(p, t->str);
+        e->astn.next = NULL;
+        e->astn.name = (char*)alloc_string_stage(p, t->str);
         if(e->astn.name) return ERR;
         e->body = NULL;
         e->imports = NULL;
-        e->next = NULL;
-        p->curr_parent->next = e;
-        p->curr_parent = e;
+        p->curr_parent->next = (ast_node*)e;
+        p->curr_parent = (named_ast_node*)e;
 
         return OK;
     }
 }
-
+expr_node* parse_expression_above_prec(parser* p, ureg prec){
+    token* t1 = tk_peek(&p->tk);
+    switch(t1->type){
+        case TT_AND
+    }
+}
+expr_node* parse_expression(parser* p){
+    return parse_expression_above_prec(p, PREC_BASELINE);
+}
 int parser_parse_file(parser* p, file* f){
     int r = tk_open_file(&p->tk, f);
     if(r) return r;
     p->root.next = NULL;
     p->curr_parent = &p->root;
     r = parser_search_extend(p);
+    while(p->tk.status == TK_STATUS_OK){
+
+    }
     tk_close_file(&p->tk);
     return r;
 }

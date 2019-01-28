@@ -1,8 +1,4 @@
-extend foo asdf
+extend foo;
 func main(args: Slice[String]){
-	'asdfasdfadsf'
-	//this is a comment//
-	/*äöüsdfgsdfgsdfgsdfgdsfgsdfgdfssdfgdfsgdsfgdsfg*/
-	//this is another comment**/
-    println("Hello, World");
+
 }

@@ -36,27 +36,35 @@ typedef enum PACK_ENUM ast_node_type{
 } ast_node_type;
 
 typedef enum PACK_ENUM expr_node_type{
-    ENT_OP_BINARY,
-    ENT_OP_UNARY,
-    ENT_CALL,
-    ENT_ACCESS,
     ENT_NUMBER,
     ENT_STRING_LITERAL,
-    ENT_CAST,
     ENT_IDENTIFIER,
-    ENT_SCOPE_ACCESS,
-    ENT_MEMBER_ACCESS,
     ENT_ARRAY,
     ENT_TUPLE,
     ENT_LAMBDA,
-    ENT_TYPE_MODIFIER,
     ENT_TYPE_ARRAY,
     ENT_TYPE_SLICE,
-}expr_node_type;
 
-typedef enum PACK_ENUM op_type{
+    ENT_OP_CAST,
+    OP_CAST = ENT_OP_CAST,
+    
+    ENT_OP_TYPE_MODIFIER,
+    OP_TYPE_MODIFIER = ENT_OP_TYPE_MODIFIER,
+   
+    ENT_OP_SCOPE_ACCESS,
+    OP_SCOPE_ACCESS = ENT_OP_SCOPE_ACCESS,
+
+    ENT_OP_MEMBER_ACCESS,
+    OP_MEMBER_ACCESS = ENT_OP_MEMBER_ACCESS,
+
+    ENT_OP_CALL,
+    OP_CALL = ENT_OP_CALL,
+
+    ENT_OP_ACCESS,
+    OP_ACCESS = ENT_OP_ACCESS,
+
+    ENT_OP_BINARY,
     OP_ASSIGN,
-
     OP_ADD,
     OP_ADD_ASSIGN,
     OP_SUB,
@@ -67,38 +75,41 @@ typedef enum PACK_ENUM op_type{
     OP_DIV_ASSIGN,
     OP_MOD,
     OP_MOD_ASSIGN,
-
     OP_LSHIFT,
     OP_LSHIFT_ASSIGN,
     OP_RSHIFT,
     OP_RSHIFT_ASSIGN,
-
-    OP_DEREF,       // *
-    OP_POINTER_OF,  // %
-    OP_REF_OF,      // &
-    OP_RREF_OF,     // $
-    OP_VAL_OF,      // ^ (don't confuse with deref, this is used in lambdas to indicate closure by value)
-
     OP_LESS_THAN,
     OP_LESS_THAN_OR_EQUAL,
     OP_GREATER_THAN,
     OP_GREATER_THAN_OR_EQUAL,
     OP_EQUAL,
     OP_UNEQAL,
-
     OP_AND,
-    OP_BIT_AND,
+    OP_BITWISE_AND,
     OP_OR,
-    OP_BIT_OR,
+    OP_BITWISE_OR,
     OP_XOR,
-    OP_BIT_XOR,
+    OP_BITWISE_XOR,
     
-    OP_UNARY_NOT,
-    OP_UNARY_BIT_NOT,
+
+    ENT_OP_UNARY,
+    OP_DEREF,       // *
+    OP_POINTER_OF,  // %
+    OP_REF_OF,      // &
+    OP_RREF_OF,     // $
+    OP_VAL_OF,      // ^ (don't confuse with deref, this is used in lambdas to indicate closure by value)
+    OP_NOT,
+    OP_BITWISE_NOT,
     OP_UNARY_PLUS,
     OP_UNARY_MINUS,
+    OP_PRE_INCREMENT,
+    OP_PRE_DECREMENT,
+    OP_POST_INCREMENT,
+    OP_POST_DECREMENT,
 
-}op_type;
+    OP_NOOP, //invalid op, used for return values
+}expr_node_type;
 
 typedef struct expr_node expr_node;
 typedef struct astn_module astn_module;
@@ -197,6 +208,7 @@ typedef struct astn_while{
 
 typedef struct expr_node{
     expr_node_type type;
+    expr_node_type op_type;
     src_range_packed srange;
 }expr_node;
 
@@ -212,7 +224,7 @@ typedef struct en_op_binary{
 
 typedef struct en_op_unary{
     expr_node en;
-    expr_node* right;
+    expr_node* child;
 }en_op_unary;
 
 typedef struct en_call{
