@@ -205,10 +205,10 @@ void print_until(ureg* bpos, ureg* next, char* buffer, ureg* after_tab, ureg* le
                 pe(&buffer[*after_tab]);
             }
             if(curr < 16){
-                fprintf(stderr, "\\x0%x", (int)curr);
+                fprintf(stderr, "\\x0%X", (int)curr);
             }
             else{
-                fprintf(stderr, "\\x%x", (int)curr);
+                fprintf(stderr, "\\x%X", (int)curr);
             }
             *length_diff = *length_diff + 3;
             *after_tab = *bpos + 1;
