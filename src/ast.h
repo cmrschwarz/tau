@@ -38,6 +38,7 @@ typedef enum PACK_ENUM ast_node_type{
 typedef enum PACK_ENUM expr_node_type{
     ENT_NUMBER,
     ENT_STRING_LITERAL,
+    ENT_BINARY_LITERAL,
     ENT_IDENTIFIER,
     ENT_ARRAY,
     ENT_TUPLE,
@@ -240,26 +241,21 @@ typedef struct en_access{
     expr_node* index;
 }en_access;
 
-typedef struct en_number{
+typedef struct en_str_value{
     expr_node en;
-    char* number;
-}en_number;
+    char* value;
+}en_str_value;
 
-typedef struct en_string_literal{
-    expr_node en;
-    string literal;
-}en_string_literal;
+typedef en_str_value en_number;
+typedef en_str_value en_identifier;
+typedef en_str_value en_string_literal;
+typedef en_str_value en_binary_literal;
 
 typedef struct en_cast{
     expr_node en;
     expr_node* value;
     expr_node* target_type;
 }en_cast;
-
-typedef struct en_identifier{
-    expr_node en;
-    char* identifier;
-}en_identifier;
 
 typedef struct en_scope_access{
     expr_node en;

@@ -462,7 +462,9 @@ int report_error(error* e, FILE* fh, file* file){
                 error_1_annotation* e1annot = (error_1_annotation*)e;
                 err_points[0].line = pos.line;
                 err_points[0].c_start = pos.column;
-                err_points[0].c_end = pos.column + (e1annot->end - e1annot->error.position); 
+                err_points[0].c_end = (
+                    pos.column + (e1annot->end - e1annot->error.position)
+                ); 
                 err_points[0].message = e1annot->annotation;
                 err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
                 err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
@@ -472,21 +474,30 @@ int report_error(error* e, FILE* fh, file* file){
                 error_2_annotations* e2annot = (error_2_annotations*)e;
                 err_points[0].line = pos.line;
                 err_points[0].c_start = pos.column;
-                err_points[0].c_end = pos.column + (e2annot->end1 - e2annot->error.position);
+                err_points[0].c_end = (
+                    pos.column + (e2annot->end1 - e2annot->error.position)
+                );
                 err_points[0].message = e2annot->annotation1;
                 err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
                 err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
-                src_pos pos2 = src_map_get_pos(&e->file->src_map, e2annot->start2);
+                src_pos pos2 = src_map_get_pos(
+                    &e->file->src_map, e2annot->start2
+                );
                 err_points[1].line = pos2.line;
                 err_points[1].c_start = pos2.column;
-                err_points[1].c_end = pos2.column + (e2annot->end2 - e2annot->start2);
+                err_points[1].c_end = (
+                    pos2.column + (e2annot->end2 - e2annot->start2)
+                );
                 err_points[1].message = e2annot->annotation2;
                 err_points[1].message_color = ANSICOLOR_BOLD ANSICOLOR_MAGENTA;
                 err_points[1].squigly_color = ANSICOLOR_BOLD ANSICOLOR_MAGENTA;
                 err_point_count = 2;
             }break;
             default: {
-                if(print_filepath(get_line_nr_offset(pos.line), pos, e->file)) return ERR;
+                if(print_filepath(
+                    get_line_nr_offset(pos.line),
+                    pos, e->file
+                ))return ERR;
                 return OK;
             }break;
         }
@@ -507,20 +518,31 @@ int report_error(error* e, FILE* fh, file* file){
             while(i < err_point_count && err_points[i].line == line)i++;
             bool dot_dot_on_last = false;
             bool print_following = false;
-            if(print_src_line(fh, file, line, line_nr_offset, &err_points[start], &err_points[i])) return ERR;
+            if(print_src_line(
+                fh, file, line, line_nr_offset,
+                &err_points[start], &err_points[i]
+            )) return ERR;
             if(start + 1 < err_point_count){
                 if(err_points[start + 1].line > line + 2){
-                    pectct(ANSICOLOR_BOLD ANSICOLOR_BLUE, "...", ANSICOLOR_CLEAR, "\n");
+                    pectct(
+                        ANSICOLOR_BOLD ANSICOLOR_BLUE,
+                        "...", ANSICOLOR_CLEAR, "\n"
+                    );
                 }
                 else if(err_points[start + 1].line == line + 2){
-                    if(print_src_line(fh, file, line, line_nr_offset, NULL, NULL))return ERR;
+                    if(print_src_line(
+                        fh, file, line, line_nr_offset, NULL, NULL
+                    ))return ERR;
                 }
             }
             start = i;
         }
     }
     else if(file != NULL){
-        if(print_filepath(1, src_map_get_pos(&e->file->src_map, e->position), file)) return ERR;
+        if(print_filepath(
+            1, src_map_get_pos(&e->file->src_map, e->position),
+            file
+        )) return ERR;
     }
     return OK;
 }
@@ -528,7 +550,8 @@ int report_error(error* e, FILE* fh, file* file){
 int compare_errs(const error* a, const error* b){
     //sort by file and then by position in file
     //NULL file will be put at the end
-    //this is a really hacky way of sorting by file, abusing the pointer value as an ordering
+    //this is a really hacky way of sorting by file,
+    //abusing the pointer value as an ordering
     //TODO: find a better way to sort these, maybe by include order
     if(a->file < b->file) return (a->file == NULL) ? 1 : -1;
     if(a->file > b->file) return (b->file == NULL) ? -1 : 1;
@@ -619,4 +642,13 @@ void master_error_log_unwind(pool* p){
     if(errors == NULL){
         printCriticalError("memory allocation failiure during error reporting");
     }
+}
+
+bool error_log_sane_state(error_log* el){
+    //PERF: maybe cache this
+    return (
+        el->allocation_failure_point == FAILURE_NONE
+        &&
+        el->synchronization_failure_point == FAILURE_NONE
+    );
 }

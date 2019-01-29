@@ -119,7 +119,7 @@ src_pos src_map_get_pos(src_map* m, ureg pos){
     return p;
 }
 
-src_range_packed src_range_pack(src_range* d, thread_context* tc){
+src_range_packed src_range_pack(thread_context* tc, src_range* d){
     //PERF: maybe allocate these somewhere else
     if(!d->map){
         ureg len = d->end - d->start;
@@ -144,6 +144,13 @@ src_range_packed src_range_pack(src_range* d, thread_context* tc){
         *range = d->end;
         return SRC_RANGE_EXTERN_BIT | SRC_RANGE_NEW_MAP_BIT | ( ((ureg)tgt) >> 2 );
     }
+}
+
+src_range_packed src_range_pack_lines(thread_context* tc, ureg start, ureg end){
+    static src_range rng = {NULL, 0, 0};
+    rng.start = start;
+    rng.end = end;
+    return src_range_pack(tc, &rng);
 }
 
 void src_range_unpack(src_range_packed r, src_range* d){

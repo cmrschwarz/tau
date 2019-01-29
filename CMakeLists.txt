@@ -22,11 +22,9 @@ set(TAUC_SRCS
     ./src/token.c
     ./src/src_map.c
     ./src/error_log.c
+    ./src/print_ast.c
 )
 add_executable(tauc ${TAUC_SRCS})
 target_include_directories(tauc PUBLIC "./src" "./deps")
 set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-pthread -lm")
 target_compile_options(tauc PUBLIC)
-
-
-

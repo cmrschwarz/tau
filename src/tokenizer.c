@@ -120,11 +120,15 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding){
         tal_free(&tk->tc->tal, &b);
     }
     tk->file_buffer_pos = tk->file_buffer_head;
-    ureg siz = fread(tk->file_buffer_head, 1, buff_size - size_to_keep, tk->file_stream);
+    ureg siz = fread(
+        tk->file_buffer_head, 1, buff_size - size_to_keep, tk->file_stream
+    );
     if (siz == 0){
         if (ferror(tk->file_stream)) {
             tk->status = TK_STATUS_IO_ERROR;
-            error* e = (error*)error_log_alloc(&tk->tc->error_log, sizeof(error));
+            error* e = (error*)error_log_alloc(
+                &tk->tc->error_log, sizeof(error)
+            );
             if(!e) return ERR;
             e->file = tk->file;
             e->stage = ES_TOKENIZER;
@@ -219,7 +223,9 @@ static inline token* tk_return_head(tokenizer* tk, ureg tok_length){
     next->start = tok->end;
     return tok;
 }
-static inline token* tk_unterminated_string_error(tokenizer* tk, char* string_start,ureg tok_pos){
+static inline token* tk_unterminated_string_error(
+    tokenizer* tk, char* string_start,ureg tok_pos
+){
     ureg start1 = tok_pos + ptrdiff(tk->file_buffer_pos, string_start) - 1;
     ureg start2 = tok_pos;
     error_log_report_error_2_annotations(
@@ -458,7 +464,11 @@ static token* tk_load(tokenizer* tk)
                         curr = tk_consume_char(tk);
                         tok->start++;
                         switch(curr){
-                            case '\n': src_map_add_line(&tk->file->src_map, tk->tc, tok->start); break;
+                            case '\n': {
+                                src_map_add_line(
+                                    &tk->file->src_map, tk->tc, tok->start
+                                );
+                            }break;
                             case '\t': break;
                             case '*':{
                                 curr = tk_peek_char(tk);
@@ -481,8 +491,10 @@ static token* tk_load(tokenizer* tk)
                                 error_log_report_error_2_annotations(
                                     &tk->tc->error_log, ES_TOKENIZER, false,
                                     "unterminated block comment", tk->file,
-                                    tok->start, tok->start + 1, "reached eof before the comment was closed",
-                                    comment_start, comment_start + 2, "comment starts here"
+                                    tok->start, tok->start + 1,
+                                    "reached eof before the comment was closed",
+                                    comment_start, comment_start + 2,
+                                    "comment starts here"
                                 );
                                 tk->status = TK_STATUS_TOKENIZATION_ERROR;
                                 return NULL;
@@ -588,12 +600,20 @@ static token* tk_load(tokenizer* tk)
                 do{
                     curr = tk_peek_char_holding(tk, &str_start);
                     tk_void_char_peek(tk);
-                    if(curr == '\0')return tk_unterminated_string_error(tk, str_start, tok->start);
+                    if(curr == '\0'){
+                        return tk_unterminated_string_error(
+                            tk, str_start, tok->start
+                        );
+                    }
                     if(curr == '\\'){
                         //TODO: think about converting escaped chars
                         curr = tk_peek_char_holding(tk, &str_start);
                         tk_void_char_peek(tk);
-                        if(curr == '\0')return tk_unterminated_string_error(tk, str_start, tok->start);
+                        if(curr == '\0'){
+                            return tk_unterminated_string_error(
+                                tk, str_start, tok->start
+                            );
+                        }
                     }
                     if(curr == '\n'){
                         src_map_add_line(
@@ -606,19 +626,29 @@ static token* tk_load(tokenizer* tk)
                 tok->type = TT_BINARY_LITERAL;
                 tok->str.start = str_start + 1;
                 tok->str.end = tk->file_buffer_pos - 1;
-                return tk_return_head(tk, ptrdiff(tk->file_buffer_pos, str_start));
+                return tk_return_head(
+                    tk, ptrdiff(tk->file_buffer_pos, str_start)
+                );
             }
             case '"':{
                 char* str_start = tk->file_buffer_pos - 1;
                 do{
                     curr = tk_peek_char_holding(tk, &str_start);
                     tk_void_char_peek(tk);
-                    if(curr == '\0')return tk_unterminated_string_error(tk, str_start, tok->start);
+                    if(curr == '\0'){
+                        return tk_unterminated_string_error(
+                            tk, str_start, tok->start
+                        );
+                    }
                     if(curr == '\\'){
                         //TODO: think about converting escaped chars
                         curr = tk_peek_char_holding(tk, &str_start);
                         tk_void_char_peek(tk);
-                        if(curr == '\0')return tk_unterminated_string_error(tk, str_start, tok->start);
+                        if(curr == '\0'){
+                            return tk_unterminated_string_error(
+                                tk, str_start, tok->start
+                            );
+                        }
                     }
                     if(curr == '\n'){
                         src_map_add_line(
@@ -631,16 +661,18 @@ static token* tk_load(tokenizer* tk)
                 tok->type = TT_BINARY_LITERAL;
                 tok->str.start = str_start + 1;
                 tok->str.end = tk->file_buffer_pos - 1;
-                return tk_return_head(tk, ptrdiff(tk->file_buffer_pos, str_start));
+                return tk_return_head(
+                    tk, ptrdiff(tk->file_buffer_pos, str_start)
+                );
             }
-            case 'a':case 'b':case 'c':case 'd':case 'e':case 'f':case 'g':case 'h':
-            case 'i':case 'j':case 'k':case 'l':case 'm':case 'n':case 'o':case 'p':
-            case 'q':case 'r':case 's':case 't':case 'u':case 'v':case 'w':case 'x':
-            case 'y':case 'z':
-            case 'A':case 'B':case 'C':case 'D':case 'E':case 'F':case 'G':case 'H':
-            case 'I':case 'J':case 'K':case 'L':case 'M':case 'N':case 'O':case 'P':
-            case 'Q':case 'R':case 'S':case 'T':case 'U':case 'V':case 'W':case 'X':
-            case 'Y':case 'Z':
+            case 'a':case 'b':case 'c':case 'd':case 'e':case 'f':case 'g':
+            case 'h':case 'i':case 'j':case 'k':case 'l':case 'm':case 'n':
+            case 'o':case 'p':case 'q':case 'r':case 's':case 't':case 'u':
+            case 'v':case 'w':case 'x':case 'y':case 'z':
+            case 'A':case 'B':case 'C':case 'D':case 'E':case 'F':case 'G':
+            case 'H':case 'I':case 'J':case 'K':case 'L':case 'M':case 'N':
+            case 'O':case 'P':case 'Q':case 'R':case 'S':case 'T':case 'U':
+            case 'V':case 'W':case 'X':case 'Y':case 'Z':
             case '_':
             {
                 char* str_start = tk->file_buffer_pos - 1;
@@ -657,7 +689,9 @@ static token* tk_load(tokenizer* tk)
                 tok->type = TT_STRING;
                 tok->str.start = str_start;
                 tok->str.end = tk->file_buffer_pos;
-                return tk_return_head(tk, ptrdiff(tk->file_buffer_pos, str_start));
+                return tk_return_head(
+                    tk, ptrdiff(tk->file_buffer_pos, str_start)
+                );
             }
             case '0':
             case '1':
@@ -679,12 +713,15 @@ static token* tk_load(tokenizer* tk)
                 tok->type = TT_NUMBER;
                 tok->str.start = str_start;
                 tok->str.end = tk->file_buffer_pos;
-                return tk_return_head(tk, ptrdiff(tk->file_buffer_pos, str_start));
+                return tk_return_head(
+                    tk, ptrdiff(tk->file_buffer_pos, str_start)
+                );
             }
             default:{
                 //TODO: fix overflow if non utf-8 character
                 error_log_report_error_1_annotation(
-                    &tk->tc->error_log, ES_TOKENIZER, false, "unknown token", tk->file,
+                    &tk->tc->error_log, ES_TOKENIZER, false,
+                    "unknown token", tk->file,
                     tok->start, 
                     tok->start + get_utf8_seq_len_from_head(curr),
                     "not the start for any valid token"

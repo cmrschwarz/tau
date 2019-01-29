@@ -75,6 +75,7 @@ void master_error_log_unwind(pool* memory);
 void master_error_log_fin();
 void error_log_init(error_log* el, pool* error_mem_pool);
 void error_log_fin(error_log* el);
+bool error_log_sane_state(error_log* el);
 void error_log_report_error(
     error_log* el,
     error_stage stage,
