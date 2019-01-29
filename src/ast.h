@@ -87,18 +87,21 @@ typedef enum PACK_ENUM expr_node_type{
     OP_UNEQAL,
     OP_AND,
     OP_BITWISE_AND,
+    OP_BITWISE_AND_ASSIGN,
     OP_OR,
     OP_BITWISE_OR,
+    OP_BITWISE_OR_ASSIGN,
     OP_XOR,
     OP_BITWISE_XOR,
-    
+    OP_BITWISE_XOR_ASSIGN,
+    OP_BITWISE_NOT_ASSIGN,
 
     ENT_OP_UNARY,
     OP_DEREF,       // *
     OP_POINTER_OF,  // %
     OP_REF_OF,      // &
     OP_RREF_OF,     // $
-    OP_VAL_OF,      // ^ (don't confuse with deref, this is used in lambdas to indicate closure by value)
+    OP_VALUE_OF,      // ^ (don't confuse with deref, this is used in lambdas to indicate closure by value)
     OP_NOT,
     OP_BITWISE_NOT,
     OP_UNARY_PLUS,

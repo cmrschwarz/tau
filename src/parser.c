@@ -22,7 +22,7 @@ static const unsigned char op_precedence[] = {
     [OP_POINTER_OF] = 14, 
     [OP_REF_OF] = 14,
     [OP_RREF_OF] = 14,     
-    [OP_VAL_OF] = 14,
+    [OP_VALUE_OF] = 14,
     [OP_TYPE_MODIFIER] = 14,
     
     [OP_BITWISE_AND] = 13,
@@ -66,6 +66,10 @@ static const unsigned char op_precedence[] = {
     [OP_MOD_ASSIGN] = 1,
     [OP_LSHIFT_ASSIGN] = 1,
     [OP_RSHIFT_ASSIGN] = 1,
+    [OP_BITWISE_AND_ASSIGN] = 1,
+    [OP_BITWISE_XOR_ASSIGN] = 1,
+    [OP_BITWISE_OR_ASSIGN] = 1,
+    [OP_BITWISE_NOT_ASSIGN] = 1,
 
 };
 #define PREC_BASELINE 0
@@ -80,25 +84,64 @@ static inline bool is_right_associative(expr_node_type t){
         case OP_MOD_ASSIGN:
         case OP_LSHIFT_ASSIGN:
         case OP_RSHIFT_ASSIGN:
+        case OP_BITWISE_AND_ASSIGN:
+        case OP_BITWISE_XOR_ASSIGN:
+        case OP_BITWISE_OR_ASSIGN:
+        case OP_BITWISE_NOT_ASSIGN:
             return true;
-        default: return false;
+        default: 
+            return false;
     }
 }
 
 static inline expr_node_type token_to_binary_op(token_type t){
     switch(t){
         case TT_PLUS: return OP_ADD;
+        case TT_PLUS_EQUALS: return OP_ADD_ASSIGN;
+
         case TT_MINUS: return OP_SUB;
+        case TT_MINUS_EQUALS: return OP_SUB_ASSIGN;
+
         case TT_STAR: return OP_MUL;
+        case TT_STAR_EQUALS: return OP_MUL_ASSIGN;
+
+        case TT_SLASH: return OP_DIV;
+        case TT_SLASH_EQUALS: return OP_DIV_ASSIGN;
+
+        case TT_PERCENT: return OP_MOD;
+        case TT_PERCENT_EQUALS: return OP_MOD_ASSIGN;
+
+        case TT_DOUBLE_LESS_THAN: return OP_LSHIFT;
+        case TT_DOUBLE_LESS_THAN_EQUALS: return OP_LSHIFT_ASSIGN;
+
+        case TT_DOUBLE_GREATER_THAN: return OP_RSHIFT;
+        case TT_DOUBLE_GREATER_THAN_EQUALS: return OP_RSHIFT_ASSIGN;
+
+        case TT_LESS_THAN: return OP_LESS_THAN;
+        case TT_LESS_THAN_EQUALS: return OP_LESS_THAN_OR_EQUAL;
+        
+        case TT_GREATER_THAN: return OP_GREATER_THAN;
+        case TT_GREATER_THAN_EQUALS: return OP_GREATER_THAN_OR_EQUAL;
+
+        case TT_EQUALS: return OP_ASSIGN;
+        case TT_DOUBLE_EQUALS: return OP_EQUAL;
+        case TT_EXCLAMATION_MARK_EQUALS: return OP_UNEQAL;
+      
+        case TT_AND: return OP_BITWISE_AND;
+        case TT_AND_EQUALS: return OP_BITWISE_AND_ASSIGN;
+        case TT_DOUBLE_AND: return OP_AND;
+        
+        case TT_CARET: return OP_BITWISE_XOR;
+        case TT_CARET_EQUALS: return OP_BITWISE_XOR_ASSIGN;
+        case TT_DOUBLE_CARET: return OP_XOR;
+        
+        case TT_PIPE: return OP_BITWISE_OR;
+        case TT_PIPE_EQUALS: return OP_BITWISE_OR_ASSIGN;
+        case TT_DOUBLE_PIPE: return OP_OR;
+        
+        case TT_TILDE_EQUALS: return OP_BITWISE_NOT_ASSIGN;
         case TT_DOT: return OP_MEMBER_ACCESS;
         case TT_DOUBLE_COLON: return OP_SCOPE_ACCESS;
-        case TT_AND: return OP_BITWISE_AND;
-        case TT_DOUBLE_AND: return OP_AND;
-        case TT_CARET: return OP_BITWISE_XOR;
-        case TT_DOUBLE_CARET: return OP_XOR;
-        case TT_PIPE: return OP_BITWISE_OR;
-        case TT_DOUBLE_PIPE: return OP_OR;
-        //TODO: ...
         default: return OP_NOOP;
     }
 }
@@ -106,7 +149,15 @@ static inline expr_node_type token_to_prefix_unary_op(token_type t){
     switch (t){
         case TT_MINUS: return OP_UNARY_MINUS;
         case TT_PLUS: return OP_UNARY_PLUS;
-        //TODO: ...
+        case TT_TILDE: return OP_BITWISE_NOT;
+        case TT_EXCLAMATION_MARK: return OP_NOT;
+        case TT_STAR: return OP_DEREF;
+        case TT_AND: return OP_REF_OF;
+        case TT_PERCENT: return OP_POINTER_OF;
+        case TT_CARET: return OP_VALUE_OF;
+        case TT_DOLLAR: return OP_RREF_OF;
+        case TT_DOUBLE_PLUS: return OP_PRE_INCREMENT;
+        case TT_DOUBLE_MINUS: return OP_PRE_DECREMENT;
         default: return OP_NOOP;
     }
 }
@@ -114,7 +165,6 @@ static inline expr_node_type token_to_prefix_postfix_op(token_type t){
     switch (t){
         case TT_DOUBLE_PLUS: return OP_POST_INCREMENT;
         case TT_DOUBLE_MINUS: return OP_POST_DECREMENT;
-        //TODO: ...
         default: return OP_NOOP;
     }
 }
