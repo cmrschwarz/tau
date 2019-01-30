@@ -658,7 +658,7 @@ static token* tk_load(tokenizer* tk)
                         );
                     }
                 }while(curr != '"');
-                tok->type = TT_BINARY_LITERAL;
+                tok->type = TT_LITERAL;
                 tok->str.start = str_start + 1;
                 tok->str.end = tk->file_buffer_pos - 1;
                 return tk_return_head(

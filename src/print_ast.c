@@ -1,5 +1,7 @@
 #include "print_ast.h"
+#include "utils/math_utils.h"
 #include "stdio.h"
+#include "error_log.h"
 
 int print_astn(ast_node* astn){
     return 0;
@@ -8,6 +10,16 @@ int p(char* c){
     fputs(c, stdout);
     fflush(stdout);
     return 0;
+}
+int print_expr_list(expr_node_list* enl){
+    int r = 17; //don't print comma on first iteration :)
+    expr_node** n = (expr_node**)ptradd(enl, sizeof(expr_node_list));
+    while(n != enl->end) {
+        if(!r)p(", ");
+        r = print_expr(*n);
+        if(r) return r;
+        n++;
+    }
 }
 int print_expr(expr_node* en){
     switch (en->type){
@@ -50,8 +62,19 @@ int print_expr(expr_node* en){
             putchar(')');
             break;
         }
+        case ENT_ARRAY:{
+            putchar('{');
+            print_expr_list(&((en_array*)en)->elements);
+            putchar('}');
+        }break;
+        case ENT_TUPLE:{
+            putchar('[');
+            print_expr_list(&((en_tuple*)en)->elements);
+            putchar(']');
+        }break;
         default: p("unknown"); return -1;
     }
+    return OK;
 }
 
 

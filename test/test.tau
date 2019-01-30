@@ -1,5 +1,5 @@
 extend foo;
-foo + ~(((1 - 3)) * 4 * ;
-func main(args: Slice[String]){
+foo + ~((1 - 3)) * 4 * {"", '', 3,};
+func main(args: Slice[String f){
 
 }

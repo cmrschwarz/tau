@@ -46,18 +46,6 @@ typedef enum PACK_ENUM expr_node_type{
     ENT_TYPE_ARRAY,
     ENT_TYPE_SLICE,
 
-    ENT_OP_CAST,
-    OP_CAST = ENT_OP_CAST,
-    
-    ENT_OP_TYPE_MODIFIER,
-    OP_TYPE_MODIFIER = ENT_OP_TYPE_MODIFIER,
-   
-    ENT_OP_SCOPE_ACCESS,
-    OP_SCOPE_ACCESS = ENT_OP_SCOPE_ACCESS,
-
-    ENT_OP_MEMBER_ACCESS,
-    OP_MEMBER_ACCESS = ENT_OP_MEMBER_ACCESS,
-
     ENT_OP_CALL,
     OP_CALL = ENT_OP_CALL,
 
@@ -65,6 +53,9 @@ typedef enum PACK_ENUM expr_node_type{
     OP_ACCESS = ENT_OP_ACCESS,
 
     ENT_OP_BINARY,
+    OP_MEMBER_ACCESS,
+    OP_SCOPE_ACCESS,
+    OP_CAST,
     OP_ASSIGN,
     OP_ADD,
     OP_ADD_ASSIGN,
@@ -98,6 +89,7 @@ typedef enum PACK_ENUM expr_node_type{
     OP_BITWISE_NOT_ASSIGN,
 
     ENT_OP_UNARY,
+    OP_CONST,
     OP_DEREF,       // *
     OP_POINTER_OF,  // %
     OP_REF_OF,      // &
@@ -111,7 +103,6 @@ typedef enum PACK_ENUM expr_node_type{
     OP_PRE_DECREMENT,
     OP_POST_INCREMENT,
     OP_POST_DECREMENT,
-
     OP_NOOP, //invalid op, used for return values
 }expr_node_type;
 
@@ -134,6 +125,8 @@ typedef struct var_decl{
     expr_node* type;
 }var_decl;
 
+//PERF: consider allowing for this to be segmented to 
+//reduce pool wastage on overflow with very large arrays
 typedef struct var_decl_list{
     struct var_decl_list* next;
     var_decl decl;
@@ -217,7 +210,7 @@ typedef struct expr_node{
 }expr_node;
 
 typedef struct expr_node_list{
-    expr_node** last;
+    expr_node** end;
 }expr_node_list;
 
 typedef struct en_op_binary{
@@ -233,8 +226,13 @@ typedef struct en_op_unary{
 
 typedef struct en_call{
     expr_node en;
-    expr_node_list params;
+    expr_node_list args;
 }en_call;
+
+typedef struct en_generic_access{
+    expr_node en;
+    expr_node_list args;
+}en_generic_access;
 
 typedef struct en_access{
     expr_node en;
@@ -245,7 +243,6 @@ typedef struct en_str_value{
     expr_node en;
     char* value;
 }en_str_value;
-
 typedef en_str_value en_number;
 typedef en_str_value en_identifier;
 typedef en_str_value en_string_literal;
@@ -269,21 +266,13 @@ typedef struct en_member_access{
     expr_node* rhs;
 }en_member_access;
 
-typedef struct en_array{
+
+typedef struct en_value_group{
     expr_node en;
     expr_node_list elements;
-}en_array;
-
-typedef struct en_tuple{
-    expr_node en;
-    expr_node_list elements;
-}en_tuple;
-
-typedef struct en_type_modifier{
-    expr_node en;
-    int modifiers;
-    expr_node* rhs;
-}en_type_modifier;
+}en_value_group;
+typedef en_value_group en_array;
+typedef en_value_group en_tuple;
 
 typedef struct en_type_array{
     expr_node en;

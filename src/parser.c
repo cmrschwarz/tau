@@ -5,13 +5,6 @@
 #include "tauc.h"
 #include "print_ast.h"
 
-typedef enum expr_parsing_error{
-    EPE_OK = 0,
-    EPE_INSANE,
-    EPE_EOEX,
-    EPE_MISSMATCH,
-    EPE_HANDLED,
-}expr_parsing_error;
 
 static const unsigned char op_precedence[] = {
     [OP_POST_INCREMENT] = 15,
@@ -32,7 +25,7 @@ static const unsigned char op_precedence[] = {
     [OP_REF_OF] = 14,
     [OP_RREF_OF] = 14,     
     [OP_VALUE_OF] = 14,
-    [OP_TYPE_MODIFIER] = 14,
+    [OP_CONST] = 14,
     
     [OP_BITWISE_AND] = 13,
 
@@ -167,6 +160,10 @@ static inline expr_node_type token_to_prefix_unary_op(token* t){
         case TT_DOLLAR: return OP_RREF_OF;
         case TT_DOUBLE_PLUS: return OP_PRE_INCREMENT;
         case TT_DOUBLE_MINUS: return OP_PRE_DECREMENT;
+        case TT_STRING: switch (kw_match(t->str)){
+            case KW_CONST: return OP_CONST;
+            default: return OP_NOOP;
+        }
         default: return OP_NOOP;
     }
 }
@@ -260,6 +257,8 @@ static inline token* parser_expect(
 int parser_init(parser* p, thread_context* tc){
     int r = tk_init(&p->tk, tc);
     if(r) return r;
+    r = list_builder_init(&p->lb, &p->tk.tc->stagemem, 64);
+    if(r) return r;
     p->root.name = "void";
     p->root.parent = NULL;
     p->root.type = ASTNT_MODULE;
@@ -324,6 +323,7 @@ expr_parsing_error parse_expression_p(
     *en = NULL;
     ureg lhs_start = t->start;
     expr_parsing_error epe;
+    int r;
     //parse prefix unary ops
    
     expr_node_type op = token_to_prefix_unary_op(t);
@@ -363,8 +363,7 @@ expr_parsing_error parse_expression_p(
                 epe = parse_expression_p(
                     p, PREC_BASELINE, en, end, false
                 );
-                //TODO think about continuing here
-                if(epe) return EPE_HANDLED;  
+                if(epe != EPE_OK && epe != EPE_EOEX) return epe;
                 t = tk_peek(&p->tk);
                 if(t->type != TT_PAREN_CLOSE){
                     error_log_report_error_2_annotations(
@@ -376,14 +375,76 @@ expr_parsing_error parse_expression_p(
                     );
                     return EPE_MISSMATCH;
                 }
+                if(epe == EPE_EOEX){
+                    error_log_report_error_2_annotations(
+                        &p->tk.tc->error_log, ES_PARSER, false, 
+                        "empty parenthesis pair", p->tk.file,
+                        t->start, t->end, "found closing parenthesis",
+                        lhs_start, lhs_start + 1,
+                        "expected an evaluable expression"   
+                    );
+                    return EPE_HANDLED;
+                }
                 tk_void(&p->tk);
                 *end = t->end;
                 break;   
             }
-            case TT_STRING:{
-                token* t2 = tk_peek_2nd(&p->tk);
-                //TODO: arrays 'n shit
-            }//fallthrough
+            case TT_BRACKET_OPEN:
+            case TT_BRACE_OPEN:{
+                bool is_tuple = (t->type == TT_BRACKET_OPEN); 
+                tk_void(&p->tk);
+                void** list_start = list_builder_start(&p->lb);
+                while(true){
+                    epe = parse_expression(p, en);
+                    if(epe != EPE_OK){
+                        if(epe != EPE_EOEX)return epe;
+                        t = tk_peek(&p->tk);
+                        break;
+                    }
+                    r = list_builder_add(&p->lb, (void*)*en);
+                    if(r) return EPE_INSANE;
+                    t = tk_peek(&p->tk);
+                    //the way this is programmed right now
+                    //we allow trailing commas... so be it \(*.*)/
+                    if(t->type == TT_COMMA) tk_void(&p->tk);
+                    else break;
+                }
+                if(t->type != (is_tuple ? TT_BRACKET_CLOSE : TT_BRACE_CLOSE)){
+                    if(is_tuple){
+                        error_log_report_error_2_annotations(
+                            &p->tk.tc->error_log, ES_PARSER, false, 
+                            "unclosed tuple", p->tk.file,
+                            t->start, t->end, "reached end of expression",
+                            lhs_start, lhs_start + 1,
+                            "didn't find a match closing bracket for this tuple"   
+                        );
+                    }
+                    else{
+                        error_log_report_error_2_annotations(
+                            &p->tk.tc->error_log, ES_PARSER, false, 
+                            "unclosed array", p->tk.file,
+                            t->start, t->end, "reached end of expression",
+                            lhs_start, lhs_start + 1,
+                            "didn't find a match closing brace for this array"   
+                        );
+                    }
+                }
+                *end = t->end;
+                tk_void(&p->tk);
+                en_value_group* vg;
+                void** end = list_builder_pop_list(
+                    &p->lb, list_start, (void***)&vg, &p->tk.tc->permmem,
+                    sizeof(en_value_group), 0
+                );
+                if(!end)return EPE_INSANE;
+                vg->elements.end = (expr_node_type**)end;
+                vg->en.type = is_tuple ? ENT_TUPLE : ENT_ARRAY;
+                vg->en.srange = src_range_pack_lines(
+                    p->tk.tc, lhs_start, *end
+                );
+                *en = (expr_node*)vg;
+            }break;
+            case TT_STRING:
             case TT_NUMBER:
             case TT_LITERAL:
             case TT_BINARY_LITERAL:{
@@ -466,14 +527,11 @@ expr_parsing_error parse_expression_p(
     }
     return EPE_OK;
 }
-expr_node* parse_expression(parser* p){
+expr_parsing_error parse_expression(parser* p, expr_node** en){
     ureg end;
-    expr_node* en;
-    expr_parsing_error epe = parse_expression_p(
-        p, PREC_BASELINE, &en, &end, true
+    return parse_expression_p(
+        p, PREC_BASELINE, en, &end, true
     );
-    if(epe) return NULL;
-    return en;
 }
 int parser_parse_file(parser* p, file* f){
     int r = tk_open_file(&p->tk, f);
@@ -481,9 +539,10 @@ int parser_parse_file(parser* p, file* f){
     p->root.next = NULL;
     p->curr_parent = &p->root;
     r = parser_search_extend(p);
+    expr_node* n;
     while(p->tk.status == TK_STATUS_OK){
-        expr_node* n = parse_expression(p);
-        if(!n)break;
+        expr_parsing_error epe = parse_expression(p, &n);
+        if(epe)break;
         print_expr(n);
         putchar('\n');
     }

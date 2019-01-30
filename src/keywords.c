@@ -33,10 +33,11 @@ bool kw_equals(keyword_id id, string str){
     return (strncmp(keyword_strings[id], str.start, ptrdiff(str.end, str.start)) == 0);
 }
 
-keyword_id is_kw(string str){
+keyword_id kw_match(string str){
     //PERF(0): you could write a fancy tree match here
     keyword_id i = KW_MODULE;
     while(keyword_strings[i] != NULL){
         if(kw_equals(i, str))return i;
+        i++;
     }
 }
