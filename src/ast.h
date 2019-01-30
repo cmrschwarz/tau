@@ -138,8 +138,7 @@ typedef struct ast_node{
 }ast_node;
 
 typedef struct named_ast_node{
-    ast_node_type type;
-    struct ast_node* next;
+    ast_node astn;
     char* name;
     struct named_ast_node* parent;
 }named_ast_node;
@@ -150,42 +149,42 @@ typedef struct astn_expr{
 }astn_expr;
 
 typedef struct astn_module{
-    named_ast_node astn;
+    named_ast_node nastn;
     import* imports;
     ast_node* body;
 }astn_module;
 
 typedef struct astn_extend{
-    named_ast_node astn;
+    named_ast_node nastn;
     import* imports;
     ast_node* body;
 }astn_extend;
 
 
 typedef struct astn_function{
-    named_ast_node astn;
+    named_ast_node nastn;
     var_decl_list parameters;
 }astn_function;
 
 typedef struct astn_generic_function{
-    named_ast_node astn;
+    named_ast_node nastn;
     var_decl_list generic_parameters;
     var_decl_list parameters;
 }astn_generic_function;
 
 typedef struct astn_struct{
-    named_ast_node astn;
+    named_ast_node nastn;
     ast_node* body;
 }astn_struct;
 
 typedef struct astn_generic_struct{
-    named_ast_node astn;
+    named_ast_node nastn;
     var_decl_list generic_parameters;
     ast_node* body;
 }astn_generic_struct;
 
 typedef struct astn_var_declaration{
-    named_ast_node astn;
+    named_ast_node nastn;
     var_decl decl;
 }astn_var_declaration;
 
