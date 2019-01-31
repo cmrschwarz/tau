@@ -4,6 +4,15 @@
 
 char* keyword_strings[] = {
     [KW_MODULE] = "module",
+    [KW_EXTEND] = "extend",
+    [KW_REQUIRE] = "require",
+    [KW_IMPORT] = "import",
+    [KW_INCLUDE] = "include",
+    [KW_CONST] = "const",
+    [KW_SEALED] = "sealed",
+    [KW_VIRTUAL] = "virtual",
+    [KW_STATIC] = "static",
+    [KW_AS] = "as",
     [KW_FUNC] = "func",
     [KW_STRUCT] = "struct",
     [KW_AUTO] = "auto",
@@ -20,12 +29,9 @@ char* keyword_strings[] = {
     [KW_SWITCH] = "switch",
     [KW_LET] = "let",
     [KW_CONST] = "const",
-    [KW_EXTEND] = "extend",
     [KW_PUBLIC] = "public",
     [KW_PROTECTED] = "protected",
     [KW_PRIVATE] = "private",
-    [KW_STATIC] = "static",
-    [KW_VIRTUAL] = "virtual",
     [KW_INVALID_KEYWORD] = NULL,
 };
 
@@ -34,7 +40,7 @@ bool kw_equals(keyword_id id, string str){
 }
 
 keyword_id kw_match(string str){
-    //PERF(0): you could write a fancy tree match here
+    //PERF: you could write a fancy tree match here
     keyword_id i = KW_MODULE;
     while(keyword_strings[i] != NULL){
         if(kw_equals(i, str))return i;

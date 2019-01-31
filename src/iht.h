@@ -1,7 +1,7 @@
 //IHT: indentifier hash table
 #pragma once
-#include "types.h"
-#include "allocator.h"
+#include "utils/types.h"
+#include "utils/allocator.h"
 #include "ast.h"
 
 typedef struct iht{
@@ -16,11 +16,10 @@ typedef struct iht{
 
 typedef ureg parent_hash;
 
-ureg iht_hashpos(iht* h, parent_hash phash, const char* key);
-
 parent_hash iht_get_parent_hash(named_ast_node* parent);
 
 int iht_init(iht* h, thread_allocator* tal);
+int iht_init_with_capacity(iht* h, ureg capacity, thread_allocator* tal);
 void iht_fin(iht* h);
 
 int iht_insert(iht* h, named_ast_node* val);

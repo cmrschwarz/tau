@@ -2,6 +2,17 @@
 #include "utils/c_extensions.h"
 #include "src_map.h"
 
+
+typedef u8 astn_flags;
+#define ASTN_FLAGS_DEFAULT 0
+
+typedef enum PACK_ENUM access_modifier{
+    AM_UNSPECIFIED = 0,
+    AM_PRIVATE = 1,
+    AM_PROTECTED = 2,
+    AM_PUBLIC = 3,
+}access_modifier;
+
 typedef enum PACK_ENUM ast_node_type{
     ASTNT_MODULE,
     ASTNT_EXTEND,
@@ -134,6 +145,7 @@ typedef struct var_decl_list{
 
 typedef struct ast_node{
     ast_node_type type;
+    astn_flags flags;
     struct ast_node* next;
 }ast_node;
 
@@ -290,3 +302,18 @@ typedef struct en_lambda{
     expr_node_list params;
     ast_node* body;
 }en_lambda;
+
+void astn_flags_set_access_mod(astn_flags* f, access_modifier m);
+access_modifier astn_flags_get_access_mod(astn_flags f);
+
+void astn_flags_set_const(astn_flags* f, bool cnst);
+bool astn_flags_get_const(astn_flags f);
+
+void astn_flags_set_sealed(astn_flags* f, bool sld);
+bool astn_flags_get_sealed(astn_flags f);
+
+void astn_flags_set_virtual(astn_flags* f, bool virt);
+bool astn_flags_get_virtual(astn_flags f);
+
+void astn_flags_set_static(astn_flags* f, bool stat);
+bool astn_flags_get_static(astn_flags f);

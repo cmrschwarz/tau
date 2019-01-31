@@ -24,6 +24,8 @@ set(TAUC_SRCS
     ./src/error_log.c
     ./src/print_ast.c
     ./src/utils/list_builder.c
+    ./src/iht.c
+    ./src/ast.c
 )
 add_executable(tauc ${TAUC_SRCS})
 target_include_directories(tauc PUBLIC "./src" "./deps")

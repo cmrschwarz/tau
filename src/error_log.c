@@ -196,7 +196,7 @@ typedef struct err_point{
     char* squigly_color;
     char* message_color;
 }err_point;
-void print_until(ureg* bpos, ureg* next, char* buffer, ureg* after_tab, ureg* length_diff){
+void print_until(ureg* bpos, ureg* next, char* buffer, ureg* after_tab, sreg* length_diff){
     while(*bpos < *next){
         unsigned char curr = (unsigned char)buffer[*bpos];
         if(curr > 126 || curr < 32){
