@@ -718,12 +718,23 @@ static token* tk_load(tokenizer* tk)
                 );
             }
             default:{
-                //TODO: fix overflow if non utf-8 character
+                /*
+                //TODO: proper unicode handling
+                ureg len = get_utf8_seq_len_from_head(curr);
+                for(ureg i = 1; i<len;i++){
+                    char c = tk_peek_char(tk);
+                    if(!is_utf8_continuation(c)){
+                        len = i;
+                        break; 
+                    }
+                    tk_void_char_peek(tk);
+                }
+                */
                 error_log_report_error_1_annotation(
                     &tk->tc->error_log, ES_TOKENIZER, false,
                     "unknown token", tk->file,
                     tok->start, 
-                    tok->start + get_utf8_seq_len_from_head(curr),
+                    tok->start + 1,
                     "not the start for any valid token"
                 );
                 return NULL;

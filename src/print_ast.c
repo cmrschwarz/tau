@@ -7,6 +7,7 @@ int print_astn(ast_node* astn){
     return 0;
 }
 int p(char* c){
+    if(c == NULL)c = "unknown";
     fputs(c, stdout);
     fflush(stdout);
     return 0;
@@ -51,7 +52,7 @@ int print_expr(expr_node* en){
         case ENT_OP_UNARY:{
             en_op_unary* u = (en_op_unary*)en;
             putchar('(');
-            if (is_unary_op_prefix(en->op_type)){
+            if (is_unary_op_postfix(en->op_type)){
                 print_expr(u->child);
                 p(op_to_str(en->op_type));
             }
@@ -70,6 +71,20 @@ int print_expr(expr_node* en){
         case ENT_TUPLE:{
             putchar('[');
             print_expr_list(&((en_tuple*)en)->elements);
+            putchar(']');
+        }break;
+        case ENT_OP_CALL:{
+            en_call* c = (en_call*)en;
+            print_expr(c->lhs);
+            putchar('(');
+            print_expr_list(&c->args);
+            putchar(')');
+        }break;
+        case ENT_OP_ACCESS:{
+            en_access* acc = (en_access*)en;
+            print_expr(acc->lhs);
+            putchar('[');
+            print_expr_list(&acc->args);
             putchar(']');
         }break;
         default: p("unknown"); return -1;
@@ -125,15 +140,16 @@ char* op_to_str(expr_node_type t){
         case OP_PRE_DECREMENT:          return "--";
         case OP_POST_INCREMENT:         return "++";
         case OP_POST_DECREMENT:         return "--";
+        case OP_CONST:                  return "const ";
         default:                        return NULL;
     }
     return 0;
 }
 
-bool is_unary_op_prefix(expr_node_type t){
+bool is_unary_op_postfix(expr_node_type t){
     switch (t){
-        case OP_PRE_INCREMENT:
-        case OP_PRE_DECREMENT:
+        case OP_POST_INCREMENT:
+        case OP_POST_DECREMENT:
             return true;
         default:
             return false;

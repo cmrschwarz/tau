@@ -225,17 +225,15 @@ typedef struct en_op_unary{
 
 typedef struct en_call{
     expr_node en;
+    expr_node* lhs;
     expr_node_list args;
 }en_call;
 
-typedef struct en_generic_access{
-    expr_node en;
-    expr_node_list args;
-}en_generic_access;
-
+//PERF: maybe provide an optimized variant for one arg
 typedef struct en_access{
     expr_node en;
-    expr_node* index;
+    expr_node* lhs;
+    expr_node_list args;
 }en_access;
 
 typedef struct en_str_value{
@@ -266,12 +264,15 @@ typedef struct en_member_access{
 }en_member_access;
 
 
-typedef struct en_value_group{
+typedef struct en_tuple{
     expr_node en;
     expr_node_list elements;
-}en_value_group;
-typedef en_value_group en_array;
-typedef en_value_group en_tuple;
+}en_tuple;
+
+typedef struct en_array{
+    expr_node en;
+    expr_node_list elements;
+}en_array;
 
 typedef struct en_type_array{
     expr_node en;
