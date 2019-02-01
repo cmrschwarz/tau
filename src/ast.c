@@ -17,10 +17,10 @@ access_modifier astn_flags_get_access_mod(astn_flags f){
     return (access_modifier)((f & AM_MASK) >> AM_OFFSET);
 }
 
-void astn_flags_get_access_const(astn_flags* f, bool cnst){
+void astn_flags_set_const(astn_flags* f, bool cnst){
     *f = (*f & CONST_MASK) & (cnst << CONST_OFFSET); 
 }
-bool astn_flags_set_const(astn_flags f){
+bool astn_flags_get_const(astn_flags f){
     return (f & CONST_MASK) >> CONST_OFFSET;
 }
 
@@ -40,7 +40,7 @@ bool astn_flags_get_virtual(astn_flags f){
 
 
 void astn_flags_set_static(astn_flags* f, bool stat){
-    *f = (*f & STATIC_MASK) & (virt << STATIC_OFFSET); 
+    *f = (*f & STATIC_MASK) & (stat << STATIC_OFFSET); 
 }
 bool astn_flags_get_static(astn_flags f){
     return (f & STATIC_MASK) >> STATIC_OFFSET;

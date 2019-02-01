@@ -63,6 +63,9 @@ typedef enum PACK_ENUM expr_node_type{
     ENT_OP_ACCESS,
     OP_ACCESS = ENT_OP_ACCESS,
 
+    ENT_OP_PARENTHESES,
+    OP_PARENTHESES = ENT_OP_PARENTHESES,
+
     ENT_OP_BINARY,
     OP_MEMBER_ACCESS,
     OP_SCOPE_ACCESS,
@@ -219,6 +222,11 @@ typedef struct expr_node{
     expr_node_type op_type;
     src_range_packed srange;
 }expr_node;
+
+typedef struct en_parentheses{
+    expr_node en;
+    expr_node* child;
+}en_parentheses;
 
 typedef struct expr_node_list{
     expr_node** end;

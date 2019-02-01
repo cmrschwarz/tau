@@ -26,6 +26,4 @@ int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
 int parser_parse_file(parser* p, file* f);
 parse_error parse_expression(parser* p, expr_node** en);
-parse_error parse_expression_p(
-    parser* p, ureg prec, expr_node** en, ureg* end, bool fill_src_range
-);
+parse_error parse_expression_p(parser* p, ureg prec, expr_node** en);

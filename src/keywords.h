@@ -15,7 +15,6 @@ typedef enum PACK_ENUM keyword_id{
     KW_PROTECTED,
     KW_PRIVATE,
     KW_STATIC,
-    KW_VIRTUAL,
     
     KW_AS,
     KW_FUNC,

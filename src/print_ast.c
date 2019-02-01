@@ -6,12 +6,16 @@
 int print_astn(ast_node* astn){
     return 0;
 }
+int pc(char c){
+   putchar(c);
+}
 int p(char* c){
     if(c == NULL)c = "unknown";
     fputs(c, stdout);
     fflush(stdout);
     return 0;
 }
+
 int print_expr_list(expr_node_list* enl){
     int r = 17; //don't print comma on first iteration :)
     expr_node** n = (expr_node**)ptradd(enl, sizeof(expr_node_list));
@@ -29,29 +33,26 @@ int print_expr(expr_node* en){
             p(((en_str_value*)en)->value);
             break;
         case ENT_BINARY_LITERAL:
-            putchar('\'');
+            pc('\'');
             p(((en_str_value*)en)->value);
-            putchar('\'');
+            pc('\'');
             break;
         case ENT_STRING_LITERAL:
-            putchar('"');
+            pc('"');
             p(((en_str_value*)en)->value);
-            putchar('"');
+            pc('"');
             break;
         case ENT_OP_BINARY:{
             en_op_binary* b = (en_op_binary*)en;
-            putchar('(');
             print_expr(b->lhs);
-            putchar(' ');
+            pc(' ');
             p(op_to_str(en->op_type));
-            putchar(' ');
+            pc(' ');
             print_expr(b->rhs);   
-            putchar(')');
             break;
         }
         case ENT_OP_UNARY:{
             en_op_unary* u = (en_op_unary*)en;
-            putchar('(');
             if (is_unary_op_postfix(en->op_type)){
                 print_expr(u->child);
                 p(op_to_str(en->op_type));
@@ -60,33 +61,38 @@ int print_expr(expr_node* en){
                 p(op_to_str(en->op_type));
                 print_expr(u->child);
             }
-            putchar(')');
             break;
         }
         case ENT_ARRAY:{
-            putchar('{');
+            pc('{');
             print_expr_list(&((en_array*)en)->elements);
-            putchar('}');
+            pc('}');
         }break;
         case ENT_TUPLE:{
-            putchar('[');
+            pc('[');
             print_expr_list(&((en_tuple*)en)->elements);
-            putchar(']');
+            pc(']');
         }break;
         case ENT_OP_CALL:{
             en_call* c = (en_call*)en;
             print_expr(c->lhs);
-            putchar('(');
+            pc('(');
             print_expr_list(&c->args);
-            putchar(')');
+            pc(')');
         }break;
         case ENT_OP_ACCESS:{
             en_access* acc = (en_access*)en;
             print_expr(acc->lhs);
-            putchar('[');
+            pc('[');
             print_expr_list(&acc->args);
-            putchar(']');
+            pc(']');
         }break;
+        case ENT_OP_PARENTHESES:{
+            en_parentheses* pr = (en_parentheses*)en;
+            pc('(');
+            print_expr(pr->child);
+            pc(')');
+        } break;
         default: p("unknown"); return -1;
     }
     return OK;
