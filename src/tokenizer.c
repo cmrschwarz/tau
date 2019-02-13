@@ -64,8 +64,8 @@ token* tk_peek(tokenizer* tk){
     return tk_load(tk);
 }
 
-token* tk_peek_2nd(tokenizer* p){return tk_peek_nth(p, 2);}
-token* tk_peek_3rd(tokenizer* p){return tk_peek_nth(p, 3);}
+token* tk_peek_2nd(tokenizer* tk){return tk_peek_nth(tk, 2);}
+token* tk_peek_3rd(tokenizer* tk){return tk_peek_nth(tk, 3);}
 void tk_void(tokenizer* tk){
     tk_inc_iter(tk, &tk->loaded_tokens_start);
 }
@@ -228,7 +228,7 @@ static inline token* tk_unterminated_string_error(
 ){
     ureg start1 = tok_pos + ptrdiff(tk->file_buffer_pos, string_start) - 1;
     ureg start2 = tok_pos;
-    error_log_report_error_2_annotations(
+    error_log_report_annotated_twice(
         &tk->tc->error_log, ES_TOKENIZER, false,
         "unterminated string",
         tk->file,
@@ -488,7 +488,7 @@ static token* tk_load(tokenizer* tk)
                             }break;
                             case '\0': {
                                 tok->start--;
-                                error_log_report_error_2_annotations(
+                                error_log_report_annotated_twice(
                                     &tk->tc->error_log, ES_TOKENIZER, false,
                                     "unterminated block comment", tk->file,
                                     tok->start, tok->start + 1,
@@ -730,7 +730,7 @@ static token* tk_load(tokenizer* tk)
                     tk_void_char_peek(tk);
                 }
                 */
-                error_log_report_error_1_annotation(
+                error_log_report_annotated(
                     &tk->tc->error_log, ES_TOKENIZER, false,
                     "unknown token", tk->file,
                     tok->start, 

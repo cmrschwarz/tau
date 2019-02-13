@@ -56,6 +56,7 @@ int src_map_add_line(src_map* m, thread_context* tc, ureg line_start);
 src_pos src_map_get_pos(src_map* m, ureg pos);
 int src_pos_get_line_bounds(src_map* m, ureg line, ureg* start_pos, ureg* length);
 
+//TODO: find a better name for this
 src_range_packed src_range_pack_lines(thread_context* tc, ureg start, ureg end);
 src_range_packed src_range_pack(thread_context* tc, src_range* d);
 void src_range_unpack(src_range_packed r, src_range* d);

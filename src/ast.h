@@ -22,7 +22,8 @@ typedef enum PACK_ENUM ast_node_type{
     ASTNT_STRUCT,
     ASTNT_GENERIC_STRUCT,
 
-    ASTNT_VAR_DECLARATION,
+    ASTNT_VAR_DECL,
+    ASTNT_PARAM_DECL,
     
     ASTNT_FOR,
     ASTNT_FOR_EACH,
@@ -132,20 +133,6 @@ typedef struct import{
     struct include* next;
 }import;
 
-typedef struct var_decl{
-    char* name;
-    unsigned short modifiers;
-    expr_node* start_value;
-    expr_node* type;
-}var_decl;
-
-//PERF: consider allowing for this to be segmented to 
-//reduce pool wastage on overflow with very large arrays
-typedef struct var_decl_list{
-    struct var_decl_list* next;
-    var_decl decl;
-}var_decl_list;
-
 typedef struct ast_node{
     ast_node_type type;
     astn_flags flags;
@@ -156,12 +143,19 @@ typedef struct named_ast_node{
     ast_node astn;
     char* name;
     struct named_ast_node* parent;
+    src_range_packed decl_range;
 }named_ast_node;
 
 typedef struct astn_expr{
     ast_node astn;
     expr_node* expr;
 }astn_expr;
+
+typedef struct astn_param_decl{
+    named_ast_node nastn;
+    expr_node* type;
+    expr_node* default_value;
+}astn_param_decl;
 
 typedef struct astn_module{
     named_ast_node nastn;
@@ -175,16 +169,23 @@ typedef struct astn_extend{
     ast_node* body;
 }astn_extend;
 
+//TODO: implement named arguments
+typedef struct astn_named_argument{
+    struct astn_named_argument* next;
+    char* name;
+    astn_expr* value;
+}astn_named_argument;
 
 typedef struct astn_function{
     named_ast_node nastn;
-    var_decl_list parameters;
+    astn_param_decl* params;
+    ast_node* body;
 }astn_function;
 
 typedef struct astn_generic_function{
     named_ast_node nastn;
-    var_decl_list generic_parameters;
-    var_decl_list parameters;
+    astn_param_decl* generic_parameters;
+    astn_param_decl* parameters;
 }astn_generic_function;
 
 typedef struct astn_struct{
@@ -194,14 +195,15 @@ typedef struct astn_struct{
 
 typedef struct astn_generic_struct{
     named_ast_node nastn;
-    var_decl_list generic_parameters;
+    astn_param_decl* generic_parameters;
     ast_node* body;
 }astn_generic_struct;
 
-typedef struct astn_var_declaration{
+typedef struct astn_var_decl{
     named_ast_node nastn;
-    var_decl decl;
-}astn_var_declaration;
+    expr_node* type;
+    expr_node* value;
+}astn_var_decl;
 
 typedef struct astn_if{
     ast_node astn;
@@ -222,6 +224,12 @@ typedef struct expr_node{
     expr_node_type op_type;
     src_range_packed srange;
 }expr_node;
+
+
+typedef struct expr_node_le{
+    struct expr_node_le* next;
+    expr_node en;
+}expr_node_le;
 
 typedef struct en_parentheses{
     expr_node en;
@@ -282,7 +290,6 @@ typedef struct en_member_access{
     expr_node* lhs;
     expr_node* rhs;
 }en_member_access;
-
 
 typedef struct en_tuple{
     expr_node en;

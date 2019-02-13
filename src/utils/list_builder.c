@@ -47,7 +47,7 @@ void** list_builder_pop_list(
 ){
     ureg size = 0;
     list_build_segment* s = b->head_segment;
-    if(s <= list_start && s->end > list_start){
+    if((void**)s <= list_start && s->end > list_start){
         size = ptrdiff(b->head, list_start);
         *tgt = pool_alloc(tgtmem, size + premem + postmem);
         if(!*tgt)return NULL;
@@ -59,7 +59,7 @@ void** list_builder_pop_list(
     do{
         s = s->prev;
         size += ptrdiff(s->end, s) - sizeof(list_build_segment);       
-    } while(list_start <= s || list_start >= s->end);
+    } while(list_start <= (void**)s || list_start >= s->end);
     *tgt = (void**)pool_alloc(tgtmem, size + premem + postmem);
     if(!*tgt)return NULL;
     void** h = ptradd(*tgt, premem);

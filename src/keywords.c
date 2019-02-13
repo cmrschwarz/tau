@@ -41,9 +41,10 @@ bool kw_equals(keyword_id id, string str){
 
 keyword_id kw_match(string str){
     //PERF: you could write a fancy tree match here
-    keyword_id i = KW_MODULE;
+    keyword_id i = 0;
     while(keyword_strings[i] != NULL){
         if(kw_equals(i, str))return i;
         i++;
     }
+    return KW_INVALID_KEYWORD;
 }

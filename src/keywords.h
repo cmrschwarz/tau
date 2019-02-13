@@ -3,7 +3,7 @@
 #include "utils/string.h"
 
 typedef enum PACK_ENUM keyword_id{
-    KW_MODULE,
+    KW_MODULE = 0,
     KW_IMPORT,
     KW_INCLUDE,
     KW_EXTEND,

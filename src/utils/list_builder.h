@@ -2,8 +2,8 @@
 #include "pool.h"
 
 typedef struct list_build_segment{
-    struct decl_list_build_segment* next;
-    struct decl_list_build_segment* prev;
+    struct list_build_segment* next;
+    struct list_build_segment* prev;
     void** end;
 }list_build_segment;
 

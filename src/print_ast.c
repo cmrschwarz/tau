@@ -147,6 +147,8 @@ char* op_to_str(expr_node_type t){
         case OP_POST_INCREMENT:         return "++";
         case OP_POST_DECREMENT:         return "--";
         case OP_CONST:                  return "const ";
+        case OP_SCOPE_ACCESS:           return "::";
+        case OP_MEMBER_ACCESS:          return ".";
         default:                        return NULL;
     }
     return 0;

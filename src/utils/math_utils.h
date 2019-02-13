@@ -74,3 +74,9 @@ static inline void ptrswapt(void** a, void** b, void** c){
     *a = *b;
     *b = *c;
 }
+
+static inline ureg align_size(ureg siz, ureg alignment){
+    ureg mod = siz % alignment;
+    if(mod) siz += alignment - mod;
+    return siz;
+}

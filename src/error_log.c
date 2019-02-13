@@ -65,7 +65,7 @@ void* error_log_alloc(error_log* el, ureg size){
     if(!e) error_log_report_allocation_failiure(el);
     return e;
 }
-void error_fill(
+static inline void error_fill(
     error* e,
     error_stage stage,
     bool warn,
@@ -81,8 +81,15 @@ void error_fill(
     e->position = position;
     e->message = message;
 }
+static inline void error_fill_annot(
+    error_annotation* ea, ureg start, ureg end, char* msg
+){
+    ea->start = start;
+    ea->end = end;
+    ea->annotation = msg;
+}
 
-void error_log_report_error(
+void error_log_report_simple(
     error_log* el,
     error_stage stage,
     bool warn,
@@ -95,7 +102,8 @@ void error_log_report_error(
     error_fill(e, stage, warn, ET_ERROR, message, file, position);
     error_log_report(el, e);
 }
-void error_log_report_error_1_annotation(
+
+void error_log_report_annotated(
     error_log* el,
     error_stage stage,
     bool warn,
@@ -105,14 +113,16 @@ void error_log_report_error_1_annotation(
     ureg end,
     char* annotation
 ){
-    error_1_annotation* e = (error_1_annotation*)error_log_alloc(el, sizeof(error_1_annotation));
+    error_annotated* e = (error_annotated*)error_log_alloc(
+        el, sizeof(error_annotated)
+    );
     if(!e) return;
     error_fill((error*)e, stage, warn, ET_1_ANNOT, message, file, start);
     e->end = end;
     e->annotation = annotation;
     error_log_report(el, (error*)e);
 }
-void error_log_report_error_2_annotations(
+void error_log_report_annotated_twice(
     error_log* el,
     error_stage stage,
     bool warn,
@@ -125,14 +135,48 @@ void error_log_report_error_2_annotations(
     ureg end2,
     char* annotation2
 ){
-    error_2_annotations* e = (error_2_annotations*)error_log_alloc(el, sizeof(error_2_annotations));
+    error_multi_annotated* e = (error_multi_annotated*)error_log_alloc(
+        el, sizeof(error_multi_annotated) + sizeof(error_annotated)
+    );
     if(!e) return;
-    error_fill((error*)e, stage, warn, ET_2_ANNOT, message, file, start1);
-    e->end1 = end1;
-    e->annotation1 = annotation1;
-    e->start2 = start2;
-    e->end2 = end2;
-    e->annotation2 = annotation2;
+    error_fill(
+        &e->err_annot.error, stage, warn, ET_MULTI_ANNOT, message, file, start1
+    ); 
+    e->annot_count = 1;
+    e->err_annot.annotation = annotation1;
+    e->err_annot.end = end1;
+    error_fill_annot((error_annotation*)(e+1), start2, end2, annotation2);
+    error_log_report(el, (error*)e);
+}
+void error_log_report_annotated_thrice(
+    error_log* el,
+    error_stage stage,
+    bool warn,
+    char* message,
+    file* file,
+    ureg start1,
+    ureg end1,
+    char* annotation1,
+    ureg start2,
+    ureg end2,
+    char* annotation2,
+    ureg start3,
+    ureg end3,
+    char* annotation3
+){
+    error_multi_annotated* e = (error_multi_annotated*)error_log_alloc(
+        el, sizeof(error_multi_annotated) + 2 * sizeof(error_annotated)
+    );
+    if(!e) return;
+    error_fill(
+        &e->err_annot.error, stage, warn, ET_MULTI_ANNOT, message, file, start1
+    ); 
+    e->annot_count = 2;
+    e->err_annot.annotation = annotation1;
+    e->err_annot.end = end1;
+    error_annotation* ea = (error_annotation*)(e+1); 
+    error_fill_annot(ea, start2, end2, annotation2);
+    error_fill_annot(ea + 1, start3, end3, annotation3);
     error_log_report(el, (error*)e);
 }
 
@@ -357,7 +401,7 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
     if(ep_end != ep_start) ep_pos = ep_end - 1;
     if(
         ep_end != ep_start &&
-        ep_pos->c_end + 1  >= length && 
+        ep_pos->c_end + 1 >= length && 
         length + length_diff + 4 + strlen(ep_pos->message) + 4 
         <= 
         MASTER_ERROR_LOG.sane_err_line_length
@@ -459,39 +503,49 @@ int report_error(error* e, FILE* fh, file* file){
         //TODO: multiline errors
         switch(e->type){
             case ET_1_ANNOT:{
-                error_1_annotation* e1annot = (error_1_annotation*)e;
+                error_annotated* ea = (error_annotated*)e;
                 err_points[0].line = pos.line;
                 err_points[0].c_start = pos.column;
                 err_points[0].c_end = (
-                    pos.column + (e1annot->end - e1annot->error.position)
+                    pos.column + (ea->end - ea->error.position)
                 ); 
-                err_points[0].message = e1annot->annotation;
+                err_points[0].message = ea->annotation;
                 err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
                 err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
                 err_point_count = 1;
             }break;
-            case ET_2_ANNOT:{
-                error_2_annotations* e2annot = (error_2_annotations*)e;
+            case ET_MULTI_ANNOT:{
+                error_multi_annotated* ema = (error_multi_annotated*)e;
                 err_points[0].line = pos.line;
                 err_points[0].c_start = pos.column;
                 err_points[0].c_end = (
-                    pos.column + (e2annot->end1 - e2annot->error.position)
+                    pos.column + (
+                        ema->err_annot.end - ema->err_annot.error.position
+                    )
                 );
-                err_points[0].message = e2annot->annotation1;
+                err_points[0].message = ema->err_annot.annotation;
                 err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
                 err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
-                src_pos pos2 = src_map_get_pos(
-                    &e->file->src_map, e2annot->start2
-                );
-                err_points[1].line = pos2.line;
-                err_points[1].c_start = pos2.column;
-                err_points[1].c_end = (
-                    pos2.column + (e2annot->end2 - e2annot->start2)
-                );
-                err_points[1].message = e2annot->annotation2;
-                err_points[1].message_color = ANSICOLOR_BOLD ANSICOLOR_MAGENTA;
-                err_points[1].squigly_color = ANSICOLOR_BOLD ANSICOLOR_MAGENTA;
-                err_point_count = 2;
+                error_annotation* ea = (error_annotation*)(ema+1);
+                for(ureg i = 1; i< ema->annot_count + 1; i++){
+                    src_pos posi = src_map_get_pos(
+                        &e->file->src_map, ea->start
+                    );
+                    err_points[i].line = posi.line;
+                    err_points[i].c_start = posi.column;
+                    err_points[i].c_end = (
+                        posi.column + (ea->end - ea->start)
+                    );
+                    err_points[i].message = ea->annotation;
+                    err_points[i].message_color = (
+                        ANSICOLOR_BOLD ANSICOLOR_MAGENTA
+                    );
+                    err_points[i].squigly_color = (
+                        ANSICOLOR_BOLD ANSICOLOR_MAGENTA
+                    );   
+                    ea++;
+                }
+                err_point_count = ema->annot_count + 1;
             }break;
             default: {
                 if(print_filepath(
@@ -531,7 +585,7 @@ int report_error(error* e, FILE* fh, file* file){
                 }
                 else if(err_points[start + 1].line == line + 2){
                     if(print_src_line(
-                        fh, file, line, line_nr_offset, NULL, NULL
+                        fh, file, line + 1, line_nr_offset, NULL, NULL
                     ))return ERR;
                 }
             }
@@ -651,4 +705,34 @@ bool error_log_sane_state(error_log* el){
         &&
         el->synchronization_failure_point == FAILURE_NONE
     );
+}
+
+char* error_log_cat_strings_2(error_log* e, char* s1, char* s2){
+    char* strs[2];
+    strs[0] = s1;
+    strs[1] = s2;
+    return error_log_cat_strings(e, 2, strs);
+}
+char* error_log_cat_strings_3(error_log* e, char* s1, char* s2, char* s3){
+    char* strs[3];
+    strs[0] = s1;
+    strs[1] = s2;
+    strs[2] = s3;
+    return error_log_cat_strings(e, 3, strs);
+}
+char* error_log_cat_strings(error_log* e, ureg count, char** strs){
+    ureg len = 0;
+    for(ureg i = 0; i < count; i++){
+        len += strlen(strs[i]);
+    }
+    char* str = (char*)error_log_alloc(e, align_size(len + 1, REG_BYTES));
+    if(!str)return NULL;
+    char* d = str;
+    for(ureg i = 0; i < count; i++){
+        ureg len = strlen(strs[i]);
+        memcpy(d, strs[i], len);
+        d += len;
+    }
+    *d = '\0';
+    return str;
 }

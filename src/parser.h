@@ -19,11 +19,10 @@ typedef struct parser{
     list_builder lb;
     astn_module root;
     named_ast_node* curr_parent;
+    ast_node** curr_head;
     iht iht;
 }parser;
 
 int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
-int parser_parse_file(parser* p, file* f);
-parse_error parse_expression(parser* p, expr_node** en);
-parse_error parse_expression_p(parser* p, ureg prec, expr_node** en);
+parse_error parser_parse_file(parser* p, file* f);
