@@ -14,8 +14,8 @@ static inline void tk_inc_iter(tokenizer* tk, token** t){
 }
 static inline void tk_inc_iter_n(tokenizer* tk, token** t, int n){
     ureg rem = tk->token_buffer_end - *t;
-    if (rem>=n){
-        *t+=n;
+    if (rem > n){
+        *t += n;
     }
     else{
         *t = tk->token_buffer + (n - rem);/*% TK_TOKEN_BUFFER_SIZE*/
@@ -206,7 +206,9 @@ int tk_open_stream(tokenizer* tk, file* f, FILE* stream){
 }
 int tk_open_file(tokenizer* tk, file* f){
     FILE* fs = fopen(f->path, "r");
-    if(fs == NULL) return ERR;
+    if(fs == NULL){
+        return ERR;
+    }
     return tk_open_stream(tk, f, fs);
 }
 int tk_close_file(tokenizer* tk){
