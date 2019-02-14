@@ -72,6 +72,7 @@ typedef struct master_error_log{
 }master_error_log;
 
 //MAIN THREAD ONLY
+extern master_error_log MASTER_ERROR_LOG;
 int master_error_log_init();
 void master_error_log_report(char* critical_error);
 void master_error_log_unwind(pool* memory);

@@ -9,22 +9,22 @@
 #define FAILURE_NONE ((error*)NULL)
 #define FAILURE_FIRST ((error*)UREG_MAX)
 
-#define ANSICOLOR_BLACK   "\e[30m"
-#define ANSICOLOR_RED     "\e[31m"
-#define ANSICOLOR_GREEN   "\e[32m"
-#define ANSICOLOR_YELLOW  "\e[33m"
-#define ANSICOLOR_BLUE    "\e[34m"
-#define ANSICOLOR_MAGENTA "\e[35m"
-#define ANSICOLOR_CYAN    "\e[36m"
-#define ANSICOLOR_WHITE   "\e[37m"
-#define ANSICOLOR_BOLD    "\e[1m"
-#define ANSICOLOR_CLEAR   "\e[0m"
+#define ANSICOLOR_BLACK   "\x1B[30m"
+#define ANSICOLOR_RED     "\x1B[31m"
+#define ANSICOLOR_GREEN   "\x1B[32m"
+#define ANSICOLOR_YELLOW  "\x1B[33m"
+#define ANSICOLOR_BLUE    "\x1B[34m"
+#define ANSICOLOR_MAGENTA "\x1B[35m"
+#define ANSICOLOR_CYAN    "\x1B[36m"
+#define ANSICOLOR_WHITE   "\x1B[37m"
+#define ANSICOLOR_BOLD    "\x1B[1m"
+#define ANSICOLOR_CLEAR   "\x1B[0m"
 
 #define pec(color) do{if(MASTER_ERROR_LOG.err_tty)pe(color);}while(false)
 #define pect(color, text) do{if(MASTER_ERROR_LOG.err_tty)pe(color text); else pe(text);}while(false)
 #define pectc(color, text, color2) do{if(MASTER_ERROR_LOG.err_tty)pe(color text color2); else pe(text);}while(false)
 #define pectct(color, text, color2, text2) do{if(MASTER_ERROR_LOG.err_tty)pe(color text color2 text2); else pe(text text2);}while(false)
-static master_error_log MASTER_ERROR_LOG;
+master_error_log MASTER_ERROR_LOG;
 
 int master_error_log_init(){
     MASTER_ERROR_LOG.global_error_count = 0;
@@ -215,7 +215,7 @@ ureg get_line_nr_offset(ureg max_line){
 }
 int print_filepath(ureg line_nr_offset, src_pos pos, file* file){
     for(ureg r = 0; r < line_nr_offset; r++)pe(" ");
-    pectc(ANSICOLOR_BLUE, "==>", ANSICOLOR_CLEAR); 
+    pectc(ANSICOLOR_BLUE, "==>", ANSICOLOR_CLEAR);
     // TODO: the column index is currently based on the number of byte,
     // not the number of unicode code points, but tools expect the latter
     fprintf(
@@ -642,8 +642,6 @@ int report_error(error* e, FILE* fh, file* file){
         while(start < err_point_count){
             ureg line = err_points[start].line;
             while(i < err_point_count && err_points[i].line == line)i++;
-            bool dot_dot_on_last = false;
-            bool print_following = false;
             if(print_src_line(
                 fh, file, line, line_nr_offset,
                 &err_points[start], &err_points[i]

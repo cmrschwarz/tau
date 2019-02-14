@@ -1,5 +1,5 @@
 #pragma once
 #include "../../threading.h"
 typedef struct thread_allocator{
-    //this doesn't need anything for now 
+    ureg alloc_count; //allocation count for debugging
 }thread_allocator;

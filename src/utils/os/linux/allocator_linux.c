@@ -30,6 +30,7 @@ ureg allocator_get_segment_size(){
 }
 
 int tal_init(thread_allocator* tal){
+    //tal->alloc_count = 0;
     return OK;
 }
 
@@ -37,6 +38,8 @@ void tal_fin(thread_allocator* tal){}
 
 
 int tal_alloc(thread_allocator* tal, ureg size, memblock* b){
+    // printf("allocation %llu\n", tal->ac);
+    // tal->alloc_count++;
     b->start = mmap(
         NULL, size, PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_UNINITIALIZED, -1, 0
@@ -66,6 +69,8 @@ int tal_realloc(thread_allocator* tal, ureg used_size, ureg new_size, memblock* 
 }
 
 void tal_free(thread_allocator* tal, memblock* b){
+    // tal->alloc_count--;
+    // printf("free %llu\n", tal->ac);
     int res = munmap(b->start, ptrdiff(b->end, b->start));
     //a failing free is UB --> trigger a segfault
     if(res)raise(SIGSEGV);

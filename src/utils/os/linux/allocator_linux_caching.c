@@ -1,4 +1,8 @@
 #include "../../plattform.h"
+
+#include "../../c_extensions.h"
+POSSIBLY_EMPTY_TL
+
 #if OS_LINUX && 0 //disabled for now
 #include "../../allocator.h"
 #include "../../threading.h"

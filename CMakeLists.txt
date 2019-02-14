@@ -29,5 +29,7 @@ set(TAUC_SRCS
 )
 add_executable(tauc ${TAUC_SRCS})
 target_include_directories(tauc PUBLIC "./src" "./deps")
-set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-pthread -lm")
+# add "-pg -no-pie" for debugging with gprof
+# add "-O3 -flto" for release
+set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-pthread -lm -Wall -pedantic")
 target_compile_options(tauc PUBLIC)

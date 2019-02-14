@@ -10,3 +10,6 @@
 #       define PACK_ENUM 
 #   endif
 #endif
+
+//prevents emtpy transation unit warnings from ISO compliant compilers
+#define POSSIBLY_EMPTY_TL typedef int _dummy_content_for_iso_compilers; 

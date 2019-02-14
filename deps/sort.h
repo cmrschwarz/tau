@@ -7,6 +7,11 @@
 #include <string.h>
 #include <stdint.h>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-variable"
+#pragma GCC diagnostic ignored "-Wunused-function"
+#pragma GCC diagnostic ignored "-Wparentheses"
+
 #ifndef SORT_NAME
 #error "Must declare SORT_NAME"
 #endif
@@ -2623,3 +2628,5 @@ void BUBBLE_SORT(SORT_TYPE *dst, const size_t size) {
 #undef SQRT_SORT_COMMON_SORT
 #undef SORT_CMP_A
 #undef BUBBLE_SORT
+
+#pragma GCC diagnostic pop
