@@ -400,7 +400,11 @@ int print_src_line(FILE* fh, file* file, ureg line, ureg max_line_length, err_po
         print_until(&bpos, &r, buffer, &after_tab, &length_diff);
         pos += r;
     }
-    if(ep_end != ep_start) ep_pos = ep_end - 1;
+    if(ep_end == ep_start) {
+        pe("\n");
+        return OK;
+    }
+    ep_pos = ep_end - 1;
     ureg msg_len = strlen(ep_pos->message);
     if(
         ep_end != ep_start &&

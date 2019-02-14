@@ -1059,6 +1059,7 @@ parse_error parse_func_decl(
         PEEK(p, t);
         if(t->type == TT_COMMA){
             head = (astn_param_decl**)&(*head)->nastn.astn.next;
+            tk_consume(&p->tk);
         }
         else if (t->type == TT_PAREN_CLOSE){
             (*head)->nastn.astn.next = NULL;
@@ -1175,7 +1176,7 @@ parse_error parse_braced_delimited_body(
             src_range_unpack(p->curr_parent->decl_range, &sr); 
             error_log_report_annotated_thrice(
                 &p->tk.tc->error_log, ES_PARSER, false, 
-                "unexpected end of file",
+                "unterminated scope",
                 p->tk.file, t->start, t->end, 
                 "reached EOF before scope was closed",
                 sr.start, sr.end, ctx,
@@ -1186,7 +1187,6 @@ parse_error parse_braced_delimited_body(
         pe = parse_statement(p, head, bpm);
         if(!pe){
             head = &(*head)->next;
-            continue;
         }
         else{
             *head = NULL;
