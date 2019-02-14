@@ -3,43 +3,128 @@
 #include "stdio.h"
 #include "error_log.h"
 
-int print_astn(ast_node* astn){
-    return 0;
-}
-int pc(char c){
+void pc(char c){
    putchar(c);
 }
-int p(char* c){
-    if(c == NULL)c = "unknown";
+void p(char* c){
     fputs(c, stdout);
     fflush(stdout);
-    return 0;
 }
-
-int print_expr_list(expr_node_list* enl){
-    int r = 17; //don't print comma on first iteration :)
-    expr_node** n = (expr_node**)ptradd(enl, sizeof(expr_node_list));
-    while(n != enl->end) {
-        if(!r)p(", ");
-        r = print_expr(*n);
-        if(r) return r;
-        n++;
+void pu(char* c){
+    if(c == NULL){
+        c = "unknown";
+    }
+    fputs(c, stdout);
+    fflush(stdout);
+}
+void print_indent(ureg indent){
+    for(ureg i=0; i<indent; i++){
+        p(MASTER_ERROR_LOG.tab_spaces);
     }
 }
-int print_expr(expr_node* en){
+void print_astn_body_braced(ast_node* body, ureg indent_old){
+    p("{\n");
+    while(body != NULL){
+        print_astn(body, indent_old + 1);
+        body = body->next;
+    }
+    print_indent(indent_old);
+    p("}\n");
+}
+void print_astn_body(ast_node* body, ureg indent){
+    while(body != NULL){
+        print_astn(body, indent);
+        body = body->next;
+    }
+}
+void print_astn_params_decl(astn_param_decl* d){
+    while(d != NULL){
+        pu(d->nastn.name);
+        pc(':');
+        if(d->type != NULL){
+            pc(' ');
+            print_expr(d->type);
+            if(d->default_value != NULL) pc(' ');
+        }
+        if(d->default_value != NULL){
+            p("= ");
+            print_expr(d->default_value);
+        }
+        d = (astn_param_decl*)d->nastn.astn.next;
+        if(d) p(", ");
+    }
+  
+}
+void print_astn(ast_node* astn, ureg indent){
+    print_indent(indent);
+    switch (astn->type){
+        case ASTNT_MODULE:{
+            astn_module* m = (astn_module*)astn;
+            p("module ");
+            if(m->nastn.name != NULL){ 
+                p(m->nastn.name);
+                pc(' ');
+            }
+            print_astn_body_braced(m->body, indent);
+        }break;
+        case ASTNT_EXPRESSION:{
+            astn_expr* e = (astn_expr*)astn;
+            print_expr(e->expr);
+            pc('\n');
+        }break;
+        case ASTNT_FUNCTION:{
+            astn_function* f = (astn_function*)astn;
+            p("func ");
+            pu(f->nastn.name);
+            p(" (");
+            print_astn_params_decl(f->params);
+            pc(')');
+            print_astn_body_braced(f->body, indent);
+        }break;
+        case ASTNT_VAR_DECL: {
+            astn_var_decl* d = (astn_var_decl*)astn; 
+            if(astn_flags_get_const(d->nastn.astn.flags)) p("const ");
+            pu(d->nastn.name);
+            pc(':');
+            if(d->type != NULL){
+                pc(' ');
+                print_expr(d->type);
+                if(d->value != NULL) pc(' ');
+            }
+            if(d->value != NULL){
+                print_expr(d->value);
+            }
+            p(";\n");
+        }break;
+        default: {
+            p("<Unkown Statement>;\n");
+        }
+    }
+}
+
+void print_expr_list(expr_node_list* enl){
+    expr_node** start = ((expr_node**)enl->end_ptr) + 1;
+    expr_node** end = *enl->end_ptr;
+    while(start != end) {
+        print_expr(*start);
+        start++;
+        if(start != end) p(", ");
+    }
+}
+void print_expr(expr_node* en){
     switch (en->type){
         case ENT_IDENTIFIER:
         case ENT_NUMBER:
-            p(((en_str_value*)en)->value);
+            pu(((en_str_value*)en)->value);
             break;
         case ENT_BINARY_LITERAL:
             pc('\'');
-            p(((en_str_value*)en)->value);
+            pu(((en_str_value*)en)->value);
             pc('\'');
             break;
         case ENT_STRING_LITERAL:
             pc('"');
-            p(((en_str_value*)en)->value);
+            pu(((en_str_value*)en)->value);
             pc('"');
             break;
         case ENT_OP_BINARY:{
@@ -93,9 +178,10 @@ int print_expr(expr_node* en){
             print_expr(pr->child);
             pc(')');
         } break;
-        default: p("unknown"); return -1;
+        default:{
+             p("<unknown expr>"); 
+        }break;
     }
-    return OK;
 }
 
 

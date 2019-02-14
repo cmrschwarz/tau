@@ -85,8 +85,8 @@ int iht_insert_pph(iht* h, parent_hash phash, named_ast_node* val){
     named_ast_node** n = &h->table_start[pos];
     while(*n != NULL){
         n++;
-        //no need to worry about infinite loop becuase
-        //we realloc at a certain fillpercentage
+        // we realloc at a certain fillpercentage
+        // so we will always find a space -> no infinite loop 
         if(n == h->table_end)n = h->table_start;
     }
     *n = val;
@@ -152,11 +152,12 @@ int iht_grow(iht* h){
     named_ast_node** old_end = h->table_end;
     h->table_start = (named_ast_node**)b.start;
     h->table_end = (named_ast_node**)b.end;
-    ureg size = ptrdiff(b.end, b.start);
+    ureg size = ptrdiff(b.end, b.start) / sizeof(named_ast_node**);
     h->size_bits = ulog2(size);
     h->hash_mask = size - 1;
     h->grow_on_elem_count = size / 4 * 3;
     named_ast_node** z = old;
+    h->elem_count=0;
     while(z != old_end){
         if(*z != NULL && *z != &tombstone_node){
             iht_insert(h, *z);

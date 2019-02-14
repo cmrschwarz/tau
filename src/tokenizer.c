@@ -173,12 +173,13 @@ static inline char tk_consume_char(tokenizer* tk){
 
 int tk_init(tokenizer* tk, thread_context* tc){
     memblock b;
-    if(tal_alloc(&tk->tc->tal, allocator_get_segment_size() * 8, &b)) return-1;
     tk->tc = tc;
+    if(tal_alloc(&tk->tc->tal, allocator_get_segment_size() * 8, &b)) return-1;
     tk->file_buffer_start = (char*)b.start;
     tk->file_buffer_end = (char*)b.end;
     tk->token_buffer_end = tk->token_buffer + TK_TOKEN_BUFFER_SIZE;
     tk->loaded_tokens_start = tk->token_buffer; //head is set on open_file
+   
     return 0;
 }
 void tk_fin(tokenizer* tk){

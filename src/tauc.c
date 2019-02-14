@@ -1,5 +1,6 @@
 #include "tauc.h"
 #include "error_log.h"
+#include "print_ast.h"
 #include "utils/allocator.h"
 
 struct tauc TAUC;
@@ -31,8 +32,12 @@ int tauc_run(int argc, char** argv){
     if(r) return ERR;
     file* f = (file*)pool_alloc(&TAUC.permmem, sizeof(file));
     if(!f)return -1;
-    if(file_init(f,&TAUC.main_thread_context, "./test/test.tau")) return ERR;
-    if(parser_parse_file(&TAUC.main_thread_context.stage.s1.p, f)) return ERR;
+    if(file_init(
+        f,&TAUC.main_thread_context,
+        "/media/nas_mirror/projects/tau/test/test.tau"
+    )) return ERR;
+    if(parser_parse_file(&TAUC.main_thread_context.stage.s1.p, f))return ERR;
+    print_astn((ast_node*)&TAUC.main_thread_context.stage.s1.p.root, 0);
     return OK;
 }
 

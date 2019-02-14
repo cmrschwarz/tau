@@ -18,8 +18,8 @@ typedef struct list_builder{
 int list_builder_init(list_builder* b, pool* memsrc, ureg initial_capacity);
 void** list_builder_start(list_builder* b);
 int list_builder_add(list_builder* b, void* el);
-//returns end of allocated list or NULL on failiure
+//returns begin of allocated list or NULL on failiure
 void** list_builder_pop_list(
-    list_builder* b, void** list_start, void*** tgt, pool* tgtmem,
-    ureg premem, ureg postmem
+    list_builder* b, void** list_start, void*** tgt, ureg* count, 
+    pool* tgtmem, ureg premem, ureg postmem
 );

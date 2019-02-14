@@ -237,7 +237,7 @@ typedef struct en_parentheses{
 }en_parentheses;
 
 typedef struct expr_node_list{
-    expr_node** end;
+    expr_node*** end_ptr;
 }expr_node_list;
 
 typedef struct en_op_binary{
