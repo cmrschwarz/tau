@@ -1,0 +1,59 @@
+visibility_modifier = 'private' | 'protected' | 'public';
+access_modifier = 'const' | 'mut';
+name = string;
+identifier = (
+    string |
+    module_decl | struct_decl | union_decl | trait_decl | alias_decl |
+    (identifier, ['::', identifier])
+);
+
+file = {module_body_stmt};
+
+module_body_stmt = comptime_stmt | [visibility_modifier], (
+    require_stmt | import_stmt | include_stmt | module_decl | extend_stmt | 
+    struct_decl | union_decl | trait_decl | implement_stmt |
+    var_decl | func_decl |  alias_decl
+);
+module_body = '{' , {module_body_stmt}, '}';
+
+struct_body_stmt = comptime_stmt | [visibility_modifier], (
+    struct_decl | union_decl | trait_decl | inherit_stmt | implement_stmt | 
+    var_decl | func_decl |  alias_decl 
+);
+struct_body = '{' , {struct_body_stmt}, '}';
+
+implement_stmt = [visibility_modifier], func_decl;
+implement_body = ';' | '{', {implement_stmt}, '}';
+
+func_body_stmt = (
+    import_stmt | include_stmt | module_decl | extend_stmt | 
+    struct_decl | union_decl | trait_decl | implement_stmt |
+    var_decl | func_decl |  alias_decl | 
+    expr_stmt | comptime_stmt
+);
+func_body = '{' , {func_body_stmt}, '}';
+
+require_stmt = 'require' , string_literal, ';';
+import_stmt = 'import', identifier, [['::'], *], ['alias', '*' | name], ';';
+include_stmt = 'include', 
+module_decl = 'module', [name, [generic_param_list]], module_body; 
+extend_stmt = 'extend', name, [generic_arg_list], 
+
+struct_decl = 'struct', [name, [generic_param_list]] , struct_body;
+union_decl = 'union', [name, [generic_param_list]], struct_body;
+trait_decl = 'trait', [name, [generic_param_list]], struct_body;
+inherit_stmt = 'inherit', identifier;
+implement_stmt = 'implement', identifier, [for, identifier], implement_body;
+
+basic_var_decl = name, ':', (type ['=' value]) | ('=' value);
+generic_param_list = '[', {basic_var_decl}, ']';
+param_list = '(', {[access_modifier], basic_var_decl}, ')';
+
+func_decl = (
+    'func', name, [generic_param_list], param_list, ['->' type], func_body
+);
+var_decl = [access_modifier], basic_var_decl;
+alias_decl = 'alias', name, '->', type | value, ';';
+
+
+
