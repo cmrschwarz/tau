@@ -53,6 +53,7 @@ void file_fin(file* f);
 int src_map_init(src_map* m, thread_context* tc, bool is_paste_area);
 int src_map_fin(src_map* m);
 int src_map_add_line(src_map* m, thread_context* tc, ureg line_start);
+//this can't fail without programmer's error as the storage is already allocated
 src_pos src_map_get_pos(src_map* m, ureg pos);
 int src_pos_get_line_bounds(src_map* m, ureg line, ureg* start_pos, ureg* length);
 
