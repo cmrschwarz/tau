@@ -4,12 +4,12 @@
 #include "utils/string.h"
 typedef struct thread_context thread_context;
 // LAYOUT EXTERNAL: [1, change src_map(1 bit), pointer to external
-// src_range_packed shifted right by 2 bits ] LAYOUT INTERNAL: [0, start
+// src_range shifted right by 2 bits ] LAYOUT INTERNAL: [0, start
 // (UREG_BITS - 8 bits), length (7 bits)]
 // TODO: better would be :
-// LAYOUT EXTERNAL: [pointer to external src_range, change src_map(1 bit), 1]
-// LAYOUT INTERNAL: [start (UREG_BITS - 8 bits), length (7 bits), 1]
-typedef ureg src_range_packed;
+// LAYOUT EXTERNAL: [pointer to external src_range_large, change src_map(1 bit),
+// 1] LAYOUT INTERNAL: [start (UREG_BITS - 8 bits), length (7 bits), 1]
+typedef ureg src_range;
 static const ureg SRC_RANGE_INVALID = ((ureg)0x1) << (REG_BITS - 1);
 
 typedef struct line_store {
@@ -29,16 +29,16 @@ typedef struct file {
     char* path;
 } file;
 
-typedef struct src_range {
-    src_map* map; // this is NULL if the src_range_packed doesn't change it
+typedef struct src_range_large {
+    src_map* map; // this is NULL if the src_range doesn't change it
     ureg start;
     ureg end;
-} src_range;
+} src_range_large;
 
 typedef struct paste_area {
     src_map src_map;
     struct file* origin_file;
-    src_range pasted_from;
+    src_range_large pasted_from;
 } paste_area;
 
 typedef struct src_pos {
@@ -60,6 +60,6 @@ int src_pos_get_line_bounds(
     src_map* m, ureg line, ureg* start_pos, ureg* length);
 
 // TODO: find a better name for this
-src_range_packed src_range_pack_lines(thread_context* tc, ureg start, ureg end);
-src_range_packed src_range_pack(thread_context* tc, src_range* d);
-void src_range_unpack(src_range_packed r, src_range* d);
+src_range src_range_pack_lines(thread_context* tc, ureg start, ureg end);
+src_range src_range_pack(thread_context* tc, src_range_large* d);
+void src_range_unpack(src_range r, src_range_large* d);

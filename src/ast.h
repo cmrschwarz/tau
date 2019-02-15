@@ -12,7 +12,8 @@ typedef enum PACK_ENUM access_modifier {
     AM_PUBLIC = 3,
 } access_modifier;
 
-typedef enum PACK_ENUM ast_node_type {
+typedef enum PACK_ENUM astnt {
+    // statement nodes
     ASTNT_MODULE,
     ASTNT_EXTEND,
 
@@ -44,9 +45,11 @@ typedef enum PACK_ENUM ast_node_type {
     ASTNT_IF_LET,
 
     ASTNT_EXPRESSION,
-} ast_node_type;
 
-typedef enum PACK_ENUM expr_node_type {
+    // expression / statement hybrid
+    ENT_LABEL,
+
+    // expression nodes
     ENT_NUMBER,
     ENT_STRING_LITERAL,
     ENT_BINARY_LITERAL,
@@ -57,16 +60,23 @@ typedef enum PACK_ENUM expr_node_type {
     ENT_TYPE_ARRAY,
     ENT_TYPE_SLICE,
 
-    ENT_OP_CALL,
-    OP_CALL = ENT_OP_CALL,
-
-    ENT_OP_ACCESS,
-    OP_ACCESS = ENT_OP_ACCESS,
-
-    ENT_OP_PARENTHESES,
-    OP_PARENTHESES = ENT_OP_PARENTHESES,
-
+    ENT_OP_UNARY,
     ENT_OP_BINARY,
+
+    ENT_OP_CALL,
+    ENT_OP_ACCESS,
+    ENT_OP_PARENTHESES,
+} astnt;
+
+typedef enum PACK_ENUM op_type {
+    // special ops
+    OP_NOOP, // invalid op, used for return values
+
+    OP_CALL,
+    OP_ACCESS,
+    OP_PARENTHESES,
+
+    // binary ops
     OP_MEMBER_ACCESS,
     OP_SCOPE_ACCESS,
     OP_CAST,
@@ -102,7 +112,7 @@ typedef enum PACK_ENUM expr_node_type {
     OP_BITWISE_XOR_ASSIGN,
     OP_BITWISE_NOT_ASSIGN,
 
-    ENT_OP_UNARY,
+    // unary ops
     OP_CONST,
     OP_DEREF,      // *
     OP_POINTER_OF, // %
@@ -118,206 +128,202 @@ typedef enum PACK_ENUM expr_node_type {
     OP_PRE_DECREMENT,
     OP_POST_INCREMENT,
     OP_POST_DECREMENT,
-    OP_NOOP, // invalid op, used for return values
-} expr_node_type;
+} op_type;
 
-typedef struct expr_node expr_node;
-typedef struct astn_module astn_module;
+typedef struct stmt_module stmt_module;
 
 typedef struct import {
     bool resolved;
     union {
         char* module_name;
-        astn_module* module;
+        stmt_module* module;
     } target;
     struct include* next;
 } import;
 
-typedef struct ast_node {
-    ast_node_type type;
+typedef astnt astn;
+typedef struct stmt {
+    astnt type;
     astn_flags flags;
-    struct ast_node* next;
-} ast_node;
+    struct stmt* next;
+} stmt;
 
-typedef struct named_ast_node {
-    ast_node astn;
+typedef struct named_stmt {
+    stmt stmt;
     char* name;
-    struct named_ast_node* parent;
-    src_range_packed decl_range;
-} named_ast_node;
+    struct named_stmt* parent;
+    src_range decl_range;
+} named_stmt;
 
-typedef struct astn_expr {
-    ast_node astn;
-    expr_node* expr;
-    src_range_packed stmt_range;
-} astn_expr;
+typedef struct expr {
+    astnt type;
+    op_type op_type;
+    src_range srange;
+} expr;
 
-typedef struct astn_param_decl {
-    named_ast_node nastn;
-    expr_node* type;
-    expr_node* default_value;
-} astn_param_decl;
+typedef struct expr_label {
+    // this is a named statement to allow it to be in the IHT
+    // this is the reason why exprs dont't have astn* but astn*
+    // we use the next pointer from astn to store the child expression
+    named_stmt nstmt;
+} expr_label;
 
-typedef struct astn_module {
-    named_ast_node nastn;
+typedef struct stmt_expr {
+    stmt stmt;
+    astn* expr;
+    src_range stmt_range;
+} stmt_expr;
+
+typedef struct stmt_param_decl {
+    named_stmt nstmt;
+    astn* type;
+    astn* default_value;
+} stmt_param_decl;
+
+typedef struct stmt_module {
+    named_stmt nstmt;
     import* imports;
-    ast_node* body;
-} astn_module;
+    stmt* body;
+} stmt_module;
 
-typedef struct astn_extend {
-    named_ast_node nastn;
+typedef struct stmt_extend {
+    named_stmt nstmt;
     import* imports;
-    ast_node* body;
-} astn_extend;
+    stmt* body;
+} stmt_extend;
 
 // TODO: implement named arguments
-typedef struct astn_named_argument {
-    struct astn_named_argument* next;
-    char* name;
-    astn_expr* value;
-} astn_named_argument;
 
-typedef struct astn_function {
-    named_ast_node nastn;
-    astn_param_decl* params;
-    ast_node* body;
-} astn_function;
+typedef struct stmt_function {
+    named_stmt nstmt;
+    stmt_param_decl* params;
+    stmt* body;
+} stmt_function;
 
-typedef struct astn_generic_function {
-    named_ast_node nastn;
-    astn_param_decl* generic_params;
-    astn_param_decl* params;
-    ast_node* body;
-} astn_generic_function;
+typedef struct stmt_generic_function {
+    named_stmt nstmt;
+    stmt_param_decl* generic_params;
+    stmt_param_decl* params;
+    stmt* body;
+} stmt_generic_function;
 
-typedef struct astn_struct {
-    named_ast_node nastn;
-    ast_node* body;
-} astn_struct;
+typedef struct stmt_struct {
+    named_stmt nstmt;
+    stmt* body;
+} stmt_struct;
 
-typedef struct astn_generic_struct {
-    named_ast_node nastn;
-    astn_param_decl* generic_params;
-    ast_node* body;
-} astn_generic_struct;
+typedef struct stmt_generic_struct {
+    named_stmt nstmt;
+    stmt_param_decl* generic_params;
+    stmt* body;
+} stmt_generic_struct;
 
-typedef struct astn_var_decl {
-    named_ast_node nastn;
-    expr_node* type;
-    expr_node* value;
-} astn_var_decl;
+typedef struct stmt_var_decl {
+    named_stmt nstmt;
+    astn* type;
+    astn* value;
+} stmt_var_decl;
 
-typedef struct astn_if {
-    ast_node astn;
-    expr_node* condition;
-    ast_node* then_body;
-    ast_node* else_body;
-} astn_if;
+typedef struct stmt_if {
+    stmt astn;
+    astn* condition;
+    stmt* then_body;
+    stmt* else_body;
+} stmt_if;
 
-typedef struct astn_while {
-    ast_node astn;
-    expr_node* condition;
-    ast_node* body;
-    ast_node* finally_body;
-} astn_while;
+typedef struct stmt_while {
+    stmt astn;
+    astn* condition;
+    stmt* body;
+    stmt* finally_body;
+} stmt_while;
 
-typedef struct expr_node {
-    expr_node_type type;
-    expr_node_type op_type;
-    src_range_packed srange;
-} expr_node;
+typedef struct expr_parentheses {
+    expr ex;
+    astn* child;
+} expr_parentheses;
 
-typedef struct expr_node_le {
-    struct expr_node_le* next;
-    expr_node en;
-} expr_node_le;
+typedef struct expr_list {
+    astn*** end_ptr;
+} expr_list;
 
-typedef struct en_parentheses {
-    expr_node en;
-    expr_node* child;
-} en_parentheses;
+typedef struct expr_op_binary {
+    expr ex;
+    astn* lhs;
+    astn* rhs;
+} expr_op_binary;
 
-typedef struct expr_node_list {
-    expr_node*** end_ptr;
-} expr_node_list;
+typedef struct expr_op_unary {
+    expr ex;
+    astn* child;
+} expr_op_unary;
 
-typedef struct en_op_binary {
-    expr_node en;
-    expr_node* lhs;
-    expr_node* rhs;
-} en_op_binary;
-
-typedef struct en_op_unary {
-    expr_node en;
-    expr_node* child;
-} en_op_unary;
-
-typedef struct en_call {
-    expr_node en;
-    expr_node* lhs;
-    expr_node_list args;
-} en_call;
+typedef struct expr_call {
+    expr ex;
+    astn* lhs;
+    expr_list args;
+} expr_call;
 
 // PERF: maybe provide an optimized variant for one arg
-typedef struct en_access {
-    expr_node en;
-    expr_node* lhs;
-    expr_node_list args;
-} en_access;
+typedef struct expr_access {
+    expr ex;
+    astn* lhs;
+    expr_list args;
+} expr_access;
 
-typedef struct en_str_value {
-    expr_node en;
+typedef struct expr_str_value {
+    expr ex;
     char* value;
-} en_str_value;
-typedef en_str_value en_number;
-typedef en_str_value en_identifier;
-typedef en_str_value en_string_literal;
-typedef en_str_value en_binary_literal;
+} expr_str_value;
+typedef expr_str_value expr_number;
+typedef expr_str_value expr_identifier;
+typedef expr_str_value expr_string_literal;
+typedef expr_str_value expr_binary_literal;
 
-typedef struct en_cast {
-    expr_node en;
-    expr_node* value;
-    expr_node* target_type;
-} en_cast;
+typedef struct expr_cast {
+    expr ex;
+    astn* value;
+    astn* target_type;
+} expr_cast;
 
-typedef struct en_scope_access {
-    expr_node en;
-    expr_node* lhs;
-    expr_node* rhs;
-} en_scope_access;
+typedef struct expr_scope_access {
+    expr ex;
+    astn* lhs;
+    astn* rhs;
+} expr_scope_access;
 
-typedef struct en_member_access {
-    expr_node en;
-    expr_node* lhs;
-    expr_node* rhs;
-} en_member_access;
+typedef struct expr_member_access {
+    expr ex;
+    astn* lhs;
+    astn* rhs;
+} expr_member_access;
 
-typedef struct en_tuple {
-    expr_node en;
-    expr_node_list elements;
-} en_tuple;
+typedef struct expr_tuple {
+    expr ex;
+    expr_list elements;
+} expr_tuple;
 
-typedef struct en_array {
-    expr_node en;
-    expr_node_list elements;
-} en_array;
+typedef struct expr_array {
+    expr ex;
+    expr_list elements;
+} expr_array;
 
-typedef struct en_type_array {
-    expr_node en;
-    expr_node* inside;
-    expr_node* rhs;
-} en_type_array;
+typedef struct expr_type_array {
+    expr ex;
+    astn* inside;
+    astn* rhs;
+} expr_type_array;
 
-typedef struct en_type_slice {
-    expr_node en;
-    expr_node* rhs;
-} en_type_slice;
+typedef struct expr_type_slice {
+    expr ex;
+    astn* rhs;
+} expr_type_slice;
 
-typedef struct en_lambda {
-    expr_node en;
-    expr_node_list params;
-    ast_node* body;
-} en_lambda;
+typedef struct expr_lambda {
+    expr ex;
+    expr_list params;
+    stmt* body;
+} expr_lambda;
 
 void astn_flags_set_access_mod(astn_flags* f, access_modifier m);
 access_modifier astn_flags_get_access_mod(astn_flags f);

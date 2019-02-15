@@ -10,7 +10,7 @@
 #    define IHT_HASH_PRIME 16777619U
 #endif
 
-static named_ast_node tombstone_node = {0};
+static named_stmt tombstone_node = {0};
 
 static inline ureg iht_hash_string(ureg hash, const char* key)
 {
@@ -34,7 +34,7 @@ static inline ureg iht_hash_pointer(ureg hash, void* parent)
     return hash;
 }
 
-parent_hash iht_get_parent_hash(named_ast_node* parent)
+parent_hash iht_get_parent_hash(named_stmt* parent)
 {
     return iht_hash_pointer(IHT_START_HASH, parent);
 }
@@ -52,14 +52,14 @@ int iht_init_with_capacity(iht* h, ureg capacity, thread_allocator* tal)
 {
     memblock b;
     // we alloc zero initialized so all values are NULL pointers
-    if (tal_allocz(tal, capacity * sizeof(named_ast_node*), &b)) return -1;
+    if (tal_allocz(tal, capacity * sizeof(named_stmt*), &b)) return -1;
     h->tal = tal;
     // this limits the "used size" to a power of 2
     // elements after that size will be used for colliding elements,
     // but the hash function will not give out their indices directly
     h->size_bits = ulog2(capacity);
-    h->table_start = (named_ast_node**)b.start;
-    h->table_end = (named_ast_node**)b.end;
+    h->table_start = (named_stmt**)b.start;
+    h->table_end = (named_stmt**)b.end;
     h->hash_mask = (1 << h->size_bits) - 1;
     h->elem_count = 0;
     h->grow_on_elem_count = capacity / 4 * 3; // grow on 75 %
@@ -69,7 +69,7 @@ int iht_init_with_capacity(iht* h, ureg capacity, thread_allocator* tal)
 int iht_init(iht* h, thread_allocator* tal)
 {
     return iht_init_with_capacity(
-        h, allocator_get_segment_size() / sizeof(named_ast_node*), tal);
+        h, allocator_get_segment_size() / sizeof(named_stmt*), tal);
 }
 void iht_fin(iht* h)
 {
@@ -79,14 +79,14 @@ void iht_fin(iht* h)
     tal_free(h->tal, &b);
     ;
 }
-int iht_insert_pph(iht* h, parent_hash phash, named_ast_node* val)
+int iht_insert_pph(iht* h, parent_hash phash, named_stmt* val)
 {
     if (h->elem_count == h->grow_on_elem_count) {
         if (iht_grow(h)) return -1;
     }
     h->elem_count++;
     ureg pos = iht_hashpos(h, phash, val->name);
-    named_ast_node** n = &h->table_start[pos];
+    named_stmt** n = &h->table_start[pos];
     while (*n != NULL) {
         n++;
         // we realloc at a certain fillpercentage
@@ -96,16 +96,16 @@ int iht_insert_pph(iht* h, parent_hash phash, named_ast_node* val)
     *n = val;
     return 0;
 }
-int iht_insert(iht* h, named_ast_node* val)
+int iht_insert(iht* h, named_stmt* val)
 {
     return iht_insert_pph(h, iht_get_parent_hash(val->parent), val);
 }
 
-named_ast_node*
-iht_get_pph(iht* h, parent_hash phash, named_ast_node* parent, const char* name)
+named_stmt*
+iht_get_pph(iht* h, parent_hash phash, named_stmt* parent, const char* name)
 {
     ureg pos = iht_hashpos(h, phash, name);
-    named_ast_node** n = &h->table_start[pos];
+    named_stmt** n = &h->table_start[pos];
     while (*n != NULL) {
         if (*n == NULL) return NULL;
         if ((**n).parent == parent && strcmp((**n).name, name) == 0)
@@ -115,16 +115,16 @@ iht_get_pph(iht* h, parent_hash phash, named_ast_node* parent, const char* name)
     }
     return NULL;
 }
-named_ast_node* iht_get(iht* h, named_ast_node* parent, const char* name)
+named_stmt* iht_get(iht* h, named_stmt* parent, const char* name)
 {
     return iht_get_pph(h, iht_get_parent_hash(parent), parent, name);
 }
 
-named_ast_node* iht_remove_pph(
-    iht* h, parent_hash phash, named_ast_node* parent, const char* name)
+named_stmt*
+iht_remove_pph(iht* h, parent_hash phash, named_stmt* parent, const char* name)
 {
     ureg pos = iht_hashpos(h, phash, name);
-    named_ast_node** n = &h->table_start[pos];
+    named_stmt** n = &h->table_start[pos];
     while (*n == NULL) {
         if ((**n).parent == parent && strcmp((**n).name, name) == 0) {
             h->elem_count--;
@@ -136,16 +136,15 @@ named_ast_node* iht_remove_pph(
     }
     return NULL;
 }
-named_ast_node* iht_remove(iht* h, named_ast_node* parent, const char* name)
+named_stmt* iht_remove(iht* h, named_stmt* parent, const char* name)
 {
     return iht_remove_pph(h, iht_get_parent_hash(parent), parent, name);
 }
 
-named_ast_node*
-iht_remove_node_pph(iht* h, parent_hash phash, named_ast_node* node)
+named_stmt* iht_remove_node_pph(iht* h, parent_hash phash, named_stmt* node)
 {
     ureg pos = iht_hashpos(h, phash, node->name);
-    named_ast_node** n = &h->table_start[pos];
+    named_stmt** n = &h->table_start[pos];
     while (*n != node) {
         if (*n == NULL) return NULL;
         n++;
@@ -155,7 +154,7 @@ iht_remove_node_pph(iht* h, parent_hash phash, named_ast_node* node)
     *n = &tombstone_node;
     return *n;
 }
-named_ast_node* iht_remove_node(iht* h, named_ast_node* node)
+named_stmt* iht_remove_node(iht* h, named_stmt* node)
 {
     return iht_remove_node_pph(h, iht_get_parent_hash(node->parent), node);
 }
@@ -165,15 +164,15 @@ int iht_grow(iht* h)
     memblock b;
     if (tal_allocz(h->tal, ptrdiff(h->table_end, h->table_start) * 2, &b))
         return -1;
-    named_ast_node** old = h->table_start;
-    named_ast_node** old_end = h->table_end;
-    h->table_start = (named_ast_node**)b.start;
-    h->table_end = (named_ast_node**)b.end;
-    ureg size = ptrdiff(b.end, b.start) / sizeof(named_ast_node**);
+    named_stmt** old = h->table_start;
+    named_stmt** old_end = h->table_end;
+    h->table_start = (named_stmt**)b.start;
+    h->table_end = (named_stmt**)b.end;
+    ureg size = ptrdiff(b.end, b.start) / sizeof(named_stmt**);
     h->size_bits = ulog2(size);
     h->hash_mask = size - 1;
     h->grow_on_elem_count = size / 4 * 3;
-    named_ast_node** z = old;
+    named_stmt** z = old;
     h->elem_count = 0;
     while (z != old_end) {
         if (*z != NULL && *z != &tombstone_node) {

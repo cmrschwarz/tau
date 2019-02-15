@@ -41,7 +41,7 @@ int tauc_run(int argc, char** argv)
             "/media/nas_mirror/projects/tau/test/test.tau"))
         return ERR;
     if (parser_parse_file(&TAUC.main_thread_context.stage.s1.p, f)) return ERR;
-    print_astn((ast_node*)&TAUC.main_thread_context.stage.s1.p.root, 0);
+    print_astn((stmt*)&TAUC.main_thread_context.stage.s1.p.root, 0);
     return OK;
 }
 
