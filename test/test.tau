@@ -1,6 +1,0 @@
-func main(
-    args: Slice[string, bar], foo: int
-){
-    x: int = ("foo"(42, 12) + 3) / 7;
-}
-const foo: int; 
