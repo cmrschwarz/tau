@@ -83,7 +83,19 @@ void print_astn(ast_node* astn, ureg indent)
         astn_function* f = (astn_function*)astn;
         p("func ");
         pu(f->nastn.name);
-        p(" (");
+        p("(");
+        print_astn_params_decl(f->params);
+        pc(')');
+        print_astn_body_braced(f->body, indent);
+    } break;
+    case ASTNT_GENERIC_FUNCTION: {
+        astn_generic_function* f = (astn_generic_function*)astn;
+        p("func ");
+        pu(f->nastn.name);
+        p("[");
+        print_astn_params_decl(f->generic_params);
+        pc(']');
+        p("(");
         print_astn_params_decl(f->params);
         pc(')');
         print_astn_body_braced(f->body, indent);

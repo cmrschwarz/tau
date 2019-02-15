@@ -184,8 +184,9 @@ typedef struct astn_function {
 
 typedef struct astn_generic_function {
     named_ast_node nastn;
-    astn_param_decl* generic_parameters;
-    astn_param_decl* parameters;
+    astn_param_decl* generic_params;
+    astn_param_decl* params;
+    ast_node* body;
 } astn_generic_function;
 
 typedef struct astn_struct {
@@ -195,7 +196,7 @@ typedef struct astn_struct {
 
 typedef struct astn_generic_struct {
     named_ast_node nastn;
-    astn_param_decl* generic_parameters;
+    astn_param_decl* generic_params;
     ast_node* body;
 } astn_generic_struct;
 

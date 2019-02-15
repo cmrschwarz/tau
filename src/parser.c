@@ -19,6 +19,7 @@ typedef enum body_parser_mode {
     BPM_MODULE,
     BPM_STRUCT,
     BPM_FUNCTION,
+    BPM_GENERIC_FUNCTION,
     BPM_LAMBDA,
 } body_parser_mode;
 
@@ -253,6 +254,17 @@ static inline int parser_error_2a(
 static inline int parser_error_1at(parser* p, char* msg, token* t, char* annot)
 {
     return parser_error_1a(p, msg, t->start, t->end, annot);
+}
+char* bpm_to_context_msg(body_parser_mode bpm)
+{
+    switch (bpm) {
+    case BPM_FUNCTION: return "in this function's body";
+    case BPM_GENERIC_FUNCTION: return "in this generic function's body";
+    case BPM_LAMBDA: return "in this lambda's body";
+    case BPM_STRUCT: return "in this struct's body";
+    default: panic("unexpected bpm");
+    }
+    return NULL;
 }
 static inline void parser_error_unexpected_token(
     parser* p, token* t, token_type exp_tt, char* msg, char* ctx,
@@ -950,6 +962,44 @@ parse_error parse_var_decl(
     *n = (ast_node*)vd;
     return PE_OK;
 }
+parse_error parse_param_list(
+    parser* p, named_ast_node* parent, astn_param_decl** tgt, bool generic,
+    ureg ctx_start, ureg ctx_end, char* msg)
+{
+    token* t;
+    token_type end_tok = generic ? TT_BRACKET_CLOSE : TT_PAREN_CLOSE;
+    PEEK(p, t);
+    if (t->type == end_tok) {
+        tk_void(&p->tk);
+        *tgt = NULL;
+        return PE_OK;
+    }
+    do {
+        parse_error pe =
+            parse_param_decl(p, parent, tgt, ctx_start, ctx_end, msg);
+        if (pe) {
+            *tgt = NULL;
+            return pe;
+        }
+        tgt = (astn_param_decl**)&(*tgt)->nastn.astn.next;
+        PEEK(p, t);
+        if (t->type == TT_COMMA) {
+            tk_void(&p->tk);
+        }
+        else if (t->type != end_tok) {
+            char* e1 = generic ? "invalid generic parameter list syntax"
+                               : "invalid parameter list syntax";
+            char* e2 = generic ? "expected ',' or ']' in generic parameter list"
+                               : "expected ',' or ')' in parameter list";
+            error_log_report_annotated_twice(
+                &p->tk.tc->error_log, ES_PARSER, false, e1, p->tk.file,
+                t->start, t->end, e2, ctx_start, ctx_end, msg);
+        }
+    } while (t->type != end_tok);
+    tk_void(&p->tk);
+    *tgt = NULL;
+    return PE_OK;
+}
 parse_error
 parse_func_decl(parser* p, ureg start, astn_flags flags, ast_node** n)
 {
@@ -965,17 +1015,31 @@ parse_func_decl(parser* p, ureg start, astn_flags flags, ast_node** n)
         return PE_UNEXPECTED_TOKEN;
     }
     ureg decl_end = t->end;
-    astn_function* f = alloc_perm(p, sizeof(astn_function));
-    if (!f) return PE_INSANE;
-    f->nastn.name = alloc_string_perm(p, t->str);
-    if (!f->nastn.name) return PE_INSANE;
-    pe = nastn_fill_srange(p, &f->nastn, start, decl_end);
-    if (pe) return pe;
+    char* name = alloc_string_perm(p, t->str);
+    if (!name) return PE_INSANE;
     tk_void(&p->tk);
     PEEK(p, t);
+    named_ast_node* fn;
+    bool generic;
     if (t->type == TT_BRACKET_OPEN) {
-        // TODO: parse generic parameter list
+        generic = true;
+        fn = alloc_perm(p, sizeof(astn_generic_function));
+        if (!fn) return PE_INSANE;
+        tk_void(&p->tk);
+        pe = parse_param_list(
+            p, fn, &((astn_generic_function*)fn)->generic_params, true, start,
+            decl_end, "in this function declaration");
+        if (pe) return pe;
+        PEEK(p, t);
     }
+    else {
+        generic = false;
+        fn = alloc_perm(p, sizeof(astn_function));
+        if (!fn) return PE_INSANE;
+    }
+    fn->name = name;
+    pe = nastn_fill_srange(p, fn, start, decl_end);
+    if (pe) return pe;
     if (t->type != TT_PAREN_OPEN) {
         error_log_report_annotated_twice(
             &p->tk.tc->error_log, ES_PARSER, false,
@@ -985,36 +1049,22 @@ parse_func_decl(parser* p, ureg start, astn_flags flags, ast_node** n)
         return PE_UNEXPECTED_TOKEN;
     }
     tk_void(&p->tk);
-    PEEK(p, t);
-    astn_param_decl** head = &f->params;
-    while (t->type != TT_PAREN_CLOSE) {
-        pe = parse_param_decl(
-            p, (named_ast_node*)f, head, start, decl_end,
-            "in this function declaration");
-        if (pe) {
-            *head = NULL;
-            return pe;
-        }
-        head = (astn_param_decl**)&(*head)->nastn.astn.next;
-        PEEK(p, t);
-        if (t->type == TT_COMMA) {
-            tk_void(&p->tk);
-        }
-        else if (t->type != TT_PAREN_CLOSE) {
-            error_log_report_annotated_twice(
-                &p->tk.tc->error_log, ES_PARSER, false,
-                "invalid function declaration syntax", p->tk.file, t->start,
-                t->end, "expected ',' or ')'", start, decl_end,
-                "in this function declaration");
-        }
+    astn_param_decl** pd = generic ? &((astn_generic_function*)fn)->params
+                                   : &((astn_function*)fn)->params;
+    pe = parse_param_list(
+        p, fn, pd, false, start, decl_end, "in this function declaration");
+    if (pe) return pe;
+    fn->parent = p->curr_parent;
+    fn->astn.type = generic ? ASTNT_GENERIC_FUNCTION : ASTNT_FUNCTION;
+    fn->astn.flags = flags;
+    *n = (ast_node*)fn;
+    if (generic) {
+        return parse_body(
+            p, fn, &((astn_generic_function*)fn)->body, BPM_GENERIC_FUNCTION);
     }
-    *head = NULL;
-    tk_void(&p->tk);
-    f->nastn.parent = p->curr_parent;
-    f->nastn.astn.type = ASTNT_FUNCTION;
-    f->nastn.astn.flags = flags;
-    *n = (ast_node*)f;
-    return parse_body(p, (named_ast_node*)f, &f->body, BPM_FUNCTION);
+    else {
+        return parse_body(p, fn, &((astn_function*)fn)->body, BPM_FUNCTION);
+    }
 }
 parse_error parse_statement(parser* p, ast_node** head, body_parser_mode bpm)
 {
@@ -1025,19 +1075,15 @@ parse_error parse_statement(parser* p, ast_node** head, body_parser_mode bpm)
     ureg start = t->start;
     while (true) {
         if (t->type != TT_STRING) {
-            if (flags) {
-                error_log_report_annotated(
-                    &p->tk.tc->error_log, ES_PARSER, false,
-                    "unexpected token at module scope", p->tk.file, t->start,
-                    t->end,
-                    astn_flags_get_const(flags)
-                        ? "expected keyword"
-                        : "expected identifier or keyword");
-                return PE_UNEXPECTED_TOKEN;
-            }
-            else {
-                return PE_EOEX;
-            }
+            src_range sr;
+            src_range_unpack(p->curr_parent->decl_range, &sr);
+            error_log_report_annotated_twice(
+                &p->tk.tc->error_log, ES_PARSER, false,
+                "unexpected token in statement", p->tk.file, t->start, t->end,
+                astn_flags_get_const(flags) ? "expected keyword"
+                                            : "expected identifier or keyword",
+                sr.start, sr.end, bpm_to_context_msg(bpm));
+            return PE_UNEXPECTED_TOKEN;
         }
         keyword_id kw = kw_match(t->str);
         if (kw != KW_INVALID_KEYWORD) {
@@ -1087,7 +1133,6 @@ parse_error parse_statement(parser* p, ast_node** head, body_parser_mode bpm)
         start = t->start;
     }
 }
-
 parse_error parse_braced_delimited_body(
     parser* p, token* t, ast_node** head, body_parser_mode bpm)
 {
@@ -1109,20 +1154,13 @@ parse_error parse_braced_delimited_body(
             PEEK(p, t);
         }
         else {
-            char* ctx;
-            switch (bpm) {
-            case BPM_FUNCTION: ctx = "this function's body"; break;
-            case BPM_LAMBDA: ctx = "this lambda's body"; break;
-            case BPM_STRUCT: ctx = "this struct's body"; break;
-            default: panic("unexpected bpm"); return PE_INSANE;
-            }
             src_range sr;
             src_range_unpack(p->curr_parent->decl_range, &sr);
             error_log_report_annotated_thrice(
                 &p->tk.tc->error_log, ES_PARSER, false, "unterminated scope",
                 p->tk.file, t->start, t->end,
-                "reached EOF before scope was closed", sr.start, sr.end, ctx,
-                start, bend, "scope starts here");
+                "reached EOF before scope was closed", sr.start, sr.end,
+                bpm_to_context_msg(bpm), start, bend, "scope starts here");
             return PE_UNEXPECTED_TOKEN;
         }
     }
@@ -1134,6 +1172,11 @@ parse_error parse_braced_delimited_body(
 parse_error parse_body(
     parser* p, named_ast_node* parent, ast_node** head, body_parser_mode bpm)
 {
+    named_ast_node* old_parent = p->curr_parent;
+    ast_node** old_head = p->curr_head;
+    p->curr_parent = parent;
+    p->curr_head = head;
+
     parse_error pe;
     token* t;
     PEEK(p, t);
@@ -1146,11 +1189,9 @@ parse_error parse_body(
             (*head)->next = NULL;
         }
     }
-    named_ast_node* old_parent = p->curr_parent;
-    ast_node** old_head = p->curr_head;
-    p->curr_parent = parent;
-    p->curr_head = head;
-    pe = parse_braced_delimited_body(p, t, head, bpm);
+    else {
+        pe = parse_braced_delimited_body(p, t, head, bpm);
+    }
     p->curr_parent = old_parent;
     p->curr_head = old_head;
     return pe;
