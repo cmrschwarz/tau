@@ -272,6 +272,7 @@ void print_until(
         buffer[*next] = temp;
     }
 }
+// TODO: allow putting annotation above with  vvv/,,, error here or
 int print_src_line(
     FILE* fh, file* file, ureg line, ureg max_line_length, err_point* ep_start,
     err_point* ep_end)
@@ -487,8 +488,8 @@ int print_src_line(
 }
 int cmp_err_point(err_point l, err_point r)
 {
-    if (l.line != r.line) return l.line - r.line;
-    return l.col_start - r.col_start;
+    if (l.line != r.line) return (l.line > r.line) ? 1 : -1;
+    return (l.col_start > r.col_start) ? 1 : -1;
 }
 #define SORT_NAME err_points
 #define SORT_TYPE err_point
@@ -563,13 +564,13 @@ int report_error(error* e, FILE* fh, file* file)
         default: break;
     }
     if (e->warn) {
-        pectc(ANSICOLOR_YELLOW, "warning: ", ANSICOLOR_CLEAR);
+        pect(ANSICOLOR_YELLOW, "warning: ");
     }
     else {
-        pectc(ANSICOLOR_RED, "error: ", ANSICOLOR_CLEAR);
+        pect(ANSICOLOR_RED, "error: ");
     }
     pe(e->message);
-    pe("\n");
+    pect(ANSICOLOR_CLEAR, "\n");
 
     if (fh != NULL) {
         ureg err_point_count = 2;
