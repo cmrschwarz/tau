@@ -378,23 +378,23 @@ int print_src_line(
             ureg after_tab = bpos;
             print_until(&bpos, &next, buffer, &after_tab, &length_diff);
             switch (mode) {
-            case 3:
-                (ep_pos + 1)->length_diff_start = length_diff;
-                // fallthrough
-            case 0:
-                ep_pos->length_diff_start = length_diff;
-                pec(ep_pos->squigly_color);
-                break;
-            case 1:
-                ep_pos->length_diff_end = length_diff;
-                ep_pos++;
-                pec(ANSICOLOR_CLEAR);
-                break;
-            case 2:
-                (ep_pos + 1)->length_diff_start = length_diff;
-                pec((ep_pos + 1)->squigly_color);
-                break;
-            default: assert(false);
+                case 3:
+                    (ep_pos + 1)->length_diff_start = length_diff;
+                    // fallthrough
+                case 0:
+                    ep_pos->length_diff_start = length_diff;
+                    pec(ep_pos->squigly_color);
+                    break;
+                case 1:
+                    ep_pos->length_diff_end = length_diff;
+                    ep_pos++;
+                    pec(ANSICOLOR_CLEAR);
+                    break;
+                case 2:
+                    (ep_pos + 1)->length_diff_start = length_diff;
+                    pec((ep_pos + 1)->squigly_color);
+                    break;
+                default: assert(false);
             }
             pos = next;
         }
@@ -557,10 +557,10 @@ int report_error(error* e, FILE* fh, file* file)
     static err_point err_points[ERR_POINT_BUFFER_SIZE];
     pec(ANSICOLOR_BOLD);
     switch (e->stage) {
-    case ES_TOKENIZER: pect(ANSICOLOR_GREEN, "tokenizer "); break;
-    case ES_PARSER: pect(ANSICOLOR_CYAN, "parser "); break;
-    case ES_TYPESETTER: pect(ANSICOLOR_MAGENTA, "typededucing "); break;
-    default: break;
+        case ES_TOKENIZER: pect(ANSICOLOR_GREEN, "tokenizer "); break;
+        case ES_PARSER: pect(ANSICOLOR_CYAN, "parser "); break;
+        case ES_TYPESETTER: pect(ANSICOLOR_MAGENTA, "typededucing "); break;
+        default: break;
     }
     if (e->warn) {
         pectc(ANSICOLOR_YELLOW, "warning: ", ANSICOLOR_CLEAR);
@@ -577,49 +577,51 @@ int report_error(error* e, FILE* fh, file* file)
 
         // TODO: multiline errors
         switch (e->type) {
-        case ET_1_ANNOT: {
-            error_annotated* ea = (error_annotated*)e;
-            err_points[0].line = pos.line;
-            err_points[0].col_start = pos.column;
-            err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
-            err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
-            src_pos end = src_map_get_pos(&e->file->src_map, ea->end);
-            err_point_count =
-                extend_em(e, err_points, ea->annotation, pos, end);
-        } break;
-        case ET_MULTI_ANNOT: {
-            error_multi_annotated* ema = (error_multi_annotated*)e;
-            err_points[0].line = pos.line;
-            err_points[0].col_start = pos.column;
-            err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
-            err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
-            src_pos end =
-                src_map_get_pos(&e->file->src_map, ema->err_annot.end);
-            err_point_count =
-                extend_em(e, err_points, ema->err_annot.annotation, pos, end);
-            error_annotation* ea = (error_annotation*)(ema + 1);
-            for (ureg i = err_point_count; i < ema->annot_count + 1; i++) {
-                src_pos posi = src_map_get_pos(&e->file->src_map, ea->start);
-                err_points[err_point_count].line = posi.line;
-                err_points[err_point_count].col_start = posi.column;
-                err_points[err_point_count].col_end =
-                    (posi.column + (ea->end - ea->start));
-                err_points[err_point_count].message = ea->annotation;
-                err_points[err_point_count].message_color =
-                    (ANSICOLOR_BOLD ANSICOLOR_MAGENTA);
-                err_points[err_point_count].squigly_color =
-                    (ANSICOLOR_BOLD ANSICOLOR_MAGENTA);
-                end = src_map_get_pos(&e->file->src_map, ea->end);
-                err_point_count += extend_em(
-                    e, &err_points[err_point_count], ea->annotation, posi, end);
-                ea++;
-            }
-        } break;
-        default: {
-            if (print_filepath(get_line_nr_offset(pos.line), pos, e->file))
-                return ERR;
-            return OK;
-        } break;
+            case ET_1_ANNOT: {
+                error_annotated* ea = (error_annotated*)e;
+                err_points[0].line = pos.line;
+                err_points[0].col_start = pos.column;
+                err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
+                err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
+                src_pos end = src_map_get_pos(&e->file->src_map, ea->end);
+                err_point_count =
+                    extend_em(e, err_points, ea->annotation, pos, end);
+            } break;
+            case ET_MULTI_ANNOT: {
+                error_multi_annotated* ema = (error_multi_annotated*)e;
+                err_points[0].line = pos.line;
+                err_points[0].col_start = pos.column;
+                err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
+                err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
+                src_pos end =
+                    src_map_get_pos(&e->file->src_map, ema->err_annot.end);
+                err_point_count = extend_em(
+                    e, err_points, ema->err_annot.annotation, pos, end);
+                error_annotation* ea = (error_annotation*)(ema + 1);
+                for (ureg i = err_point_count; i < ema->annot_count + 1; i++) {
+                    src_pos posi =
+                        src_map_get_pos(&e->file->src_map, ea->start);
+                    err_points[err_point_count].line = posi.line;
+                    err_points[err_point_count].col_start = posi.column;
+                    err_points[err_point_count].col_end =
+                        (posi.column + (ea->end - ea->start));
+                    err_points[err_point_count].message = ea->annotation;
+                    err_points[err_point_count].message_color =
+                        (ANSICOLOR_BOLD ANSICOLOR_MAGENTA);
+                    err_points[err_point_count].squigly_color =
+                        (ANSICOLOR_BOLD ANSICOLOR_MAGENTA);
+                    end = src_map_get_pos(&e->file->src_map, ea->end);
+                    err_point_count += extend_em(
+                        e, &err_points[err_point_count], ea->annotation, posi,
+                        end);
+                    ea++;
+                }
+            } break;
+            default: {
+                if (print_filepath(get_line_nr_offset(pos.line), pos, e->file))
+                    return ERR;
+                return OK;
+            } break;
         }
         ureg max_line = err_points[0].line;
         for (ureg i = 1; i < err_point_count; i++) {

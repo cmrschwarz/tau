@@ -12,8 +12,7 @@ static inline ureg ulog2(ureg v)
     return v;
 #else
     ureg res = 0;
-    while (v >>= 1)
-        res++;
+    while (v >>= 1) res++;
     return res;
 #endif
 }

@@ -2,7 +2,6 @@
 #include "allocator.h"
 #include "types.h"
 
-
 typedef struct dbuffer {
     u8* start;
     u8* end;

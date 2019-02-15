@@ -86,23 +86,23 @@ void token_debug_print(file* f, token* t)
         return;
     }
     switch (t->type) {
-    case TT_NUMBER:
-    case TT_STRING: {
-        string_print(t->str);
-    } break;
-    case TT_LITERAL: {
-        putchar('"');
-        string_print(t->str);
-        putchar('"');
-    } break;
-    case TT_BINARY_LITERAL: {
-        putchar('\'');
-        string_print(t->str);
-        putchar('\'');
-    } break;
-    default: {
-        fputs(token_strings[t->type], stdout);
-    } break;
+        case TT_NUMBER:
+        case TT_STRING: {
+            string_print(t->str);
+        } break;
+        case TT_LITERAL: {
+            putchar('"');
+            string_print(t->str);
+            putchar('"');
+        } break;
+        case TT_BINARY_LITERAL: {
+            putchar('\'');
+            string_print(t->str);
+            putchar('\'');
+        } break;
+        default: {
+            fputs(token_strings[t->type], stdout);
+        } break;
     }
     src_pos p = src_map_get_pos(&f->src_map, t->start);
     printf(

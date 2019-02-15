@@ -2,7 +2,6 @@
 #include "allocator.h"
 #include "types.h"
 
-
 typedef struct sbuffer_segment {
     u8* start;
     u8* head;

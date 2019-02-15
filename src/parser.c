@@ -101,104 +101,104 @@ static const unsigned char op_precedence[] = {
 static inline bool is_left_associative(expr_node_type t)
 {
     switch (t) {
-    case OP_ASSIGN:
-    case OP_ADD_ASSIGN:
-    case OP_SUB_ASSIGN:
-    case OP_MUL_ASSIGN:
-    case OP_DIV_ASSIGN:
-    case OP_MOD_ASSIGN:
-    case OP_LSHIFT_ASSIGN:
-    case OP_RSHIFT_ASSIGN:
-    case OP_BITWISE_AND_ASSIGN:
-    case OP_BITWISE_XOR_ASSIGN:
-    case OP_BITWISE_OR_ASSIGN:
-    case OP_BITWISE_NOT_ASSIGN: return false;
-    default: return true;
+        case OP_ASSIGN:
+        case OP_ADD_ASSIGN:
+        case OP_SUB_ASSIGN:
+        case OP_MUL_ASSIGN:
+        case OP_DIV_ASSIGN:
+        case OP_MOD_ASSIGN:
+        case OP_LSHIFT_ASSIGN:
+        case OP_RSHIFT_ASSIGN:
+        case OP_BITWISE_AND_ASSIGN:
+        case OP_BITWISE_XOR_ASSIGN:
+        case OP_BITWISE_OR_ASSIGN:
+        case OP_BITWISE_NOT_ASSIGN: return false;
+        default: return true;
     }
 }
 
 static inline expr_node_type token_to_binary_op(token* t)
 {
     switch (t->type) {
-    case TT_PLUS: return OP_ADD;
-    case TT_PLUS_EQUALS: return OP_ADD_ASSIGN;
+        case TT_PLUS: return OP_ADD;
+        case TT_PLUS_EQUALS: return OP_ADD_ASSIGN;
 
-    case TT_MINUS: return OP_SUB;
-    case TT_MINUS_EQUALS: return OP_SUB_ASSIGN;
+        case TT_MINUS: return OP_SUB;
+        case TT_MINUS_EQUALS: return OP_SUB_ASSIGN;
 
-    case TT_STAR: return OP_MUL;
-    case TT_STAR_EQUALS: return OP_MUL_ASSIGN;
+        case TT_STAR: return OP_MUL;
+        case TT_STAR_EQUALS: return OP_MUL_ASSIGN;
 
-    case TT_SLASH: return OP_DIV;
-    case TT_SLASH_EQUALS: return OP_DIV_ASSIGN;
+        case TT_SLASH: return OP_DIV;
+        case TT_SLASH_EQUALS: return OP_DIV_ASSIGN;
 
-    case TT_PERCENT: return OP_MOD;
-    case TT_PERCENT_EQUALS: return OP_MOD_ASSIGN;
+        case TT_PERCENT: return OP_MOD;
+        case TT_PERCENT_EQUALS: return OP_MOD_ASSIGN;
 
-    case TT_DOUBLE_LESS_THAN: return OP_LSHIFT;
-    case TT_DOUBLE_LESS_THAN_EQUALS: return OP_LSHIFT_ASSIGN;
+        case TT_DOUBLE_LESS_THAN: return OP_LSHIFT;
+        case TT_DOUBLE_LESS_THAN_EQUALS: return OP_LSHIFT_ASSIGN;
 
-    case TT_DOUBLE_GREATER_THAN: return OP_RSHIFT;
-    case TT_DOUBLE_GREATER_THAN_EQUALS: return OP_RSHIFT_ASSIGN;
+        case TT_DOUBLE_GREATER_THAN: return OP_RSHIFT;
+        case TT_DOUBLE_GREATER_THAN_EQUALS: return OP_RSHIFT_ASSIGN;
 
-    case TT_LESS_THAN: return OP_LESS_THAN;
-    case TT_LESS_THAN_EQUALS: return OP_LESS_THAN_OR_EQUAL;
+        case TT_LESS_THAN: return OP_LESS_THAN;
+        case TT_LESS_THAN_EQUALS: return OP_LESS_THAN_OR_EQUAL;
 
-    case TT_GREATER_THAN: return OP_GREATER_THAN;
-    case TT_GREATER_THAN_EQUALS: return OP_GREATER_THAN_OR_EQUAL;
+        case TT_GREATER_THAN: return OP_GREATER_THAN;
+        case TT_GREATER_THAN_EQUALS: return OP_GREATER_THAN_OR_EQUAL;
 
-    case TT_EQUALS: return OP_ASSIGN;
-    case TT_DOUBLE_EQUALS: return OP_EQUAL;
-    case TT_EXCLAMATION_MARK_EQUALS: return OP_UNEQAL;
+        case TT_EQUALS: return OP_ASSIGN;
+        case TT_DOUBLE_EQUALS: return OP_EQUAL;
+        case TT_EXCLAMATION_MARK_EQUALS: return OP_UNEQAL;
 
-    case TT_AND: return OP_BITWISE_AND;
-    case TT_AND_EQUALS: return OP_BITWISE_AND_ASSIGN;
-    case TT_DOUBLE_AND: return OP_AND;
+        case TT_AND: return OP_BITWISE_AND;
+        case TT_AND_EQUALS: return OP_BITWISE_AND_ASSIGN;
+        case TT_DOUBLE_AND: return OP_AND;
 
-    case TT_CARET: return OP_BITWISE_XOR;
-    case TT_CARET_EQUALS: return OP_BITWISE_XOR_ASSIGN;
-    case TT_DOUBLE_CARET: return OP_XOR;
+        case TT_CARET: return OP_BITWISE_XOR;
+        case TT_CARET_EQUALS: return OP_BITWISE_XOR_ASSIGN;
+        case TT_DOUBLE_CARET: return OP_XOR;
 
-    case TT_PIPE: return OP_BITWISE_OR;
-    case TT_PIPE_EQUALS: return OP_BITWISE_OR_ASSIGN;
-    case TT_DOUBLE_PIPE: return OP_OR;
+        case TT_PIPE: return OP_BITWISE_OR;
+        case TT_PIPE_EQUALS: return OP_BITWISE_OR_ASSIGN;
+        case TT_DOUBLE_PIPE: return OP_OR;
 
-    case TT_TILDE_EQUALS: return OP_BITWISE_NOT_ASSIGN;
-    case TT_DOT: return OP_MEMBER_ACCESS;
-    case TT_DOUBLE_COLON: return OP_SCOPE_ACCESS;
-    default: return OP_NOOP;
+        case TT_TILDE_EQUALS: return OP_BITWISE_NOT_ASSIGN;
+        case TT_DOT: return OP_MEMBER_ACCESS;
+        case TT_DOUBLE_COLON: return OP_SCOPE_ACCESS;
+        default: return OP_NOOP;
     }
 }
 static inline expr_node_type token_to_prefix_unary_op(token* t)
 {
     switch (t->type) {
-    case TT_MINUS: return OP_UNARY_MINUS;
-    case TT_PLUS: return OP_UNARY_PLUS;
-    case TT_TILDE: return OP_BITWISE_NOT;
-    case TT_EXCLAMATION_MARK: return OP_NOT;
-    case TT_STAR: return OP_DEREF;
-    case TT_AND: return OP_REF_OF;
-    case TT_PERCENT: return OP_POINTER_OF;
-    case TT_CARET: return OP_VALUE_OF;
-    case TT_DOLLAR: return OP_RREF_OF;
-    case TT_DOUBLE_PLUS: return OP_PRE_INCREMENT;
-    case TT_DOUBLE_MINUS: return OP_PRE_DECREMENT;
-    case TT_STRING:
-        switch (kw_match(t->str)) {
-        case KW_CONST: return OP_CONST;
+        case TT_MINUS: return OP_UNARY_MINUS;
+        case TT_PLUS: return OP_UNARY_PLUS;
+        case TT_TILDE: return OP_BITWISE_NOT;
+        case TT_EXCLAMATION_MARK: return OP_NOT;
+        case TT_STAR: return OP_DEREF;
+        case TT_AND: return OP_REF_OF;
+        case TT_PERCENT: return OP_POINTER_OF;
+        case TT_CARET: return OP_VALUE_OF;
+        case TT_DOLLAR: return OP_RREF_OF;
+        case TT_DOUBLE_PLUS: return OP_PRE_INCREMENT;
+        case TT_DOUBLE_MINUS: return OP_PRE_DECREMENT;
+        case TT_STRING:
+            switch (kw_match(t->str)) {
+                case KW_CONST: return OP_CONST;
+                default: return OP_NOOP;
+            }
         default: return OP_NOOP;
-        }
-    default: return OP_NOOP;
     }
 }
 static inline expr_node_type token_to_postfix_unary_op(token* t)
 {
     switch (t->type) {
-    case TT_DOUBLE_PLUS: return OP_POST_INCREMENT;
-    case TT_DOUBLE_MINUS: return OP_POST_DECREMENT;
-    case TT_PAREN_OPEN: return OP_CALL;
-    case TT_BRACKET_OPEN: return OP_ACCESS;
-    default: return OP_NOOP;
+        case TT_DOUBLE_PLUS: return OP_POST_INCREMENT;
+        case TT_DOUBLE_MINUS: return OP_POST_DECREMENT;
+        case TT_PAREN_OPEN: return OP_CALL;
+        case TT_BRACKET_OPEN: return OP_ACCESS;
+        default: return OP_NOOP;
     }
 }
 
@@ -263,11 +263,11 @@ static inline int parser_error_3a(
 char* bpm_to_context_msg(body_parser_mode bpm)
 {
     switch (bpm) {
-    case BPM_FUNCTION: return "in this function's body";
-    case BPM_GENERIC_FUNCTION: return "in this generic function's body";
-    case BPM_LAMBDA: return "in this lambda's body";
-    case BPM_STRUCT: return "in this struct's body";
-    default: panic("unexpected bpm");
+        case BPM_FUNCTION: return "in this function's body";
+        case BPM_GENERIC_FUNCTION: return "in this generic function's body";
+        case BPM_LAMBDA: return "in this lambda's body";
+        case BPM_STRUCT: return "in this struct's body";
+        default: panic("unexpected bpm");
     }
     return NULL;
 }
@@ -373,11 +373,11 @@ static inline expr_node* parse_str_value(parser* p, token* t)
 {
     expr_node_type ent;
     switch (t->type) {
-    case TT_BINARY_LITERAL: ent = ENT_BINARY_LITERAL; break;
-    case TT_LITERAL: ent = ENT_STRING_LITERAL; break;
-    case TT_NUMBER: ent = ENT_NUMBER; break;
-    case TT_STRING: ent = ENT_IDENTIFIER; break;
-    default: return NULL;
+        case TT_BINARY_LITERAL: ent = ENT_BINARY_LITERAL; break;
+        case TT_LITERAL: ent = ENT_STRING_LITERAL; break;
+        case TT_NUMBER: ent = ENT_NUMBER; break;
+        case TT_STRING: ent = ENT_IDENTIFIER; break;
+        default: return NULL;
     }
     en_str_value* sv = (en_str_value*)alloc_perm(p, sizeof(en_str_value));
     if (!sv) return NULL;
@@ -592,30 +592,30 @@ parse_single_value(parser* p, token* t, expr_node** en)
 {
     parse_error pe;
     switch (t->type) {
-    case TT_PAREN_OPEN: {
-        pe = parse_parenthesis_group(p, t, en);
-        if (pe) return pe;
-    } break;
-    case TT_BRACKET_OPEN: {
-        pe = parse_tuple(p, t, en);
-        if (pe) return pe;
-    } break;
-    case TT_BRACE_OPEN: {
-        pe = parse_array(p, t, en);
-        if (pe) return pe;
-    } break;
-    case TT_STRING:
-    case TT_NUMBER:
-    case TT_LITERAL:
-    case TT_BINARY_LITERAL: {
-        *en = parse_str_value(p, t);
-        if (!*en) return PE_INSANE;
-        tk_void(&p->tk);
-        break;
-    }
-    default: {
-        return PE_EOEX;
-    } break;
+        case TT_PAREN_OPEN: {
+            pe = parse_parenthesis_group(p, t, en);
+            if (pe) return pe;
+        } break;
+        case TT_BRACKET_OPEN: {
+            pe = parse_tuple(p, t, en);
+            if (pe) return pe;
+        } break;
+        case TT_BRACE_OPEN: {
+            pe = parse_array(p, t, en);
+            if (pe) return pe;
+        } break;
+        case TT_STRING:
+        case TT_NUMBER:
+        case TT_LITERAL:
+        case TT_BINARY_LITERAL: {
+            *en = parse_str_value(p, t);
+            if (!*en) return PE_INSANE;
+            tk_void(&p->tk);
+            break;
+        }
+        default: {
+            return PE_EOEX;
+        } break;
     }
     return PE_OK;
 }
@@ -782,10 +782,10 @@ parse_error parser_parse_file(parser* p, file* f)
 static inline char* access_modifier_string(access_modifier am)
 {
     switch (am) {
-    case AM_PRIVATE: return keyword_strings[KW_PRIVATE];
-    case AM_PROTECTED: return keyword_strings[KW_PROTECTED];
-    case AM_PUBLIC: return keyword_strings[KW_PUBLIC];
-    default: return NULL;
+        case AM_PRIVATE: return keyword_strings[KW_PRIVATE];
+        case AM_PROTECTED: return keyword_strings[KW_PROTECTED];
+        case AM_PUBLIC: return keyword_strings[KW_PUBLIC];
+        default: return NULL;
     }
 }
 static inline int
@@ -830,71 +830,73 @@ int astn_flags_from_kw(
     // TODO: enforce order
     *action = true;
     switch (kw) {
-    case KW_PRIVATE:
-        return astn_flags_from_kw_set_access_mod(p, f, AM_PRIVATE, start, end);
-    case KW_PROTECTED:
-        return astn_flags_from_kw_set_access_mod(
-            p, f, AM_PROTECTED, start, end);
-    case KW_PUBLIC:
-        return astn_flags_from_kw_set_access_mod(p, f, AM_PUBLIC, start, end);
-    case KW_CONST: {
-        if (astn_flags_get_const(*f) != false) {
-            report_redundant_specifier(
-                p, keyword_strings[KW_CONST], start, end);
-            return ERR;
-        }
-        astn_flags_set_const(f, true);
-    } break;
-    case KW_SEALED: {
-        if (astn_flags_get_sealed(*f) != false) {
-            report_redundant_specifier(
-                p, keyword_strings[KW_SEALED], start, end);
-            return ERR;
-        }
-        astn_flags_set_sealed(f, true);
-    } break;
-    case KW_VIRTUAL: {
-        if (astn_flags_get_virtual(*f) != false) {
-            report_redundant_specifier(
-                p, keyword_strings[KW_VIRTUAL], start, end);
-            return ERR;
-        }
-        astn_flags_set_virtual(f, true);
-    } break;
-    case KW_STATIC: {
-        if (astn_flags_get_static(*f) != false) {
-            report_redundant_specifier(
-                p, keyword_strings[KW_STATIC], start, end);
-            return ERR;
-        }
-        astn_flags_set_static(f, true);
-    } break;
-    default: {
-        *action = false;
-    } break;
+        case KW_PRIVATE:
+            return astn_flags_from_kw_set_access_mod(
+                p, f, AM_PRIVATE, start, end);
+        case KW_PROTECTED:
+            return astn_flags_from_kw_set_access_mod(
+                p, f, AM_PROTECTED, start, end);
+        case KW_PUBLIC:
+            return astn_flags_from_kw_set_access_mod(
+                p, f, AM_PUBLIC, start, end);
+        case KW_CONST: {
+            if (astn_flags_get_const(*f) != false) {
+                report_redundant_specifier(
+                    p, keyword_strings[KW_CONST], start, end);
+                return ERR;
+            }
+            astn_flags_set_const(f, true);
+        } break;
+        case KW_SEALED: {
+            if (astn_flags_get_sealed(*f) != false) {
+                report_redundant_specifier(
+                    p, keyword_strings[KW_SEALED], start, end);
+                return ERR;
+            }
+            astn_flags_set_sealed(f, true);
+        } break;
+        case KW_VIRTUAL: {
+            if (astn_flags_get_virtual(*f) != false) {
+                report_redundant_specifier(
+                    p, keyword_strings[KW_VIRTUAL], start, end);
+                return ERR;
+            }
+            astn_flags_set_virtual(f, true);
+        } break;
+        case KW_STATIC: {
+            if (astn_flags_get_static(*f) != false) {
+                report_redundant_specifier(
+                    p, keyword_strings[KW_STATIC], start, end);
+                return ERR;
+            }
+            astn_flags_set_static(f, true);
+        } break;
+        default: {
+            *action = false;
+        } break;
     }
     return OK;
 }
 static inline ureg get_expr_end(parser* p, expr_node* n)
 {
     switch (n->type) {
-    default: {
-        src_range r;
-        src_range_unpack(n->srange, &r);
-        return r.end;
-    }
-    case ENT_OP_BINARY: return get_expr_end(p, ((en_op_binary*)n)->rhs);
-    case ENT_OP_UNARY: {
-        en_op_unary* u = (en_op_unary*)n;
-        if (is_unary_op_postfix(n->op_type)) {
+        default: {
             src_range r;
             src_range_unpack(n->srange, &r);
             return r.end;
         }
-        else {
-            return get_expr_end(p, u->child);
+        case ENT_OP_BINARY: return get_expr_end(p, ((en_op_binary*)n)->rhs);
+        case ENT_OP_UNARY: {
+            en_op_unary* u = (en_op_unary*)n;
+            if (is_unary_op_postfix(n->op_type)) {
+                src_range r;
+                src_range_unpack(n->srange, &r);
+                return r.end;
+            }
+            else {
+                return get_expr_end(p, u->child);
+            }
         }
-    }
     }
 }
 parse_error parse_var_decl(
@@ -1059,14 +1061,14 @@ parse_func_decl(parser* p, ureg start, astn_flags flags, ast_node** n)
 bool bpm_supports_exprs(body_parser_mode bpm)
 {
     switch (bpm) {
-    case BPM_FUNCTION:
-    case BPM_GENERIC_FUNCTION:
-    case BPM_LAMBDA: {
-        return true;
-    }
-    default: {
-        return false;
-    }
+        case BPM_FUNCTION:
+        case BPM_GENERIC_FUNCTION:
+        case BPM_LAMBDA: {
+            return true;
+        }
+        default: {
+            return false;
+        }
     }
 }
 parse_error parse_expr_stmt(parser* p, ast_node** tgt, body_parser_mode bpm)
@@ -1146,43 +1148,44 @@ parse_error parse_statement(parser* p, ast_node** tgt, body_parser_mode bpm)
             }
         }
         switch (kw) {
-        case KW_FUNC: {
-            tk_void(&p->tk);
-            pe = parse_func_decl(p, start, flags, tgt);
-            return pe;
-        } break;
-        /*
-
-        case KW_STRUCT: break;
-        case KW_IMPORT: break;
-        case KW_INCLUDE: break;
-        case KW_MODULE: break;
-        case KW_EXTEND: break;
-        case KW_TRAIT: break;
-        */
-        default: {
-            token* t2 = tk_peek_2nd(&p->tk);
-            if (!t2) return PE_TK_ERROR;
-            if (t2->type == TT_COLON) {
-                tk_void_n(&p->tk, 2);
-                return parse_var_decl(p, start, flags, t->str, tgt);
-            }
-            else if (flags == ASTN_FLAGS_DEFAULT && bpm_supports_exprs(bpm)) {
-                return parse_expr_stmt(p, tgt, bpm);
-            }
-            else {
-                src_range sr;
-                src_range_unpack(p->curr_parent->decl_range, &sr);
+            case KW_FUNC: {
                 tk_void(&p->tk);
-                PEEK(p, t);
-                parser_error_2a(
-                    p, "unexpected token in statement", t->start, t->end,
-                    "expected ':' to initiate a declaration", sr.start, sr.end,
-                    bpm_to_context_msg(bpm));
-                return PE_UNEXPECTED_TOKEN;
-            }
+                pe = parse_func_decl(p, start, flags, tgt);
+                return pe;
+            } break;
+            /*
 
-        } break;
+            case KW_STRUCT: break;
+            case KW_IMPORT: break;
+            case KW_INCLUDE: break;
+            case KW_MODULE: break;
+            case KW_EXTEND: break;
+            case KW_TRAIT: break;
+            */
+            default: {
+                token* t2 = tk_peek_2nd(&p->tk);
+                if (!t2) return PE_TK_ERROR;
+                if (t2->type == TT_COLON) {
+                    tk_void_n(&p->tk, 2);
+                    return parse_var_decl(p, start, flags, t->str, tgt);
+                }
+                else if (
+                    flags == ASTN_FLAGS_DEFAULT && bpm_supports_exprs(bpm)) {
+                    return parse_expr_stmt(p, tgt, bpm);
+                }
+                else {
+                    src_range sr;
+                    src_range_unpack(p->curr_parent->decl_range, &sr);
+                    tk_void(&p->tk);
+                    PEEK(p, t);
+                    parser_error_2a(
+                        p, "unexpected token in statement", t->start, t->end,
+                        "expected ':' to initiate a declaration", sr.start,
+                        sr.end, bpm_to_context_msg(bpm));
+                    return PE_UNEXPECTED_TOKEN;
+                }
+
+            } break;
         }
         PEEK(p, t);
         start = t->start;

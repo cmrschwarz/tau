@@ -271,517 +271,526 @@ static token* tk_load(tokenizer* tk)
     while (true) {
         tk_void_char_peek(tk);
         switch (curr) {
-        case '\0': {
-            if (tk->status == TK_STATUS_IO_ERROR) return NULL;
-            tok->type = TT_EOF;
-            return tk_return_head(tk, 0);
-        }
-        case '$': tok->type = TT_DOLLAR; return tk_return_head(tk, 1);
-        case '(': tok->type = TT_PAREN_OPEN; return tk_return_head(tk, 1);
-        case ')': tok->type = TT_PAREN_CLOSE; return tk_return_head(tk, 1);
-        case '{': tok->type = TT_BRACE_OPEN; return tk_return_head(tk, 1);
-        case '}': tok->type = TT_BRACE_CLOSE; return tk_return_head(tk, 1);
-        case '[': tok->type = TT_BRACKET_OPEN; return tk_return_head(tk, 1);
-        case ']': tok->type = TT_BRACKET_CLOSE; return tk_return_head(tk, 1);
-        case ',': tok->type = TT_COMMA; return tk_return_head(tk, 1);
-        case ';': tok->type = TT_SEMICOLON; return tk_return_head(tk, 1);
-        case '.': tok->type = TT_DOT; return tk_return_head(tk, 1);
-        case '\t': {
-            curr = tk_peek_char(tk);
-            tok->start++; // TODO: make an option to increase by 2/4/8/n
-            continue;
-        }
-        case ' ': {
-            curr = tk_peek_char(tk);
-            tok->start++;
-            continue;
-        }
-        case '\n': {
-            curr = tk_peek_char(tk);
-            tok->start++;
-            src_map_add_line(&tk->file->src_map, tk->tc, tok->start);
-            continue;
-        }
-        case ':': {
-            char peek = tk_peek_char(tk);
-            if (peek == ':') {
-                tk_void_char_peek(tk);
-                tok->type = TT_DOUBLE_COLON;
-                return tk_return_head(tk, 2);
+            case '\0': {
+                if (tk->status == TK_STATUS_IO_ERROR) return NULL;
+                tok->type = TT_EOF;
+                return tk_return_head(tk, 0);
             }
-            else {
-                tok->type = TT_COLON;
+            case '$': tok->type = TT_DOLLAR; return tk_return_head(tk, 1);
+            case '(': tok->type = TT_PAREN_OPEN; return tk_return_head(tk, 1);
+            case ')': tok->type = TT_PAREN_CLOSE; return tk_return_head(tk, 1);
+            case '{': tok->type = TT_BRACE_OPEN; return tk_return_head(tk, 1);
+            case '}': tok->type = TT_BRACE_CLOSE; return tk_return_head(tk, 1);
+            case '[': tok->type = TT_BRACKET_OPEN; return tk_return_head(tk, 1);
+            case ']':
+                tok->type = TT_BRACKET_CLOSE;
                 return tk_return_head(tk, 1);
+            case ',': tok->type = TT_COMMA; return tk_return_head(tk, 1);
+            case ';': tok->type = TT_SEMICOLON; return tk_return_head(tk, 1);
+            case '.': tok->type = TT_DOT; return tk_return_head(tk, 1);
+            case '\t': {
+                curr = tk_peek_char(tk);
+                tok->start++; // TODO: make an option to increase by 2/4/8/n
+                continue;
             }
-        }
-        case '*': {
-            char peek = tk_peek_char(tk);
-            if (peek == '=') {
-                tk_void_char_peek(tk);
-                tok->type = TT_STAR_EQUALS;
-                return tk_return_head(tk, 2);
+            case ' ': {
+                curr = tk_peek_char(tk);
+                tok->start++;
+                continue;
             }
-            else {
-                tok->type = TT_STAR;
-                return tk_return_head(tk, 1);
+            case '\n': {
+                curr = tk_peek_char(tk);
+                tok->start++;
+                src_map_add_line(&tk->file->src_map, tk->tc, tok->start);
+                continue;
             }
-        }
-        case '+': {
-            char peek = tk_peek_char(tk);
-            if (peek == '+') {
-                tk_void_char_peek(tk);
-                tok->type = TT_DOUBLE_PLUS;
-                return tk_return_head(tk, 2);
-            }
-            else if (peek == '=') {
-                tk_void_char_peek(tk);
-                tok->type = TT_PLUS_EQUALS;
-                return tk_return_head(tk, 2);
-            }
-            else {
-                tok->type = TT_PLUS;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '-': {
-            char peek = tk_peek_char(tk);
-            if (peek == '-') {
-                tk_void_char_peek(tk);
-                tok->type = TT_DOUBLE_MINUS;
-                return tk_return_head(tk, 2);
-            }
-            else if (peek == '=') {
-                tk_void_char_peek(tk);
-                tok->type = TT_MINUS_EQUALS;
-                return tk_return_head(tk, 2);
-            }
-            else if (peek == '>') {
-                tk_void_char_peek(tk);
-                tok->type = TT_ARROW;
-                return tk_return_head(tk, 2);
-            }
-            else {
-                tok->type = TT_MINUS;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '!': {
-            char peek = tk_peek_char(tk);
-            if (peek == '=') {
-                tk_void_char_peek(tk);
-                tok->type = TT_EXCLAMATION_MARK_EQUALS;
-                return tk_return_head(tk, 2);
-            }
-            else {
-                tok->type = TT_EXCLAMATION_MARK;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '|': {
-            char peek = tk_peek_char(tk);
-            if (peek == '|') {
-                tk_void_char_peek(tk);
-                tok->type = TT_DOUBLE_PIPE;
-                return tk_return_head(tk, 2);
-            }
-            else if (peek == '=') {
-                tk_void_char_peek(tk);
-                tok->type = TT_PIPE_EQUALS;
-                return tk_return_head(tk, 2);
-            }
-            else {
-                tok->type = TT_PIPE;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '&': {
-            char peek = tk_peek_char(tk);
-            if (peek == '&') {
-                tk_void_char_peek(tk);
-                tok->type = TT_DOUBLE_AND;
-                return tk_return_head(tk, 2);
-            }
-            else if (peek == '=') {
-                tk_void_char_peek(tk);
-                tok->type = TT_AND_EQUALS;
-                return tk_return_head(tk, 2);
-            }
-            else {
-                tok->type = TT_AND;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '^': {
-            char peek = tk_peek_char(tk);
-            if (peek == '^') {
-                tk_void_char_peek(tk);
-                tok->type = TT_DOUBLE_CARET;
-                return tk_return_head(tk, 2);
-            }
-            else if (peek == '=') {
-                tk_void_char_peek(tk);
-                tok->type = TT_CARET_EQUALS;
-                return tk_return_head(tk, 2);
-            }
-            else {
-                tok->type = TT_CARET;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '~': {
-            char peek = tk_peek_char(tk);
-            if (peek == '=') {
-                tk_void_char_peek(tk);
-                tok->type = TT_TILDE_EQUALS;
-                return tk_return_head(tk, 2);
-            }
-            else {
-                tok->type = TT_TILDE;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '=': {
-            char peek = tk_peek_char(tk);
-            if (peek == '=') {
-                tk_void_char_peek(tk);
-                tok->type = TT_DOUBLE_EQUALS;
-                return tk_return_head(tk, 2);
-            }
-            else {
-                tok->type = TT_EQUALS;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '/': {
-            char peek = tk_peek_char(tk);
-            if (peek == '/') {
-                tok->start += 2;
-                tk_void_char_peek(tk);
-                do {
-                    curr = tk_peek_char(tk);
+            case ':': {
+                char peek = tk_peek_char(tk);
+                if (peek == ':') {
                     tk_void_char_peek(tk);
-                    tok->start++;
-                } while (curr != '\n' && curr != '\0');
-                if (curr == '\n') {
-                    src_map_add_line(&tk->file->src_map, tk->tc, tok->start);
+                    tok->type = TT_DOUBLE_COLON;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_COLON;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '*': {
+                char peek = tk_peek_char(tk);
+                if (peek == '=') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_STAR_EQUALS;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_STAR;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '+': {
+                char peek = tk_peek_char(tk);
+                if (peek == '+') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_DOUBLE_PLUS;
+                    return tk_return_head(tk, 2);
+                }
+                else if (peek == '=') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_PLUS_EQUALS;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_PLUS;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '-': {
+                char peek = tk_peek_char(tk);
+                if (peek == '-') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_DOUBLE_MINUS;
+                    return tk_return_head(tk, 2);
+                }
+                else if (peek == '=') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_MINUS_EQUALS;
+                    return tk_return_head(tk, 2);
+                }
+                else if (peek == '>') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_ARROW;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_MINUS;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '!': {
+                char peek = tk_peek_char(tk);
+                if (peek == '=') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_EXCLAMATION_MARK_EQUALS;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_EXCLAMATION_MARK;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '|': {
+                char peek = tk_peek_char(tk);
+                if (peek == '|') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_DOUBLE_PIPE;
+                    return tk_return_head(tk, 2);
+                }
+                else if (peek == '=') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_PIPE_EQUALS;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_PIPE;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '&': {
+                char peek = tk_peek_char(tk);
+                if (peek == '&') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_DOUBLE_AND;
+                    return tk_return_head(tk, 2);
+                }
+                else if (peek == '=') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_AND_EQUALS;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_AND;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '^': {
+                char peek = tk_peek_char(tk);
+                if (peek == '^') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_DOUBLE_CARET;
+                    return tk_return_head(tk, 2);
+                }
+                else if (peek == '=') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_CARET_EQUALS;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_CARET;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '~': {
+                char peek = tk_peek_char(tk);
+                if (peek == '=') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_TILDE_EQUALS;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_TILDE;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '=': {
+                char peek = tk_peek_char(tk);
+                if (peek == '=') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_DOUBLE_EQUALS;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_EQUALS;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '/': {
+                char peek = tk_peek_char(tk);
+                if (peek == '/') {
+                    tok->start += 2;
+                    tk_void_char_peek(tk);
+                    do {
+                        curr = tk_peek_char(tk);
+                        tk_void_char_peek(tk);
+                        tok->start++;
+                    } while (curr != '\n' && curr != '\0');
+                    if (curr == '\n') {
+                        src_map_add_line(
+                            &tk->file->src_map, tk->tc, tok->start);
+                        curr = tk_peek_char(tk);
+                        continue;
+                    }
+                    else {
+                        if (tk->status == TK_STATUS_EOF) {
+                            tok->start--;
+                            tok->type = TT_EOF;
+                            return tk_return_head(tk, 1);
+                        }
+                        else {
+                            // TODO: print error
+                            tk_dec_iter(tk, &tk->loaded_tokens_start);
+                            return NULL;
+                        }
+                    }
+                }
+                if (peek == '*') {
+                    ureg comment_start = tok->start;
+                    tk_void_char_peek(tk);
+                    tok->start += 2;
+                    ureg nest_count = 1;
+                    do {
+                        curr = tk_consume_char(tk);
+                        tok->start++;
+                        switch (curr) {
+                            case '\n': {
+                                src_map_add_line(
+                                    &tk->file->src_map, tk->tc, tok->start);
+                            } break;
+                            case '\t': break;
+                            case '*': {
+                                curr = tk_peek_char(tk);
+                                tok->start++;
+                                if (curr == '/') {
+                                    tk_void_char_peek(tk);
+                                    nest_count--;
+                                }
+                            } break;
+                            case '/': {
+                                curr = tk_peek_char(tk);
+                                tok->start++;
+                                if (curr == '*') {
+                                    tk_void_char_peek(tk);
+                                    nest_count++;
+                                }
+                            } break;
+                            case '\0': {
+                                tok->start--;
+                                error_log_report_annotated_twice(
+                                    &tk->tc->error_log, ES_TOKENIZER, false,
+                                    "unterminated block comment", tk->file,
+                                    tok->start, tok->start + 1,
+                                    "reached eof before the comment was closed",
+                                    comment_start, comment_start + 2,
+                                    "comment starts here");
+                                tk->status = TK_STATUS_TOKENIZATION_ERROR;
+                                return NULL;
+                            }
+                        }
+                    } while (nest_count > 0);
                     curr = tk_peek_char(tk);
                     continue;
                 }
+                if (peek == '=') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_SLASH_EQUALS;
+                    return tk_return_head(tk, 2);
+                }
                 else {
-                    if (tk->status == TK_STATUS_EOF) {
-                        tok->start--;
-                        tok->type = TT_EOF;
-                        return tk_return_head(tk, 1);
+                    tok->type = TT_SLASH;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '%': {
+                char peek = tk_peek_char(tk);
+                if (peek == '=') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_PERCENT_EQUALS;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_PERCENT;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '#': {
+                char peek = tk_peek_char(tk);
+                if (peek == '#') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_DOUBLE_HASH;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_HASH;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '<': {
+                char peek = tk_peek_char(tk);
+                if (peek == '<') {
+                    tk_void_char_peek(tk);
+                    peek = tk_peek_char(tk);
+                    if (peek == '=') {
+                        tk_void_char_peek(tk);
+                        tok->type = TT_DOUBLE_LESS_THAN_EQUALS;
+                        return tk_return_head(tk, 3);
                     }
                     else {
-                        // TODO: print error
-                        tk_dec_iter(tk, &tk->loaded_tokens_start);
-                        return NULL;
+                        tok->type = TT_DOUBLE_LESS_THAN;
+                        return tk_return_head(tk, 2);
                     }
                 }
+                else if (peek == '=') {
+                    tk_void_char_peek(tk);
+                    peek = tk_peek_char(tk);
+                    if (peek == '=') {
+                        tk_void_char_peek(tk);
+                        tok->type = TT_LEFT_ARROW;
+                        return tk_return_head(tk, 3);
+                    }
+                    else {
+                        tok->type = TT_LESS_THAN_EQUALS;
+                        return tk_return_head(tk, 2);
+                    }
+                }
+                else {
+                    tok->type = TT_LESS_THAN;
+                    return tk_return_head(tk, 1);
+                }
             }
-            if (peek == '*') {
-                ureg comment_start = tok->start;
-                tk_void_char_peek(tk);
-                tok->start += 2;
-                ureg nest_count = 1;
+            case '>': {
+                char peek = tk_peek_char(tk);
+                if (peek == '>') {
+                    tk_void_char_peek(tk);
+                    peek = tk_peek_char(tk);
+                    if (peek == '=') {
+                        tk_void_char_peek(tk);
+                        tok->type = TT_DOUBLE_GREATER_THAN_EQUALS;
+                        return tk_return_head(tk, 3);
+                    }
+                    else {
+                        tok->type = TT_DOUBLE_GREATER_THAN;
+                        return tk_return_head(tk, 2);
+                    }
+                }
+                else if (peek == '=') {
+                    tok->type = TT_GREATER_THAN_EQUALS;
+                    return tk_return_head(tk, 2);
+                }
+                else {
+                    tok->type = TT_GREATER_THAN;
+                    return tk_return_head(tk, 1);
+                }
+            }
+            case '\'': {
+                char* str_start = tk->file_buffer_pos - 1;
                 do {
-                    curr = tk_consume_char(tk);
-                    tok->start++;
-                    switch (curr) {
-                    case '\n': {
+                    curr = tk_peek_char_holding(tk, &str_start);
+                    tk_void_char_peek(tk);
+                    if (curr == '\0') {
+                        return tk_unterminated_string_error(
+                            tk, str_start, tok->start);
+                    }
+                    if (curr == '\\') {
+                        // TODO: think about converting escaped chars
+                        curr = tk_peek_char_holding(tk, &str_start);
+                        tk_void_char_peek(tk);
+                        if (curr == '\0') {
+                            return tk_unterminated_string_error(
+                                tk, str_start, tok->start);
+                        }
+                    }
+                    if (curr == '\n') {
                         src_map_add_line(
-                            &tk->file->src_map, tk->tc, tok->start);
-                    } break;
-                    case '\t': break;
-                    case '*': {
-                        curr = tk_peek_char(tk);
-                        tok->start++;
-                        if (curr == '/') {
-                            tk_void_char_peek(tk);
-                            nest_count--;
-                        }
-                    } break;
-                    case '/': {
-                        curr = tk_peek_char(tk);
-                        tok->start++;
-                        if (curr == '*') {
-                            tk_void_char_peek(tk);
-                            nest_count++;
-                        }
-                    } break;
-                    case '\0': {
-                        tok->start--;
-                        error_log_report_annotated_twice(
-                            &tk->tc->error_log, ES_TOKENIZER, false,
-                            "unterminated block comment", tk->file, tok->start,
-                            tok->start + 1,
-                            "reached eof before the comment was closed",
-                            comment_start, comment_start + 2,
-                            "comment starts here");
-                        tk->status = TK_STATUS_TOKENIZATION_ERROR;
-                        return NULL;
+                            &tk->file->src_map, tk->tc,
+                            tok->start +
+                                ptrdiff(tk->file_buffer_pos, str_start));
                     }
-                    }
-                } while (nest_count > 0);
-                curr = tk_peek_char(tk);
-                continue;
+                } while (curr != '\'');
+                tok->type = TT_BINARY_LITERAL;
+                tok->str.start = str_start + 1;
+                tok->str.end = tk->file_buffer_pos - 1;
+                return tk_return_head(
+                    tk, ptrdiff(tk->file_buffer_pos, str_start));
             }
-            if (peek == '=') {
-                tk_void_char_peek(tk);
-                tok->type = TT_SLASH_EQUALS;
-                return tk_return_head(tk, 2);
-            }
-            else {
-                tok->type = TT_SLASH;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '%': {
-            char peek = tk_peek_char(tk);
-            if (peek == '=') {
-                tk_void_char_peek(tk);
-                tok->type = TT_PERCENT_EQUALS;
-                return tk_return_head(tk, 2);
-            }
-            else {
-                tok->type = TT_PERCENT;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '#': {
-            char peek = tk_peek_char(tk);
-            if (peek == '#') {
-                tk_void_char_peek(tk);
-                tok->type = TT_DOUBLE_HASH;
-                return tk_return_head(tk, 2);
-            }
-            else {
-                tok->type = TT_HASH;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '<': {
-            char peek = tk_peek_char(tk);
-            if (peek == '<') {
-                tk_void_char_peek(tk);
-                peek = tk_peek_char(tk);
-                if (peek == '=') {
-                    tk_void_char_peek(tk);
-                    tok->type = TT_DOUBLE_LESS_THAN_EQUALS;
-                    return tk_return_head(tk, 3);
-                }
-                else {
-                    tok->type = TT_DOUBLE_LESS_THAN;
-                    return tk_return_head(tk, 2);
-                }
-            }
-            else if (peek == '=') {
-                tk_void_char_peek(tk);
-                peek = tk_peek_char(tk);
-                if (peek == '=') {
-                    tk_void_char_peek(tk);
-                    tok->type = TT_LEFT_ARROW;
-                    return tk_return_head(tk, 3);
-                }
-                else {
-                    tok->type = TT_LESS_THAN_EQUALS;
-                    return tk_return_head(tk, 2);
-                }
-            }
-            else {
-                tok->type = TT_LESS_THAN;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '>': {
-            char peek = tk_peek_char(tk);
-            if (peek == '>') {
-                tk_void_char_peek(tk);
-                peek = tk_peek_char(tk);
-                if (peek == '=') {
-                    tk_void_char_peek(tk);
-                    tok->type = TT_DOUBLE_GREATER_THAN_EQUALS;
-                    return tk_return_head(tk, 3);
-                }
-                else {
-                    tok->type = TT_DOUBLE_GREATER_THAN;
-                    return tk_return_head(tk, 2);
-                }
-            }
-            else if (peek == '=') {
-                tok->type = TT_GREATER_THAN_EQUALS;
-                return tk_return_head(tk, 2);
-            }
-            else {
-                tok->type = TT_GREATER_THAN;
-                return tk_return_head(tk, 1);
-            }
-        }
-        case '\'': {
-            char* str_start = tk->file_buffer_pos - 1;
-            do {
-                curr = tk_peek_char_holding(tk, &str_start);
-                tk_void_char_peek(tk);
-                if (curr == '\0') {
-                    return tk_unterminated_string_error(
-                        tk, str_start, tok->start);
-                }
-                if (curr == '\\') {
-                    // TODO: think about converting escaped chars
+            case '"': {
+                char* str_start = tk->file_buffer_pos - 1;
+                do {
                     curr = tk_peek_char_holding(tk, &str_start);
                     tk_void_char_peek(tk);
                     if (curr == '\0') {
                         return tk_unterminated_string_error(
                             tk, str_start, tok->start);
                     }
-                }
-                if (curr == '\n') {
-                    src_map_add_line(
-                        &tk->file->src_map, tk->tc,
-                        tok->start + ptrdiff(tk->file_buffer_pos, str_start));
-                }
-            } while (curr != '\'');
-            tok->type = TT_BINARY_LITERAL;
-            tok->str.start = str_start + 1;
-            tok->str.end = tk->file_buffer_pos - 1;
-            return tk_return_head(tk, ptrdiff(tk->file_buffer_pos, str_start));
-        }
-        case '"': {
-            char* str_start = tk->file_buffer_pos - 1;
-            do {
-                curr = tk_peek_char_holding(tk, &str_start);
-                tk_void_char_peek(tk);
-                if (curr == '\0') {
-                    return tk_unterminated_string_error(
-                        tk, str_start, tok->start);
-                }
-                if (curr == '\\') {
-                    // TODO: think about converting escaped chars
-                    curr = tk_peek_char_holding(tk, &str_start);
-                    tk_void_char_peek(tk);
-                    if (curr == '\0') {
-                        return tk_unterminated_string_error(
-                            tk, str_start, tok->start);
+                    if (curr == '\\') {
+                        // TODO: think about converting escaped chars
+                        curr = tk_peek_char_holding(tk, &str_start);
+                        tk_void_char_peek(tk);
+                        if (curr == '\0') {
+                            return tk_unterminated_string_error(
+                                tk, str_start, tok->start);
+                        }
                     }
-                }
-                if (curr == '\n') {
-                    src_map_add_line(
-                        &tk->file->src_map, tk->tc,
-                        tok->start + ptrdiff(tk->file_buffer_pos, str_start));
-                }
-            } while (curr != '"');
-            tok->type = TT_LITERAL;
-            tok->str.start = str_start + 1;
-            tok->str.end = tk->file_buffer_pos - 1;
-            return tk_return_head(tk, ptrdiff(tk->file_buffer_pos, str_start));
-        }
-        case 'a':
-        case 'b':
-        case 'c':
-        case 'd':
-        case 'e':
-        case 'f':
-        case 'g':
-        case 'h':
-        case 'i':
-        case 'j':
-        case 'k':
-        case 'l':
-        case 'm':
-        case 'n':
-        case 'o':
-        case 'p':
-        case 'q':
-        case 'r':
-        case 's':
-        case 't':
-        case 'u':
-        case 'v':
-        case 'w':
-        case 'x':
-        case 'y':
-        case 'z':
-        case 'A':
-        case 'B':
-        case 'C':
-        case 'D':
-        case 'E':
-        case 'F':
-        case 'G':
-        case 'H':
-        case 'I':
-        case 'J':
-        case 'K':
-        case 'L':
-        case 'M':
-        case 'N':
-        case 'O':
-        case 'P':
-        case 'Q':
-        case 'R':
-        case 'S':
-        case 'T':
-        case 'U':
-        case 'V':
-        case 'W':
-        case 'X':
-        case 'Y':
-        case 'Z':
-        case '_': {
-            char* str_start = tk->file_buffer_pos - 1;
-            curr = tk_peek_char_holding(tk, &str_start);
-            while ((curr >= 'a' && curr <= 'z') ||
-                   (curr >= 'A' && curr <= 'Z') ||
-                   (curr >= '0' && curr <= '9') || (curr == '_')) {
-                tk_void_char_peek(tk);
+                    if (curr == '\n') {
+                        src_map_add_line(
+                            &tk->file->src_map, tk->tc,
+                            tok->start +
+                                ptrdiff(tk->file_buffer_pos, str_start));
+                    }
+                } while (curr != '"');
+                tok->type = TT_LITERAL;
+                tok->str.start = str_start + 1;
+                tok->str.end = tk->file_buffer_pos - 1;
+                return tk_return_head(
+                    tk, ptrdiff(tk->file_buffer_pos, str_start));
+            }
+            case 'a':
+            case 'b':
+            case 'c':
+            case 'd':
+            case 'e':
+            case 'f':
+            case 'g':
+            case 'h':
+            case 'i':
+            case 'j':
+            case 'k':
+            case 'l':
+            case 'm':
+            case 'n':
+            case 'o':
+            case 'p':
+            case 'q':
+            case 'r':
+            case 's':
+            case 't':
+            case 'u':
+            case 'v':
+            case 'w':
+            case 'x':
+            case 'y':
+            case 'z':
+            case 'A':
+            case 'B':
+            case 'C':
+            case 'D':
+            case 'E':
+            case 'F':
+            case 'G':
+            case 'H':
+            case 'I':
+            case 'J':
+            case 'K':
+            case 'L':
+            case 'M':
+            case 'N':
+            case 'O':
+            case 'P':
+            case 'Q':
+            case 'R':
+            case 'S':
+            case 'T':
+            case 'U':
+            case 'V':
+            case 'W':
+            case 'X':
+            case 'Y':
+            case 'Z':
+            case '_': {
+                char* str_start = tk->file_buffer_pos - 1;
                 curr = tk_peek_char_holding(tk, &str_start);
-            }
-            tok->type = TT_STRING;
-            tok->str.start = str_start;
-            tok->str.end = tk->file_buffer_pos;
-            return tk_return_head(tk, ptrdiff(tk->file_buffer_pos, str_start));
-        }
-        case '0':
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-        case '7':
-        case '8':
-        case '9': {
-            char* str_start = tk->file_buffer_pos - 1;
-            curr = tk_peek_char_holding(tk, &str_start);
-            while (curr >= '0' && curr <= '9') {
-                tk_void_char_peek(tk);
-                curr = tk_peek_char_holding(tk, &str_start);
-            }
-            tok->type = TT_NUMBER;
-            tok->str.start = str_start;
-            tok->str.end = tk->file_buffer_pos;
-            return tk_return_head(tk, ptrdiff(tk->file_buffer_pos, str_start));
-        }
-        default: {
-            /*
-            //TODO: proper unicode handling
-            ureg len = get_utf8_seq_len_from_head(curr);
-            for(ureg i = 1; i<len;i++){
-                char c = tk_peek_char(tk);
-                if(!is_utf8_continuation(c)){
-                    len = i;
-                    break;
+                while ((curr >= 'a' && curr <= 'z') ||
+                       (curr >= 'A' && curr <= 'Z') ||
+                       (curr >= '0' && curr <= '9') || (curr == '_')) {
+                    tk_void_char_peek(tk);
+                    curr = tk_peek_char_holding(tk, &str_start);
                 }
-                tk_void_char_peek(tk);
+                tok->type = TT_STRING;
+                tok->str.start = str_start;
+                tok->str.end = tk->file_buffer_pos;
+                return tk_return_head(
+                    tk, ptrdiff(tk->file_buffer_pos, str_start));
             }
-            */
-            error_log_report_annotated(
-                &tk->tc->error_log, ES_TOKENIZER, false, "unknown token",
-                tk->file, tok->start, tok->start + 1,
-                "not the start for any valid token");
-            return NULL;
-        }
+            case '0':
+            case '1':
+            case '2':
+            case '3':
+            case '4':
+            case '5':
+            case '6':
+            case '7':
+            case '8':
+            case '9': {
+                char* str_start = tk->file_buffer_pos - 1;
+                curr = tk_peek_char_holding(tk, &str_start);
+                while (curr >= '0' && curr <= '9') {
+                    tk_void_char_peek(tk);
+                    curr = tk_peek_char_holding(tk, &str_start);
+                }
+                tok->type = TT_NUMBER;
+                tok->str.start = str_start;
+                tok->str.end = tk->file_buffer_pos;
+                return tk_return_head(
+                    tk, ptrdiff(tk->file_buffer_pos, str_start));
+            }
+            default: {
+                /*
+                //TODO: proper unicode handling
+                ureg len = get_utf8_seq_len_from_head(curr);
+                for(ureg i = 1; i<len;i++){
+                    char c = tk_peek_char(tk);
+                    if(!is_utf8_continuation(c)){
+                        len = i;
+                        break;
+                    }
+                    tk_void_char_peek(tk);
+                }
+                */
+                error_log_report_annotated(
+                    &tk->tc->error_log, ES_TOKENIZER, false, "unknown token",
+                    tk->file, tok->start, tok->start + 1,
+                    "not the start for any valid token");
+                return NULL;
+            }
         }
     }
     panic("unexpected error in tokenizer");
