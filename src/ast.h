@@ -149,6 +149,7 @@ typedef struct named_ast_node {
 typedef struct astn_expr {
     ast_node astn;
     expr_node* expr;
+    src_range_packed stmt_range;
 } astn_expr;
 
 typedef struct astn_param_decl {

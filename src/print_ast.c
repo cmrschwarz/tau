@@ -77,7 +77,7 @@ void print_astn(ast_node* astn, ureg indent)
     case ASTNT_EXPRESSION: {
         astn_expr* e = (astn_expr*)astn;
         print_expr(e->expr);
-        pc('\n');
+        p(";\n");
     } break;
     case ASTNT_FUNCTION: {
         astn_function* f = (astn_function*)astn;
