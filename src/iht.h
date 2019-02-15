@@ -1,10 +1,10 @@
-//IHT: indentifier hash table
+// IHT: indentifier hash table
 #pragma once
-#include "utils/types.h"
-#include "utils/allocator.h"
 #include "ast.h"
+#include "utils/allocator.h"
+#include "utils/types.h"
 
-typedef struct iht{
+typedef struct iht {
     named_ast_node** table_start;
     named_ast_node** table_end;
     ureg elem_count;
@@ -12,7 +12,7 @@ typedef struct iht{
     ureg hash_mask;
     ureg size_bits;
     thread_allocator* tal;
-}iht;
+} iht;
 
 typedef ureg parent_hash;
 
@@ -26,12 +26,15 @@ int iht_insert(iht* h, named_ast_node* val);
 int iht_insert_pph(iht* h, parent_hash phash, named_ast_node* val);
 
 named_ast_node* iht_get(iht* h, named_ast_node* parent, const char* name);
-named_ast_node* iht_get_pph(iht* h, parent_hash phash, named_ast_node* parent, const char* name);
+named_ast_node* iht_get_pph(
+    iht* h, parent_hash phash, named_ast_node* parent, const char* name);
 
 named_ast_node* iht_remove(iht* h, named_ast_node* parent, const char* name);
-named_ast_node* iht_remove_pph(iht* h, parent_hash phash, named_ast_node* parent, const char* name);
+named_ast_node* iht_remove_pph(
+    iht* h, parent_hash phash, named_ast_node* parent, const char* name);
 
 named_ast_node* iht_remove_node(iht* h, named_ast_node* val);
-named_ast_node* iht_remove_node_pph(iht* h, parent_hash phash, named_ast_node* val);
+named_ast_node*
+iht_remove_node_pph(iht* h, parent_hash phash, named_ast_node* val);
 
 int iht_grow(iht* h);

@@ -1,51 +1,51 @@
 #pragma once
+#include "error_log.h"
+#include "parser.h"
 #include "utils/allocator.h"
 #include "utils/pool.h"
 #include "utils/threading.h"
-#include "parser.h"
-#include "error_log.h"
 
-typedef struct stage_1_share{
+typedef struct stage_1_share {
     mutex share_lock;
     sbuffer files;
     sbi unparsed_file;
-}stage_1_share;
+} stage_1_share;
 
-typedef struct stage_1{
+typedef struct stage_1 {
     parser p;
-    
-}stage_1;
+
+} stage_1;
 
 struct tauc;
-typedef struct thread_context{
+typedef struct thread_context {
     struct tauc* tauc;
     thread_allocator tal;
     error_log error_log;
     pool permmem;
     pool stagemem;
-    union{
+    union {
         stage_1 s1;
     } stage;
-}thread_context;
+} thread_context;
 
-typedef struct worker_thread{
+typedef struct worker_thread {
     struct worker_thread* next;
     thread_context tc;
     thread thread;
-}worker_thread;
+} worker_thread;
 
-typedef struct tauc{
+typedef struct tauc {
     thread_context main_thread_context;
     worker_thread* worker_threads;
     pool permmem;
     union {
         stage_1_share s1;
-    }stage_share;
-}tauc;
+    } stage_share;
+} tauc;
 
 extern struct tauc TAUC;
 
-//MAIN THREAD ONLY
+// MAIN THREAD ONLY
 int tauc_init();
 int tauc_run(int argc, char** argv);
 void tauc_fin_temps();

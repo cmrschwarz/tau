@@ -1,0 +1,18 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+IndentWidth: 4
+UseTab: Never
+ColumnLimit: 80
+DerivePointerAlignment: false
+PointerAlignment: Left
+AlignAfterOpenBracket: AlwaysBreak
+BreakBeforeBraces: Stroustrup
+AllowShortIfStatementsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: false
+AllowShortBlocksOnASingleLine: false
+IndentPPDirectives: AfterHash
+PenaltyReturnTypeOnItsOwnLine: 100
+---

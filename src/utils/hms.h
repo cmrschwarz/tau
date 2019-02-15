@@ -1,14 +1,14 @@
 #pragma once
-#include "types.h"
 #include "allocator.h"
+#include "types.h"
 
-//hms: hash map for strings
-typedef struct  hms_node{
+// hms: hash map for strings
+typedef struct hms_node {
     const char* key;
     void* value;
-}hms_node;
+} hms_node;
 
-typedef struct hms_t{
+typedef struct hms_t {
     hms_node* map;
     hms_node* map_end;
     ureg elem_count;
@@ -16,8 +16,7 @@ typedef struct hms_t{
     ureg hash_mask;
     ureg size_bits;
     thread_allocator* tal;
-}hms;
-
+} hms;
 
 ureg hms_hashpos(hms* h, const char* key);
 int hms_init(hms* h, thread_allocator* tal);

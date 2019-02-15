@@ -1,7 +1,7 @@
 #pragma once
 
 #ifndef __STDC_NO_ATOMICS__
-#include <stdatomic.h>
+#    include <stdatomic.h>
 #endif
 
 #define USE_LIBC_ATOMICS

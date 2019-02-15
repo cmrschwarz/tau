@@ -1,19 +1,18 @@
 #pragma once
-#include "types.h"
 #include "allocator.h"
+#include "types.h"
 
-typedef struct pool_segment{
+typedef struct pool_segment {
     struct pool_segment* next;
-    u8* head; 
+    u8* head;
     u8* end;
-}pool_segment;
+} pool_segment;
 
-typedef struct pool{
-    struct pool* next;   
+typedef struct pool {
+    struct pool* next;
     thread_allocator* tal;
     pool_segment* segments;
-}pool;
-
+} pool;
 
 int pool_init(pool* p, thread_allocator* tal);
 void pool_fin(pool* p);

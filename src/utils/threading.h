@@ -2,14 +2,14 @@
 #include "plattform.h"
 #include "types.h"
 
-typedef void (*thread_function_ptr) (void* context);
+typedef void (*thread_function_ptr)(void* context);
 #if OS_LINUX
-#include "os/linux/threading_linux.h"
+#    include "os/linux/threading_linux.h"
 #else
-#error no threading backend for configured plattform
+#    error no threading backend for configured plattform
 #endif
 
-//Threads
+// Threads
 int thread_yield();
 int thread_sleep(ureg microsecs);
 
@@ -17,16 +17,14 @@ int thread_launch(thread* t, thread_function_ptr thread_fn, void* context);
 int thread_join(thread* t);
 int thread_detach(thread* t);
 
-
-//Mutexes
+// Mutexes
 int mutex_init(mutex* m);
 bool mutex_try_lock(mutex* m);
 int mutex_lock(mutex* m);
 void mutex_unlock(mutex* m);
 void mutex_fin(mutex* m);
 
-
-//Atomics
+// Atomics
 int atomic_ureg_init(atomic_ureg* a, ureg value);
 void atomic_ureg_store(atomic_ureg* a, ureg value);
 ureg atomic_ureg_load(atomic_ureg* a, ureg value);

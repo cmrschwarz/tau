@@ -1,8 +1,8 @@
-#include "utils/c_extensions.h"
 #include "stdbool.h"
+#include "utils/c_extensions.h"
 #include "utils/string.h"
 
-typedef enum PACK_ENUM keyword_id{
+typedef enum PACK_ENUM keyword_id {
     KW_MODULE = 0,
     KW_IMPORT,
     KW_INCLUDE,
@@ -15,7 +15,7 @@ typedef enum PACK_ENUM keyword_id{
     KW_PROTECTED,
     KW_PRIVATE,
     KW_STATIC,
-    
+
     KW_AS,
     KW_FUNC,
     KW_STRUCT,
@@ -35,7 +35,7 @@ typedef enum PACK_ENUM keyword_id{
     KW_LET,
     KW_COUNT,
     KW_INVALID_KEYWORD,
-}keyword_id;
+} keyword_id;
 
 bool kw_equals(keyword_id id, string str);
 keyword_id kw_match(string str);

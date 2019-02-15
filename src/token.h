@@ -1,10 +1,10 @@
 #pragma once
-#include "utils/types.h"
-#include "utils/string.h"
 #include "src_map.h"
 #include "utils/c_extensions.h"
+#include "utils/string.h"
+#include "utils/types.h"
 
-typedef enum PACK_ENUM{
+typedef enum PACK_ENUM {
     TT_NUMBER = 0,
     TT_LITERAL = 1,
     TT_BINARY_LITERAL = 2,
@@ -28,7 +28,7 @@ typedef enum PACK_ENUM{
     TT_INHERITS,
     TT_IMPLEMENTS,
     TT_ALIAS,
-    
+
     TT_MINUS_EQUALS,
     TT_PLUS_EQUALS,
     TT_STAR_EQUALS,
@@ -82,19 +82,19 @@ typedef enum PACK_ENUM{
     TT_DOUBLE_COLON,
     TT_ARROW,
     TT_LEFT_ARROW,
-}token_type;
+} token_type;
 
 extern const char* token_strings[255];
 
-typedef struct token{
+typedef struct token {
     token_type type;
     string str;
     ureg start;
     ureg end;
-}token;
+} token;
 
-
-static inline bool token_has_string(token* t){
+static inline bool token_has_string(token* t)
+{
     return t->type < 4;
 }
 

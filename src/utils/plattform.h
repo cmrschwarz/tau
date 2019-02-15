@@ -6,7 +6,6 @@
 
 #define USE_LIBC 0
 
-
 #define ARCH_X86 1
 #define ARCH_ARM 0
 
@@ -14,7 +13,7 @@
 #define CMPLR_MSVC 0
 #define CMPLR_CLANG 0
 
-//could point to a (caching)function returning this at runtime
-#define PAGE_SIZE 4096 
+// could point to a (caching)function returning this at runtime
+#define PAGE_SIZE 4096
 
 #define DEBUG 1
