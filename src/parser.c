@@ -554,7 +554,7 @@ parse_parenthesis_group(parser* p, token* t, astn** ex)
     expr_parentheses* pr =
         (expr_parentheses*)alloc_perm(p, sizeof(expr_parentheses));
     if (!pr) return PE_INSANE;
-    pr->ex.type = OP_PARENTHESES;
+    pr->ex.type = ENT_OP_PARENTHESES;
     pr->child = *ex;
     // TODO fixme
     if (expr_fill_srange(p, &pr->ex, t_start, t->end)) return PE_INSANE;

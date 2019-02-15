@@ -164,7 +164,7 @@ typedef struct expr {
 typedef struct expr_label {
     // this is a named statement to allow it to be in the IHT
     // this is the reason why exprs dont't have astn* but astn*
-    // we use the next pointer from astn to store the child expression
+    // we use the next pointer from stmt to store the child expression
     named_stmt nstmt;
 } expr_label;
 
@@ -191,8 +191,6 @@ typedef struct stmt_extend {
     import* imports;
     stmt* body;
 } stmt_extend;
-
-// TODO: implement named arguments
 
 typedef struct stmt_function {
     named_stmt nstmt;
@@ -258,6 +256,7 @@ typedef struct expr_op_unary {
     astn* child;
 } expr_op_unary;
 
+// TODO: implement named arguments
 typedef struct expr_call {
     expr ex;
     astn* lhs;
