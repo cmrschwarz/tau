@@ -160,7 +160,7 @@ void print_astn(stmt* astn, ureg indent)
         } break;
         case ASTNT_VAR_DECL: {
             stmt_var_decl* d = (stmt_var_decl*)astn;
-            if (astn_flags_get_const(d->nstmt.stmt.flags)) p("const ");
+            if (stmt_flags_get_const(d->nstmt.stmt.flags)) p("const ");
             pu(d->nstmt.name);
             pc(':');
             if (d->type != NULL) {
@@ -316,13 +316,4 @@ char* op_to_str(op_type t)
         default: return NULL;
     }
     return 0;
-}
-
-bool is_unary_op_postfix(op_type t)
-{
-    switch (t) {
-        case OP_POST_INCREMENT:
-        case OP_POST_DECREMENT: return true;
-        default: return false;
-    }
 }

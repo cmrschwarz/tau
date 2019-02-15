@@ -2,7 +2,7 @@
 #include "src_map.h"
 #include "utils/c_extensions.h"
 
-typedef u8 astn_flags;
+typedef u8 stmt_flags;
 #define ASTN_FLAGS_DEFAULT 0
 
 typedef enum PACK_ENUM access_modifier {
@@ -137,7 +137,7 @@ typedef enum PACK_ENUM op_type {
 typedef astnt astn;
 typedef struct stmt {
     astnt type;
-    astn_flags flags;
+    stmt_flags flags;
     struct stmt* next;
 } stmt;
 
@@ -338,20 +338,25 @@ typedef struct expr_lambda {
     stmt* body;
 } expr_lambda;
 
-void astn_flags_set_access_mod(astn_flags* f, access_modifier m);
-access_modifier astn_flags_get_access_mod(astn_flags f);
+bool is_unary_op_postfix(op_type t);
+stmt* get_parent_body(named_stmt* parent);
+void stmt_get_highlight_bounds(stmt* stmt, ureg* start, ureg* end);
+void get_expr_bounds(astn* n, ureg* start, ureg* end);
 
-void astn_flags_set_const(astn_flags* f, bool cnst);
-bool astn_flags_get_const(astn_flags f);
+void stmt_flags_set_access_mod(stmt_flags* f, access_modifier m);
+access_modifier stmt_flags_get_access_mod(stmt_flags f);
 
-void astn_flags_set_sealed(astn_flags* f, bool sld);
-bool astn_flags_get_sealed(astn_flags f);
+void stmt_flags_set_const(stmt_flags* f, bool cnst);
+bool stmt_flags_get_const(stmt_flags f);
 
-void astn_flags_set_virtual(astn_flags* f, bool virt);
-bool astn_flags_get_virtual(astn_flags f);
+void stmt_flags_set_sealed(stmt_flags* f, bool sld);
+bool stmt_flags_get_sealed(stmt_flags f);
 
-void astn_flags_set_static(astn_flags* f, bool stat);
-bool astn_flags_get_static(astn_flags f);
+void stmt_flags_set_virtual(stmt_flags* f, bool virt);
+bool stmt_flags_get_virtual(stmt_flags f);
 
-void astn_flags_set_module_extension(astn_flags* f, bool ext);
-bool astn_flags_get_module_extension(astn_flags f);
+void stmt_flags_set_static(stmt_flags* f, bool stat);
+bool stmt_flags_get_static(stmt_flags f);
+
+void stmt_flags_set_module_extension(stmt_flags* f, bool ext);
+bool stmt_flags_get_module_extension(stmt_flags f);

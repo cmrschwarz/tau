@@ -18,7 +18,7 @@ typedef struct parser {
     list_builder lb;
     stmt_module root;
     named_stmt* curr_parent;
-    stmt** curr_head;
+    stmt** root_head;
     iht iht;
 } parser;
 
