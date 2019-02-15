@@ -226,8 +226,8 @@ int print_filepath(ureg line_nr_offset, src_pos pos, file* file)
 #define ERR_POINT_BUFFER_SIZE 8
 typedef struct err_point {
     ureg line; // TODO: handle ranges stretching multiple lines
-    ureg c_start;
-    ureg c_end;
+    ureg col_start;
+    ureg col_end;
     sreg length_diff_start;
     sreg length_diff_end;
     char* message;
@@ -343,17 +343,17 @@ int print_src_line(
         while (pos < end && ep_pos != ep_end) {
             int mode;
             ureg next;
-            if (ep_pos->c_start >= pos) {
-                if (ep_pos->c_start == pos) {
+            if (ep_pos->col_start >= pos) {
+                if (ep_pos->col_start == pos) {
                     ep_pos->length_diff_start = length_diff;
                     pec(ep_pos->squigly_color);
-                    next = ep_pos->c_end;
+                    next = ep_pos->col_end;
                     mode = 1;
                 }
                 else {
-                    next = ep_pos->c_start;
+                    next = ep_pos->col_start;
                     if (ep_pos + 1 != ep_end &&
-                        (ep_pos + 1)->c_start == ep_pos->c_start) {
+                        (ep_pos + 1)->col_start == ep_pos->col_start) {
                         mode = 3;
                     }
                     else {
@@ -363,14 +363,14 @@ int print_src_line(
             }
             else {
                 if (ep_pos + 1 != ep_end &&
-                    (ep_pos + 1)->c_start < ep_pos->c_end &&
-                    next < (ep_pos + 1)->c_start) {
+                    (ep_pos + 1)->col_start < ep_pos->col_end &&
+                    next < (ep_pos + 1)->col_start) {
                     mode = 2;
-                    next = (ep_pos + 1)->c_start;
+                    next = (ep_pos + 1)->col_start;
                 }
                 else {
                     mode = 1;
-                    next = ep_pos->c_end;
+                    next = ep_pos->col_end;
                 }
             }
             ureg d = next - pos;
@@ -410,7 +410,7 @@ int print_src_line(
     ep_pos = ep_end - 1;
     ureg msg_len = strlen(ep_pos->message);
     if (ep_end != ep_start && msg_len > 0 &&
-        ep_pos->c_end + has_newline == length &&
+        ep_pos->col_end + has_newline == length &&
         length + length_diff + 4 + msg_len + 4 <=
             MASTER_ERROR_LOG.sane_err_line_length) {
         pectc(ANSICOLOR_BLUE ANSICOLOR_BOLD, " <- ", ANSICOLOR_CLEAR);
@@ -425,13 +425,13 @@ int print_src_line(
     }
     ep_pos = ep_start;
     while (ep_pos < ep_end) {
-        if (ep_pos->c_end == ep_pos->c_start) {
+        if (ep_pos->col_end == ep_pos->col_start) {
             ep_pos++;
             continue;
         }
         for (ureg i = 0; i < max_line_length; i++) pe(" ");
         pectc(ANSICOLOR_BOLD ANSICOLOR_BLUE, " |", ANSICOLOR_CLEAR);
-        ureg space_before = ep_pos->c_start + ep_pos->length_diff_start;
+        ureg space_before = ep_pos->col_start + ep_pos->length_diff_start;
         msg_len = strlen(ep_pos->message);
         bool msg_before = space_before > msg_len + 2 ||
                           space_before > MASTER_ERROR_LOG.max_err_line_length;
@@ -471,8 +471,8 @@ int print_src_line(
             for (ureg i = 0; i < space_before; i++) pe(" ");
         }
         pec(ep_pos->squigly_color);
-        for (ureg i = ep_pos->c_start + ep_pos->length_diff_start;
-             i < ep_pos->c_end + ep_pos->length_diff_end; i++) {
+        for (ureg i = ep_pos->col_start + ep_pos->length_diff_start;
+             i < ep_pos->col_end + ep_pos->length_diff_end; i++) {
             pe("^");
         }
         if (!msg_before) {
@@ -488,7 +488,7 @@ int print_src_line(
 int cmp_err_point(err_point l, err_point r)
 {
     if (l.line != r.line) return l.line - r.line;
-    return l.c_start - r.c_start;
+    return l.col_start - r.col_start;
 }
 #define SORT_NAME err_points
 #define SORT_TYPE err_point
@@ -497,40 +497,41 @@ int cmp_err_point(err_point l, err_point r)
 ureg extend_em(
     error* e, err_point* err_points, char* annot, src_pos pos, src_pos end)
 {
-    if (end.line == pos.line) {
+    bool end_on_start = (end.column == 0 && end.line != pos.line);
+    if (end.line == pos.line + end_on_start) {
         err_points[0].message = annot;
-        err_points[0].c_end = end.column;
+        err_points[0].col_end = end.column;
         return 1;
     }
     else {
         err_points[0].message = "";
         ureg lstart, llength;
         src_pos_get_line_bounds(&e->file->src_map, pos.line, &lstart, &llength);
-        err_points[0].c_end = llength - 1;
-        if (pos.line + 1 == end.line) {
+        err_points[0].col_end = llength - 1;
+        if (pos.line + 1 + end_on_start == end.line) {
             err_points[1].message_color = err_points[0].message_color;
             err_points[1].squigly_color = err_points[0].squigly_color;
             err_points[1].line = end.line;
-            err_points[1].c_start = 0;
-            err_points[1].c_end = end.column;
+            err_points[1].col_start = 0;
+            err_points[1].col_end = end.column;
             err_points[1].message = annot;
             return 2;
         }
-        else if (pos.line + 2 == end.line) {
+        else if (pos.line + 2 + end_on_start == end.line) {
             src_pos_get_line_bounds(
                 &e->file->src_map, pos.line + 1, &lstart, &llength);
             err_points[1].message = "";
             err_points[1].message_color = err_points[0].message_color;
             err_points[1].squigly_color = err_points[0].squigly_color;
-            err_points[1].c_start = 0;
-            err_points[1].c_end = llength - 1;
+            err_points[1].col_start = 0;
+            err_points[1].col_end = llength - 1;
             err_points[1].line = pos.line + 1;
             src_pos_get_line_bounds(
                 &e->file->src_map, pos.line + 2, &lstart, &llength);
             err_points[2].message_color = err_points[0].message_color;
             err_points[2].squigly_color = err_points[0].squigly_color;
-            err_points[2].c_start = 0;
-            err_points[2].c_end = end.column;
+            err_points[2].col_start = 0;
+            err_points[2].col_end = end.column;
             err_points[2].message = annot;
             err_points[2].line = end.line;
             return 3;
@@ -538,10 +539,20 @@ ureg extend_em(
         else {
             err_points[1].message_color = err_points[0].message_color;
             err_points[1].squigly_color = err_points[0].squigly_color;
-            err_points[1].c_start = 0;
-            err_points[1].c_end = end.column;
-            err_points[1].line = end.line;
             err_points[1].message = annot;
+            if (!end_on_start) {
+                err_points[1].col_start = 0;
+                err_points[1].col_end = end.column;
+                err_points[1].line = end.line;
+            }
+            else {
+                src_pos_get_line_bounds(
+                    &e->file->src_map, end.line - 1, &lstart, &llength);
+                err_points[1].col_start = 0;
+                err_points[1].col_end = llength;
+                err_points[1].line = end.line - 1;
+            }
+
             return 2;
         }
     }
@@ -574,7 +585,7 @@ int report_error(error* e, FILE* fh, file* file)
         case ET_1_ANNOT: {
             error_annotated* ea = (error_annotated*)e;
             err_points[0].line = pos.line;
-            err_points[0].c_start = pos.column;
+            err_points[0].col_start = pos.column;
             err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
             err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
             src_pos end = src_map_get_pos(&e->file->src_map, ea->end);
@@ -584,7 +595,7 @@ int report_error(error* e, FILE* fh, file* file)
         case ET_MULTI_ANNOT: {
             error_multi_annotated* ema = (error_multi_annotated*)e;
             err_points[0].line = pos.line;
-            err_points[0].c_start = pos.column;
+            err_points[0].col_start = pos.column;
             err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
             err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
             src_pos end =
@@ -595,8 +606,8 @@ int report_error(error* e, FILE* fh, file* file)
             for (ureg i = err_point_count; i < ema->annot_count + 1; i++) {
                 src_pos posi = src_map_get_pos(&e->file->src_map, ea->start);
                 err_points[err_point_count].line = posi.line;
-                err_points[err_point_count].c_start = posi.column;
-                err_points[err_point_count].c_end =
+                err_points[err_point_count].col_start = posi.column;
+                err_points[err_point_count].col_end =
                     (posi.column + (ea->end - ea->start));
                 err_points[err_point_count].message = ea->annotation;
                 err_points[err_point_count].message_color =

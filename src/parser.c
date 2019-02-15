@@ -911,6 +911,14 @@ parse_error parse_var_decl(
     }
     else {
         pe = parse_expression(p, &vd->type);
+        if (pe == PE_EOEX) {
+            PEEK(p, t);
+            error_log_report_annotated_twice(
+                &p->tk.tc->error_log, ES_PARSER, false,
+                "invalid declaration syntax", p->tk.file, t->start, t->end,
+                "expected type or '='", start, t->start, // slightly ugly
+                "begin of declaration");
+        }
         if (pe) return pe;
         PEEK(p, t);
         if (t->type == TT_EQUALS) {
