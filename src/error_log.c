@@ -497,8 +497,13 @@ int cmp_err_point(err_point l, err_point r)
 ureg extend_em(
     error* e, err_point* err_points, char* annot, src_pos pos, src_pos end)
 {
-    bool end_on_start = (end.column == 0 && end.line != pos.line);
-    if (end.line == pos.line + end_on_start) {
+    if (end.column == 0 && end.line != pos.line) {
+        ureg lstart, llength;
+        src_pos_get_line_bounds(&e->file->src_map, pos.line, &lstart, &llength);
+        end.line--;
+        end.column = llength - 1;
+    }
+    if (end.line == pos.line) {
         err_points[0].message = annot;
         err_points[0].col_end = end.column;
         return 1;
@@ -508,7 +513,7 @@ ureg extend_em(
         ureg lstart, llength;
         src_pos_get_line_bounds(&e->file->src_map, pos.line, &lstart, &llength);
         err_points[0].col_end = llength - 1;
-        if (pos.line + 1 + end_on_start == end.line) {
+        if (pos.line + 1 == end.line) {
             err_points[1].message_color = err_points[0].message_color;
             err_points[1].squigly_color = err_points[0].squigly_color;
             err_points[1].line = end.line;
@@ -517,7 +522,7 @@ ureg extend_em(
             err_points[1].message = annot;
             return 2;
         }
-        else if (pos.line + 2 + end_on_start == end.line) {
+        else if (pos.line + 2 == end.line) {
             src_pos_get_line_bounds(
                 &e->file->src_map, pos.line + 1, &lstart, &llength);
             err_points[1].message = "";
@@ -540,19 +545,9 @@ ureg extend_em(
             err_points[1].message_color = err_points[0].message_color;
             err_points[1].squigly_color = err_points[0].squigly_color;
             err_points[1].message = annot;
-            if (!end_on_start) {
-                err_points[1].col_start = 0;
-                err_points[1].col_end = end.column;
-                err_points[1].line = end.line;
-            }
-            else {
-                src_pos_get_line_bounds(
-                    &e->file->src_map, end.line - 1, &lstart, &llength);
-                err_points[1].col_start = 0;
-                err_points[1].col_end = llength;
-                err_points[1].line = end.line - 1;
-            }
-
+            err_points[1].col_start = 0;
+            err_points[1].col_end = end.column;
+            err_points[1].line = end.line;
             return 2;
         }
     }
