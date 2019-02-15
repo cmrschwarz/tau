@@ -9,6 +9,8 @@
 #define VIRTUAL_MASK (1 << VIRTUAL_OFFSET)
 #define STATIC_OFFSET 1
 #define STATIC_MASK (1 << STATIC_OFFSET)
+#define EXTEND_OFFSET 0
+#define EXTEND_MASK (1 << STATIC_OFFSET)
 
 void astn_flags_set_access_mod(astn_flags* f, access_modifier m)
 {
@@ -53,4 +55,13 @@ void astn_flags_set_static(astn_flags* f, bool stat)
 bool astn_flags_get_static(astn_flags f)
 {
     return (f & STATIC_MASK) >> STATIC_OFFSET;
+}
+
+void astn_flags_set_module_extension(astn_flags* f, bool ext)
+{
+    *f = *f | (ext << EXTEND_OFFSET);
+}
+bool astn_flags_get_module_extension(astn_flags f)
+{
+    return (f & EXTEND_MASK) >> EXTEND_OFFSET;
 }

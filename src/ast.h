@@ -15,12 +15,16 @@ typedef enum PACK_ENUM access_modifier {
 typedef enum PACK_ENUM astnt {
     // statement nodes
     ASTNT_MODULE,
+    ASTNT_GENERIC_MODULE,
     ASTNT_EXTEND,
+    ASTNT_GENERIC_EXTEND,
 
     ASTNT_FUNCTION,
     ASTNT_GENERIC_FUNCTION,
     ASTNT_STRUCT,
     ASTNT_GENERIC_STRUCT,
+    ASTNT_TRAIT,
+    ASTNT_GENERIC_TRAIT,
 
     ASTNT_VAR_DECL,
     ASTNT_PARAM_DECL,
@@ -130,17 +134,6 @@ typedef enum PACK_ENUM op_type {
     OP_POST_DECREMENT,
 } op_type;
 
-typedef struct stmt_module stmt_module;
-
-typedef struct import {
-    bool resolved;
-    union {
-        char* module_name;
-        stmt_module* module;
-    } target;
-    struct include* next;
-} import;
-
 typedef astnt astn;
 typedef struct stmt {
     astnt type;
@@ -180,18 +173,6 @@ typedef struct stmt_param_decl {
     astn* default_value;
 } stmt_param_decl;
 
-typedef struct stmt_module {
-    named_stmt nstmt;
-    import* imports;
-    stmt* body;
-} stmt_module;
-
-typedef struct stmt_extend {
-    named_stmt nstmt;
-    import* imports;
-    stmt* body;
-} stmt_extend;
-
 typedef struct stmt_function {
     named_stmt nstmt;
     stmt_param_decl* params;
@@ -215,6 +196,39 @@ typedef struct stmt_generic_struct {
     stmt_param_decl* generic_params;
     stmt* body;
 } stmt_generic_struct;
+
+typedef struct stmt_trait {
+    named_stmt nstmt;
+    stmt* body;
+} stmt_trait;
+
+typedef struct stmt_generic_trait {
+    named_stmt nstmt;
+    stmt_param_decl* generic_params;
+    stmt* body;
+} stmt_generic_trait;
+
+typedef struct stmt_module {
+    named_stmt nstmt;
+    stmt* body;
+} stmt_module;
+
+typedef struct stmt_generic_module {
+    named_stmt nstmt;
+    stmt_param_decl* generic_params;
+    stmt* body;
+} stmt_generic_module;
+
+typedef struct stmt_extend {
+    named_stmt nstmt;
+    stmt* body;
+} stmt_extend;
+
+typedef struct stmt_generic_extend {
+    named_stmt nstmt;
+    stmt_param_decl* generic_params;
+    stmt* body;
+} stmt_generic_extend;
 
 typedef struct stmt_var_decl {
     named_stmt nstmt;
@@ -338,3 +352,6 @@ bool astn_flags_get_virtual(astn_flags f);
 
 void astn_flags_set_static(astn_flags* f, bool stat);
 bool astn_flags_get_static(astn_flags f);
+
+void astn_flags_set_module_extension(astn_flags* f, bool ext);
+bool astn_flags_get_module_extension(astn_flags f);

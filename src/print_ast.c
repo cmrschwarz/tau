@@ -6,6 +6,7 @@
 void pc(char c)
 {
     putchar(c);
+    fflush(stdout);
 }
 void p(char* c)
 {
@@ -18,6 +19,12 @@ void pu(char* c)
         c = "unknown";
     }
     fputs(c, stdout);
+    fflush(stdout);
+}
+void ps(char* c)
+{
+    pu(c);
+    pc(' ');
     fflush(stdout);
 }
 void print_indent(ureg indent)
@@ -65,15 +72,6 @@ void print_astn(stmt* astn, ureg indent)
 {
     print_indent(indent);
     switch (astn->type) {
-        case ASTNT_MODULE: {
-            stmt_module* m = (stmt_module*)astn;
-            p("module ");
-            if (m->nstmt.name != NULL) {
-                p(m->nstmt.name);
-                pc(' ');
-            }
-            print_astn_body_braced(m->body, indent);
-        } break;
         case ASTNT_EXPRESSION: {
             stmt_expr* e = (stmt_expr*)astn;
             print_expr(e->expr);
@@ -100,6 +98,66 @@ void print_astn(stmt* astn, ureg indent)
             pc(')');
             print_astn_body_braced(f->body, indent);
         } break;
+        case ASTNT_STRUCT: {
+            stmt_struct* s = (stmt_struct*)astn;
+            p("struct ");
+            if (s->nstmt.name) ps(s->nstmt.name);
+            print_astn_body_braced(s->body, indent);
+        } break;
+        case ASTNT_GENERIC_STRUCT: {
+            stmt_generic_struct* s = (stmt_generic_struct*)astn;
+            p("struct ");
+            if (s->nstmt.name) ps(s->nstmt.name);
+            p("[");
+            print_astn_params_decl(s->generic_params);
+            pc(']');
+            print_astn_body_braced(s->body, indent);
+        } break;
+        case ASTNT_TRAIT: {
+            stmt_trait* t = (stmt_trait*)astn;
+            p("trait ");
+            if (t->nstmt.name) ps(t->nstmt.name);
+            print_astn_body_braced(t->body, indent);
+        } break;
+        case ASTNT_GENERIC_TRAIT: {
+            stmt_generic_trait* t = (stmt_generic_trait*)astn;
+            p("trait ");
+            if (t->nstmt.name) ps(t->nstmt.name);
+            p("[");
+            print_astn_params_decl(t->generic_params);
+            pc(']');
+            print_astn_body_braced(t->body, indent);
+        } break;
+        case ASTNT_MODULE: {
+            stmt_module* m = (stmt_module*)astn;
+            p("module ");
+            if (m->nstmt.name) ps(m->nstmt.name);
+            print_astn_body_braced(m->body, indent);
+        } break;
+        case ASTNT_GENERIC_MODULE: {
+            stmt_generic_module* m = (stmt_generic_module*)astn;
+            p("module ");
+            if (m->nstmt.name) ps(m->nstmt.name);
+            p("[");
+            print_astn_params_decl(m->generic_params);
+            pc(']');
+            print_astn_body_braced(m->body, indent);
+        } break;
+        case ASTNT_EXTEND: {
+            stmt_extend* e = (stmt_extend*)astn;
+            p("extend ");
+            if (e->nstmt.name) ps(e->nstmt.name);
+            print_astn_body_braced(e->body, indent);
+        } break;
+        case ASTNT_GENERIC_EXTEND: {
+            stmt_generic_extend* e = (stmt_generic_extend*)astn;
+            p("extend ");
+            if (e->nstmt.name) ps(e->nstmt.name);
+            p("[");
+            print_astn_params_decl(e->generic_params);
+            pc(']');
+            print_astn_body_braced(e->body, indent);
+        } break;
         case ASTNT_VAR_DECL: {
             stmt_var_decl* d = (stmt_var_decl*)astn;
             if (astn_flags_get_const(d->nstmt.stmt.flags)) p("const ");
@@ -111,6 +169,7 @@ void print_astn(stmt* astn, ureg indent)
                 if (d->value != NULL) pc(' ');
             }
             if (d->value != NULL) {
+                p("= ");
                 print_expr(d->value);
             }
             p(";\n");
