@@ -47,7 +47,7 @@ static const unsigned char op_precedence[] = {
     [OP_POINTER_OF] = 14,
     [OP_REF_OF] = 14,
     [OP_RREF_OF] = 14,
-    [OP_VALUE_OF] = 14,
+    [OP_CLOSURE_BY_VALUE] = 14,
     [OP_CONST] = 14,
 
     [OP_BITWISE_AND] = 13,
@@ -179,7 +179,7 @@ static inline op_type token_to_prefix_unary_op(token* t)
         case TT_STAR: return OP_DEREF;
         case TT_AND: return OP_REF_OF;
         case TT_PERCENT: return OP_POINTER_OF;
-        case TT_CARET: return OP_VALUE_OF;
+        case TT_CARET: return OP_CLOSURE_BY_VALUE;
         case TT_DOLLAR: return OP_RREF_OF;
         case TT_DOUBLE_PLUS: return OP_PRE_INCREMENT;
         case TT_DOUBLE_MINUS: return OP_PRE_DECREMENT;

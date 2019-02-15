@@ -114,12 +114,12 @@ typedef enum PACK_ENUM op_type {
 
     // unary ops
     OP_CONST,
-    OP_DEREF,      // *
-    OP_POINTER_OF, // %
-    OP_REF_OF,     // &
-    OP_RREF_OF,    // $
-    OP_VALUE_OF,   // ^ (don't confuse with deref, this is used in lambdas to
-                   // indicate closure by value)
+    OP_DEREF,
+    OP_POINTER_OF,
+    OP_REF_OF,
+    OP_RREF_OF,
+    OP_CLOSURE_BY_VALUE,
+
     OP_NOT,
     OP_BITWISE_NOT,
     OP_UNARY_PLUS,

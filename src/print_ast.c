@@ -242,7 +242,7 @@ char* op_to_str(op_type t)
         case OP_POINTER_OF: return "%";
         case OP_REF_OF: return "&";
         case OP_RREF_OF: return "$";
-        case OP_VALUE_OF: return "^";
+        case OP_CLOSURE_BY_VALUE: return "^";
         case OP_NOT: return "!";
         case OP_BITWISE_NOT: return "~";
         case OP_UNARY_PLUS: return "+";
