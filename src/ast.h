@@ -29,12 +29,6 @@ typedef enum PACK_ENUM astnt {
     ASTNT_VAR_DECL,
     ASTNT_PARAM_DECL,
 
-    ASTNT_FOR,
-    ASTNT_FOR_EACH,
-    ASTNT_WHILE,
-    ASTNT_DO_WHILE,
-    ASTNT_LOOP,
-
     ASTNT_CONTINUE,
     ASTNT_BREAK,
 
@@ -44,14 +38,18 @@ typedef enum PACK_ENUM astnt {
     ASTNT_LABEL,
     ASTNT_GOTO,
 
-    ASTNT_IF,
-    ASTNT_SWITCH,
-    ASTNT_IF_LET,
-
     ASTNT_EXPRESSION,
 
-    // expression / statement hybrid
+    // expression / statement hybrids
     ENT_LABEL,
+    ASTNT_SWITCH,
+    ASTNT_IF,
+    ASTNT_IF_LET,
+    ASTNT_FOR,
+    ASTNT_FOR_EACH,
+    ASTNT_WHILE,
+    ASTNT_DO_WHILE,
+    ASTNT_LOOP,
 
     // expression nodes
     ENT_NUMBER,
@@ -154,12 +152,24 @@ typedef struct expr {
     src_range srange;
 } expr;
 
-typedef struct expr_label {
-    // this is a named statement to allow it to be in the IHT
-    // this is the reason why exprs dont't have astn* but astn*
-    // we use the next pointer from stmt to store the child expression
+typedef struct stmt_label {
     named_stmt nstmt;
 } expr_label;
+
+// these hybrid expressions actually "inherit" named statement to allow it to be
+// in the IHT this is the reason why exprs dont't have astn* but astn* we use
+// the next pointer from stmt to store the child expression
+
+typedef struct expr_if {
+    named_stmt nstmt; // next becomes the if body
+    astn* condition;
+    stmt* else_body;
+} expr_if;
+
+typedef struct expr_loop {
+    named_stmt nstmt; // next becomes the loop body
+    ureg block_end;
+} expr_loop;
 
 typedef struct stmt_expr {
     stmt stmt;
@@ -177,6 +187,7 @@ typedef struct stmt_function {
     named_stmt nstmt;
     stmt_param_decl* params;
     stmt* body;
+    ureg body_end;
 } stmt_function;
 
 typedef struct stmt_generic_function {
@@ -184,50 +195,59 @@ typedef struct stmt_generic_function {
     stmt_param_decl* generic_params;
     stmt_param_decl* params;
     stmt* body;
+    ureg body_end;
 } stmt_generic_function;
 
 typedef struct stmt_struct {
     named_stmt nstmt;
     stmt* body;
+    ureg body_end;
 } stmt_struct;
 
 typedef struct stmt_generic_struct {
     named_stmt nstmt;
     stmt_param_decl* generic_params;
     stmt* body;
+    ureg body_end;
 } stmt_generic_struct;
 
 typedef struct stmt_trait {
     named_stmt nstmt;
     stmt* body;
+    ureg body_end;
 } stmt_trait;
 
 typedef struct stmt_generic_trait {
     named_stmt nstmt;
     stmt_param_decl* generic_params;
     stmt* body;
+    ureg body_end;
 } stmt_generic_trait;
 
 typedef struct stmt_module {
     named_stmt nstmt;
     stmt* body;
+    ureg body_end;
 } stmt_module;
 
 typedef struct stmt_generic_module {
     named_stmt nstmt;
     stmt_param_decl* generic_params;
     stmt* body;
+    ureg body_end;
 } stmt_generic_module;
 
 typedef struct stmt_extend {
     named_stmt nstmt;
     stmt* body;
+    ureg body_end;
 } stmt_extend;
 
 typedef struct stmt_generic_extend {
     named_stmt nstmt;
     stmt_param_decl* generic_params;
     stmt* body;
+    ureg body_end;
 } stmt_generic_extend;
 
 typedef struct stmt_var_decl {
@@ -235,20 +255,6 @@ typedef struct stmt_var_decl {
     astn* type;
     astn* value;
 } stmt_var_decl;
-
-typedef struct stmt_if {
-    stmt astn;
-    astn* condition;
-    stmt* then_body;
-    stmt* else_body;
-} stmt_if;
-
-typedef struct stmt_while {
-    stmt astn;
-    astn* condition;
-    stmt* body;
-    stmt* finally_body;
-} stmt_while;
 
 typedef struct expr_parentheses {
     expr ex;

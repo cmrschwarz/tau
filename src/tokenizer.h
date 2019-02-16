@@ -38,6 +38,9 @@ int tk_open_stream(tokenizer* tk, file* f, FILE* stream);
 int tk_open_file(tokenizer* tk, file* f);
 int tk_close_file(tokenizer* tk);
 
+// any peek or consume invalidates all pointers to voided tokens
+// and to strings these contained
+// the void operation itself does not invalidate
 token* tk_consume(tokenizer* tk);
 token* tk_peek(tokenizer* tk);
 token* tk_peek_2nd(tokenizer* p);

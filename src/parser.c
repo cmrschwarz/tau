@@ -27,11 +27,12 @@ typedef enum body_parser_mode {
     BPM_FUNCTION,
     BPM_GENERIC_FUNCTION,
     BPM_LAMBDA,
+    BPM_LOOP,
 } body_parser_mode;
 
 parse_error parse_statement(parser* p, stmt** tgt, body_parser_mode bpm);
-parse_error
-parse_body(parser* p, named_stmt* parent, stmt** tgt, body_parser_mode bpm);
+parse_error parse_body(
+    parser* p, named_stmt* parent, stmt** tgt, body_parser_mode bpm, ureg* end);
 parse_error parse_expression(parser* p, astn** ex);
 parse_error parse_expression_of_prec(parser* p, astn** ex, ureg prec);
 
@@ -276,6 +277,7 @@ char* bpm_to_context_msg(body_parser_mode bpm)
         case BPM_MODULE: return "in this module's body";
         case BPM_GENERIC_MODULE: return "in this generic module's body";
         case BPM_EXTEND: return "in this extend statement's body";
+        case BPM_LOOP: return "in this loop's body";
         case BPM_GENERIC_EXTEND:
             return "in this generic extend statement's body";
         case BPM_LAMBDA: return "in this lambda's body";
@@ -628,36 +630,53 @@ parse_prefix_unary_op(parser* p, token* t, astnt op, astn** ex)
     *ex = (astn*)ou;
     return PE_OK;
 }
+parse_error parse_loop(parser* p, astn** tgt, ureg start, ureg end, char* label)
+{
+    expr_loop* l = alloc_perm(p, sizeof(expr_loop));
+    if (!l) return PE_INSANE;
+    l->nstmt.decl_range = src_range_pack_lines(p->tk.tc, start, end);
+    l->nstmt.name = label;
+    l->nstmt.parent = p->curr_parent;
+    l->nstmt.stmt.type = ASTNT_LOOP;
+    *tgt = (astn*)l;
+    return parse_body(
+        p, &l->nstmt, &l->nstmt.stmt.next, BPM_LOOP, &l->block_end);
+}
 static inline parse_error parse_single_value(parser* p, token* t, astn** ex)
 {
-    parse_error pe;
     switch (t->type) {
         case TT_PAREN_OPEN: {
-            pe = parse_parenthesis_group(p, t, ex);
-            if (pe) return pe;
-        } break;
+            return parse_parenthesis_group(p, t, ex);
+        }
         case TT_BRACKET_OPEN: {
-            pe = parse_tuple(p, t, ex);
-            if (pe) return pe;
-        } break;
+            return parse_tuple(p, t, ex);
+        }
         case TT_BRACE_OPEN: {
-            pe = parse_array(p, t, ex);
-            if (pe) return pe;
-        } break;
-        case TT_STRING:
+            return parse_array(p, t, ex);
+        }
+        case TT_STRING: {
+            keyword_id kw = kw_match(t->str);
+            switch (kw) {
+                case KW_LOOP: {
+                    tk_void(&p->tk);
+                    return parse_loop(p, ex, t->start, t->end, NULL);
+                }
+                case KW_INVALID_KEYWORD: // fallthrough
+                default:;                // noop to please C
+            }
+        } // fallthrough for str_value
         case TT_NUMBER:
         case TT_LITERAL:
         case TT_BINARY_LITERAL: {
             *ex = parse_str_value(p, t);
             if (!*ex) return PE_INSANE;
             tk_void(&p->tk);
-            break;
-        }
+            return PE_OK;
+        } break;
         default: {
-            return PE_EOEX;
+            return PE_EOEX; // investigate: shouldn't this be unexp. tok?
         } break;
     }
-    return PE_OK;
 }
 static inline parse_error parse_call(parser* p, token* t, astn** ex, astn* lhs)
 {
@@ -828,6 +847,12 @@ parse_error parser_parse_file(parser* p, file* f)
     int r = tk_open_file(&p->tk, f);
     if (r) return PE_TK_ERROR;
     parse_error pe = parse_eof_delimited_body(p, p->root_head, BPM_FILE);
+    if (!pe) {
+        while ((*p->root_head)->next != NULL) {
+            p->root_head = &(*p->root_head)->next;
+        }
+        p->root_head = &(*p->root_head)->next;
+    }
     tk_close_file(&p->tk);
     return pe;
 }
@@ -1104,11 +1129,13 @@ parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     fn->stmt.flags = flags;
     *n = (stmt*)fn;
     if (generic) {
+        stmt_generic_function* gf = (stmt_generic_function*)fn;
         return parse_body(
-            p, fn, &((stmt_generic_function*)fn)->body, BPM_GENERIC_FUNCTION);
+            p, fn, &gf->body, BPM_GENERIC_FUNCTION, &gf->body_end);
     }
     else {
-        return parse_body(p, fn, &((stmt_function*)fn)->body, BPM_FUNCTION);
+        stmt_function* f = (stmt_function*)fn;
+        return parse_body(p, fn, &f->body, BPM_FUNCTION, &f->body_end);
     }
 }
 parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
@@ -1154,11 +1181,12 @@ parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     st->stmt.flags = flags;
     *n = (stmt*)st;
     if (generic) {
-        return parse_body(
-            p, st, &((stmt_generic_struct*)st)->body, BPM_GENERIC_STRUCT);
+        stmt_generic_struct* gs = (stmt_generic_struct*)st;
+        return parse_body(p, st, &gs->body, BPM_GENERIC_STRUCT, &gs->body_end);
     }
     else {
-        return parse_body(p, st, &((stmt_struct*)st)->body, BPM_STRUCT);
+        stmt_struct* s = (stmt_struct*)st;
+        return parse_body(p, st, &s->body, BPM_STRUCT, &s->body_end);
     }
 }
 parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
@@ -1204,11 +1232,12 @@ parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     md->stmt.flags = flags;
     *n = (stmt*)md;
     if (generic) {
-        return parse_body(
-            p, md, &((stmt_generic_module*)md)->body, BPM_GENERIC_MODULE);
+        stmt_generic_module* gm = (stmt_generic_module*)md;
+        return parse_body(p, md, &gm->body, BPM_GENERIC_MODULE, &gm->body_end);
     }
     else {
-        return parse_body(p, md, &((stmt_module*)md)->body, BPM_MODULE);
+        stmt_module* m = (stmt_module*)md;
+        return parse_body(p, md, &m->body, BPM_MODULE, &m->body_end);
     }
 }
 parse_error parse_extend_decl(
@@ -1285,11 +1314,12 @@ parse_error parse_extend_decl(
     }
     *n = (stmt*)ex;
     if (generic) {
-        return parse_body(
-            p, ex, &((stmt_generic_extend*)ex)->body, BPM_GENERIC_EXTEND);
+        stmt_generic_extend* ge = (stmt_generic_extend*)ex;
+        return parse_body(p, ex, &ge->body, BPM_GENERIC_EXTEND, &ge->body_end);
     }
     else {
-        return parse_body(p, ex, &((stmt_extend*)ex)->body, BPM_EXTEND);
+        stmt_extend* e = (stmt_extend*)ex;
+        return parse_body(p, ex, &e->body, BPM_EXTEND, &e->body_end);
     }
 }
 parse_error parse_trait_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
@@ -1335,11 +1365,12 @@ parse_error parse_trait_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     un->stmt.flags = flags;
     *n = (stmt*)un;
     if (generic) {
-        return parse_body(
-            p, un, &((stmt_generic_trait*)un)->body, BPM_GENERIC_TRAIT);
+        stmt_generic_extend* gt = (stmt_generic_extend*)un;
+        return parse_body(p, un, &gt->body, BPM_GENERIC_TRAIT, &gt->body_end);
     }
     else {
-        return parse_body(p, un, &((stmt_trait*)un)->body, BPM_TRAIT);
+        stmt_extend* t = (stmt_extend*)un;
+        return parse_body(p, un, &t->body, BPM_TRAIT, &t->body_end);
     }
 }
 bool bpm_supports_exprs(body_parser_mode bpm)
@@ -1347,6 +1378,7 @@ bool bpm_supports_exprs(body_parser_mode bpm)
     switch (bpm) {
         case BPM_FUNCTION:
         case BPM_GENERIC_FUNCTION:
+        case BPM_LOOP:
         case BPM_LAMBDA: {
             return true;
         }
@@ -1368,13 +1400,15 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt, body_parser_mode bpm)
             p, "unexpected token in statement", t->start, t->end, "", bpm);
         return PE_HANDLED;
     }
+    if (pe) return pe;
     if (t->type != TT_SEMICOLON) {
         src_range_large sr;
         src_range_unpack(p->curr_parent->decl_range, &sr);
+        ureg end;
+        get_expr_bounds(expr, NULL, &end); // TODO improve for loops etc.
         parser_error_2a_bpm(
-            p, "missing semicolon", start, t->end - 1, // slightly ugly,
-            "in this expression", t->start, t->end,
-            "expected ';' to terminate the declaration", bpm);
+            p, "missing semicolon", start, end, "in this expression", t->start,
+            t->end, "expected ';' to terminate the declaration", bpm);
         return PE_HANDLED;
     }
     tk_void(&p->tk);
@@ -1478,7 +1512,7 @@ parse_error parse_statement(parser* p, stmt** tgt, body_parser_mode bpm)
     }
 }
 parse_error parse_braced_delimited_body(
-    parser* p, token* t, stmt** tgt, body_parser_mode bpm)
+    parser* p, token* t, stmt** tgt, body_parser_mode bpm, ureg* end)
 {
     *tgt = NULL; // fist element must be zero for extend to check
     ureg start = t->start;
@@ -1507,12 +1541,13 @@ parse_error parse_braced_delimited_body(
         }
     }
     tk_consume(&p->tk);
+    *end = t->end;
     *tgt = NULL;
     return PE_OK;
 }
 
-parse_error
-parse_body(parser* p, named_stmt* parent, stmt** tgt, body_parser_mode bpm)
+parse_error parse_body(
+    parser* p, named_stmt* parent, stmt** tgt, body_parser_mode bpm, ureg* end)
 {
     *tgt = NULL; // fist element must be zero for extend to check
     named_stmt* old_parent = p->curr_parent;
@@ -1527,10 +1562,11 @@ parse_body(parser* p, named_stmt* parent, stmt** tgt, body_parser_mode bpm)
         }
         else {
             (*tgt)->next = NULL;
+            *end = src_range_get_end(((stmt_expr*)*tgt)->stmt_range);
         }
     }
     else {
-        pe = parse_braced_delimited_body(p, t, tgt, bpm);
+        pe = parse_braced_delimited_body(p, t, tgt, bpm, end);
     }
     p->curr_parent = old_parent;
     return pe;

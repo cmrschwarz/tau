@@ -29,14 +29,13 @@ stmt* get_parent_body(named_stmt* parent)
 void get_expr_bounds(astn* n, ureg* start, ureg* end)
 {
     switch (*(astnt*)n) {
-        case ENT_LABEL: {
+        case ASTNT_LOOP: {
             if (start) {
                 src_range_large r;
-                src_range_unpack(((expr_label*)n)->nstmt.decl_range, &r);
+                src_range_unpack(((named_stmt*)n)->decl_range, &r);
                 *start = r.start;
             }
-            get_expr_bounds(
-                (astn*)(void*)((expr_label*)n)->nstmt.stmt.next, NULL, end);
+            if (end) *end = ((expr_loop*)n)->block_end;
             return;
         }
         case ENT_OP_BINARY: {

@@ -33,6 +33,7 @@ void print_indent(ureg indent)
         p(MASTER_ERROR_LOG.tab_spaces);
     }
 }
+
 void print_astn_body_braced(stmt* body, ureg indent_old)
 {
     p("{\n");
@@ -41,7 +42,12 @@ void print_astn_body_braced(stmt* body, ureg indent_old)
         body = body->next;
     }
     print_indent(indent_old);
-    p("}\n");
+    p("}");
+}
+void print_astn_body_braced_nl(stmt* body, ureg indent_old)
+{
+    print_astn_body_braced(body, indent_old);
+    pc('\n');
 }
 void print_astn_body(stmt* body, ureg indent)
 {
@@ -50,19 +56,19 @@ void print_astn_body(stmt* body, ureg indent)
         body = body->next;
     }
 }
-void print_astn_params_decl(stmt_param_decl* d)
+void print_astn_params_decl(stmt_param_decl* d, ureg indent)
 {
     while (d != NULL) {
         pu(d->nstmt.name);
         pc(':');
         if (d->type != NULL) {
             pc(' ');
-            print_expr(d->type);
+            print_expr(d->type, indent);
             if (d->default_value != NULL) pc(' ');
         }
         if (d->default_value != NULL) {
             p("= ");
-            print_expr(d->default_value);
+            print_expr(d->default_value, indent);
         }
         d = (stmt_param_decl*)d->nstmt.stmt.next;
         if (d) p(", ");
@@ -74,7 +80,7 @@ void print_astn(stmt* astn, ureg indent)
     switch (astn->type) {
         case ASTNT_EXPRESSION: {
             stmt_expr* e = (stmt_expr*)astn;
-            print_expr(e->expr);
+            print_expr(e->expr, indent);
             p(";\n");
         } break;
         case ASTNT_FUNCTION: {
@@ -82,95 +88,98 @@ void print_astn(stmt* astn, ureg indent)
             p("func ");
             pu(f->nstmt.name);
             p("(");
-            print_astn_params_decl(f->params);
+            print_astn_params_decl(f->params, indent);
             pc(')');
-            print_astn_body_braced(f->body, indent);
+            print_astn_body_braced_nl(f->body, indent);
         } break;
         case ASTNT_GENERIC_FUNCTION: {
             stmt_generic_function* f = (stmt_generic_function*)astn;
             p("func ");
             pu(f->nstmt.name);
             p("[");
-            print_astn_params_decl(f->generic_params);
+            print_astn_params_decl(f->generic_params, indent);
             pc(']');
             p("(");
-            print_astn_params_decl(f->params);
+            print_astn_params_decl(f->params, indent);
             pc(')');
-            print_astn_body_braced(f->body, indent);
+            print_astn_body_braced_nl(f->body, indent);
         } break;
         case ASTNT_STRUCT: {
             stmt_struct* s = (stmt_struct*)astn;
             p("struct ");
             if (s->nstmt.name) ps(s->nstmt.name);
-            print_astn_body_braced(s->body, indent);
+            print_astn_body_braced_nl(s->body, indent);
         } break;
         case ASTNT_GENERIC_STRUCT: {
             stmt_generic_struct* s = (stmt_generic_struct*)astn;
             p("struct ");
             if (s->nstmt.name) ps(s->nstmt.name);
             p("[");
-            print_astn_params_decl(s->generic_params);
+            print_astn_params_decl(s->generic_params, indent);
             pc(']');
-            print_astn_body_braced(s->body, indent);
+            print_astn_body_braced_nl(s->body, indent);
         } break;
         case ASTNT_TRAIT: {
             stmt_trait* t = (stmt_trait*)astn;
             p("trait ");
             if (t->nstmt.name) ps(t->nstmt.name);
-            print_astn_body_braced(t->body, indent);
+            print_astn_body_braced_nl(t->body, indent);
         } break;
         case ASTNT_GENERIC_TRAIT: {
             stmt_generic_trait* t = (stmt_generic_trait*)astn;
             p("trait ");
             if (t->nstmt.name) ps(t->nstmt.name);
             p("[");
-            print_astn_params_decl(t->generic_params);
+            print_astn_params_decl(t->generic_params, indent);
             pc(']');
-            print_astn_body_braced(t->body, indent);
+            print_astn_body_braced_nl(t->body, indent);
         } break;
         case ASTNT_MODULE: {
             stmt_module* m = (stmt_module*)astn;
             p("module ");
             if (m->nstmt.name) ps(m->nstmt.name);
-            print_astn_body_braced(m->body, indent);
+            print_astn_body_braced_nl(m->body, indent);
         } break;
         case ASTNT_GENERIC_MODULE: {
             stmt_generic_module* m = (stmt_generic_module*)astn;
             p("module ");
             if (m->nstmt.name) ps(m->nstmt.name);
             p("[");
-            print_astn_params_decl(m->generic_params);
+            print_astn_params_decl(m->generic_params, indent);
             pc(']');
-            print_astn_body_braced(m->body, indent);
+            print_astn_body_braced_nl(m->body, indent);
         } break;
         case ASTNT_EXTEND: {
             stmt_extend* e = (stmt_extend*)astn;
             p("extend ");
             if (e->nstmt.name) ps(e->nstmt.name);
-            print_astn_body_braced(e->body, indent);
+            print_astn_body_braced_nl(e->body, indent);
         } break;
         case ASTNT_GENERIC_EXTEND: {
             stmt_generic_extend* e = (stmt_generic_extend*)astn;
             p("extend ");
             if (e->nstmt.name) ps(e->nstmt.name);
             p("[");
-            print_astn_params_decl(e->generic_params);
+            print_astn_params_decl(e->generic_params, indent);
             pc(']');
-            print_astn_body_braced(e->body, indent);
+            print_astn_body_braced_nl(e->body, indent);
         } break;
         case ASTNT_VAR_DECL: {
             stmt_var_decl* d = (stmt_var_decl*)astn;
             if (stmt_flags_get_const(d->nstmt.stmt.flags)) p("const ");
             pu(d->nstmt.name);
-            pc(':');
+
             if (d->type != NULL) {
-                pc(' ');
-                print_expr(d->type);
+                p(": ");
+                print_expr(d->type, indent);
                 if (d->value != NULL) pc(' ');
+            }
+            else {
+                p(" :");
             }
             if (d->value != NULL) {
                 p("= ");
-                print_expr(d->value);
+                print_expr(d->value, indent);
             }
             p(";\n");
         } break;
@@ -180,17 +189,17 @@ void print_astn(stmt* astn, ureg indent)
     }
 }
 
-void print_expr_list(expr_list* enl)
+void print_expr_list(expr_list* enl, ureg indent)
 {
     astn** start = ((astn**)enl->end_ptr) + 1;
     astn** end = *enl->end_ptr;
     while (start != end) {
-        print_expr(*start);
+        print_expr(*start, indent);
         start++;
         if (start != end) p(", ");
     }
 }
-void print_expr(astn* ex)
+void print_expr(astn* ex, ureg indent)
 {
     switch (*(astnt*)ex) {
         case ENT_IDENTIFIER:
@@ -207,54 +216,63 @@ void print_expr(astn* ex)
             break;
         case ENT_OP_BINARY: {
             expr_op_binary* b = (expr_op_binary*)ex;
-            print_expr(b->lhs);
+            print_expr(b->lhs, indent);
             pc(' ');
             p(op_to_str(b->ex.op_type));
             pc(' ');
-            print_expr(b->rhs);
+            print_expr(b->rhs, indent);
             break;
         }
         case ENT_OP_UNARY: {
             expr_op_unary* u = (expr_op_unary*)ex;
             if (is_unary_op_postfix(u->ex.op_type)) {
-                print_expr(u->child);
+                print_expr(u->child, indent);
                 p(op_to_str(u->ex.op_type));
             }
             else {
                 p(op_to_str(u->ex.op_type));
-                print_expr(u->child);
+                print_expr(u->child, indent);
             }
             break;
         }
         case ENT_ARRAY: {
             pc('{');
-            print_expr_list(&((expr_array*)ex)->elements);
+            print_expr_list(&((expr_array*)ex)->elements, indent);
             pc('}');
         } break;
         case ENT_TUPLE: {
             pc('[');
-            print_expr_list(&((expr_tuple*)ex)->elements);
+            print_expr_list(&((expr_tuple*)ex)->elements, indent);
             pc(']');
         } break;
         case ENT_OP_CALL: {
             expr_call* c = (expr_call*)ex;
-            print_expr(c->lhs);
+            print_expr(c->lhs, indent);
             pc('(');
-            print_expr_list(&c->args);
+            print_expr_list(&c->args, indent);
             pc(')');
         } break;
         case ENT_OP_ACCESS: {
             expr_access* acc = (expr_access*)ex;
-            print_expr(acc->lhs);
+            print_expr(acc->lhs, indent);
             pc('[');
-            print_expr_list(&acc->args);
+            print_expr_list(&acc->args, indent);
             pc(']');
         } break;
         case ENT_OP_PARENTHESES: {
             expr_parentheses* pr = (expr_parentheses*)ex;
             pc('(');
-            print_expr(pr->child);
+            print_expr(pr->child, indent);
             pc(')');
+        } break;
+        case ASTNT_LOOP: {
+            expr_loop* l = (expr_loop*)ex;
+            if (l->nstmt.name != NULL) {
+                p("label ");
+                ps(l->nstmt.name);
+            }
+            p("loop ");
+            print_astn_body_braced(l->nstmt.stmt.next, indent);
         } break;
         default: {
             p("<unknown expr>");

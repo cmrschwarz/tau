@@ -192,7 +192,18 @@ void src_range_unpack(src_range r, src_range_large* d)
         d->end = d->start + len;
     }
 }
-
+ureg src_range_get_start(src_range r)
+{
+    src_range_large l;
+    src_range_unpack(r, &l);
+    return l.start;
+}
+ureg src_range_get_end(src_range r)
+{
+    src_range_large l;
+    src_range_unpack(r, &l);
+    return l.end;
+}
 int file_init(file* f, thread_context* tc, char* path)
 {
     f->path = path;

@@ -203,8 +203,10 @@ int pe(char* msg)
 }
 ureg get_line_nr_offset(ureg max_line)
 {
-    if (max_line > 10) { // this is to avoid line zero
-        return (ureg)ceil(log10(max_line));
+    max_line++;           // because lines are displayed starting from 1, not 0
+    if (max_line >= 10) { // this is to avoid line zero
+        return (ureg)ceil(log10(max_line)) +
+               1; //+1 because log(10, 10) is 1, not 2
     }
     else {
         return 1;
@@ -279,7 +281,7 @@ int print_src_line(
 {
     pec(ANSICOLOR_BOLD ANSICOLOR_BLUE);
     fprintf(stderr, "%llu", line + 1);
-    ureg space = max_line_length - get_line_nr_offset(line + 1);
+    ureg space = max_line_length - get_line_nr_offset(line);
     for (ureg i = 0; i < space; i++) pe(" ");
     pe(" |");
     pec(ANSICOLOR_CLEAR);
@@ -599,7 +601,7 @@ int report_error(error* e, FILE* fh, file* file)
                 err_point_count = extend_em(
                     e, err_points, ema->err_annot.annotation, pos, end);
                 error_annotation* ea = (error_annotation*)(ema + 1);
-                for (ureg i = err_point_count; i < ema->annot_count + 1; i++) {
+                for (ureg i = 0; i < ema->annot_count; i++) {
                     src_pos posi =
                         src_map_get_pos(&e->file->src_map, ea->start);
                     err_points[err_point_count].line = posi.line;
