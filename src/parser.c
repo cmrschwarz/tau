@@ -874,7 +874,7 @@ report_redundant_specifier(parser* p, char* spec, ureg start, ureg end)
     parser_error_1a(p, "redundant access modifiers specified", start, end, msg);
     return OK;
 }
-static inline int stmt_flags_from_kw_set_access_mod(
+static inline parse_error stmt_flags_from_kw_set_access_mod(
     parser* p, stmt_flags* f, access_modifier am, ureg start, ureg end)
 {
     access_modifier old_am = stmt_flags_get_access_mod(*f);
@@ -891,21 +891,20 @@ static inline int stmt_flags_from_kw_set_access_mod(
             msgstrs[3] = access_modifier_string(old_am);
             msgstrs[4] = "'";
             char* msg = error_log_cat_strings(&p->tk.tc->error_log, 4, msgstrs);
-            if (!msg) return ERR;
+            if (!msg) return PE_INSANE;
             error_log_report_annotated(
                 &p->tk.tc->error_log, ES_PARSER, false,
                 "conflicting access modifiers specified", p->tk.file, start,
                 end, msg);
         }
-        return ERR;
+        return PE_UNEXPECTED_TOKEN;
     }
-    return OK;
+    return PE_OK;
 }
-int stmt_flags_from_kw(
-    parser* p, stmt_flags* f, keyword_id kw, ureg start, ureg end, bool* action)
+parse_error stmt_flags_from_kw(
+    parser* p, stmt_flags* f, keyword_id kw, ureg start, ureg end)
 {
     // TODO: enforce order
-    *action = true;
     switch (kw) {
         case KW_PRIVATE:
             return stmt_flags_from_kw_set_access_mod(
@@ -920,7 +919,7 @@ int stmt_flags_from_kw(
             if (stmt_flags_get_const(*f) != false) {
                 report_redundant_specifier(
                     p, keyword_strings[KW_CONST], start, end);
-                return ERR;
+                return PE_UNEXPECTED_TOKEN;
             }
             stmt_flags_set_const(f, true);
         } break;
@@ -928,7 +927,7 @@ int stmt_flags_from_kw(
             if (stmt_flags_get_sealed(*f) != false) {
                 report_redundant_specifier(
                     p, keyword_strings[KW_SEALED], start, end);
-                return ERR;
+                return PE_UNEXPECTED_TOKEN;
             }
             stmt_flags_set_sealed(f, true);
         } break;
@@ -936,7 +935,7 @@ int stmt_flags_from_kw(
             if (stmt_flags_get_virtual(*f) != false) {
                 report_redundant_specifier(
                     p, keyword_strings[KW_VIRTUAL], start, end);
-                return ERR;
+                return PE_UNEXPECTED_TOKEN;
             }
             stmt_flags_set_virtual(f, true);
         } break;
@@ -944,15 +943,15 @@ int stmt_flags_from_kw(
             if (stmt_flags_get_static(*f) != false) {
                 report_redundant_specifier(
                     p, keyword_strings[KW_STATIC], start, end);
-                return ERR;
+                return PE_UNEXPECTED_TOKEN;
             }
             stmt_flags_set_static(f, true);
         } break;
         default: {
-            *action = false;
+            return PE_EOEX;
         } break;
     }
-    return OK;
+    return PE_OK;
 }
 parse_error parse_var_decl(
     parser* p, ureg start, ureg col_end, stmt_flags flags, string ident,
@@ -1444,71 +1443,66 @@ parse_error parse_statement(parser* p, stmt** tgt, body_parser_mode bpm)
                 return PE_HANDLED;
             }
         }
-        keyword_id kw = kw_match(t->str);
+        token* t2 = tk_peek_2nd(&p->tk);
+        if (!t2) return PE_TK_ERROR;
+        if (t2->type == TT_COLON) {
+            tk_void_n(&p->tk, 2);
+            return parse_var_decl(p, start, t2->end, flags, t->str, tgt);
+        }
+        keyword_id kw = kw_match_visibility_or_mutability(t->str);
         if (kw != KW_INVALID_KEYWORD) {
-            bool is_flags_kw;
-            int r =
-                stmt_flags_from_kw(p, &flags, kw, start, t->end, &is_flags_kw);
-            if (r) return PE_UNEXPECTED_TOKEN;
-            if (is_flags_kw) {
+            pe = stmt_flags_from_kw(p, &flags, kw, start, t->end);
+            if (pe == PE_OK) {
                 tk_void(&p->tk);
                 PEEK(p, t);
                 continue;
             }
+            if (pe != PE_EOEX) return pe;
+            // fallthrough on pe == PE_EOEX
         }
-        switch (kw) {
-            case KW_FUNC: {
-                tk_void(&p->tk);
-                pe = parse_func_decl(p, start, flags, tgt);
-                return pe;
-            } break;
-            case KW_STRUCT: {
-                tk_void(&p->tk);
-                pe = parse_struct_decl(p, start, flags, tgt);
-                return pe;
-            } break;
-            case KW_TRAIT: {
-                tk_void(&p->tk);
-                pe = parse_trait_decl(p, start, flags, tgt);
-                return pe;
-            } break;
-            case KW_MODULE: {
-                tk_void(&p->tk);
-                pe = parse_module_decl(p, start, flags, tgt);
-                return pe;
-            } break;
-            case KW_EXTEND: {
-                tk_void(&p->tk);
-                pe = parse_extend_decl(p, start, flags, tgt, bpm);
-                return pe;
-            } break;
-            // case KW_IMPORT:
-            // case KW_INCLUDE:
-            default: {
-                token* t2 = tk_peek_2nd(&p->tk);
-                if (!t2) return PE_TK_ERROR;
-                if (t2->type == TT_COLON) {
-                    tk_void_n(&p->tk, 2);
-                    return parse_var_decl(
-                        p, start, t2->end, flags, t->str, tgt);
-                }
-                else if (
-                    flags == ASTN_FLAGS_DEFAULT && bpm_supports_exprs(bpm)) {
-                    return parse_expr_stmt(p, tgt, bpm);
-                }
-                else {
+        if (t2->type == TT_STRING || t2->type == TT_BRACE_OPEN) {
+            kw = kw_match(t->str);
+            switch (kw) {
+                case KW_FUNC: {
                     tk_void(&p->tk);
-                    PEEK(p, t);
-                    parser_error_1a_bpm(
-                        p, "unexpected token in statement", t->start, t->end,
-                        "expected ':' to initiate a declaration", bpm);
-                    return PE_UNEXPECTED_TOKEN;
+                    pe = parse_func_decl(p, start, flags, tgt);
+                    return pe;
                 }
-
-            } break;
+                case KW_STRUCT: {
+                    tk_void(&p->tk);
+                    pe = parse_struct_decl(p, start, flags, tgt);
+                    return pe;
+                }
+                case KW_TRAIT: {
+                    tk_void(&p->tk);
+                    pe = parse_trait_decl(p, start, flags, tgt);
+                    return pe;
+                }
+                case KW_MODULE: {
+                    tk_void(&p->tk);
+                    pe = parse_module_decl(p, start, flags, tgt);
+                    return pe;
+                }
+                case KW_EXTEND: {
+                    tk_void(&p->tk);
+                    pe = parse_extend_decl(p, start, flags, tgt, bpm);
+                    return pe;
+                }
+                // TODO: require, import, include
+                default:; // fallthrough
+            }
         }
-        PEEK(p, t);
-        start = t->start;
+        if (flags == ASTN_FLAGS_DEFAULT && bpm_supports_exprs(bpm)) {
+            return parse_expr_stmt(p, tgt, bpm);
+        }
+        else {
+            tk_void(&p->tk);
+            PEEK(p, t);
+            parser_error_1a_bpm(
+                p, "unexpected token in statement", t->start, t->end,
+                "expected ':' to initiate a declaration", bpm);
+            return PE_UNEXPECTED_TOKEN;
+        }
     }
 }
 parse_error parse_braced_delimited_body(

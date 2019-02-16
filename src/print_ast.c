@@ -191,6 +191,7 @@ void print_astn(stmt* astn, ureg indent)
 
 void print_expr_list(expr_list* enl, ureg indent)
 {
+    if (enl->end_ptr == NULL) return;
     astn** start = ((astn**)enl->end_ptr) + 1;
     astn** end = *enl->end_ptr;
     while (start != end) {

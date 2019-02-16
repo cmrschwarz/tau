@@ -9,6 +9,7 @@ typedef enum PACK_ENUM keyword_id {
     KW_EXTEND,
     KW_REQUIRE,
     KW_CONST,
+    KW_MUT,
     KW_SEALED,
     KW_VIRTUAL,
     KW_PUBLIC,
@@ -39,5 +40,6 @@ typedef enum PACK_ENUM keyword_id {
 
 bool kw_equals(keyword_id id, string str);
 keyword_id kw_match(string str);
+keyword_id kw_match_visibility_or_mutability(string str);
 
 extern char* keyword_strings[];
