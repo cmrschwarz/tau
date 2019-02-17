@@ -2,11 +2,23 @@
 #include "stdio.h"
 #include "types.h"
 #include <string.h>
+
 typedef struct {
     char* start;
     char* end;
 } string;
 
+static inline string string_empty()
+{
+    string s;
+    s.start = NULL;
+    s.end = NULL;
+    return s;
+}
+static inline bool string_is_empty(string s)
+{
+    return (s.start == s.end);
+}
 static inline void string_set(string* s, char* start, char* end)
 {
     s->start = start;
