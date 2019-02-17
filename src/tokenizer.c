@@ -581,16 +581,8 @@ static token* tk_load(tokenizer* tk)
                 }
                 else if (peek == '=') {
                     tk_void_char_peek(tk);
-                    peek = tk_peek_char(tk);
-                    if (peek == '=') {
-                        tk_void_char_peek(tk);
-                        tok->type = TT_LEFT_ARROW;
-                        return tk_return_head(tk, 3);
-                    }
-                    else {
-                        tok->type = TT_LESS_THAN_EQUALS;
-                        return tk_return_head(tk, 2);
-                    }
+                    tok->type = TT_LESS_THAN_EQUALS;
+                    return tk_return_head(tk, 2);
                 }
                 else {
                     tok->type = TT_LESS_THAN;
