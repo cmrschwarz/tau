@@ -14,28 +14,13 @@
         if (!t) return PE_TK_ERROR;                                            \
     } while (false)
 
-typedef enum body_parser_mode {
-    BPM_FILE,
-    BPM_MODULE,
-    BPM_GENERIC_MODULE,
-    BPM_EXTEND,
-    BPM_GENERIC_EXTEND,
-    BPM_STRUCT,
-    BPM_GENERIC_STRUCT,
-    BPM_TRAIT,
-    BPM_GENERIC_TRAIT,
-    BPM_FUNCTION,
-    BPM_GENERIC_FUNCTION,
-    BPM_LAMBDA,
-    BPM_LOOP,
-} body_parser_mode;
-
-parse_error parse_statement(parser* p, stmt** tgt, body_parser_mode bpm);
-parse_error parse_body(
-    parser* p, named_stmt* parent, stmt** tgt, body_parser_mode bpm, ureg* end);
-parse_error parse_expression(parser* p, astn** ex);
-parse_error parse_expression_of_prec(parser* p, astn** ex, ureg prec);
-
+parse_error parse_statement(parser* p, stmt** tgt);
+parse_error parse_scope(parser* p, scope* s);
+parse_error parse_body(parser* p, body* b, ast_node_type pt);
+parse_error parse_expression(parser* p, expr** ex);
+parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
+parse_error parse_braced_delimited_body(
+    parser* p, ureg bstart, ureg bend, body* b, ast_node_type pt);
 static const unsigned char op_precedence[] = {
     [OP_POST_INCREMENT] = 15,
     [OP_POST_DECREMENT] = 15,
@@ -105,7 +90,7 @@ static const unsigned char op_precedence[] = {
 };
 #define PREC_BASELINE 0
 
-static inline bool is_left_associative(astnt t)
+static inline bool is_left_associative(ast_node_type t)
 {
     switch (t) {
         case OP_ASSIGN:
@@ -264,49 +249,52 @@ static inline void parser_error_3a(
         &p->tk.tc->error_log, ES_PARSER, false, msg, p->tk.file, start, end,
         annot, start2, end2, annot2, start3, end3, annot3);
 }
-char* bpm_to_context_msg(body_parser_mode bpm)
+char* get_parent_context_msg(ast_node_type parent_type)
 {
-    switch (bpm) {
-        case BPM_FILE: return NULL;
-        case BPM_FUNCTION: return "in this function's body";
-        case BPM_GENERIC_FUNCTION: return "in this generic function's body";
-        case BPM_STRUCT: return "in this struct's body";
-        case BPM_GENERIC_STRUCT: return "in this generic struct's body";
-        case BPM_TRAIT: return "in this struct's body";
-        case BPM_GENERIC_TRAIT: return "in this generic struct's body";
-        case BPM_MODULE: return "in this module's body";
-        case BPM_GENERIC_MODULE: return "in this generic module's body";
-        case BPM_EXTEND: return "in this extend statement's body";
-        case BPM_LOOP: return "in this loop's body";
-        case BPM_GENERIC_EXTEND:
+    switch (parent_type) {
+        case ASTNT_FILE: return NULL;
+        case ASTNT_FUNCTION: return "in this function's body";
+        case ASTNT_FUNC_GENERIC: return "in this generic function's body";
+        case ASTNT_STRUCT: return "in this struct's body";
+        case ASTNT_STRUCT_GENERIC: return "in this generic struct's body";
+        case ASTNT_TRAIT: return "in this struct's body";
+        case ASTNT_TRAIT_GENERIC: return "in this generic struct's body";
+        case ASTNT_MODULE: return "in this module's body";
+        case ASTNT_MODULE_GENERIC: return "in this generic module's body";
+        case ASTNT_EXTEND: return "in this extend statement's body";
+        case ENT_WHILE:
+        case ENT_FOR:
+        case ENT_FOR_EACH:
+        case ENT_LOOP: return "in this loop's body";
+        case ENT_IF: return "in this if expressions's body";
+        case ASTNT_EXTEND_GENERIC:
             return "in this generic extend statement's body";
-        case BPM_LAMBDA: return "in this lambda's body";
-        default: panic("unexpected bpm");
+        case ENT_LAMBDA: return "in this lambda's body";
+        default: panic("unexpected parent context");
     }
     return NULL;
 }
-static inline void parser_error_1a_bpm(
-    parser* p, char* msg, ureg start, ureg end, char* annot,
-    body_parser_mode bpm)
+static inline void
+parser_error_1a_pc(parser* p, char* msg, ureg start, ureg end, char* annot)
 {
-    char* bpmmsg = bpm_to_context_msg(bpm);
+    char* bpmmsg = get_parent_context_msg(p->curr_scope->symbol.stmt.type);
     if (bpmmsg != NULL) {
         src_range_large sr;
-        src_range_unpack(p->curr_parent->decl_range, &sr);
+        src_range_unpack(p->curr_scope->symbol.decl_range, &sr);
         parser_error_2a(p, msg, start, end, annot, sr.start, sr.end, bpmmsg);
     }
     else {
         parser_error_1a(p, msg, start, end, annot);
     }
 }
-static inline void parser_error_2a_bpm(
+static inline void parser_error_2a_pc(
     parser* p, char* msg, ureg start, ureg end, char* annot, ureg start2,
-    ureg end2, char* annot2, body_parser_mode bpm)
+    ureg end2, char* annot2)
 {
-    char* bpmmsg = bpm_to_context_msg(bpm);
+    char* bpmmsg = get_parent_context_msg(p->parent_type);
     if (bpmmsg != NULL) {
         src_range_large sr;
-        src_range_unpack(p->curr_parent->decl_range, &sr);
+        src_range_unpack(p->curr_scope->symbol.decl_range, &sr);
         parser_error_3a(
             p, msg, start, end, annot, start2, end2, annot2, sr.start, sr.end,
             bpmmsg);
@@ -337,27 +325,16 @@ int parser_init(parser* p, thread_context* tc)
 {
     int r = tk_init(&p->tk, tc);
     if (r) return r;
-    r = iht_init_with_capacity(
-        &p->iht,
-        allocator_get_segment_size(), //*8-->32KiB
-        &p->tk.tc->tal);
-    if (r) {
-        tk_fin(&p->tk);
-        return r;
-    }
     r = list_builder_init(&p->lb, &p->tk.tc->stagemem, 64);
     if (r) {
-        iht_fin(&p->iht);
         tk_fin(&p->tk);
         return r;
     }
-    p->root.nstmt.name = NULL;
-    p->root.nstmt.parent = NULL;
-    p->root.nstmt.stmt.type = ASTNT_MODULE;
-    p->root.body = NULL;
-    p->root.nstmt.stmt.next = NULL;
-    p->curr_parent = (named_stmt*)&p->root;
-    p->root_head = &p->root.body;
+    p->root.scope_full.scope.symbol.name = NULL;
+    p->root.scope_full.scope.symbol.stmt.type = ASTNT_FILE;
+    p->root.scope_full.scope.body.children = NULL;
+    p->root.scope_full.scope.symbol.stmt.next = NULL;
+    p->curr_scope = (scope*)&p->root;
     return OK;
 }
 void parser_fin(parser* p)
@@ -365,10 +342,10 @@ void parser_fin(parser* p)
     tk_fin(&p->tk);
 }
 static inline parse_error
-nstmt_fill_srange(parser* p, named_stmt* nstmt, ureg start, ureg end)
+symbol_fill_srange(parser* p, symbol* sym, ureg start, ureg end)
 {
-    nstmt->decl_range = src_range_pack_lines(p->tk.tc, start, end);
-    if (nstmt->decl_range == SRC_RANGE_INVALID) return PE_INSANE;
+    sym->decl_range = src_range_pack_lines(p->tk.tc, start, end);
+    if (sym->decl_range == SRC_RANGE_INVALID) return PE_INSANE;
     return PE_OK;
 }
 static inline parse_error
@@ -378,9 +355,9 @@ expr_fill_srange(parser* p, expr* ex, ureg start, ureg end)
     if (ex->srange == SRC_RANGE_INVALID) return PE_INSANE;
     return PE_OK;
 }
-static inline astn* parse_str_value(parser* p, token* t)
+static inline expr* parse_str_value(parser* p, token* t)
 {
-    astnt ent;
+    ast_node_type ent;
     switch (t->type) {
         case TT_BINARY_LITERAL: ent = ENT_BINARY_LITERAL; break;
         case TT_LITERAL: ent = ENT_STRING_LITERAL; break;
@@ -390,15 +367,26 @@ static inline astn* parse_str_value(parser* p, token* t)
     }
     expr_str_value* sv = (expr_str_value*)alloc_perm(p, sizeof(expr_str_value));
     if (!sv) return NULL;
-    sv->ex.type = ent;
+    sv->expr.type = ent;
     sv->value = alloc_string_stage(p, t->str);
     if (!sv->value) return NULL;
-    if (expr_fill_srange(p, &sv->ex, t->start, t->end)) return NULL;
-    return (astn*)sv;
+    if (expr_fill_srange(p, &sv->expr, t->start, t->end)) return NULL;
+    return (expr*)sv;
+}
+parse_error expr_to_stmt(parser* p, stmt** tgt, expr* e, ureg start, ureg end)
+{
+    stmt_expr* s = alloc_perm(p, sizeof(stmt_expr));
+    if (!s) return PE_INSANE;
+    s->stmt.type = ASTNT_EXPRESSION;
+    s->expr_range = src_range_pack_lines(p->tk.tc, start, end);
+    s->expr = e;
+    if (s->expr_range == SRC_RANGE_INVALID) return PE_INSANE;
+    *tgt = &s->stmt;
+    return PE_OK;
 }
 parse_error parse_param_decl(
-    parser* p, named_stmt* parent, stmt_param_decl** tgt, ureg ctx_start,
-    ureg ctx_end, char* msg_context)
+    parser* p, stmt_param_decl** tgt, ureg ctx_start, ureg ctx_end,
+    char* msg_context)
 {
     parse_error pe;
     token* t;
@@ -411,12 +399,11 @@ parse_error parse_param_decl(
     }
     stmt_param_decl* d = alloc_perm(p, sizeof(stmt_param_decl));
     if (!d) return PE_INSANE;
-    d->nstmt.name = alloc_string_perm(p, t->str);
-    if (!d->nstmt.name) return PE_INSANE;
-    d->nstmt.stmt.type = ASTNT_PARAM_DECL;
-    d->nstmt.parent = parent;
+    d->symbol.name = alloc_string_perm(p, t->str);
+    if (!d->symbol.name) return PE_INSANE;
+    d->symbol.stmt.type = ASTNT_PARAM_DECL;
     // TODO: flags parsing
-    d->nstmt.stmt.flags = ASTN_FLAGS_DEFAULT;
+    d->symbol.stmt.flags = ASTN_FLAGS_DEFAULT;
     tk_void(&p->tk);
     PEEK(p, t);
     if (t->type != TT_COLON) {
@@ -470,22 +457,23 @@ parse_error parse_param_decl(
             d->default_value = NULL;
         }
     }
-    iht_insert(&p->iht, (named_stmt*)d);
     *tgt = d;
     return PE_OK;
 }
 parse_error parse_expression_node_list(
-    parser* p, expr_list* tgt, char* type, token_type expected_trailer)
+    parser* p, expr* prefetch, expr*** tgt, char* type,
+    token_type expected_trailer)
 {
     token* t;
     PEEK(p, t);
     if (t->type == expected_trailer) {
-        tgt->end_ptr = NULL;
+        *tgt = NULL;
         return PE_OK;
     }
     void** list_start = list_builder_start(&p->lb);
+    if (prefetch) list_builder_add(&p->lb, prefetch);
     while (true) {
-        astn* ex;
+        expr* ex;
         parse_error pe = parse_expression(p, &ex);
         if (pe == PE_EOEX) {
             PEEK(p, t);
@@ -511,23 +499,21 @@ parse_error parse_expression_node_list(
         }
     }
     ureg count;
-    void** start = list_builder_pop_list(
-        &p->lb, list_start, (void***)&tgt->end_ptr, &count, &p->tk.tc->permmem,
-        sizeof(astn**), 0);
-    if (!start) return PE_INSANE;
-    *tgt->end_ptr = ptradd(start, count * sizeof(void*));
+    *tgt = (expr**)list_builder_pop_list_zt(
+        &p->lb, list_start, &p->tk.tc->permmem, &count);
+    if (!*tgt) return PE_INSANE;
     return PE_OK;
 }
-static inline parse_error parse_tuple(parser* p, token* t, astn** ex)
+static inline parse_error parse_tuple(parser* p, token* t, expr** ex)
 {
     ureg t_start = t->start;
     ureg t_end = t->end;
     tk_void(&p->tk);
     expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
     if (!tp) return PE_INSANE;
-    tp->ex.type = ENT_TUPLE;
-    parse_error pe =
-        parse_expression_node_list(p, &tp->elements, "tuple", TT_BRACKET_CLOSE);
+    tp->expr.type = ENT_TUPLE;
+    parse_error pe = parse_expression_node_list(
+        p, NULL, &tp->elements, "tuple", TT_BRACKET_CLOSE);
     // EMSG: suboptimal e.g. for case [,,]
     if (pe == PE_UNEXPECTED_TOKEN) {
         PEEK(p, t);
@@ -539,21 +525,64 @@ static inline parse_error parse_tuple(parser* p, token* t, astn** ex)
     }
     if (pe != PE_OK) return pe;
     PEEK(p, t);
-    if (expr_fill_srange(p, &tp->ex, t_start, t->end)) return PE_INSANE;
+    if (expr_fill_srange(p, &tp->expr, t_start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
-    *ex = (astn*)tp;
+    *ex = (expr*)tp;
     return PE_OK;
 }
-static inline parse_error parse_array(parser* p, token* t, astn** ex)
+
+static inline parse_error
+parse_expr_body_or_array(parser* p, token* t, expr** ex)
 {
     ureg t_start = t->start;
     ureg t_end = t->end;
     tk_void(&p->tk);
+    stmt* s = NULL;
+    expr* e = NULL;
+    ast_node_type pold = p->parent_type;
+    p->parent_type = ENT_ARRAY;
+    parse_error pe = parse_statement(p, &s);
+    p->parent_type = pold;
+    if (pe == PE_NOT_A_STATEMENT) {
+        pe = parse_expression(p, &e);
+        if (pe == PE_EOEX) {
+            PEEK(p, t);
+            parser_error_1a_pc(
+                p, "invalid expression token", t->start, t->end,
+                "expected expression");
+            return PE_HANDLED;
+        }
+        if (pe) return pe;
+        PEEK(p, t);
+        if (t->type == TT_SEMICOLON) {
+            tk_void(&p->tk);
+            pe = expr_to_stmt(p, &s, e, src_range_get_start(e->srange), t->end);
+            if (pe) return pe;
+        }
+        else if (t->type == TT_COMMA) {
+            tk_void(&p->tk);
+        }
+    }
+    else if (pe != PE_OK) {
+        return pe;
+    }
+    if (s) {
+        expr_block* b = alloc_perm(p, sizeof(expr_block));
+        if (!b) return PE_INSANE;
+        b->expr.type = ENT_BLOCK;
+        pe =
+            parse_braced_delimited_body(p, t_start, t_end, &b->body, ENT_BLOCK);
+        if (pe) return pe;
+        s->next = b->body.children;
+        b->body.children = s;
+        *ex = (expr*)b;
+        return PE_OK;
+    }
     expr_array* arr = alloc_perm(p, sizeof(expr_array));
     if (!arr) return PE_INSANE;
-    arr->ex.type = ENT_ARRAY;
-    parse_error pe =
-        parse_expression_node_list(p, &arr->elements, "array", TT_BRACE_CLOSE);
+    arr->expr.type = ENT_ARRAY;
+    pe = parse_expression_node_list(
+        p, e, &arr->elements, "array", TT_BRACE_CLOSE);
     // EMSG: suboptimal e.g. for case {,,}
     if (pe == PE_UNEXPECTED_TOKEN) {
         PEEK(p, t);
@@ -565,13 +594,13 @@ static inline parse_error parse_array(parser* p, token* t, astn** ex)
     }
     if (pe != PE_OK) return pe;
     PEEK(p, t);
-    if (expr_fill_srange(p, &arr->ex, t_start, t->end)) return PE_INSANE;
+    if (expr_fill_srange(p, &arr->expr, t_start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
-    *ex = (astn*)arr;
+    *ex = (expr*)arr;
     return PE_OK;
 }
 static inline parse_error
-parse_parenthesis_group(parser* p, token* t, astn** ex)
+parse_parenthesis_group(parser* p, token* t, expr** ex)
 {
     ureg t_start = t->start;
     ureg t_end = t->end;
@@ -596,30 +625,29 @@ parse_parenthesis_group(parser* p, token* t, astn** ex)
     expr_parentheses* pr =
         (expr_parentheses*)alloc_perm(p, sizeof(expr_parentheses));
     if (!pr) return PE_INSANE;
-    pr->ex.type = ENT_OP_PARENTHESES;
+    pr->expr.type = ENT_OP_PARENTHESES;
     pr->child = *ex;
-    // TODO fixme
-    if (expr_fill_srange(p, &pr->ex, t_start, t->end)) return PE_INSANE;
+    if (expr_fill_srange(p, &pr->expr, t_start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
-    *ex = (astn*)pr;
+    *ex = (expr*)pr;
     return PE_OK;
 }
 static inline parse_error
-parse_prefix_unary_op(parser* p, token* t, astnt op, astn** ex)
+parse_prefix_unary_op(parser* p, token* t, ast_node_type op, expr** ex)
 {
     expr_op_unary* ou = (expr_op_unary*)alloc_perm(p, sizeof(expr_op_unary));
     if (!ou) return PE_INSANE;
-    if (expr_fill_srange(p, &ou->ex, t->start, t->end)) return PE_INSANE;
+    if (expr_fill_srange(p, &ou->expr, t->start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
-    ou->ex.type = ENT_OP_UNARY;
-    ou->ex.op_type = op;
+    ou->expr.type = ENT_OP_UNARY;
+    ou->expr.op_type = op;
     parse_error pe = parse_expression_of_prec(
         p, &ou->child, op_precedence[op] + is_left_associative(op));
     if (pe) {
         PEEK(p, t);
         if (pe == PE_EOEX) {
             src_range_large s;
-            src_range_unpack(ou->ex.srange, &s);
+            src_range_unpack(ou->expr.srange, &s);
             parser_error_2a(
                 p, "missing operand for unary operator", t->start, t->end,
                 "reached end of expression due to unexpected token", s.start,
@@ -627,22 +655,172 @@ parse_prefix_unary_op(parser* p, token* t, astnt op, astn** ex)
         }
         return PE_HANDLED;
     }
-    *ex = (astn*)ou;
+    *ex = (expr*)ou;
     return PE_OK;
 }
-parse_error parse_loop(parser* p, astn** tgt, ureg start, ureg end, char* label)
+parse_error parse_return_expr(parser* p, ureg start, ureg end, expr** tgt)
+{
+    stmt_return* r = alloc_perm(p, sizeof(stmt_return));
+    if (!r) return PE_INSANE;
+    r->expr.type = ASTNT_RETURN;
+    token* t;
+    PEEK(p, t);
+    if (t->type == TT_SEMICOLON) {
+        r->value = NULL;
+    }
+    else {
+        parse_error pe = parse_expression(p, &r->value);
+        if (pe == PE_EOEX) {
+            PEEK(p, t);
+            parser_error_2a(
+                p, "unexpected token in return expression", t->start, t->end,
+                "expected expression or ';'", start, end,
+                "in this return expression");
+            return PE_HANDLED;
+        }
+        if (pe) return pe;
+    }
+    *tgt = &r->expr;
+    return PE_OK;
+}
+parse_error parse_goto_expr(parser* p, ureg start, ureg end, expr** tgt)
+{
+    token* t;
+    PEEK(p, t);
+    if (t->type != TT_STRING) {
+        parser_error_2a(
+            p, "missing label in goto expression", t->start, t->end,
+            "expected label name", start, end, "");
+    }
+    stmt_goto* g = alloc_perm(p, sizeof(stmt_goto));
+    g->expr.type = ASTNT_GOTO;
+    g->target.name = alloc_string_stage(p, t->str);
+    if (!g->target.name) return PE_INSANE;
+    tk_void(&p->tk);
+    *tgt = (expr*)g;
+    return PE_OK;
+}
+parse_error parse_give_expr(parser* p, ureg start, ureg end, expr** tgt)
+{
+    stmt_give* g = alloc_perm(p, sizeof(stmt_give));
+    if (!g) return PE_INSANE;
+    g->expr.type = ASTNT_GIVE;
+    g->target.name = NULL;
+    token* t1;
+    PEEK(p, t1);
+    if (t1->type == TT_STRING) {
+        token* t2 = tk_peek_2nd(&p->tk);
+        if (!t2) return PE_TK_ERROR;
+        if (t2->type != TT_SEMICOLON && token_to_binary_op(t2) == OP_NOOP &&
+            token_to_postfix_unary_op(t2) == OP_NOOP) {
+            g->target.name = alloc_string_stage(p, t1->str);
+            if (!g->target.name) return PE_INSANE;
+            tk_void(&p->tk);
+        }
+    }
+    parse_error pe = parse_expression(p, &g->value);
+    if (pe == PE_EOEX) {
+        PEEK(p, t1);
+        parser_error_2a(
+            p, "unexpected token in give expression", t1->start, t1->end,
+            "expected expression or ';'", start, end,
+            "in this give expression");
+    }
+    if (pe) return pe;
+    *tgt = &g->expr;
+    return PE_OK;
+}
+parse_error parse_expr_body(parser* p, expr** tgt, ast_node body_type)
+{
+    ast_node_type old_parent_type = p->parent_type;
+    p->parent_type = body_type;
+    parse_error pe = parse_expression(p, tgt);
+    if (pe == PE_EOEX) {
+        token* t;
+        PEEK(p, t);
+        parser_error_1a_pc(
+            p, "invalid expression token", t->start, t->end,
+            "expected expression");
+        pe = PE_HANDLED;
+    }
+    p->parent_type = old_parent_type;
+    return pe;
+}
+parse_error parse_loop(parser* p, expr** tgt, ureg start, ureg end, char* label)
 {
     expr_loop* l = alloc_perm(p, sizeof(expr_loop));
     if (!l) return PE_INSANE;
-    l->nstmt.decl_range = src_range_pack_lines(p->tk.tc, start, end);
-    l->nstmt.name = label;
-    l->nstmt.parent = p->curr_parent;
-    l->nstmt.stmt.type = ASTNT_LOOP;
-    *tgt = (astn*)l;
-    return parse_body(
-        p, &l->nstmt, &l->nstmt.stmt.next, BPM_LOOP, &l->block_end);
+    l->expr_named.expr.srange = src_range_pack_lines(p->tk.tc, start, end);
+    l->expr_named.name = label;
+    l->expr_named.expr.type = ENT_LOOP;
+    *tgt = (expr*)l;
+    return parse_expr_body(p, &l->body, ENT_LOOP);
 }
-static inline parse_error parse_single_value(parser* p, token* t, astn** ex)
+parse_error
+parse_while(parser* p, expr** tgt, ureg start, ureg end, char* label)
+{
+    expr_while* w = alloc_perm(p, sizeof(expr_while));
+    if (!w) return PE_INSANE;
+    parse_error pe = parse_expression(p, &w->condition);
+    token* t;
+    if (pe == PE_EOEX) {
+        PEEK(p, t);
+        parser_error_2a(
+            p, "invalid while loop syntax", t->start, t->end,
+            "expected while condition expression", start, end,
+            "in this while loop");
+        return PE_HANDLED;
+    }
+    if (pe) return pe;
+    w->expr_named.expr.srange = src_range_pack_lines(p->tk.tc, start, end);
+    w->expr_named.name = label;
+    w->expr_named.expr.type = ENT_WHILE;
+    *tgt = (expr*)w;
+    pe = parse_expr_body(p, &w->while_body, ENT_WHILE);
+    if (pe) return pe;
+    PEEK(p, t);
+    if (t->type != TT_STRING || !kw_equals(KW_FINALLY, t->str)) {
+        parser_error_2a(
+            p, "invalid while loop syntax", t->start, t->end,
+            "expected finally block", start, end, "for this while loop");
+        return PE_HANDLED;
+    }
+    tk_void(&p->tk);
+    pe = parse_expr_body(p, &w->finally_body, ENT_WHILE);
+    return pe;
+}
+parse_error parse_if(parser* p, expr** tgt, ureg start, ureg end)
+{
+    expr_if* i = alloc_perm(p, sizeof(expr_if));
+    if (!i) return PE_INSANE;
+    parse_error pe = parse_expression(p, &i->condition);
+    token* t;
+    if (pe == PE_EOEX) {
+        PEEK(p, t);
+        parser_error_2a(
+            p, "invalid if expression syntax", t->start, t->end,
+            "expected if condition expression", start, end,
+            "in this while loop");
+        return PE_HANDLED;
+    }
+    if (pe) return pe;
+    i->expr.srange = src_range_pack_lines(p->tk.tc, start, end);
+    i->expr.type = ENT_IF;
+    *tgt = (expr*)i;
+    pe = parse_expr_body(p, &i->if_body, ENT_IF);
+    if (pe) return pe;
+    PEEK(p, t);
+    if (t->type != TT_STRING || !kw_equals(KW_ELSE, t->str)) {
+        parser_error_2a(
+            p, "invalid if expression syntax", t->start, t->end,
+            "expected else block", start, end, "for this if expression");
+        return PE_HANDLED;
+    }
+    tk_void(&p->tk);
+    pe = parse_expr_body(p, &i->else_body, ENT_IF);
+    return pe;
+}
+static inline parse_error parse_single_value(parser* p, token* t, expr** ex)
 {
     switch (t->type) {
         case TT_PAREN_OPEN: {
@@ -652,7 +830,7 @@ static inline parse_error parse_single_value(parser* p, token* t, astn** ex)
             return parse_tuple(p, t, ex);
         }
         case TT_BRACE_OPEN: {
-            return parse_array(p, t, ex);
+            return parse_expr_body_or_array(p, t, ex);
         }
         case TT_STRING: {
             keyword_id kw = kw_match(t->str);
@@ -661,10 +839,34 @@ static inline parse_error parse_single_value(parser* p, token* t, astn** ex)
                     tk_void(&p->tk);
                     return parse_loop(p, ex, t->start, t->end, NULL);
                 }
-                case KW_INVALID_KEYWORD: // fallthrough
-                default:;                // noop to please C
+                case KW_LABEL: {
+                }
+                case KW_FOR: {
+                }
+                case KW_WHILE: {
+                    tk_void(&p->tk);
+                    return parse_while(p, ex, t->start, t->end, NULL);
+                }
+                case KW_IF: {
+                    tk_void(&p->tk);
+                    return parse_if(p, ex, t->start, t->end);
+                }
+                case KW_RETURN: {
+                    tk_void(&p->tk);
+                    return parse_return_expr(p, t->start, t->end, ex);
+                }
+                case KW_GIVE: {
+                    tk_void(&p->tk);
+                    return parse_give_expr(p, t->start, t->end, ex);
+                }
+                case KW_GOTO: {
+                    tk_void(&p->tk);
+                    return parse_goto_expr(p, t->start, t->end, ex);
+                }
+                case KW_INVALID_KEYWORD:
+                default:; // fallthrough
             }
-        } // fallthrough for str_value
+        } // fallthrough
         case TT_NUMBER:
         case TT_LITERAL:
         case TT_BINARY_LITERAL: {
@@ -678,14 +880,14 @@ static inline parse_error parse_single_value(parser* p, token* t, astn** ex)
         } break;
     }
 }
-static inline parse_error parse_call(parser* p, token* t, astn** ex, astn* lhs)
+static inline parse_error parse_call(parser* p, token* t, expr** ex, expr* lhs)
 {
     ureg t_start = t->start;
     tk_void(&p->tk);
     expr_call* call = alloc_perm(p, sizeof(expr_call));
     if (!call) return PE_INSANE;
-    parse_error pe =
-        parse_expression_node_list(p, &call->args, "call", TT_PAREN_CLOSE);
+    parse_error pe = parse_expression_node_list(
+        p, NULL, &call->args, "call", TT_PAREN_CLOSE);
     // EMSG: suboptimal e.g. for case {,,}
     if (pe == PE_UNEXPECTED_TOKEN) {
         PEEK(p, t);
@@ -697,23 +899,23 @@ static inline parse_error parse_call(parser* p, token* t, astn** ex, astn* lhs)
     }
     if (pe != PE_OK) return pe;
     PEEK(p, t);
-    if (expr_fill_srange(p, &call->ex, t_start, t->end)) return PE_INSANE;
+    if (expr_fill_srange(p, &call->expr, t_start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
-    call->ex.type = ENT_OP_CALL;
-    call->ex.op_type = OP_CALL;
+    call->expr.type = ENT_OP_CALL;
+    call->expr.op_type = OP_CALL;
     call->lhs = lhs;
-    *ex = (astn*)call;
+    *ex = (expr*)call;
     return PE_OK;
 }
 static inline parse_error
-parse_access(parser* p, token* t, astn** ex, astn* lhs)
+parse_access(parser* p, token* t, expr** ex, expr* lhs)
 {
     ureg t_start = t->start;
     tk_void(&p->tk);
     expr_access* acc = alloc_perm(p, sizeof(expr_access));
     if (!acc) return PE_INSANE;
     parse_error pe = parse_expression_node_list(
-        p, &acc->args, "access operator", TT_BRACKET_CLOSE);
+        p, NULL, &acc->args, "access operator", TT_BRACKET_CLOSE);
     // EMSG: suboptimal e.g. for case {,,}
     if (pe == PE_UNEXPECTED_TOKEN) {
         PEEK(p, t);
@@ -725,16 +927,16 @@ parse_access(parser* p, token* t, astn** ex, astn* lhs)
     }
     if (pe != PE_OK) return pe;
     PEEK(p, t);
-    if (expr_fill_srange(p, &acc->ex, t_start, t->end)) return PE_INSANE;
+    if (expr_fill_srange(p, &acc->expr, t_start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
-    acc->ex.type = ENT_OP_ACCESS;
-    acc->ex.op_type = OP_ACCESS;
+    acc->expr.type = ENT_OP_ACCESS;
+    acc->expr.op_type = OP_ACCESS;
     acc->lhs = lhs;
-    *ex = (astn*)acc;
+    *ex = (expr*)acc;
     return PE_OK;
 }
 static inline parse_error
-parse_postfix_unary_op(parser* p, token* t, op_type op, astn** ex, astn* lhs)
+parse_postfix_unary_op(parser* p, token* t, op_type op, expr** ex, expr* lhs)
 {
     if (op == OP_CALL) {
         return parse_call(p, t, ex, lhs);
@@ -747,30 +949,30 @@ parse_postfix_unary_op(parser* p, token* t, op_type op, astn** ex, astn* lhs)
         expr_op_unary* ou =
             (expr_op_unary*)alloc_perm(p, sizeof(expr_op_unary));
         if (!ou) return PE_INSANE;
-        ou->ex.type = ENT_OP_UNARY;
-        ou->ex.op_type = op;
+        ou->expr.type = ENT_OP_UNARY;
+        ou->expr.op_type = op;
         ou->child = lhs;
-        if (expr_fill_srange(p, &ou->ex, t->start, t->end)) return PE_INSANE;
-        *ex = (astn*)ou;
+        if (expr_fill_srange(p, &ou->expr, t->start, t->end)) return PE_INSANE;
+        *ex = (expr*)ou;
         return PE_OK;
     }
 }
 static inline parse_error
-parse_binary_op(parser* p, token* t, op_type op, astn** ex, astn* lhs)
+parse_binary_op(parser* p, token* t, op_type op, expr** ex, expr* lhs)
 {
     tk_void(&p->tk);
     expr_op_binary* ob = (expr_op_binary*)alloc_perm(p, sizeof(expr_op_binary));
     if (!ob) return PE_INSANE;
-    if (expr_fill_srange(p, &ob->ex, t->start, t->end)) return PE_INSANE;
-    ob->ex.type = ENT_OP_BINARY;
-    ob->ex.op_type = op;
+    if (expr_fill_srange(p, &ob->expr, t->start, t->end)) return PE_INSANE;
+    ob->expr.type = ENT_OP_BINARY;
+    ob->expr.op_type = op;
     parse_error pe = parse_expression_of_prec(
         p, &ob->rhs, op_precedence[op] + is_left_associative(op));
     if (pe) {
         if (pe == PE_EOEX) {
             PEEK(p, t);
             src_range_large sr;
-            src_range_unpack(ob->ex.srange, &sr);
+            src_range_unpack(ob->expr.srange, &sr);
             parser_error_2a(
                 p, "missing operand for infix operator", t->start, t->end,
                 "reached end of expression", sr.start, sr.end,
@@ -780,25 +982,14 @@ parse_binary_op(parser* p, token* t, op_type op, astn** ex, astn* lhs)
         return pe;
     }
     ob->lhs = *ex;
-    *ex = (astn*)ob;
+    *ex = (expr*)ob;
     return PE_OK;
 }
-parse_error parse_expression_of_prec(parser* p, astn** ex, ureg prec)
+parse_error parse_expression_of_prec_post_value(parser* p, expr** ex, ureg prec)
 {
     token* t;
-    PEEK(p, t);
-    *ex = NULL;
     parse_error pe;
-    // parse one prefix op(recursive) or a plain value
-    op_type op = token_to_prefix_unary_op(t);
-    if (op != OP_NOOP) {
-        pe = parse_prefix_unary_op(p, t, op, ex);
-        if (pe) return pe;
-    }
-    else {
-        pe = parse_single_value(p, t, ex);
-        if (pe) return pe;
-    }
+    op_type op;
     // parse arbitrarily many postfix operators
     while (true) {
         PEEK(p, t);
@@ -819,40 +1010,67 @@ parse_error parse_expression_of_prec(parser* p, astn** ex, ureg prec)
     }
     return PE_OK;
 }
-parse_error parse_expression(parser* p, astn** ex)
+parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec)
+{
+    token* t;
+    PEEK(p, t);
+    *ex = NULL;
+    parse_error pe;
+    // parse one prefix op(recursive) or a plain value
+    op_type op = token_to_prefix_unary_op(t);
+    if (op != OP_NOOP) {
+        pe = parse_prefix_unary_op(p, t, op, ex);
+        if (pe) return pe;
+    }
+    else {
+        pe = parse_single_value(p, t, ex);
+        if (pe) return pe;
+    }
+    return parse_expression_of_prec_post_value(p, ex, prec);
+}
+parse_error parse_expression(parser* p, expr** ex)
 {
     return parse_expression_of_prec(p, ex, PREC_BASELINE);
 }
-parse_error
-parse_eof_delimited_body(parser* p, stmt** tgt, body_parser_mode bpm)
+parse_error parse_eof_delimited_body(parser* p, body* b, ast_node_type pt)
 {
-    *tgt = NULL; // fist element must be zero for extend to check
+    stmt** head = &b->children;
+    *head = NULL; // fist element must be zero for extend to check
     token* t;
     PEEK(p, t);
+    parse_error pe = PE_OK;
+    ast_node_type old_parent_type = p->parent_type;
+    p->parent_type = pt;
     while (t->type != TT_EOF) {
-        parse_error pe = parse_statement(p, tgt, bpm);
+        pe = parse_statement(p, head);
         if (!pe) {
-            tgt = &(*tgt)->next;
+            head = &(*head)->next;
         }
         else {
-            *tgt = NULL;
-            return pe;
+            break;
         }
-        PEEK(p, t);
+        t = tk_peek(&p->tk);
+        if (!t) {
+            pe = PE_TK_ERROR;
+            break;
+        }
     }
-    return PE_OK;
+    *head = NULL;
+    p->parent_type = old_parent_type;
+    return pe;
 }
 parse_error parser_parse_file(parser* p, file* f)
 {
+    // This is test code. it sucks
     int r = tk_open_file(&p->tk, f);
     if (r) return PE_TK_ERROR;
-    parse_error pe = parse_eof_delimited_body(p, p->root_head, BPM_FILE);
-    if (!pe) {
-        while ((*p->root_head)->next != NULL) {
-            p->root_head = &(*p->root_head)->next;
-        }
-        p->root_head = &(*p->root_head)->next;
-    }
+    stmt* old_children = p->root.scope_full.scope.body.children;
+    parse_error pe =
+        parse_eof_delimited_body(p, &p->root.scope_full.scope.body, ASTNT_FILE);
+    stmt** old_head = &old_children;
+    while (*old_head) old_head = &(*old_head)->next;
+    *old_head = p->root.scope_full.scope.body.children;
+    p->root.scope_full.scope.body.children = old_children;
     tk_close_file(&p->tk);
     return pe;
 }
@@ -960,11 +1178,10 @@ parse_error parse_var_decl(
     parse_error pe;
     stmt_var_decl* vd = alloc_perm(p, sizeof(stmt_var_decl));
     if (!vd) return PE_INSANE;
-    vd->nstmt.name = alloc_string_perm(p, ident);
-    if (!vd->nstmt.name) return PE_INSANE;
-    vd->nstmt.stmt.type = ASTNT_VAR_DECL;
-    vd->nstmt.stmt.flags = flags;
-    vd->nstmt.parent = p->curr_parent;
+    vd->symbol.name = alloc_string_perm(p, ident);
+    if (!vd->symbol.name) return PE_INSANE;
+    vd->symbol.stmt.type = ASTNT_VAR_DECL;
+    vd->symbol.stmt.flags = flags;
     token* t;
     PEEK(p, t);
     if (t->type == TT_EQUALS) {
@@ -1027,15 +1244,14 @@ parse_error parse_var_decl(
             "expected ';' to terminate the declaration");
         return PE_HANDLED;
     }
-    nstmt_fill_srange(p, &vd->nstmt, start, t->end);
+    symbol_fill_srange(p, &vd->symbol, start, t->end);
     tk_consume(&p->tk);
-    iht_insert(&p->iht, (named_stmt*)vd);
     *n = (stmt*)vd;
     return PE_OK;
 }
 parse_error parse_param_list(
-    parser* p, named_stmt* parent, stmt_param_decl** tgt, bool generic,
-    ureg ctx_start, ureg ctx_end, char* msg)
+    parser* p, stmt_param_decl** tgt, bool generic, ureg ctx_start,
+    ureg ctx_end, char* msg)
 {
     token* t;
     token_type end_tok = generic ? TT_BRACKET_CLOSE : TT_PAREN_CLOSE;
@@ -1046,13 +1262,12 @@ parse_error parse_param_list(
         return PE_OK;
     }
     do {
-        parse_error pe =
-            parse_param_decl(p, parent, tgt, ctx_start, ctx_end, msg);
+        parse_error pe = parse_param_decl(p, tgt, ctx_start, ctx_end, msg);
         if (pe) {
             *tgt = NULL;
             return pe;
         }
-        tgt = (stmt_param_decl**)&(*tgt)->nstmt.stmt.next;
+        tgt = (stmt_param_decl**)&(*tgt)->symbol.stmt.next;
         PEEK(p, t);
         if (t->type == TT_COMMA) {
             tk_void(&p->tk);
@@ -1089,26 +1304,26 @@ parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     if (!name) return PE_INSANE;
     tk_void(&p->tk);
     PEEK(p, t);
-    named_stmt* fn;
+    scope* fn;
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        fn = alloc_perm(p, sizeof(stmt_generic_function));
+        fn = alloc_perm(p, sizeof(stmt_func_generic));
         if (!fn) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, fn, &((stmt_generic_function*)fn)->generic_params, true, start,
-            decl_end, "in this function declaration");
+            p, &((stmt_func_generic*)fn)->generic_params, true, start, decl_end,
+            "in this function declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        fn = alloc_perm(p, sizeof(stmt_function));
+        fn = alloc_perm(p, sizeof(stmt_func));
         if (!fn) return PE_INSANE;
     }
-    fn->name = name;
-    pe = nstmt_fill_srange(p, fn, start, decl_end);
+    fn->symbol.name = name;
+    pe = symbol_fill_srange(p, &fn->symbol, start, decl_end);
     if (pe) return pe;
     if (t->type != TT_PAREN_OPEN) {
         parser_error_2a(
@@ -1118,23 +1333,21 @@ parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
         return PE_HANDLED;
     }
     tk_void(&p->tk);
-    stmt_param_decl** pd = generic ? &((stmt_generic_function*)fn)->params
-                                   : &((stmt_function*)fn)->params;
+    stmt_param_decl** pd =
+        generic ? &((stmt_func_generic*)fn)->params : &((stmt_func*)fn)->params;
     pe = parse_param_list(
-        p, fn, pd, false, start, decl_end, "in this function declaration");
+        p, pd, false, start, decl_end, "in this function declaration");
     if (pe) return pe;
-    fn->parent = p->curr_parent;
-    fn->stmt.type = generic ? ASTNT_GENERIC_FUNCTION : ASTNT_FUNCTION;
-    fn->stmt.flags = flags;
+    fn->symbol.stmt.type = generic ? ASTNT_FUNC_GENERIC : ASTNT_FUNCTION;
+    fn->symbol.stmt.flags = flags;
     *n = (stmt*)fn;
     if (generic) {
-        stmt_generic_function* gf = (stmt_generic_function*)fn;
-        return parse_body(
-            p, fn, &gf->body, BPM_GENERIC_FUNCTION, &gf->body_end);
+        stmt_func_generic* gf = (stmt_func_generic*)fn;
+        return parse_scope(p, &gf->scope_full.scope);
     }
     else {
-        stmt_function* f = (stmt_function*)fn;
-        return parse_body(p, fn, &f->body, BPM_FUNCTION, &f->body_end);
+        stmt_func* f = (stmt_func*)fn;
+        return parse_scope(p, &f->scope_full.scope);
     }
 }
 parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
@@ -1154,15 +1367,15 @@ parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     if (!name) return PE_INSANE;
     tk_void(&p->tk);
     PEEK(p, t);
-    named_stmt* st;
+    scope* st;
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        st = alloc_perm(p, sizeof(stmt_generic_struct));
+        st = alloc_perm(p, sizeof(stmt_struct_generic));
         if (!st) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, st, &((stmt_generic_struct*)st)->generic_params, true, start,
+            p, &((stmt_struct_generic*)st)->generic_params, true, start,
             decl_end, "in this struct declaration");
         if (pe) return pe;
         PEEK(p, t);
@@ -1172,20 +1385,19 @@ parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
         st = alloc_perm(p, sizeof(stmt_struct));
         if (!st) return PE_INSANE;
     }
-    st->name = name;
-    pe = nstmt_fill_srange(p, st, start, decl_end);
+    st->symbol.name = name;
+    pe = symbol_fill_srange(p, &st->symbol, start, decl_end);
     if (pe) return pe;
-    st->parent = p->curr_parent;
-    st->stmt.type = generic ? ASTNT_GENERIC_STRUCT : ASTNT_STRUCT;
-    st->stmt.flags = flags;
+    st->symbol.stmt.type = generic ? ASTNT_STRUCT_GENERIC : ASTNT_STRUCT;
+    st->symbol.stmt.flags = flags;
     *n = (stmt*)st;
     if (generic) {
-        stmt_generic_struct* gs = (stmt_generic_struct*)st;
-        return parse_body(p, st, &gs->body, BPM_GENERIC_STRUCT, &gs->body_end);
+        stmt_struct_generic* gs = (stmt_struct_generic*)st;
+        return parse_body(p, &gs->scope.body, ASTNT_STRUCT_GENERIC);
     }
     else {
         stmt_struct* s = (stmt_struct*)st;
-        return parse_body(p, st, &s->body, BPM_STRUCT, &s->body_end);
+        return parse_body(p, &s->scope.body, ASTNT_STRUCT);
     }
 }
 parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
@@ -1205,15 +1417,15 @@ parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     if (!name) return PE_INSANE;
     tk_void(&p->tk);
     PEEK(p, t);
-    named_stmt* md;
+    scope* md;
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        md = alloc_perm(p, sizeof(stmt_generic_module));
+        md = alloc_perm(p, sizeof(stmt_module_generic));
         if (!md) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, md, &((stmt_generic_module*)md)->generic_params, true, start,
+            p, &((stmt_module_generic*)md)->generic_params, true, start,
             decl_end, "in this module declaration");
         if (pe) return pe;
         PEEK(p, t);
@@ -1223,24 +1435,16 @@ parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
         md = alloc_perm(p, sizeof(stmt_module));
         if (!md) return PE_INSANE;
     }
-    md->name = name;
-    pe = nstmt_fill_srange(p, md, start, decl_end);
+    md->symbol.name = name;
+    pe = symbol_fill_srange(p, &md->symbol, start, decl_end);
     if (pe) return pe;
-    md->parent = p->curr_parent;
-    md->stmt.type = generic ? ASTNT_GENERIC_MODULE : ASTNT_MODULE;
-    md->stmt.flags = flags;
+    md->symbol.stmt.type = generic ? ASTNT_MODULE_GENERIC : ASTNT_MODULE;
+    md->symbol.stmt.flags = flags;
     *n = (stmt*)md;
-    if (generic) {
-        stmt_generic_module* gm = (stmt_generic_module*)md;
-        return parse_body(p, md, &gm->body, BPM_GENERIC_MODULE, &gm->body_end);
-    }
-    else {
-        stmt_module* m = (stmt_module*)md;
-        return parse_body(p, md, &m->body, BPM_MODULE, &m->body_end);
-    }
+    return parse_eof_delimited_body(
+        p, &md->body, generic ? ASTNT_MODULE_GENERIC : ASTNT_MODULE);
 }
-parse_error parse_extend_decl(
-    parser* p, ureg start, stmt_flags flags, stmt** n, body_parser_mode bpm)
+parse_error parse_extend_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
     token* t;
     parse_error pe;
@@ -1257,15 +1461,15 @@ parse_error parse_extend_decl(
     if (!name) return PE_INSANE;
     tk_void(&p->tk);
     PEEK(p, t);
-    named_stmt* ex;
+    scope* ex;
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        ex = alloc_perm(p, sizeof(stmt_generic_extend));
+        ex = alloc_perm(p, sizeof(stmt_extend_generic));
         if (!ex) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, ex, &((stmt_generic_extend*)ex)->generic_params, true, start,
+            p, &((stmt_extend_generic*)ex)->generic_params, true, start,
             decl_end, "in this extend declaration");
         if (pe) return pe;
         PEEK(p, t);
@@ -1275,51 +1479,35 @@ parse_error parse_extend_decl(
         ex = alloc_perm(p, sizeof(stmt_extend));
         if (!ex) return PE_INSANE;
     }
-    ex->name = name;
-    pe = nstmt_fill_srange(p, ex, start, decl_end);
+    ex->symbol.name = name;
+    pe = symbol_fill_srange(p, &ex->symbol, start, decl_end);
     if (pe) return pe;
-    ex->parent = p->curr_parent;
-    ex->stmt.type = generic ? ASTNT_GENERIC_EXTEND : ASTNT_EXTEND;
-    ex->stmt.flags = flags;
+    ex->symbol.stmt.type = generic ? ASTNT_EXTEND_GENERIC : ASTNT_EXTEND;
+    ex->symbol.stmt.flags = flags;
     PEEK(p, t);
     if (t->type == TT_SEMICOLON) {
-        named_stmt* parent = p->curr_parent;
-        stmt* body = get_parent_body(parent);
-        if (body == NULL) {
+        if (p->curr_scope->body.children == NULL) {
             tk_consume(&p->tk);
-            p->curr_parent = ex;
-            if (generic) {
-                pe = parse_eof_delimited_body(
-                    p, &((stmt_generic_extend*)ex)->body, BPM_GENERIC_EXTEND);
-            }
-            else {
-                pe = parse_eof_delimited_body(
-                    p, &((stmt_extend*)ex)->body, BPM_EXTEND);
-            }
-            p->curr_parent = parent;
+            pe = parse_eof_delimited_body(
+                p, &ex->body, generic ? ASTNT_EXTEND_GENERIC : ASTNT_EXTEND);
             *n = (stmt*)ex;
             return pe;
         }
         else {
             *n = NULL;
-            while (body->next != NULL) body = body->next;
+            stmt* head = p->curr_scope->body.children;
+            while (head->next != NULL) head = head->next;
             ureg hs, he;
-            stmt_get_highlight_bounds(body, &hs, &he);
-            parser_error_2a_bpm(
+            stmt_get_highlight_bounds(head, &hs, &he);
+            parser_error_2a_pc(
                 p, "non leading extend statement", start, t->end, "", hs, he,
-                "preceeded by this statement", bpm);
+                "preceeded by this statement");
             return PE_HANDLED;
         }
     }
     *n = (stmt*)ex;
-    if (generic) {
-        stmt_generic_extend* ge = (stmt_generic_extend*)ex;
-        return parse_body(p, ex, &ge->body, BPM_GENERIC_EXTEND, &ge->body_end);
-    }
-    else {
-        stmt_extend* e = (stmt_extend*)ex;
-        return parse_body(p, ex, &e->body, BPM_EXTEND, &e->body_end);
-    }
+    return parse_body(
+        p, &ex->body, generic ? ASTNT_EXTEND_GENERIC : ASTNT_EXTEND);
 }
 parse_error parse_trait_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
@@ -1338,47 +1526,45 @@ parse_error parse_trait_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     if (!name) return PE_INSANE;
     tk_void(&p->tk);
     PEEK(p, t);
-    named_stmt* un;
+    scope* tr;
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        un = alloc_perm(p, sizeof(stmt_generic_trait));
-        if (!un) return PE_INSANE;
+        tr = alloc_perm(p, sizeof(stmt_trait_generic));
+        if (!tr) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, un, &((stmt_generic_trait*)un)->generic_params, true, start,
+            p, &((stmt_trait_generic*)tr)->generic_params, true, start,
             decl_end, "in this trait declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        un = alloc_perm(p, sizeof(stmt_trait));
-        if (!un) return PE_INSANE;
+        tr = alloc_perm(p, sizeof(stmt_trait));
+        if (!tr) return PE_INSANE;
     }
-    un->name = name;
-    pe = nstmt_fill_srange(p, un, start, decl_end);
+    tr->symbol.name = name;
+    pe = symbol_fill_srange(p, &tr->symbol, start, decl_end);
     if (pe) return pe;
-    un->parent = p->curr_parent;
-    un->stmt.type = generic ? ASTNT_GENERIC_TRAIT : ASTNT_TRAIT;
-    un->stmt.flags = flags;
-    *n = (stmt*)un;
-    if (generic) {
-        stmt_generic_extend* gt = (stmt_generic_extend*)un;
-        return parse_body(p, un, &gt->body, BPM_GENERIC_TRAIT, &gt->body_end);
-    }
-    else {
-        stmt_extend* t = (stmt_extend*)un;
-        return parse_body(p, un, &t->body, BPM_TRAIT, &t->body_end);
-    }
+    tr->symbol.stmt.type = generic ? ASTNT_TRAIT_GENERIC : ASTNT_TRAIT;
+    tr->symbol.stmt.flags = flags;
+    *n = (stmt*)tr;
+    return parse_body(
+        p, &tr->body, generic ? ASTNT_TRAIT_GENERIC : ASTNT_TRAIT);
 }
-bool bpm_supports_exprs(body_parser_mode bpm)
+bool body_supports_exprs(ast_node_type pt)
 {
-    switch (bpm) {
-        case BPM_FUNCTION:
-        case BPM_GENERIC_FUNCTION:
-        case BPM_LOOP:
-        case BPM_LAMBDA: {
+    switch (pt) {
+        case ASTNT_FUNCTION:
+        case ASTNT_FUNC_GENERIC:
+        case ENT_LOOP:
+        case ENT_WHILE:
+        case ENT_FOR:
+        case ENT_FOR_EACH:
+        case ENT_IF:
+        case ENT_BLOCK:
+        case ENT_LAMBDA: {
             return true;
         }
         default: {
@@ -1386,42 +1572,145 @@ bool bpm_supports_exprs(body_parser_mode bpm)
         }
     }
 }
-parse_error parse_expr_stmt(parser* p, stmt** tgt, body_parser_mode bpm)
+bool body_customizes_exprs(ast_node_type pt)
 {
-    astn* expr;
+    return pt == ENT_ARRAY;
+}
+parse_error parse_expr_stmt(parser* p, stmt** tgt)
+{
+    expr* expr;
     token* t;
     PEEK(p, t);
     ureg start = t->start;
     parse_error pe = parse_expression(p, &expr);
-    PEEK(p, t);
     if (pe == PE_EOEX) {
-        parser_error_1a_bpm(
-            p, "unexpected token in statement", t->start, t->end, "", bpm);
+        PEEK(p, t);
+        parser_error_1a_pc(
+            p, "unexpected token in expression statement", t->start, t->end,
+            "");
         return PE_HANDLED;
     }
     if (pe) return pe;
+    PEEK(p, t);
     if (t->type != TT_SEMICOLON) {
-        src_range_large sr;
-        src_range_unpack(p->curr_parent->decl_range, &sr);
         ureg end;
         get_expr_bounds(expr, NULL, &end); // TODO improve for loops etc.
-        parser_error_2a_bpm(
-            p, "missing semicolon", start, end, "in this expression", t->start,
-            t->end, "expected ';' to terminate the declaration", bpm);
+        parser_error_2a(
+            p, "missing semicolon", t->start, t->end,
+            "expected ';' to terminate the expression statement", start, end,
+            "in this expression");
         return PE_HANDLED;
     }
     tk_void(&p->tk);
     if (pe) return pe;
-    stmt_expr* e = alloc_perm(p, sizeof(stmt_expr));
-    if (!e) return PE_INSANE;
-    e->stmt.type = ASTNT_EXPRESSION;
-    e->expr = expr;
-    e->stmt_range = src_range_pack_lines(p->tk.tc, start, t->end);
-    if (e->stmt_range == SRC_RANGE_INVALID) return PE_INSANE;
-    *tgt = (stmt*)e;
+    return expr_to_stmt(p, tgt, expr, start, t->end);
+}
+parse_error
+parse_alias(parser* p, ureg start, ureg end, stmt_flags flags, stmt** tgt)
+{
+    stmt_alias* a = alloc_perm(p, sizeof(stmt_alias));
+    if (!a) return PE_INSANE;
+    a->symbol.stmt.type = ASTNT_ALIAS;
+    a->symbol.stmt.flags = flags;
+    token* t;
+    PEEK(p, t);
+    if (t->type == TT_STAR) {
+        a->symbol.name = NULL;
+    }
+    else if (t->type == TT_STRING) {
+        a->symbol.name = alloc_string_perm(p, t->str);
+        if (!a->symbol.name) return PE_INSANE;
+    }
+    else {
+        parser_error_2a(
+            p, "invalid alias syntax", t->start, t->end,
+            "expected '*' or an identifier", start, t->end, "");
+    }
+    PEEK(p, t);
+    if (t->type != TT_ARROW) {
+        parser_error_2a(
+            p, "unexpected token in alias statement", t->start, t->end,
+            "expected '->'", start, end, "in this alias statement");
+        return PE_HANDLED;
+    }
+    tk_void(&p->tk);
+    parse_error pe = parse_expression(p, &a->target);
+    if (pe == PE_EOEX) {
+        parser_error_2a(
+            p, "unexpected token in alias statement", t->start, t->end,
+            "expected expression", start, end, "in this alias statement");
+        return PE_HANDLED;
+    }
+    PEEK(p, t);
+    if (t->type != TT_SEMICOLON) {
+        parser_error_2a(
+            p, "missing semicolon in alias statement", t->start, t->end,
+            "expected ';' to terminate alias statement", start, end,
+            "alias statement started here");
+        return PE_HANDLED;
+    }
+    tk_void(&p->tk);
+    *tgt = &a->symbol.stmt;
     return PE_OK;
 }
-parse_error parse_statement(parser* p, stmt** tgt, body_parser_mode bpm)
+parse_error parse_label(parser* p, ureg start, ureg end, stmt** tgt)
+{
+    token* t;
+    PEEK(p, t);
+    if (t->type != TT_STRING) {
+        parser_error_2a(
+            p, "missing label name", t->start, t->end, "expected label name",
+            start, end, "");
+        return PE_HANDLED;
+    }
+    char* label_name = alloc_string_stage(p, t->str);
+    if (!label_name) return PE_INSANE;
+    tk_void(&p->tk);
+    PEEK(p, t);
+    if (t->type == TT_SEMICOLON) {
+        tk_void(&p->tk);
+        stmt_label* g = alloc_perm(p, sizeof(stmt_label));
+        g->symbol.stmt.type = ASTNT_LABEL;
+        g->symbol.name = label_name;
+        *tgt = (stmt*)g;
+        return PE_OK;
+    }
+    else {
+        parse_error pe;
+        expr* ex;
+        keyword_id kw = kw_match(t->str);
+        switch (kw) {
+            case KW_WHILE:
+                tk_void(&p->tk);
+                pe = parse_while(p, &ex, t->start, t->end, label_name);
+                break;
+            case KW_LOOP:
+                tk_void(&p->tk);
+                pe = parse_loop(p, &ex, t->start, t->end, label_name);
+                break;
+            case KW_FOR:    // TODO
+            case KW_SWITCH: // TODO
+            default:
+                parser_error_2a(
+                    p, "invalid label statement syntax", t->start, t->end,
+                    "expected loop statement or semicolon", start, end, "");
+                return PE_HANDLED;
+        }
+        if (pe) return pe;
+        pe = parse_expression_of_prec_post_value(p, &ex, PREC_BASELINE);
+        if (pe == PE_EOEX) {
+            PEEK(p, t);
+            parser_error_1a(
+                p, "missing semicolon in label expression statement", t->start,
+                t->end, "expected ';' to terminate expression statement");
+        }
+        tk_void(&p->tk);
+        return expr_to_stmt(p, tgt, ex, start, t->end);
+    }
+    return PE_OK;
+}
+
+parse_error parse_statement(parser* p, stmt** tgt)
 {
     parse_error pe;
     stmt_flags flags = ASTN_FLAGS_DEFAULT;
@@ -1430,18 +1719,19 @@ parse_error parse_statement(parser* p, stmt** tgt, body_parser_mode bpm)
     ureg start = t->start;
     while (true) {
         if (t->type != TT_STRING) {
-            if (flags == ASTN_FLAGS_DEFAULT && bpm_supports_exprs(bpm)) {
-                return parse_expr_stmt(p, tgt, bpm);
+            if (flags == ASTN_FLAGS_DEFAULT) {
+                if (body_supports_exprs(p->parent_type)) {
+                    return parse_expr_stmt(p, tgt);
+                }
+                else if (body_customizes_exprs(p->parent_type)) {
+                    return PE_NOT_A_STATEMENT;
+                }
             }
-            else {
-                parser_error_1a_bpm(
-                    p, "unexpected token in statement", t->start, t->end,
-                    stmt_flags_get_const(flags)
-                        ? "expected keyword"
-                        : "expected identifier or keyword",
-                    bpm);
-                return PE_HANDLED;
-            }
+            parser_error_1a_pc(
+                p, "unexpected token in statement", t->start, t->end,
+                stmt_flags_get_const(flags) ? "expected keyword"
+                                            : "expected identifier or keyword");
+            return PE_HANDLED;
         }
         token* t2 = tk_peek_2nd(&p->tk);
         if (!t2) return PE_TK_ERROR;
@@ -1460,108 +1750,137 @@ parse_error parse_statement(parser* p, stmt** tgt, body_parser_mode bpm)
             if (pe != PE_EOEX) return pe;
             // fallthrough on pe == PE_EOEX
         }
-        if (t2->type == TT_STRING || t2->type == TT_BRACE_OPEN) {
+        if (token_to_binary_op(t2) == OP_NOOP &&
+            token_to_postfix_unary_op(t2) == OP_NOOP) {
             kw = kw_match(t->str);
             switch (kw) {
                 case KW_FUNC: {
                     tk_void(&p->tk);
-                    pe = parse_func_decl(p, start, flags, tgt);
-                    return pe;
+                    return parse_func_decl(p, start, flags, tgt);
                 }
                 case KW_STRUCT: {
                     tk_void(&p->tk);
-                    pe = parse_struct_decl(p, start, flags, tgt);
-                    return pe;
+                    return parse_struct_decl(p, start, flags, tgt);
                 }
                 case KW_TRAIT: {
                     tk_void(&p->tk);
-                    pe = parse_trait_decl(p, start, flags, tgt);
-                    return pe;
+                    return parse_trait_decl(p, start, flags, tgt);
                 }
                 case KW_MODULE: {
                     tk_void(&p->tk);
-                    pe = parse_module_decl(p, start, flags, tgt);
-                    return pe;
+                    return parse_module_decl(p, start, flags, tgt);
                 }
                 case KW_EXTEND: {
                     tk_void(&p->tk);
-                    pe = parse_extend_decl(p, start, flags, tgt, bpm);
-                    return pe;
+                    return parse_extend_decl(p, start, flags, tgt);
                 }
-                // TODO: require, import, include
+                case KW_ALIAS: {
+                    tk_void(&p->tk);
+                    return parse_alias(p, start, t->end, flags, tgt);
+                }
                 default:; // fallthrough
             }
+            if (flags == ASTN_FLAGS_DEFAULT) {
+                // TODO: require, import, include
+                switch (kw) {
+                    case KW_LABEL: {
+                        tk_void(&p->tk);
+                        return parse_label(p, start, t->end, tgt);
+                    }
+                    default:; // fallthrough
+                }
+            }
         }
-        if (flags == ASTN_FLAGS_DEFAULT && bpm_supports_exprs(bpm)) {
-            return parse_expr_stmt(p, tgt, bpm);
+        if (flags == ASTN_FLAGS_DEFAULT) {
+            if (body_supports_exprs(p->parent_type)) {
+                return parse_expr_stmt(p, tgt);
+            }
+            else if (body_customizes_exprs(p->parent_type)) {
+                return PE_NOT_A_STATEMENT;
+            }
         }
-        else {
-            tk_void(&p->tk);
-            PEEK(p, t);
-            parser_error_1a_bpm(
-                p, "unexpected token in statement", t->start, t->end,
-                "expected ':' to initiate a declaration", bpm);
-            return PE_UNEXPECTED_TOKEN;
-        }
+        tk_void(&p->tk);
+        PEEK(p, t);
+        parser_error_1a_pc(
+            p, "unexpected token in statement", t->start, t->end,
+            "expected ':' to initiate a declaration");
+        return PE_UNEXPECTED_TOKEN;
     }
 }
 parse_error parse_braced_delimited_body(
-    parser* p, token* t, stmt** tgt, body_parser_mode bpm, ureg* end)
+    parser* p, ureg bstart, ureg bend, body* b, ast_node_type pt)
 {
-    *tgt = NULL; // fist element must be zero for extend to check
-    ureg start = t->start;
-    ureg bend = t->end;
-    tk_void(&p->tk);
     parse_error pe;
+    token* t;
     PEEK(p, t);
+    stmt** head = &b->children;
+    *head = NULL; // fist element must be zero for extend to check
+
+    ast_node_type old_parent_type = p->parent_type;
+    p->parent_type = pt;
+
     while (t->type != TT_BRACE_CLOSE) {
         if (t->type != TT_EOF) {
-            pe = parse_statement(p, tgt, bpm);
+            pe = parse_statement(p, head);
             if (!pe) {
-                tgt = &(*tgt)->next;
+                head = &(*head)->next;
             }
             else {
-                *tgt = NULL;
-                return pe;
+                break;
             }
-            PEEK(p, t);
+            t = tk_peek(&p->tk);
+            if (!t) {
+                pe = PE_TK_ERROR;
+                break;
+            }
         }
         else {
-            parser_error_2a_bpm(
+            parser_error_2a_pc(
                 p, "unterminated scope", t->start, t->end,
-                "reached EOF before scope was closed", start, bend,
-                "scope starts here", bpm);
+                "reached EOF before scope was closed", bstart, bend,
+                "scope starts here");
             return PE_UNEXPECTED_TOKEN;
         }
     }
-    tk_consume(&p->tk);
-    *end = t->end;
-    *tgt = NULL;
-    return PE_OK;
+    if (!pe) {
+        tk_consume(&p->tk);
+        b->body_end = t->end;
+    }
+    *head = NULL;
+    p->parent_type = old_parent_type;
+    return pe;
 }
-
-parse_error parse_body(
-    parser* p, named_stmt* parent, stmt** tgt, body_parser_mode bpm, ureg* end)
+// TODO: parse eof delimited scope, parse brace delimited scope
+parse_error parse_scope(parser* p, scope* s)
 {
-    *tgt = NULL; // fist element must be zero for extend to check
-    named_stmt* old_parent = p->curr_parent;
-    p->curr_parent = parent;
+    scope* old_scope = p->curr_scope;
+    p->curr_scope = s;
+    parse_error pe = parse_body(p, &s->body, s->symbol.stmt.type);
+    p->curr_scope = old_scope;
+    return pe;
+}
+parse_error parse_body(parser* p, body* b, ast_node_type pt)
+{
     parse_error pe;
     token* t;
     PEEK(p, t);
     if (t->type != TT_BRACE_OPEN) {
-        pe = parse_statement(p, tgt, bpm);
+        ast_node_type old_parent_type = p->parent_type;
+        p->parent_type = pt;
+        pe = parse_statement(p, &b->children);
         if (pe) {
-            *tgt = NULL;
+            b->children = NULL;
         }
         else {
-            (*tgt)->next = NULL;
-            *end = src_range_get_end(((stmt_expr*)*tgt)->stmt_range);
+            b->children->next = NULL;
+            b->body_end =
+                src_range_get_end(((stmt_expr*)b->children)->expr_range);
         }
+        p->parent_type = old_parent_type;
     }
     else {
-        pe = parse_braced_delimited_body(p, t, tgt, bpm, end);
+        tk_void(&p->tk);
+        pe = parse_braced_delimited_body(p, t->start, t->end, b, pt);
     }
-    p->curr_parent = old_parent;
     return pe;
 }

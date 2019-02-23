@@ -18,5 +18,8 @@ void** list_builder_start(list_builder* b);
 int list_builder_add(list_builder* b, void* el);
 // returns begin of allocated list or NULL on failiure
 void** list_builder_pop_list(
-    list_builder* b, void** list_start, void*** tgt, ureg* count, pool* tgtmem,
-    ureg premem, ureg postmem);
+    list_builder* b, void** list_start, pool* memtgt, ureg* count, ureg premem,
+    ureg postmem);
+
+void** list_builder_pop_list_zt(
+    list_builder* b, void** list_start, pool* memtgt, ureg* count);

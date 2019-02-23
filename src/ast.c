@@ -9,53 +9,28 @@ bool is_unary_op_postfix(op_type t)
         default: return false;
     }
 }
-stmt* get_parent_body(named_stmt* parent)
+void get_expr_bounds(expr* n, ureg* start, ureg* end)
 {
-    switch (parent->stmt.type) {
-        case ASTNT_MODULE: return ((stmt_module*)parent)->body; break;
-        case ASTNT_EXTEND: return ((stmt_extend*)parent)->body; break;
-        case ASTNT_STRUCT: return ((stmt_struct*)parent)->body; break;
-        case ASTNT_TRAIT: return ((stmt_trait*)parent)->body; break;
-        case ASTNT_FUNCTION: return ((stmt_function*)parent)->body; break;
-        case ASTNT_GENERIC_MODULE: return ((stmt_generic_module*)parent)->body;
-        case ASTNT_GENERIC_EXTEND: return ((stmt_generic_extend*)parent)->body;
-        case ASTNT_GENERIC_STRUCT: return ((stmt_generic_struct*)parent)->body;
-        case ASTNT_GENERIC_TRAIT: return ((stmt_generic_trait*)parent)->body;
-        case ASTNT_GENERIC_FUNCTION:
-            return ((stmt_generic_function*)parent)->body;
-        default: return NULL;
-    }
-}
-void get_expr_bounds(astn* n, ureg* start, ureg* end)
-{
-    switch (*(astnt*)n) {
-        case ASTNT_LOOP: {
-            if (start) {
-                src_range_large r;
-                src_range_unpack(((named_stmt*)n)->decl_range, &r);
-                *start = r.start;
-            }
-            if (end) *end = ((expr_loop*)n)->block_end;
+    switch (n->type) {
+        case ENT_LOOP: {
+            if (start) *start = src_range_get_start(n->srange);
+            if (end) get_expr_bounds(n, NULL, end);
             return;
         }
         case ENT_OP_BINARY: {
-            if (start) {
-                get_expr_bounds(((expr_op_binary*)n)->lhs, start, NULL);
-            }
-            if (end) {
-                get_expr_bounds(((expr_op_binary*)n)->rhs, NULL, end);
-            }
+            if (start) get_expr_bounds(((expr_op_binary*)n)->lhs, start, NULL);
+            if (end) get_expr_bounds(((expr_op_binary*)n)->rhs, NULL, end);
             return;
         }
         case ENT_OP_UNARY: {
             expr_op_unary* u = (expr_op_unary*)n;
-            if (!is_unary_op_postfix(u->ex.op_type)) {
+            if (!is_unary_op_postfix(u->expr.op_type)) {
                 if (start) {
                     src_range_large r;
-                    src_range_unpack(u->ex.srange, &r);
+                    src_range_unpack(u->expr.srange, &r);
                     *start = r.start;
                 }
-                get_expr_bounds(u->child, NULL, end);
+                if (end) get_expr_bounds(u->child, NULL, end);
                 return;
             }
         } // fallthrough for postfix unary op
@@ -76,13 +51,13 @@ void stmt_get_highlight_bounds(stmt* stmt, ureg* start, ureg* end)
         case ASTNT_STRUCT:
         case ASTNT_TRAIT:
         case ASTNT_FUNCTION:
-        case ASTNT_GENERIC_MODULE:
-        case ASTNT_GENERIC_EXTEND:
-        case ASTNT_GENERIC_STRUCT:
-        case ASTNT_GENERIC_TRAIT:
+        case ASTNT_MODULE_GENERIC:
+        case ASTNT_EXTEND_GENERIC:
+        case ASTNT_STRUCT_GENERIC:
+        case ASTNT_TRAIT_GENERIC:
         case ASTNT_VAR_DECL:
-        case ASTNT_GENERIC_FUNCTION: {
-            src_range dr = ((named_stmt*)stmt)->decl_range;
+        case ASTNT_FUNC_GENERIC: {
+            src_range dr = ((symbol*)stmt)->decl_range;
             src_range_large srl;
             src_range_unpack(dr, &srl);
             if (start) *start = srl.start;
