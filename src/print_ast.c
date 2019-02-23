@@ -84,15 +84,12 @@ void print_astn(stmt* astn, ureg indent)
 {
     print_indent(indent);
     switch (astn->type) {
-        case ASTNT_FILE: {
-            print_body(&((stmt_module*)astn)->scope_full.scope.body, indent);
-        } break;
-        case ASTNT_EXPRESSION: {
+        case STMT_EXPRESSION: {
             stmt_expr* e = (stmt_expr*)astn;
             print_expr(e->expr, indent);
             p(";\n");
         } break;
-        case ASTNT_FUNCTION: {
+        case SCF_FUNC: {
             stmt_func* f = (stmt_func*)astn;
             p("func ");
             pu(f->scope_full.scope.symbol.name);
@@ -101,7 +98,7 @@ void print_astn(stmt* astn, ureg indent)
             pc(')');
             print_body_braced_nl(&f->scope_full.scope.body, indent);
         } break;
-        case ASTNT_FUNC_GENERIC: {
+        case SCF_FUNC_GENERIC: {
             stmt_func_generic* f = (stmt_func_generic*)astn;
             p("func ");
             pu(f->scope_full.scope.symbol.name);
@@ -113,13 +110,13 @@ void print_astn(stmt* astn, ureg indent)
             pc(')');
             print_body_braced_nl(&f->scope_full.scope.body, indent);
         } break;
-        case ASTNT_STRUCT: {
+        case SC_STRUCT: {
             stmt_struct* s = (stmt_struct*)astn;
             p("struct ");
             pinn(s->scope.symbol.name);
             print_body_braced_nl(&s->scope.body, indent);
         } break;
-        case ASTNT_STRUCT_GENERIC: {
+        case SC_STRUCT_GENERIC: {
             stmt_struct_generic* s = (stmt_struct_generic*)astn;
             p("struct ");
             pinn(s->scope.symbol.name);
@@ -128,13 +125,13 @@ void print_astn(stmt* astn, ureg indent)
             pc(']');
             print_body_braced_nl(&s->scope.body, indent);
         } break;
-        case ASTNT_TRAIT: {
+        case SC_TRAIT: {
             stmt_trait* t = (stmt_trait*)astn;
             p("trait ");
             pinn(t->scope.symbol.name);
             print_body_braced_nl(&t->scope.body, indent);
         } break;
-        case ASTNT_TRAIT_GENERIC: {
+        case SC_TRAIT_GENERIC: {
             stmt_trait_generic* t = (stmt_trait_generic*)astn;
             p("trait ");
             pinn(t->scope.symbol.name);
@@ -143,28 +140,28 @@ void print_astn(stmt* astn, ureg indent)
             pc(']');
             print_body_braced_nl(&t->scope.body, indent);
         } break;
-        case ASTNT_MODULE: {
+        case SCS_MODULE: {
             stmt_module* m = (stmt_module*)astn;
             p("module ");
-            pinn(m->scope_full.scope.symbol.name);
-            print_body_braced_nl(&m->scope_full.scope.body, indent);
+            pinn(m->scope_sealed.scope.symbol.name);
+            print_body_braced_nl(&m->scope_sealed.scope.body, indent);
         } break;
-        case ASTNT_MODULE_GENERIC: {
+        case SCS_MODULE_GENERIC: {
             stmt_module_generic* m = (stmt_module_generic*)astn;
             p("module ");
-            pinn(m->scope_full.scope.symbol.name);
+            pinn(m->scope_sealed.scope.symbol.name);
             p("[");
             print_astn_params_decl(m->generic_params, indent);
             pc(']');
-            print_body_braced_nl(&m->scope_full.scope.body, indent);
+            print_body_braced_nl(&m->scope_sealed.scope.body, indent);
         } break;
-        case ASTNT_EXTEND: {
+        case SCF_EXTEND: {
             stmt_extend* e = (stmt_extend*)astn;
             p("extend ");
             pinn(e->scope_full.scope.symbol.name);
             print_body_braced_nl(&e->scope_full.scope.body, indent);
         } break;
-        case ASTNT_EXTEND_GENERIC: {
+        case SCF_EXTEND_GENERIC: {
             stmt_extend_generic* e = (stmt_extend_generic*)astn;
             p("extend ");
             pinn(e->scope_full.scope.symbol.name);
@@ -173,7 +170,7 @@ void print_astn(stmt* astn, ureg indent)
             pc(']');
             print_body_braced_nl(&e->scope_full.scope.body, indent);
         } break;
-        case ASTNT_VAR_DECL: {
+        case SYM_VAR_DECL: {
             stmt_var_decl* d = (stmt_var_decl*)astn;
             if (stmt_flags_get_const(d->symbol.stmt.flags)) p("const ");
             pu(d->symbol.name);
@@ -191,7 +188,7 @@ void print_astn(stmt* astn, ureg indent)
             }
             p(";\n");
         } break;
-        case ASTNT_LABEL: {
+        case SYM_LABEL: {
             stmt_label* l = (stmt_label*)astn;
             p("label ");
             p(l->symbol.name);
@@ -214,23 +211,23 @@ void print_expr_list(expr** el, ureg indent)
 void print_expr(expr* ex, ureg indent)
 {
     switch (ex->type) {
-        case ENT_IDENTIFIER:
-        case ENT_NUMBER: pu(((expr_str_value*)ex)->value); break;
-        case ENT_BLOCK: {
+        case EXPR_IDENTIFIER:
+        case EXPR_NUMBER: pu(((expr_str_value*)ex)->value); break;
+        case EXPR_BLOCK: {
             expr_block* b = (expr_block*)ex;
             print_body_braced(&b->body, indent);
         } break;
-        case ENT_BINARY_LITERAL:
+        case EXPR_BINARY_LITERAL:
             pc('\'');
             pu(((expr_str_value*)ex)->value);
             pc('\'');
             break;
-        case ENT_STRING_LITERAL:
+        case EXPR_STRING_LITERAL:
             pc('"');
             pu(((expr_str_value*)ex)->value);
             pc('"');
             break;
-        case ENT_OP_BINARY: {
+        case EXPR_OP_BINARY: {
             expr_op_binary* b = (expr_op_binary*)ex;
             print_expr(b->lhs, indent);
             pc(' ');
@@ -239,13 +236,13 @@ void print_expr(expr* ex, ureg indent)
             print_expr(b->rhs, indent);
             break;
         }
-        case ENT_GIVE: {
+        case EXPR_GIVE: {
             expr_give* g = (expr_give*)ex;
             p("give ");
             if (g->target.name) ps(g->target.name);
             if (g->value != NULL) print_expr(g->value, indent);
         } break;
-        case ENT_RETURN: {
+        case EXPR_RETURN: {
             expr_return* r = (expr_return*)ex;
             p("return");
             if (r->value != NULL) {
@@ -253,12 +250,12 @@ void print_expr(expr* ex, ureg indent)
                 print_expr(r->value, indent);
             }
         } break;
-        case ENT_GOTO: {
+        case EXPR_GOTO: {
             expr_goto* g = (expr_goto*)ex;
             p("goto ");
             p(g->target.name);
         } break;
-        case ENT_OP_UNARY: {
+        case EXPR_OP_UNARY: {
             expr_op_unary* u = (expr_op_unary*)ex;
             if (is_unary_op_postfix(u->expr.op_type)) {
                 print_expr(u->child, indent);
@@ -270,37 +267,37 @@ void print_expr(expr* ex, ureg indent)
             }
             break;
         }
-        case ENT_ARRAY: {
+        case EXPR_ARRAY: {
             pc('{');
             print_expr_list(((expr_array*)ex)->elements, indent);
             pc('}');
         } break;
-        case ENT_TUPLE: {
+        case EXPR_TUPLE: {
             pc('[');
             print_expr_list(((expr_tuple*)ex)->elements, indent);
             pc(']');
         } break;
-        case ENT_OP_CALL: {
+        case EXPR_OP_CALL: {
             expr_call* c = (expr_call*)ex;
             print_expr(c->lhs, indent);
             pc('(');
             print_expr_list(c->args, indent);
             pc(')');
         } break;
-        case ENT_OP_ACCESS: {
+        case EXPR_OP_ACCESS: {
             expr_access* acc = (expr_access*)ex;
             print_expr(acc->lhs, indent);
             pc('[');
             print_expr_list(acc->args, indent);
             pc(']');
         } break;
-        case ENT_OP_PARENTHESES: {
+        case EXPR_OP_PARENTHESES: {
             expr_parentheses* pr = (expr_parentheses*)ex;
             pc('(');
             print_expr(pr->child, indent);
             pc(')');
         } break;
-        case ENT_LOOP: {
+        case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)ex;
             if (l->expr_named.name != NULL) {
                 p("label ");
@@ -309,7 +306,7 @@ void print_expr(expr* ex, ureg indent)
             p("loop ");
             print_expr(l->body, indent);
         } break;
-        case ENT_WHILE: {
+        case EXPR_WHILE: {
             expr_while* w = (expr_while*)ex;
             if (w->expr_named.name != NULL) {
                 p("label ");
@@ -324,7 +321,7 @@ void print_expr(expr* ex, ureg indent)
             p("finally ");
             print_expr(w->finally_body, indent);
         } break;
-        case ENT_IF: {
+        case EXPR_IF: {
             expr_if* i = (expr_if*)ex;
             p("if ");
             print_expr(i->condition, indent);

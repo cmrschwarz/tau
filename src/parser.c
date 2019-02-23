@@ -249,27 +249,27 @@ static inline void parser_error_3a(
         &p->tk.tc->error_log, ES_PARSER, false, msg, p->tk.file, start, end,
         annot, start2, end2, annot2, start3, end3, annot3);
 }
-char* get_parent_context_msg(ast_node_type parent_type)
+char* get_parent_context_msg(parser* p)
 {
-    switch (parent_type) {
-        case ASTNT_FILE: return NULL;
-        case ASTNT_FUNCTION: return "in this function's body";
-        case ASTNT_FUNC_GENERIC: return "in this generic function's body";
-        case ASTNT_STRUCT: return "in this struct's body";
-        case ASTNT_STRUCT_GENERIC: return "in this generic struct's body";
-        case ASTNT_TRAIT: return "in this struct's body";
-        case ASTNT_TRAIT_GENERIC: return "in this generic struct's body";
-        case ASTNT_MODULE: return "in this module's body";
-        case ASTNT_MODULE_GENERIC: return "in this generic module's body";
-        case ASTNT_EXTEND: return "in this extend statement's body";
-        case ENT_WHILE:
-        case ENT_FOR:
-        case ENT_FOR_EACH:
-        case ENT_LOOP: return "in this loop's body";
-        case ENT_IF: return "in this if expressions's body";
-        case ASTNT_EXTEND_GENERIC:
+    if (p->curr_scope == &p->root.scope_sealed.scope) return NULL;
+    switch (p->curr_scope->symbol.stmt.type) {
+        case SCF_FUNC: return "in this function's body";
+        case SCF_FUNC_GENERIC: return "in this generic function's body";
+        case SC_STRUCT: return "in this struct's body";
+        case SC_STRUCT_GENERIC: return "in this generic struct's body";
+        case SC_TRAIT: return "in this struct's body";
+        case SC_TRAIT_GENERIC: return "in this generic struct's body";
+        case SCS_MODULE: return "in this module's body";
+        case SCS_MODULE_GENERIC: return "in this generic module's body";
+        case SCF_EXTEND: return "in this extend statement's body";
+        case EXPR_WHILE:
+        case EXPR_FOR:
+        case EXPR_FOR_EACH:
+        case EXPR_LOOP: return "in this loop's body";
+        case EXPR_IF: return "in this if expressions's body";
+        case SCF_EXTEND_GENERIC:
             return "in this generic extend statement's body";
-        case ENT_LAMBDA: return "in this lambda's body";
+        case EXPR_LAMBDA: return "in this lambda's body";
         default: panic("unexpected parent context");
     }
     return NULL;
@@ -277,7 +277,7 @@ char* get_parent_context_msg(ast_node_type parent_type)
 static inline void
 parser_error_1a_pc(parser* p, char* msg, ureg start, ureg end, char* annot)
 {
-    char* bpmmsg = get_parent_context_msg(p->curr_scope->symbol.stmt.type);
+    char* bpmmsg = get_parent_context_msg(p);
     if (bpmmsg != NULL) {
         src_range_large sr;
         src_range_unpack(p->curr_scope->symbol.decl_range, &sr);
@@ -291,7 +291,7 @@ static inline void parser_error_2a_pc(
     parser* p, char* msg, ureg start, ureg end, char* annot, ureg start2,
     ureg end2, char* annot2)
 {
-    char* bpmmsg = get_parent_context_msg(p->parent_type);
+    char* bpmmsg = get_parent_context_msg(p);
     if (bpmmsg != NULL) {
         src_range_large sr;
         src_range_unpack(p->curr_scope->symbol.decl_range, &sr);
@@ -330,10 +330,10 @@ int parser_init(parser* p, thread_context* tc)
         tk_fin(&p->tk);
         return r;
     }
-    p->root.scope_full.scope.symbol.name = NULL;
-    p->root.scope_full.scope.symbol.stmt.type = ASTNT_FILE;
-    p->root.scope_full.scope.body.children = NULL;
-    p->root.scope_full.scope.symbol.stmt.next = NULL;
+    p->root.scope_sealed.scope.symbol.name = NULL;
+    p->root.scope_sealed.scope.symbol.stmt.type = SCS_MODULE;
+    p->root.scope_sealed.scope.body.children = NULL;
+    p->root.scope_sealed.scope.symbol.stmt.next = NULL;
     p->curr_scope = (scope*)&p->root;
     return OK;
 }
@@ -359,10 +359,10 @@ static inline expr* parse_str_value(parser* p, token* t)
 {
     ast_node_type ent;
     switch (t->type) {
-        case TT_BINARY_LITERAL: ent = ENT_BINARY_LITERAL; break;
-        case TT_LITERAL: ent = ENT_STRING_LITERAL; break;
-        case TT_NUMBER: ent = ENT_NUMBER; break;
-        case TT_STRING: ent = ENT_IDENTIFIER; break;
+        case TT_BINARY_LITERAL: ent = EXPR_BINARY_LITERAL; break;
+        case TT_LITERAL: ent = EXPR_STRING_LITERAL; break;
+        case TT_NUMBER: ent = EXPR_NUMBER; break;
+        case TT_STRING: ent = EXPR_IDENTIFIER; break;
         default: return NULL;
     }
     expr_str_value* sv = (expr_str_value*)alloc_perm(p, sizeof(expr_str_value));
@@ -377,7 +377,7 @@ parse_error expr_to_stmt(parser* p, stmt** tgt, expr* e, ureg start, ureg end)
 {
     stmt_expr* s = alloc_perm(p, sizeof(stmt_expr));
     if (!s) return PE_INSANE;
-    s->stmt.type = ASTNT_EXPRESSION;
+    s->stmt.type = STMT_EXPRESSION;
     s->expr_range = src_range_pack_lines(p->tk.tc, start, end);
     s->expr = e;
     if (s->expr_range == SRC_RANGE_INVALID) return PE_INSANE;
@@ -401,7 +401,7 @@ parse_error parse_param_decl(
     if (!d) return PE_INSANE;
     d->symbol.name = alloc_string_perm(p, t->str);
     if (!d->symbol.name) return PE_INSANE;
-    d->symbol.stmt.type = ASTNT_PARAM_DECL;
+    d->symbol.stmt.type = SYM_PARAM_DECL;
     // TODO: flags parsing
     d->symbol.stmt.flags = ASTN_FLAGS_DEFAULT;
     tk_void(&p->tk);
@@ -511,7 +511,7 @@ static inline parse_error parse_tuple(parser* p, token* t, expr** ex)
     tk_void(&p->tk);
     expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
     if (!tp) return PE_INSANE;
-    tp->expr.type = ENT_TUPLE;
+    tp->expr.type = EXPR_TUPLE;
     parse_error pe = parse_expression_node_list(
         p, NULL, &tp->elements, "tuple", TT_BRACKET_CLOSE);
     // EMSG: suboptimal e.g. for case [,,]
@@ -540,7 +540,7 @@ parse_expr_body_or_array(parser* p, token* t, expr** ex)
     stmt* s = NULL;
     expr* e = NULL;
     ast_node_type pold = p->parent_type;
-    p->parent_type = ENT_ARRAY;
+    p->parent_type = EXPR_ARRAY;
     parse_error pe = parse_statement(p, &s);
     p->parent_type = pold;
     if (pe == PE_NOT_A_STATEMENT) {
@@ -569,9 +569,9 @@ parse_expr_body_or_array(parser* p, token* t, expr** ex)
     if (s) {
         expr_block* b = alloc_perm(p, sizeof(expr_block));
         if (!b) return PE_INSANE;
-        b->expr.type = ENT_BLOCK;
-        pe =
-            parse_braced_delimited_body(p, t_start, t_end, &b->body, ENT_BLOCK);
+        b->expr.type = EXPR_BLOCK;
+        pe = parse_braced_delimited_body(
+            p, t_start, t_end, &b->body, EXPR_BLOCK);
         if (pe) return pe;
         s->next = b->body.children;
         b->body.children = s;
@@ -580,7 +580,7 @@ parse_expr_body_or_array(parser* p, token* t, expr** ex)
     }
     expr_array* arr = alloc_perm(p, sizeof(expr_array));
     if (!arr) return PE_INSANE;
-    arr->expr.type = ENT_ARRAY;
+    arr->expr.type = EXPR_ARRAY;
     pe = parse_expression_node_list(
         p, e, &arr->elements, "array", TT_BRACE_CLOSE);
     // EMSG: suboptimal e.g. for case {,,}
@@ -625,7 +625,7 @@ parse_parenthesis_group(parser* p, token* t, expr** ex)
     expr_parentheses* pr =
         (expr_parentheses*)alloc_perm(p, sizeof(expr_parentheses));
     if (!pr) return PE_INSANE;
-    pr->expr.type = ENT_OP_PARENTHESES;
+    pr->expr.type = EXPR_OP_PARENTHESES;
     pr->child = *ex;
     if (expr_fill_srange(p, &pr->expr, t_start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
@@ -639,7 +639,7 @@ parse_prefix_unary_op(parser* p, token* t, ast_node_type op, expr** ex)
     if (!ou) return PE_INSANE;
     if (expr_fill_srange(p, &ou->expr, t->start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
-    ou->expr.type = ENT_OP_UNARY;
+    ou->expr.type = EXPR_OP_UNARY;
     ou->expr.op_type = op;
     parse_error pe = parse_expression_of_prec(
         p, &ou->child, op_precedence[op] + is_left_associative(op));
@@ -662,7 +662,7 @@ parse_error parse_return_expr(parser* p, ureg start, ureg end, expr** tgt)
 {
     expr_return* r = alloc_perm(p, sizeof(expr_return));
     if (!r) return PE_INSANE;
-    r->expr.type = ENT_RETURN;
+    r->expr.type = EXPR_RETURN;
     token* t;
     PEEK(p, t);
     if (t->type == TT_SEMICOLON) {
@@ -693,7 +693,7 @@ parse_error parse_goto_expr(parser* p, ureg start, ureg end, expr** tgt)
             "expected label name", start, end, "");
     }
     expr_goto* g = alloc_perm(p, sizeof(expr_goto));
-    g->expr.type = ENT_GOTO;
+    g->expr.type = EXPR_GOTO;
     g->target.name = alloc_string_stage(p, t->str);
     if (!g->target.name) return PE_INSANE;
     tk_void(&p->tk);
@@ -704,7 +704,7 @@ parse_error parse_give_expr(parser* p, ureg start, ureg end, expr** tgt)
 {
     expr_give* g = alloc_perm(p, sizeof(expr_give));
     if (!g) return PE_INSANE;
-    g->expr.type = ENT_GIVE;
+    g->expr.type = EXPR_GIVE;
     g->target.name = NULL;
     token* t1;
     PEEK(p, t1);
@@ -752,9 +752,9 @@ parse_error parse_loop(parser* p, expr** tgt, ureg start, ureg end, char* label)
     if (!l) return PE_INSANE;
     l->expr_named.expr.srange = src_range_pack_lines(p->tk.tc, start, end);
     l->expr_named.name = label;
-    l->expr_named.expr.type = ENT_LOOP;
+    l->expr_named.expr.type = EXPR_LOOP;
     *tgt = (expr*)l;
-    return parse_expr_body(p, &l->body, ENT_LOOP);
+    return parse_expr_body(p, &l->body, EXPR_LOOP);
 }
 parse_error
 parse_while(parser* p, expr** tgt, ureg start, ureg end, char* label)
@@ -774,9 +774,9 @@ parse_while(parser* p, expr** tgt, ureg start, ureg end, char* label)
     if (pe) return pe;
     w->expr_named.expr.srange = src_range_pack_lines(p->tk.tc, start, end);
     w->expr_named.name = label;
-    w->expr_named.expr.type = ENT_WHILE;
+    w->expr_named.expr.type = EXPR_WHILE;
     *tgt = (expr*)w;
-    pe = parse_expr_body(p, &w->while_body, ENT_WHILE);
+    pe = parse_expr_body(p, &w->while_body, EXPR_WHILE);
     if (pe) return pe;
     PEEK(p, t);
     if (t->type != TT_STRING || !kw_equals(KW_FINALLY, t->str)) {
@@ -786,7 +786,7 @@ parse_while(parser* p, expr** tgt, ureg start, ureg end, char* label)
         return PE_HANDLED;
     }
     tk_void(&p->tk);
-    pe = parse_expr_body(p, &w->finally_body, ENT_WHILE);
+    pe = parse_expr_body(p, &w->finally_body, EXPR_WHILE);
     return pe;
 }
 parse_error parse_if(parser* p, expr** tgt, ureg start, ureg end)
@@ -805,9 +805,9 @@ parse_error parse_if(parser* p, expr** tgt, ureg start, ureg end)
     }
     if (pe) return pe;
     i->expr.srange = src_range_pack_lines(p->tk.tc, start, end);
-    i->expr.type = ENT_IF;
+    i->expr.type = EXPR_IF;
     *tgt = (expr*)i;
-    pe = parse_expr_body(p, &i->if_body, ENT_IF);
+    pe = parse_expr_body(p, &i->if_body, EXPR_IF);
     if (pe) return pe;
     PEEK(p, t);
     if (t->type != TT_STRING || !kw_equals(KW_ELSE, t->str)) {
@@ -817,7 +817,7 @@ parse_error parse_if(parser* p, expr** tgt, ureg start, ureg end)
         return PE_HANDLED;
     }
     tk_void(&p->tk);
-    pe = parse_expr_body(p, &i->else_body, ENT_IF);
+    pe = parse_expr_body(p, &i->else_body, EXPR_IF);
     return pe;
 }
 static inline parse_error parse_single_value(parser* p, token* t, expr** ex)
@@ -901,7 +901,7 @@ static inline parse_error parse_call(parser* p, token* t, expr** ex, expr* lhs)
     PEEK(p, t);
     if (expr_fill_srange(p, &call->expr, t_start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
-    call->expr.type = ENT_OP_CALL;
+    call->expr.type = EXPR_OP_CALL;
     call->expr.op_type = OP_CALL;
     call->lhs = lhs;
     *ex = (expr*)call;
@@ -929,7 +929,7 @@ parse_access(parser* p, token* t, expr** ex, expr* lhs)
     PEEK(p, t);
     if (expr_fill_srange(p, &acc->expr, t_start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
-    acc->expr.type = ENT_OP_ACCESS;
+    acc->expr.type = EXPR_OP_ACCESS;
     acc->expr.op_type = OP_ACCESS;
     acc->lhs = lhs;
     *ex = (expr*)acc;
@@ -949,7 +949,7 @@ parse_postfix_unary_op(parser* p, token* t, op_type op, expr** ex, expr* lhs)
         expr_op_unary* ou =
             (expr_op_unary*)alloc_perm(p, sizeof(expr_op_unary));
         if (!ou) return PE_INSANE;
-        ou->expr.type = ENT_OP_UNARY;
+        ou->expr.type = EXPR_OP_UNARY;
         ou->expr.op_type = op;
         ou->child = lhs;
         if (expr_fill_srange(p, &ou->expr, t->start, t->end)) return PE_INSANE;
@@ -964,7 +964,7 @@ parse_binary_op(parser* p, token* t, op_type op, expr** ex, expr* lhs)
     expr_op_binary* ob = (expr_op_binary*)alloc_perm(p, sizeof(expr_op_binary));
     if (!ob) return PE_INSANE;
     if (expr_fill_srange(p, &ob->expr, t->start, t->end)) return PE_INSANE;
-    ob->expr.type = ENT_OP_BINARY;
+    ob->expr.type = EXPR_OP_BINARY;
     ob->expr.op_type = op;
     parse_error pe = parse_expression_of_prec(
         p, &ob->rhs, op_precedence[op] + is_left_associative(op));
@@ -1064,13 +1064,13 @@ parse_error parser_parse_file(parser* p, file* f)
     // This is test code. it sucks
     int r = tk_open_file(&p->tk, f);
     if (r) return PE_TK_ERROR;
-    stmt* old_children = p->root.scope_full.scope.body.children;
-    parse_error pe =
-        parse_eof_delimited_body(p, &p->root.scope_full.scope.body, ASTNT_FILE);
+    stmt* old_children = p->root.scope_sealed.scope.body.children;
+    parse_error pe = parse_eof_delimited_body(
+        p, &p->root.scope_sealed.scope.body, SCS_MODULE);
     stmt** old_head = &old_children;
     while (*old_head) old_head = &(*old_head)->next;
-    *old_head = p->root.scope_full.scope.body.children;
-    p->root.scope_full.scope.body.children = old_children;
+    *old_head = p->root.scope_sealed.scope.body.children;
+    p->root.scope_sealed.scope.body.children = old_children;
     tk_close_file(&p->tk);
     return pe;
 }
@@ -1180,7 +1180,7 @@ parse_error parse_var_decl(
     if (!vd) return PE_INSANE;
     vd->symbol.name = alloc_string_perm(p, ident);
     if (!vd->symbol.name) return PE_INSANE;
-    vd->symbol.stmt.type = ASTNT_VAR_DECL;
+    vd->symbol.stmt.type = SYM_VAR_DECL;
     vd->symbol.stmt.flags = flags;
     token* t;
     PEEK(p, t);
@@ -1304,26 +1304,27 @@ parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     if (!name) return PE_INSANE;
     tk_void(&p->tk);
     PEEK(p, t);
-    scope* fn;
+    scope_full* scf;
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        fn = alloc_perm(p, sizeof(stmt_func_generic));
-        if (!fn) return PE_INSANE;
+        scf = alloc_perm(p, sizeof(stmt_func_generic));
+        if (!scf) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((stmt_func_generic*)fn)->generic_params, true, start, decl_end,
-            "in this function declaration");
+            p, &((stmt_func_generic*)scf)->generic_params, true, start,
+            decl_end, "in this function declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        fn = alloc_perm(p, sizeof(stmt_func));
-        if (!fn) return PE_INSANE;
+        scf = alloc_perm(p, sizeof(stmt_func));
+        if (!scf) return PE_INSANE;
     }
-    fn->symbol.name = name;
-    pe = symbol_fill_srange(p, &fn->symbol, start, decl_end);
+    scf->scope.symbol.name = name;
+    scf->parent = p->curr_scope;
+    pe = symbol_fill_srange(p, &scf->scope.symbol, start, decl_end);
     if (pe) return pe;
     if (t->type != TT_PAREN_OPEN) {
         parser_error_2a(
@@ -1333,22 +1334,15 @@ parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
         return PE_HANDLED;
     }
     tk_void(&p->tk);
-    stmt_param_decl** pd =
-        generic ? &((stmt_func_generic*)fn)->params : &((stmt_func*)fn)->params;
+    stmt_param_decl** pd = generic ? &((stmt_func_generic*)scf)->params
+                                   : &((stmt_func*)scf)->params;
     pe = parse_param_list(
         p, pd, false, start, decl_end, "in this function declaration");
     if (pe) return pe;
-    fn->symbol.stmt.type = generic ? ASTNT_FUNC_GENERIC : ASTNT_FUNCTION;
-    fn->symbol.stmt.flags = flags;
-    *n = (stmt*)fn;
-    if (generic) {
-        stmt_func_generic* gf = (stmt_func_generic*)fn;
-        return parse_scope(p, &gf->scope_full.scope);
-    }
-    else {
-        stmt_func* f = (stmt_func*)fn;
-        return parse_scope(p, &f->scope_full.scope);
-    }
+    scf->scope.symbol.stmt.type = generic ? SCF_FUNC_GENERIC : SCF_FUNC;
+    scf->scope.symbol.stmt.flags = flags;
+    *n = (stmt*)scf;
+    return parse_scope(p, &scf->scope);
 }
 parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
@@ -1388,17 +1382,10 @@ parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     st->symbol.name = name;
     pe = symbol_fill_srange(p, &st->symbol, start, decl_end);
     if (pe) return pe;
-    st->symbol.stmt.type = generic ? ASTNT_STRUCT_GENERIC : ASTNT_STRUCT;
+    st->symbol.stmt.type = generic ? SC_STRUCT_GENERIC : SC_STRUCT;
     st->symbol.stmt.flags = flags;
     *n = (stmt*)st;
-    if (generic) {
-        stmt_struct_generic* gs = (stmt_struct_generic*)st;
-        return parse_body(p, &gs->scope.body, ASTNT_STRUCT_GENERIC);
-    }
-    else {
-        stmt_struct* s = (stmt_struct*)st;
-        return parse_body(p, &s->scope.body, ASTNT_STRUCT);
-    }
+    return parse_body(p, &st->body, st->symbol.stmt.type);
 }
 parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
@@ -1438,11 +1425,10 @@ parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     md->symbol.name = name;
     pe = symbol_fill_srange(p, &md->symbol, start, decl_end);
     if (pe) return pe;
-    md->symbol.stmt.type = generic ? ASTNT_MODULE_GENERIC : ASTNT_MODULE;
+    md->symbol.stmt.type = generic ? SCS_MODULE_GENERIC : SCS_MODULE;
     md->symbol.stmt.flags = flags;
     *n = (stmt*)md;
-    return parse_eof_delimited_body(
-        p, &md->body, generic ? ASTNT_MODULE_GENERIC : ASTNT_MODULE);
+    return parse_eof_delimited_body(p, &md->body, md->symbol.stmt.type);
 }
 parse_error parse_extend_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
@@ -1461,36 +1447,37 @@ parse_error parse_extend_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     if (!name) return PE_INSANE;
     tk_void(&p->tk);
     PEEK(p, t);
-    scope* ex;
+    scope_full* scf;
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        ex = alloc_perm(p, sizeof(stmt_extend_generic));
-        if (!ex) return PE_INSANE;
+        scf = alloc_perm(p, sizeof(stmt_extend_generic));
+        if (!scf) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((stmt_extend_generic*)ex)->generic_params, true, start,
+            p, &((stmt_extend_generic*)scf)->generic_params, true, start,
             decl_end, "in this extend declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        ex = alloc_perm(p, sizeof(stmt_extend));
-        if (!ex) return PE_INSANE;
+        scf = alloc_perm(p, sizeof(stmt_extend));
+        if (!scf) return PE_INSANE;
     }
-    ex->symbol.name = name;
-    pe = symbol_fill_srange(p, &ex->symbol, start, decl_end);
+    scf->scope.symbol.name = name;
+    pe = symbol_fill_srange(p, &scf->scope.symbol, start, decl_end);
     if (pe) return pe;
-    ex->symbol.stmt.type = generic ? ASTNT_EXTEND_GENERIC : ASTNT_EXTEND;
-    ex->symbol.stmt.flags = flags;
+    scf->scope.symbol.stmt.type = generic ? SCF_EXTEND_GENERIC : SCF_EXTEND;
+    scf->scope.symbol.stmt.flags = flags;
+    scf->parent = p->curr_scope;
     PEEK(p, t);
     if (t->type == TT_SEMICOLON) {
         if (p->curr_scope->body.children == NULL) {
             tk_consume(&p->tk);
             pe = parse_eof_delimited_body(
-                p, &ex->body, generic ? ASTNT_EXTEND_GENERIC : ASTNT_EXTEND);
-            *n = (stmt*)ex;
+                p, &scf->scope.body, generic ? SCF_EXTEND_GENERIC : SCF_EXTEND);
+            *n = (stmt*)scf;
             return pe;
         }
         else {
@@ -1505,9 +1492,8 @@ parse_error parse_extend_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
             return PE_HANDLED;
         }
     }
-    *n = (stmt*)ex;
-    return parse_body(
-        p, &ex->body, generic ? ASTNT_EXTEND_GENERIC : ASTNT_EXTEND);
+    *n = (stmt*)scf;
+    return parse_body(p, &scf->scope.body, scf->scope.symbol.stmt.type);
 }
 parse_error parse_trait_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
@@ -1547,24 +1533,23 @@ parse_error parse_trait_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     tr->symbol.name = name;
     pe = symbol_fill_srange(p, &tr->symbol, start, decl_end);
     if (pe) return pe;
-    tr->symbol.stmt.type = generic ? ASTNT_TRAIT_GENERIC : ASTNT_TRAIT;
+    tr->symbol.stmt.type = generic ? SC_TRAIT_GENERIC : SC_TRAIT;
     tr->symbol.stmt.flags = flags;
     *n = (stmt*)tr;
-    return parse_body(
-        p, &tr->body, generic ? ASTNT_TRAIT_GENERIC : ASTNT_TRAIT);
+    return parse_body(p, &tr->body, tr->symbol.stmt.type);
 }
 bool body_supports_exprs(ast_node_type pt)
 {
     switch (pt) {
-        case ASTNT_FUNCTION:
-        case ASTNT_FUNC_GENERIC:
-        case ENT_LOOP:
-        case ENT_WHILE:
-        case ENT_FOR:
-        case ENT_FOR_EACH:
-        case ENT_IF:
-        case ENT_BLOCK:
-        case ENT_LAMBDA: {
+        case SCF_FUNC:
+        case SCF_FUNC_GENERIC:
+        case EXPR_LOOP:
+        case EXPR_WHILE:
+        case EXPR_FOR:
+        case EXPR_FOR_EACH:
+        case EXPR_IF:
+        case EXPR_BLOCK:
+        case EXPR_LAMBDA: {
             return true;
         }
         default: {
@@ -1574,7 +1559,7 @@ bool body_supports_exprs(ast_node_type pt)
 }
 bool body_customizes_exprs(ast_node_type pt)
 {
-    return pt == ENT_ARRAY;
+    return pt == EXPR_ARRAY;
 }
 parse_error parse_expr_stmt(parser* p, stmt** tgt)
 {
@@ -1610,7 +1595,7 @@ parse_alias(parser* p, ureg start, ureg end, stmt_flags flags, stmt** tgt)
 {
     stmt_alias* a = alloc_perm(p, sizeof(stmt_alias));
     if (!a) return PE_INSANE;
-    a->symbol.stmt.type = ASTNT_ALIAS;
+    a->symbol.stmt.type = SYM_ALIAS;
     a->symbol.stmt.flags = flags;
     token* t;
     PEEK(p, t);
@@ -1670,7 +1655,7 @@ parse_error parse_label(parser* p, ureg start, ureg end, stmt** tgt)
     if (t->type == TT_SEMICOLON) {
         tk_void(&p->tk);
         stmt_label* g = alloc_perm(p, sizeof(stmt_label));
-        g->symbol.stmt.type = ASTNT_LABEL;
+        g->symbol.stmt.type = SYM_LABEL;
         g->symbol.name = label_name;
         *tgt = (stmt*)g;
         return PE_OK;

@@ -13,62 +13,58 @@ typedef enum PACK_ENUM access_modifier {
 } access_modifier;
 
 typedef enum PACK_ENUM ast_node_type {
-    // statement nodes
-    ASTNT_FILE,
-    ASTNT_MODULE,
-    ASTNT_MODULE_GENERIC,
-    ASTNT_EXTEND,
-    ASTNT_EXTEND_GENERIC,
-    ASTNT_ALIAS,
+    SCS_MODULE,
+    SCS_MODULE_GENERIC,
 
-    ASTNT_FUNCTION,
-    ASTNT_FUNC_GENERIC,
-    ASTNT_STRUCT,
-    ASTNT_STRUCT_GENERIC,
-    ASTNT_TRAIT,
-    ASTNT_TRAIT_GENERIC,
+    SCF_EXTEND,
+    SCF_EXTEND_GENERIC,
+    SCF_FUNC,
+    SCF_FUNC_GENERIC,
 
-    ASTNT_VAR_DECL,
-    ASTNT_PARAM_DECL,
+    SC_STRUCT,
+    SC_STRUCT_GENERIC,
+    SC_TRAIT,
+    SC_TRAIT_GENERIC,
 
-    ASTNT_CONTINUE,
-    ASTNT_BREAK,
+    SYM_ALIAS,
+    SYM_VAR_DECL,
+    SYM_PARAM_DECL,
+    SYM_LABEL,
 
-    ASTNT_LABEL,
+    STMT_EXPRESSION,
 
-    ASTNT_EXPRESSION,
+    EXPR_BLOCK,
 
-    // expression nodes
-    ENT_BLOCK,
+    EXPR_GOTO,
+    EXPR_GIVE,
+    EXPR_RETURN,
+    EXPR_CONTINUE,
+    EXPR_BREAK,
 
-    ENT_GOTO,
-    ENT_GIVE,
-    ENT_RETURN,
+    EXPR_SWITCH,
+    EXPR_IF,
+    EXPR_FOR,
+    EXPR_FOR_EACH,
+    EXPR_WHILE,
+    EXPR_DO_WHILE,
+    EXPR_LOOP,
 
-    ENT_SWITCH,
-    ENT_IF,
-    ENT_FOR,
-    ENT_FOR_EACH,
-    ENT_WHILE,
-    ENT_DO_WHILE,
-    ENT_LOOP,
+    EXPR_NUMBER,
+    EXPR_STRING_LITERAL,
+    EXPR_BINARY_LITERAL,
+    EXPR_IDENTIFIER,
+    EXPR_ARRAY,
+    EXPR_TUPLE,
+    EXPR_LAMBDA,
+    EXPR_TYPE_ARRAY,
+    EXPR_TYPE_SLICE,
 
-    ENT_NUMBER,
-    ENT_STRING_LITERAL,
-    ENT_BINARY_LITERAL,
-    ENT_IDENTIFIER,
-    ENT_ARRAY,
-    ENT_TUPLE,
-    ENT_LAMBDA,
-    ENT_TYPE_ARRAY,
-    ENT_TYPE_SLICE,
+    EXPR_OP_CALL,
+    EXPR_OP_ACCESS,
+    EXPR_OP_PARENTHESES,
 
-    ENT_OP_UNARY,
-    ENT_OP_BINARY,
-
-    ENT_OP_CALL,
-    ENT_OP_ACCESS,
-    ENT_OP_PARENTHESES,
+    EXPR_OP_UNARY,
+    EXPR_OP_BINARY,
 } ast_node_type;
 
 typedef enum PACK_ENUM op_type {
@@ -165,9 +161,16 @@ typedef struct scope {
 
 typedef struct scope_full {
     scope scope;
+    scope* parent;
     ast_node** imports;
     ast_node** includes;
 } scope_full;
+
+typedef struct scope_sealed {
+    scope scope;
+    ast_node** imports;
+    ast_node** includes;
+} scope_sealed;
 
 typedef struct expr_named {
     expr expr;
@@ -299,11 +302,11 @@ typedef struct stmt_trait_generic {
 } stmt_trait_generic;
 
 typedef struct stmt_module {
-    scope_full scope_full;
+    scope_sealed scope_sealed;
 } stmt_module;
 
 typedef struct stmt_module_generic {
-    scope_full scope_full;
+    scope_sealed scope_sealed;
     stmt_param_decl* generic_params;
 } stmt_module_generic;
 

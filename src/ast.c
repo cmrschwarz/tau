@@ -12,17 +12,17 @@ bool is_unary_op_postfix(op_type t)
 void get_expr_bounds(expr* n, ureg* start, ureg* end)
 {
     switch (n->type) {
-        case ENT_LOOP: {
+        case EXPR_LOOP: {
             if (start) *start = src_range_get_start(n->srange);
             if (end) get_expr_bounds(n, NULL, end);
             return;
         }
-        case ENT_OP_BINARY: {
+        case EXPR_OP_BINARY: {
             if (start) get_expr_bounds(((expr_op_binary*)n)->lhs, start, NULL);
             if (end) get_expr_bounds(((expr_op_binary*)n)->rhs, NULL, end);
             return;
         }
-        case ENT_OP_UNARY: {
+        case EXPR_OP_UNARY: {
             expr_op_unary* u = (expr_op_unary*)n;
             if (!is_unary_op_postfix(u->expr.op_type)) {
                 if (start) {
@@ -46,17 +46,17 @@ void get_expr_bounds(expr* n, ureg* start, ureg* end)
 void stmt_get_highlight_bounds(stmt* stmt, ureg* start, ureg* end)
 {
     switch (stmt->type) {
-        case ASTNT_MODULE:
-        case ASTNT_EXTEND:
-        case ASTNT_STRUCT:
-        case ASTNT_TRAIT:
-        case ASTNT_FUNCTION:
-        case ASTNT_MODULE_GENERIC:
-        case ASTNT_EXTEND_GENERIC:
-        case ASTNT_STRUCT_GENERIC:
-        case ASTNT_TRAIT_GENERIC:
-        case ASTNT_VAR_DECL:
-        case ASTNT_FUNC_GENERIC: {
+        case SCS_MODULE:
+        case SCF_EXTEND:
+        case SC_STRUCT:
+        case SC_TRAIT:
+        case SCF_FUNC:
+        case SCS_MODULE_GENERIC:
+        case SCF_EXTEND_GENERIC:
+        case SC_STRUCT_GENERIC:
+        case SC_TRAIT_GENERIC:
+        case SYM_VAR_DECL:
+        case SCF_FUNC_GENERIC: {
             src_range dr = ((symbol*)stmt)->decl_range;
             src_range_large srl;
             src_range_unpack(dr, &srl);
@@ -64,7 +64,7 @@ void stmt_get_highlight_bounds(stmt* stmt, ureg* start, ureg* end)
             if (end) *end = srl.end;
             return;
         }
-        case ASTNT_EXPRESSION: {
+        case STMT_EXPRESSION: {
             get_expr_bounds(((stmt_expr*)stmt)->expr, start, end);
             return;
         }
