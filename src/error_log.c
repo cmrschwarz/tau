@@ -205,7 +205,7 @@ ureg get_line_nr_offset(ureg max_line)
 {
     max_line++;           // because lines are displayed starting from 1, not 0
     if (max_line >= 10) { // this is to avoid line zero
-        return (ureg)ceil(log10(max_line)) +
+        return (ureg)floor(log10(max_line)) +
                1; //+1 because log(10, 10) is 1, not 2
     }
     else {
@@ -411,7 +411,8 @@ int print_src_line(
         return OK;
     }
     ep_pos = ep_end - 1;
-    ureg msg_len = strlen(ep_pos->message);
+
+    ureg msg_len = ep_pos->message ? strlen(ep_pos->message) : 0;
     if (ep_end != ep_start && msg_len > 0 &&
         ep_pos->col_end + has_newline == length &&
         length + length_diff + 4 + msg_len + 4 <=
@@ -575,7 +576,7 @@ int report_error(error* e, FILE* fh, file* file)
     pect(ANSICOLOR_CLEAR, "\n");
 
     if (fh != NULL) {
-        ureg err_point_count = 2;
+        ureg err_point_count;
         src_pos pos = src_map_get_pos(&e->file->src_map, e->position);
 
         // TODO: multiline errors
