@@ -239,22 +239,22 @@ void print_expr(expr* ex, ureg indent)
             print_expr(b->rhs, indent);
             break;
         }
-        case ASTNT_GIVE: {
-            stmt_give* g = (stmt_give*)ex;
+        case ENT_GIVE: {
+            expr_give* g = (expr_give*)ex;
             p("give ");
             if (g->target.name) ps(g->target.name);
             if (g->value != NULL) print_expr(g->value, indent);
         } break;
-        case ASTNT_RETURN: {
-            stmt_return* r = (stmt_return*)ex;
+        case ENT_RETURN: {
+            expr_return* r = (expr_return*)ex;
             p("return");
             if (r->value != NULL) {
                 pc(' ');
                 print_expr(r->value, indent);
             }
         } break;
-        case ASTNT_GOTO: {
-            stmt_goto* g = (stmt_goto*)ex;
+        case ENT_GOTO: {
+            expr_goto* g = (expr_goto*)ex;
             p("goto ");
             p(g->target.name);
         } break;

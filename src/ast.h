@@ -34,15 +34,17 @@ typedef enum PACK_ENUM ast_node_type {
     ASTNT_CONTINUE,
     ASTNT_BREAK,
 
-    ASTNT_RETURN,
-    ASTNT_GIVE,
-
     ASTNT_LABEL,
-    ASTNT_GOTO,
 
     ASTNT_EXPRESSION,
 
     // expression nodes
+    ENT_BLOCK,
+
+    ENT_GOTO,
+    ENT_GIVE,
+    ENT_RETURN,
+
     ENT_SWITCH,
     ENT_IF,
     ENT_FOR,
@@ -50,7 +52,6 @@ typedef enum PACK_ENUM ast_node_type {
     ENT_WHILE,
     ENT_DO_WHILE,
     ENT_LOOP,
-    ENT_BLOCK,
 
     ENT_NUMBER,
     ENT_STRING_LITERAL,
@@ -182,27 +183,27 @@ typedef struct stmt_alias {
     expr* target;
 } stmt_alias;
 
-typedef struct stmt_return {
+typedef struct expr_return {
     expr expr;
     expr* value;
-} stmt_return;
+} expr_return;
 
-typedef struct stmt_give {
+typedef struct expr_give {
     expr expr;
     union {
         expr* expr;
         char* name;
     } target;
     expr* value;
-} stmt_give;
+} expr_give;
 
-typedef struct stmt_goto {
+typedef struct expr_goto {
     expr expr;
     union {
         stmt_label* label;
         char* name;
     } target;
-} stmt_goto;
+} expr_goto;
 
 typedef struct expr_block {
     expr expr;

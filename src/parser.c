@@ -660,9 +660,9 @@ parse_prefix_unary_op(parser* p, token* t, ast_node_type op, expr** ex)
 }
 parse_error parse_return_expr(parser* p, ureg start, ureg end, expr** tgt)
 {
-    stmt_return* r = alloc_perm(p, sizeof(stmt_return));
+    expr_return* r = alloc_perm(p, sizeof(expr_return));
     if (!r) return PE_INSANE;
-    r->expr.type = ASTNT_RETURN;
+    r->expr.type = ENT_RETURN;
     token* t;
     PEEK(p, t);
     if (t->type == TT_SEMICOLON) {
@@ -692,8 +692,8 @@ parse_error parse_goto_expr(parser* p, ureg start, ureg end, expr** tgt)
             p, "missing label in goto expression", t->start, t->end,
             "expected label name", start, end, "");
     }
-    stmt_goto* g = alloc_perm(p, sizeof(stmt_goto));
-    g->expr.type = ASTNT_GOTO;
+    expr_goto* g = alloc_perm(p, sizeof(expr_goto));
+    g->expr.type = ENT_GOTO;
     g->target.name = alloc_string_stage(p, t->str);
     if (!g->target.name) return PE_INSANE;
     tk_void(&p->tk);
@@ -702,9 +702,9 @@ parse_error parse_goto_expr(parser* p, ureg start, ureg end, expr** tgt)
 }
 parse_error parse_give_expr(parser* p, ureg start, ureg end, expr** tgt)
 {
-    stmt_give* g = alloc_perm(p, sizeof(stmt_give));
+    expr_give* g = alloc_perm(p, sizeof(expr_give));
     if (!g) return PE_INSANE;
-    g->expr.type = ASTNT_GIVE;
+    g->expr.type = ENT_GIVE;
     g->target.name = NULL;
     token* t1;
     PEEK(p, t1);
