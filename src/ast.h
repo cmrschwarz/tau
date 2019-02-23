@@ -177,14 +177,14 @@ typedef struct expr_named {
     char* name;
 } expr_named;
 
-typedef struct stmt_label {
+typedef struct sym_label {
     symbol symbol;
-} stmt_label;
+} sym_label;
 
-typedef struct stmt_alias {
+typedef struct sym_alias {
     symbol symbol;
     expr* target;
-} stmt_alias;
+} sym_alias;
 
 typedef struct expr_return {
     expr expr;
@@ -203,7 +203,7 @@ typedef struct expr_give {
 typedef struct expr_goto {
     expr expr;
     union {
-        stmt_label* label;
+        sym_label* label;
         char* name;
     } target;
 } expr_goto;
@@ -212,6 +212,7 @@ typedef struct expr_block {
     expr expr;
     body body;
 } expr_block;
+
 typedef struct expr_if {
     expr expr;
     expr* condition;
@@ -266,64 +267,64 @@ typedef struct stmt_expr {
     src_range expr_range; // debatable
 } stmt_expr;
 
-typedef struct stmt_param_decl {
+typedef struct sym_param_decl {
     symbol symbol;
     expr* type;
     expr* default_value;
-} stmt_param_decl;
+} sym_param_decl;
 
-typedef struct stmt_func {
+typedef struct scf_func {
     scope_full scope_full;
-    stmt_param_decl* params;
-} stmt_func;
+    sym_param_decl* params;
+} scf_func;
 
-typedef struct stmt_func_generic {
+typedef struct scf_func_generic {
     scope_full scope_full;
-    stmt_param_decl* generic_params;
-    stmt_param_decl* params;
-} stmt_func_generic;
+    sym_param_decl* generic_params;
+    sym_param_decl* params;
+} scf_func_generic;
 
-typedef struct stmt_struct {
+typedef struct sc_struct {
     scope scope;
-} stmt_struct;
+} sc_struct;
 
-typedef struct stmt_struct_generic {
+typedef struct sc_struct_generic {
     scope scope;
-    stmt_param_decl* generic_params;
-} stmt_struct_generic;
+    sym_param_decl* generic_params;
+} sc_struct_generic;
 
-typedef struct stmt_trait {
+typedef struct sc_trait {
     scope scope;
-} stmt_trait;
+} sc_trait;
 
-typedef struct stmt_trait_generic {
+typedef struct sc_trait_generic {
     scope scope;
-    stmt_param_decl* generic_params;
-} stmt_trait_generic;
+    sym_param_decl* generic_params;
+} sc_trait_generic;
 
-typedef struct stmt_module {
+typedef struct scs_module {
     scope_sealed scope_sealed;
-} stmt_module;
+} scs_module;
 
-typedef struct stmt_module_generic {
+typedef struct scs_module_generic {
     scope_sealed scope_sealed;
-    stmt_param_decl* generic_params;
-} stmt_module_generic;
+    sym_param_decl* generic_params;
+} scs_module_generic;
 
-typedef struct stmt_extend {
+typedef struct scf_extend {
     scope_full scope_full;
-} stmt_extend;
+} scf_extend;
 
-typedef struct stmt_extend_generic {
+typedef struct scf_extend_generic {
     scope_full scope_full;
-    stmt_param_decl* generic_params;
-} stmt_extend_generic;
+    sym_param_decl* generic_params;
+} scf_extend_generic;
 
-typedef struct stmt_var_decl {
+typedef struct sym_var {
     symbol symbol;
     expr* type;
     expr* value;
-} stmt_var_decl;
+} sym_var;
 
 typedef struct expr_parentheses {
     expr expr;
@@ -405,7 +406,7 @@ typedef struct expr_type_slice {
 
 typedef struct expr_lambda {
     expr expr;
-    stmt_param_decl* params;
+    sym_param_decl* params;
     body body;
 } expr_lambda;
 

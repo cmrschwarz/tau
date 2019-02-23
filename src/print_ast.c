@@ -62,7 +62,7 @@ void print_body(body* body, ureg indent)
         head = head->next;
     }
 }
-void print_astn_params_decl(stmt_param_decl* d, ureg indent)
+void print_astn_params_decl(sym_param_decl* d, ureg indent)
 {
     while (d != NULL) {
         pu(d->symbol.name);
@@ -76,7 +76,7 @@ void print_astn_params_decl(stmt_param_decl* d, ureg indent)
             p("= ");
             print_expr(d->default_value, indent);
         }
-        d = (stmt_param_decl*)d->symbol.stmt.next;
+        d = (sym_param_decl*)d->symbol.stmt.next;
         if (d) p(", ");
     }
 }
@@ -90,7 +90,7 @@ void print_astn(stmt* astn, ureg indent)
             p(";\n");
         } break;
         case SCF_FUNC: {
-            stmt_func* f = (stmt_func*)astn;
+            scf_func* f = (scf_func*)astn;
             p("func ");
             pu(f->scope_full.scope.symbol.name);
             p("(");
@@ -99,7 +99,7 @@ void print_astn(stmt* astn, ureg indent)
             print_body_braced_nl(&f->scope_full.scope.body, indent);
         } break;
         case SCF_FUNC_GENERIC: {
-            stmt_func_generic* f = (stmt_func_generic*)astn;
+            scf_func_generic* f = (scf_func_generic*)astn;
             p("func ");
             pu(f->scope_full.scope.symbol.name);
             p("[");
@@ -111,13 +111,13 @@ void print_astn(stmt* astn, ureg indent)
             print_body_braced_nl(&f->scope_full.scope.body, indent);
         } break;
         case SC_STRUCT: {
-            stmt_struct* s = (stmt_struct*)astn;
+            sc_struct* s = (sc_struct*)astn;
             p("struct ");
             pinn(s->scope.symbol.name);
             print_body_braced_nl(&s->scope.body, indent);
         } break;
         case SC_STRUCT_GENERIC: {
-            stmt_struct_generic* s = (stmt_struct_generic*)astn;
+            sc_struct_generic* s = (sc_struct_generic*)astn;
             p("struct ");
             pinn(s->scope.symbol.name);
             p("[");
@@ -126,13 +126,13 @@ void print_astn(stmt* astn, ureg indent)
             print_body_braced_nl(&s->scope.body, indent);
         } break;
         case SC_TRAIT: {
-            stmt_trait* t = (stmt_trait*)astn;
+            sc_trait* t = (sc_trait*)astn;
             p("trait ");
             pinn(t->scope.symbol.name);
             print_body_braced_nl(&t->scope.body, indent);
         } break;
         case SC_TRAIT_GENERIC: {
-            stmt_trait_generic* t = (stmt_trait_generic*)astn;
+            sc_trait_generic* t = (sc_trait_generic*)astn;
             p("trait ");
             pinn(t->scope.symbol.name);
             p("[");
@@ -141,13 +141,13 @@ void print_astn(stmt* astn, ureg indent)
             print_body_braced_nl(&t->scope.body, indent);
         } break;
         case SCS_MODULE: {
-            stmt_module* m = (stmt_module*)astn;
+            scs_module* m = (scs_module*)astn;
             p("module ");
             pinn(m->scope_sealed.scope.symbol.name);
             print_body_braced_nl(&m->scope_sealed.scope.body, indent);
         } break;
         case SCS_MODULE_GENERIC: {
-            stmt_module_generic* m = (stmt_module_generic*)astn;
+            scs_module_generic* m = (scs_module_generic*)astn;
             p("module ");
             pinn(m->scope_sealed.scope.symbol.name);
             p("[");
@@ -156,13 +156,13 @@ void print_astn(stmt* astn, ureg indent)
             print_body_braced_nl(&m->scope_sealed.scope.body, indent);
         } break;
         case SCF_EXTEND: {
-            stmt_extend* e = (stmt_extend*)astn;
+            scf_extend* e = (scf_extend*)astn;
             p("extend ");
             pinn(e->scope_full.scope.symbol.name);
             print_body_braced_nl(&e->scope_full.scope.body, indent);
         } break;
         case SCF_EXTEND_GENERIC: {
-            stmt_extend_generic* e = (stmt_extend_generic*)astn;
+            scf_extend_generic* e = (scf_extend_generic*)astn;
             p("extend ");
             pinn(e->scope_full.scope.symbol.name);
             p("[");
@@ -171,7 +171,7 @@ void print_astn(stmt* astn, ureg indent)
             print_body_braced_nl(&e->scope_full.scope.body, indent);
         } break;
         case SYM_VAR_DECL: {
-            stmt_var_decl* d = (stmt_var_decl*)astn;
+            sym_var* d = (sym_var*)astn;
             if (stmt_flags_get_const(d->symbol.stmt.flags)) p("const ");
             pu(d->symbol.name);
             if (d->type != NULL) {
@@ -189,7 +189,7 @@ void print_astn(stmt* astn, ureg indent)
             p(";\n");
         } break;
         case SYM_ALIAS: {
-            stmt_alias* a = (stmt_alias*)astn;
+            sym_alias* a = (sym_alias*)astn;
             if (stmt_flags_get_const(a->symbol.stmt.flags)) p("const ");
             p("alias ");
             if (a->symbol.name) {
@@ -203,7 +203,7 @@ void print_astn(stmt* astn, ureg indent)
             p(";\n");
         } break;
         case SYM_LABEL: {
-            stmt_label* l = (stmt_label*)astn;
+            sym_label* l = (sym_label*)astn;
             p("label ");
             p(l->symbol.name);
             p(";\n");

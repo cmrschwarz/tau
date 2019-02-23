@@ -386,7 +386,7 @@ parse_error expr_to_stmt(parser* p, stmt** tgt, expr* e, ureg start, ureg end)
     return PE_OK;
 }
 parse_error parse_param_decl(
-    parser* p, stmt_param_decl** tgt, ureg ctx_start, ureg ctx_end,
+    parser* p, sym_param_decl** tgt, ureg ctx_start, ureg ctx_end,
     char* msg_context)
 {
     parse_error pe;
@@ -398,7 +398,7 @@ parse_error parse_param_decl(
             "expected parameter identifier", ctx_start, ctx_end, msg_context);
         return PE_UNEXPECTED_TOKEN;
     }
-    stmt_param_decl* d = alloc_perm(p, sizeof(stmt_param_decl));
+    sym_param_decl* d = alloc_perm(p, sizeof(sym_param_decl));
     if (!d) return PE_INSANE;
     d->symbol.name = alloc_string_perm(p, t->str);
     if (!d->symbol.name) return PE_INSANE;
@@ -1195,7 +1195,7 @@ parse_error parse_var_decl(
     stmt** n)
 {
     parse_error pe;
-    stmt_var_decl* vd = alloc_perm(p, sizeof(stmt_var_decl));
+    sym_var* vd = alloc_perm(p, sizeof(sym_var));
     if (!vd) return PE_INSANE;
     vd->symbol.name = alloc_string_perm(p, ident);
     if (!vd->symbol.name) return PE_INSANE;
@@ -1269,8 +1269,8 @@ parse_error parse_var_decl(
     return PE_OK;
 }
 parse_error parse_param_list(
-    parser* p, stmt_param_decl** tgt, bool generic, ureg ctx_start,
-    ureg ctx_end, char* msg)
+    parser* p, sym_param_decl** tgt, bool generic, ureg ctx_start, ureg ctx_end,
+    char* msg)
 {
     token* t;
     token_type end_tok = generic ? TT_BRACKET_CLOSE : TT_PAREN_CLOSE;
@@ -1286,7 +1286,7 @@ parse_error parse_param_list(
             *tgt = NULL;
             return pe;
         }
-        tgt = (stmt_param_decl**)&(*tgt)->symbol.stmt.next;
+        tgt = (sym_param_decl**)&(*tgt)->symbol.stmt.next;
         PEEK(p, t);
         if (t->type == TT_COMMA) {
             tk_void(&p->tk);
@@ -1327,18 +1327,18 @@ parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        scf = alloc_perm(p, sizeof(stmt_func_generic));
+        scf = alloc_perm(p, sizeof(scf_func_generic));
         if (!scf) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((stmt_func_generic*)scf)->generic_params, true, start,
-            decl_end, "in this function declaration");
+            p, &((scf_func_generic*)scf)->generic_params, true, start, decl_end,
+            "in this function declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        scf = alloc_perm(p, sizeof(stmt_func));
+        scf = alloc_perm(p, sizeof(scf_func));
         if (!scf) return PE_INSANE;
     }
     scf->scope.symbol.name = name;
@@ -1353,8 +1353,8 @@ parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
         return PE_HANDLED;
     }
     tk_void(&p->tk);
-    stmt_param_decl** pd = generic ? &((stmt_func_generic*)scf)->params
-                                   : &((stmt_func*)scf)->params;
+    sym_param_decl** pd =
+        generic ? &((scf_func_generic*)scf)->params : &((scf_func*)scf)->params;
     pe = parse_param_list(
         p, pd, false, start, decl_end, "in this function declaration");
     if (pe) return pe;
@@ -1384,18 +1384,18 @@ parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        st = alloc_perm(p, sizeof(stmt_struct_generic));
+        st = alloc_perm(p, sizeof(sc_struct_generic));
         if (!st) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((stmt_struct_generic*)st)->generic_params, true, start,
-            decl_end, "in this struct declaration");
+            p, &((sc_struct_generic*)st)->generic_params, true, start, decl_end,
+            "in this struct declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        st = alloc_perm(p, sizeof(stmt_struct));
+        st = alloc_perm(p, sizeof(sc_struct));
         if (!st) return PE_INSANE;
     }
     st->symbol.name = name;
@@ -1427,18 +1427,18 @@ parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        md = alloc_perm(p, sizeof(stmt_module_generic));
+        md = alloc_perm(p, sizeof(scs_module_generic));
         if (!md) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((stmt_module_generic*)md)->generic_params, true, start,
+            p, &((scs_module_generic*)md)->generic_params, true, start,
             decl_end, "in this module declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        md = alloc_perm(p, sizeof(stmt_module));
+        md = alloc_perm(p, sizeof(scs_module));
         if (!md) return PE_INSANE;
     }
     md->symbol.name = name;
@@ -1470,18 +1470,18 @@ parse_error parse_extend_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        scf = alloc_perm(p, sizeof(stmt_extend_generic));
+        scf = alloc_perm(p, sizeof(scf_extend_generic));
         if (!scf) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((stmt_extend_generic*)scf)->generic_params, true, start,
+            p, &((scf_extend_generic*)scf)->generic_params, true, start,
             decl_end, "in this extend declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        scf = alloc_perm(p, sizeof(stmt_extend));
+        scf = alloc_perm(p, sizeof(scf_extend));
         if (!scf) return PE_INSANE;
     }
     scf->scope.symbol.name = name;
@@ -1535,18 +1535,18 @@ parse_error parse_trait_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        tr = alloc_perm(p, sizeof(stmt_trait_generic));
+        tr = alloc_perm(p, sizeof(sc_trait_generic));
         if (!tr) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((stmt_trait_generic*)tr)->generic_params, true, start,
-            decl_end, "in this trait declaration");
+            p, &((sc_trait_generic*)tr)->generic_params, true, start, decl_end,
+            "in this trait declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        tr = alloc_perm(p, sizeof(stmt_trait));
+        tr = alloc_perm(p, sizeof(sc_trait));
         if (!tr) return PE_INSANE;
     }
     tr->symbol.name = name;
@@ -1612,7 +1612,7 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
 parse_error
 parse_alias(parser* p, ureg start, ureg end, stmt_flags flags, stmt** tgt)
 {
-    stmt_alias* a = alloc_perm(p, sizeof(stmt_alias));
+    sym_alias* a = alloc_perm(p, sizeof(sym_alias));
     if (!a) return PE_INSANE;
     a->symbol.stmt.type = SYM_ALIAS;
     a->symbol.stmt.flags = flags;
@@ -1674,7 +1674,7 @@ parse_error parse_label(parser* p, ureg start, ureg end, stmt** tgt)
     PEEK(p, t);
     if (t->type == TT_SEMICOLON) {
         tk_void(&p->tk);
-        stmt_label* g = alloc_perm(p, sizeof(stmt_label));
+        sym_label* g = alloc_perm(p, sizeof(sym_label));
         g->symbol.stmt.type = SYM_LABEL;
         g->symbol.name = label_name;
         *tgt = (stmt*)g;
