@@ -1630,6 +1630,7 @@ parse_alias(parser* p, ureg start, ureg end, stmt_flags flags, stmt** tgt)
             p, "invalid alias syntax", t->start, t->end,
             "expected '*' or an identifier", start, t->end, "");
     }
+    tk_void(&p->tk);
     PEEK(p, t);
     if (t->type != TT_ARROW) {
         parser_error_2a(
@@ -1793,6 +1794,13 @@ parse_error parse_statement(parser* p, stmt** tgt)
                     }
                     default:; // fallthrough
                 }
+            }
+        }
+        else if (t2->type == TT_STAR && kw_equals(KW_ALIAS, t->str)) {
+            t2 = tk_peek_3rd(&p->tk);
+            if (t2->type == TT_ARROW) {
+                tk_void(&p->tk);
+                return parse_alias(p, start, t->end, flags, tgt);
             }
         }
         if (flags == ASTN_FLAGS_DEFAULT) {

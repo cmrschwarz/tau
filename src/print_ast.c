@@ -188,6 +188,20 @@ void print_astn(stmt* astn, ureg indent)
             }
             p(";\n");
         } break;
+        case SYM_ALIAS: {
+            stmt_alias* a = (stmt_alias*)astn;
+            if (stmt_flags_get_const(a->symbol.stmt.flags)) p("const ");
+            p("alias ");
+            if (a->symbol.name) {
+                p(a->symbol.name);
+            }
+            else {
+                pc('*');
+            }
+            p(" -> ");
+            print_expr(a->target, indent);
+            p(";\n");
+        } break;
         case SYM_LABEL: {
             stmt_label* l = (stmt_label*)astn;
             p("label ");
