@@ -24,6 +24,7 @@ set(TAUC_SRCS
     ./src/error_log.c
     ./src/print_ast.c
     ./src/utils/list_builder.c
+    ./src/utils/zero.c
     ./src/ast.c
 )
 add_executable(tauc ${TAUC_SRCS})

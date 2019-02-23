@@ -6,6 +6,7 @@
 #include "tokenizer.h"
 #include "utils/math_utils.h"
 #include "utils/panic.h"
+#include "utils/zero.h"
 #include <stddef.h>
 
 #define PEEK(p, t)                                                             \
@@ -460,15 +461,24 @@ parse_error parse_param_decl(
     *tgt = d;
     return PE_OK;
 }
-parse_error parse_expression_node_list(
+parse_error parse_expr_node_list(
     parser* p, expr* prefetch, expr*** tgt, char* type,
     token_type expected_trailer)
 {
     token* t;
     PEEK(p, t);
     if (t->type == expected_trailer) {
-        *tgt = NULL;
-        return PE_OK;
+        if (!prefetch) {
+            *tgt = NULL;
+            return PE_OK;
+        }
+        else {
+            *tgt = alloc_perm(p, sizeof(expr*) * 2);
+            if (!*tgt) return PE_INSANE;
+            **tgt = prefetch;
+            *(*tgt + 1) = NULL;
+            return PE_OK;
+        }
     }
     void** list_start = list_builder_start(&p->lb);
     if (prefetch) list_builder_add(&p->lb, prefetch);
@@ -512,8 +522,8 @@ static inline parse_error parse_tuple(parser* p, token* t, expr** ex)
     expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
     if (!tp) return PE_INSANE;
     tp->expr.type = EXPR_TUPLE;
-    parse_error pe = parse_expression_node_list(
-        p, NULL, &tp->elements, "tuple", TT_BRACKET_CLOSE);
+    parse_error pe =
+        parse_expr_node_list(p, NULL, &tp->elements, "tuple", TT_BRACKET_CLOSE);
     // EMSG: suboptimal e.g. for case [,,]
     if (pe == PE_UNEXPECTED_TOKEN) {
         PEEK(p, t);
@@ -544,23 +554,27 @@ parse_expr_body_or_array(parser* p, token* t, expr** ex)
     parse_error pe = parse_statement(p, &s);
     p->parent_type = pold;
     if (pe == PE_NOT_A_STATEMENT) {
-        pe = parse_expression(p, &e);
-        if (pe == PE_EOEX) {
-            PEEK(p, t);
-            parser_error_1a_pc(
-                p, "invalid expression token", t->start, t->end,
-                "expected expression");
-            return PE_HANDLED;
-        }
-        if (pe) return pe;
         PEEK(p, t);
-        if (t->type == TT_SEMICOLON) {
-            tk_void(&p->tk);
-            pe = expr_to_stmt(p, &s, e, src_range_get_start(e->srange), t->end);
+        if (t->type != TT_BRACE_CLOSE) {
+            pe = parse_expression(p, &e);
+            if (pe == PE_EOEX) {
+                PEEK(p, t);
+                parser_error_1a_pc(
+                    p, "invalid expression token", t->start, t->end,
+                    "expected expression");
+                return PE_HANDLED;
+            }
             if (pe) return pe;
-        }
-        else if (t->type == TT_COMMA) {
-            tk_void(&p->tk);
+            PEEK(p, t);
+            if (t->type == TT_SEMICOLON) {
+                tk_void(&p->tk);
+                pe = expr_to_stmt(
+                    p, &s, e, src_range_get_start(e->srange), t->end);
+                if (pe) return pe;
+            }
+            else if (t->type == TT_COMMA) {
+                tk_void(&p->tk);
+            }
         }
     }
     else if (pe != PE_OK) {
@@ -581,19 +595,24 @@ parse_expr_body_or_array(parser* p, token* t, expr** ex)
     expr_array* arr = alloc_perm(p, sizeof(expr_array));
     if (!arr) return PE_INSANE;
     arr->expr.type = EXPR_ARRAY;
-    pe = parse_expression_node_list(
-        p, e, &arr->elements, "array", TT_BRACE_CLOSE);
-    // EMSG: suboptimal e.g. for case {,,}
-    if (pe == PE_UNEXPECTED_TOKEN) {
+    if (e) {
+        pe =
+            parse_expr_node_list(p, e, &arr->elements, "array", TT_BRACE_CLOSE);
+        // EMSG: suboptimal e.g. for case {,,}
+        if (pe == PE_UNEXPECTED_TOKEN) {
+            PEEK(p, t);
+            parser_error_2a(
+                p, "unclosed array", t->start, t->end,
+                "reached end of expression due to unexpected token", t_start,
+                t_end, "didn't find a matching brace for this array");
+            return PE_HANDLED;
+        }
+        if (pe != PE_OK) return pe;
         PEEK(p, t);
-        parser_error_2a(
-            p, "unclosed array", t->start, t->end,
-            "reached end of expression due to unexpected token", t_start, t_end,
-            "didn't find a matching brace for this array");
-        return PE_HANDLED;
     }
-    if (pe != PE_OK) return pe;
-    PEEK(p, t);
+    else {
+        arr->elements = (expr**)&NULL_PTR;
+    }
     if (expr_fill_srange(p, &arr->expr, t_start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
     *ex = (expr*)arr;
@@ -886,8 +905,8 @@ static inline parse_error parse_call(parser* p, token* t, expr** ex, expr* lhs)
     tk_void(&p->tk);
     expr_call* call = alloc_perm(p, sizeof(expr_call));
     if (!call) return PE_INSANE;
-    parse_error pe = parse_expression_node_list(
-        p, NULL, &call->args, "call", TT_PAREN_CLOSE);
+    parse_error pe =
+        parse_expr_node_list(p, NULL, &call->args, "call", TT_PAREN_CLOSE);
     // EMSG: suboptimal e.g. for case {,,}
     if (pe == PE_UNEXPECTED_TOKEN) {
         PEEK(p, t);
@@ -914,7 +933,7 @@ parse_access(parser* p, token* t, expr** ex, expr* lhs)
     tk_void(&p->tk);
     expr_access* acc = alloc_perm(p, sizeof(expr_access));
     if (!acc) return PE_INSANE;
-    parse_error pe = parse_expression_node_list(
+    parse_error pe = parse_expr_node_list(
         p, NULL, &acc->args, "access operator", TT_BRACKET_CLOSE);
     // EMSG: suboptimal e.g. for case {,,}
     if (pe == PE_UNEXPECTED_TOKEN) {
