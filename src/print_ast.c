@@ -89,26 +89,26 @@ void print_astn(stmt* astn, ureg indent)
             print_expr(e->expr, indent);
             p(";\n");
         } break;
-        case SCF_FUNC: {
-            scf_func* f = (scf_func*)astn;
+        case SC_FUNC: {
+            sc_func* f = (sc_func*)astn;
             p("func ");
-            pu(f->scope_full.scope.symbol.name);
+            pu(f->scope.symbol.name);
             p("(");
             print_astn_params_decl(f->params, indent);
             pc(')');
-            print_body_braced_nl(&f->scope_full.scope.body, indent);
+            print_body_braced_nl(&f->scope.body, indent);
         } break;
-        case SCF_FUNC_GENERIC: {
-            scf_func_generic* f = (scf_func_generic*)astn;
+        case SC_FUNC_GENERIC: {
+            sc_func_generic* f = (sc_func_generic*)astn;
             p("func ");
-            pu(f->scope_full.scope.symbol.name);
+            pu(f->scope.symbol.name);
             p("[");
             print_astn_params_decl(f->generic_params, indent);
             pc(']');
             p("(");
             print_astn_params_decl(f->params, indent);
             pc(')');
-            print_body_braced_nl(&f->scope_full.scope.body, indent);
+            print_body_braced_nl(&f->scope.body, indent);
         } break;
         case SC_STRUCT: {
             sc_struct* s = (sc_struct*)astn;
@@ -140,35 +140,35 @@ void print_astn(stmt* astn, ureg indent)
             pc(']');
             print_body_braced_nl(&t->scope.body, indent);
         } break;
-        case SCS_MODULE: {
-            scs_module* m = (scs_module*)astn;
+        case SC_MODULE: {
+            sc_module* m = (sc_module*)astn;
             p("module ");
-            pinn(m->scope_sealed.scope.symbol.name);
-            print_body_braced_nl(&m->scope_sealed.scope.body, indent);
+            pinn(m->scope.symbol.name);
+            print_body_braced_nl(&m->scope.body, indent);
         } break;
-        case SCS_MODULE_GENERIC: {
-            scs_module_generic* m = (scs_module_generic*)astn;
+        case SC_MODULE_GENERIC: {
+            sc_module_generic* m = (sc_module_generic*)astn;
             p("module ");
-            pinn(m->scope_sealed.scope.symbol.name);
+            pinn(m->scope.symbol.name);
             p("[");
             print_astn_params_decl(m->generic_params, indent);
             pc(']');
-            print_body_braced_nl(&m->scope_sealed.scope.body, indent);
+            print_body_braced_nl(&m->scope.body, indent);
         } break;
-        case SCF_EXTEND: {
-            scf_extend* e = (scf_extend*)astn;
+        case SC_EXTEND: {
+            sc_extend* e = (sc_extend*)astn;
             p("extend ");
-            pinn(e->scope_full.scope.symbol.name);
-            print_body_braced_nl(&e->scope_full.scope.body, indent);
+            pinn(e->scope.symbol.name);
+            print_body_braced_nl(&e->scope.body, indent);
         } break;
-        case SCF_EXTEND_GENERIC: {
-            scf_extend_generic* e = (scf_extend_generic*)astn;
+        case SC_EXTEND_GENERIC: {
+            sc_extend_generic* e = (sc_extend_generic*)astn;
             p("extend ");
-            pinn(e->scope_full.scope.symbol.name);
+            pinn(e->scope.symbol.name);
             p("[");
             print_astn_params_decl(e->generic_params, indent);
             pc(']');
-            print_body_braced_nl(&e->scope_full.scope.body, indent);
+            print_body_braced_nl(&e->scope.body, indent);
         } break;
         case SYM_VAR_DECL: {
             sym_var* d = (sym_var*)astn;

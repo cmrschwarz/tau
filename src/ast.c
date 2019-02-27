@@ -46,17 +46,17 @@ void get_expr_bounds(expr* n, ureg* start, ureg* end)
 void stmt_get_highlight_bounds(stmt* stmt, ureg* start, ureg* end)
 {
     switch (stmt->type) {
-        case SCS_MODULE:
-        case SCF_EXTEND:
+        case SC_MODULE:
+        case SC_EXTEND:
         case SC_STRUCT:
         case SC_TRAIT:
-        case SCF_FUNC:
-        case SCS_MODULE_GENERIC:
-        case SCF_EXTEND_GENERIC:
+        case SC_FUNC:
+        case SC_MODULE_GENERIC:
+        case SC_EXTEND_GENERIC:
         case SC_STRUCT_GENERIC:
         case SC_TRAIT_GENERIC:
         case SYM_VAR_DECL:
-        case SCF_FUNC_GENERIC: {
+        case SC_FUNC_GENERIC: {
             src_range dr = ((symbol*)stmt)->decl_range;
             src_range_large srl;
             src_range_unpack(dr, &srl);
