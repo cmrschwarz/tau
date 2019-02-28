@@ -26,6 +26,7 @@ set(TAUC_SRCS
     ./src/utils/list_builder.c
     ./src/utils/zero.c
     ./src/ast.c
+    ./src/utils/evmap2.c
 )
 add_executable(tauc ${TAUC_SRCS})
 target_include_directories(tauc PUBLIC "./src" "./deps")
