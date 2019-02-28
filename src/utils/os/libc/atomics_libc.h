@@ -6,6 +6,7 @@
 
 #define USE_LIBC_ATOMICS
 
+typedef _Atomic void* atomic_ptr;
 typedef _Atomic ureg atomic_ureg;
 typedef _Atomic sreg atomic_sreg;
 typedef _Atomic bool atomic_bool;
