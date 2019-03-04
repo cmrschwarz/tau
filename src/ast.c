@@ -77,66 +77,97 @@ void stmt_get_highlight_bounds(stmt* stmt, ureg* start, ureg* end)
 #define AM_OFFSET 6
 #define AM_MASK (3 << AM_OFFSET)
 #define CONST_OFFSET 4
-#define CONST_MASK (1 << CONST_OFFSET)
 #define SEALED_OFFSET 3
-#define SEALED_MASK (1 << SEALED_OFFSET)
 #define VIRTUAL_OFFSET 2
-#define VIRTUAL_MASK (1 << VIRTUAL_OFFSET)
 #define STATIC_OFFSET 1
-#define STATIC_MASK (1 << STATIC_OFFSET)
 #define EXTEND_OFFSET 0
-#define EXTEND_MASK (1 << STATIC_OFFSET)
+
+static inline void bitmask_set_bit(u8* data, ureg offs)
+{
+    *data = *data | 1 << offs;
+}
+static inline void bitmask_clear_bit(u8* data, ureg offs)
+{
+    *data = *data & ~((u8)1 << offs);
+}
+static inline bool bitmask_get_bit(u8 data, ureg offs)
+{
+    return (data >> offs) & 0x1;
+}
+static inline void bitmask_set_range(u8* data, ureg offs, u8 value)
+{
+    *data = *data | (value << offs);
+}
+static inline void bitmask_clear_range(u8* data, ureg mask)
+{
+    *data = *data & ~mask;
+}
+static inline u8 bitmask_get_range(u8 data, ureg offs, ureg mask)
+{
+    return (data >> offs) & mask;
+}
 
 void stmt_flags_set_access_mod(stmt_flags* f, access_modifier m)
 {
-    *f = *f | (m << AM_OFFSET);
+    bitmask_set_range(f, AM_OFFSET, m);
 }
 access_modifier stmt_flags_get_access_mod(stmt_flags f)
 {
-    return (access_modifier)((f & AM_MASK) >> AM_OFFSET);
+    return (access_modifier)(bitmask_get_range(f, AM_OFFSET, AM_MASK));
 }
 
-void stmt_flags_set_const(stmt_flags* f, bool cnst)
+void stmt_flags_set_const(stmt_flags* f)
 {
-    *f = *f | (cnst << CONST_OFFSET);
+    bitmask_set_bit(f, CONST_OFFSET);
 }
 bool stmt_flags_get_const(stmt_flags f)
 {
-    return (f & CONST_MASK) >> CONST_OFFSET;
+    return bitmask_get_bit(f, CONST_OFFSET);
 }
 
-void stmt_flags_set_sealed(stmt_flags* f, bool sld)
+void stmt_flags_set_sealed(stmt_flags* f)
 {
-    *f = *f | (sld << SEALED_OFFSET);
+    bitmask_set_bit(f, SEALED_OFFSET);
 }
 bool stmt_flags_get_sealed(stmt_flags f)
 {
-    return (f & SEALED_MASK) >> SEALED_OFFSET;
+    return bitmask_get_bit(f, SEALED_OFFSET);
 }
 
-void stmt_flags_set_virtual(stmt_flags* f, bool virt)
+void stmt_flags_set_virtual(stmt_flags* f)
 {
-    *f = *f | (virt << VIRTUAL_OFFSET);
+    bitmask_set_bit(f, VIRTUAL_OFFSET);
 }
 bool stmt_flags_get_virtual(stmt_flags f)
 {
-    return (f & VIRTUAL_MASK) >> VIRTUAL_OFFSET;
+    return bitmask_get_bit(f, VIRTUAL_OFFSET);
 }
 
-void stmt_flags_set_static(stmt_flags* f, bool stat)
+void stmt_flags_set_static(stmt_flags* f)
 {
-    *f = *f | (stat << STATIC_OFFSET);
+    bitmask_set_bit(f, STATIC_OFFSET);
 }
 bool stmt_flags_get_static(stmt_flags f)
 {
-    return (f & STATIC_MASK) >> STATIC_OFFSET;
+    return bitmask_get_bit(f, STATIC_OFFSET);
 }
 
-void stmt_flags_set_module_extension(stmt_flags* f, bool ext)
+void stmt_flags_set_module_extension(stmt_flags* f)
 {
-    *f = *f | (ext << EXTEND_OFFSET);
+    bitmask_set_bit(f, EXTEND_OFFSET);
 }
 bool stmt_flags_get_module_extension(stmt_flags f)
 {
-    return (f & EXTEND_MASK) >> EXTEND_OFFSET;
+    return bitmask_get_bit(f, EXTEND_OFFSET);
+}
+
+#define REDECL_OFFSET 7
+
+void err_flags_set_redeclared(err_flags* f)
+{
+    bitmask_set_bit(f, REDECL_OFFSET);
+}
+bool err_flags_get_redeclared(err_flags f)
+{
+    return bitmask_get_bit(f, REDECL_OFFSET);
 }

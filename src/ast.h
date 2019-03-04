@@ -3,7 +3,9 @@
 #include "utils/c_extensions.h"
 
 typedef u8 stmt_flags;
+typedef u8 err_flags;
 #define ASTN_FLAGS_DEFAULT 0
+#define ERR_FLAGS_DEFAULT 0
 
 typedef enum PACK_ENUM access_modifier {
     AM_UNSPECIFIED = 0,
@@ -140,6 +142,7 @@ typedef struct expr {
 typedef struct stmt {
     ast_node_type type;
     stmt_flags flags;
+    err_flags eflags;
     struct stmt* next;
 } stmt;
 
@@ -408,17 +411,20 @@ void get_expr_bounds(expr* n, ureg* start, ureg* end);
 void stmt_flags_set_access_mod(stmt_flags* f, access_modifier m);
 access_modifier stmt_flags_get_access_mod(stmt_flags f);
 
-void stmt_flags_set_const(stmt_flags* f, bool cnst);
+void stmt_flags_set_const(stmt_flags* f);
 bool stmt_flags_get_const(stmt_flags f);
 
-void stmt_flags_set_sealed(stmt_flags* f, bool sld);
+void stmt_flags_set_sealed(stmt_flags* f);
 bool stmt_flags_get_sealed(stmt_flags f);
 
-void stmt_flags_set_virtual(stmt_flags* f, bool virt);
+void stmt_flags_set_virtual(stmt_flags* f);
 bool stmt_flags_get_virtual(stmt_flags f);
 
-void stmt_flags_set_static(stmt_flags* f, bool stat);
+void stmt_flags_set_static(stmt_flags* f);
 bool stmt_flags_get_static(stmt_flags f);
 
-void stmt_flags_set_module_extension(stmt_flags* f, bool ext);
+void stmt_flags_set_module_extension(stmt_flags* f);
 bool stmt_flags_get_module_extension(stmt_flags f);
+
+void err_flags_set_redeclared(err_flags* f);
+bool err_flags_get_redeclared(err_flags f);

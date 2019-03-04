@@ -1158,7 +1158,7 @@ parse_error stmt_flags_from_kw(
                     p, keyword_strings[KW_CONST], start, end);
                 return PE_UNEXPECTED_TOKEN;
             }
-            stmt_flags_set_const(f, true);
+            stmt_flags_set_const(f);
         } break;
         case KW_SEALED: {
             if (stmt_flags_get_sealed(*f) != false) {
@@ -1166,7 +1166,7 @@ parse_error stmt_flags_from_kw(
                     p, keyword_strings[KW_SEALED], start, end);
                 return PE_UNEXPECTED_TOKEN;
             }
-            stmt_flags_set_sealed(f, true);
+            stmt_flags_set_sealed(f);
         } break;
         case KW_VIRTUAL: {
             if (stmt_flags_get_virtual(*f) != false) {
@@ -1174,7 +1174,7 @@ parse_error stmt_flags_from_kw(
                     p, keyword_strings[KW_VIRTUAL], start, end);
                 return PE_UNEXPECTED_TOKEN;
             }
-            stmt_flags_set_virtual(f, true);
+            stmt_flags_set_virtual(f);
         } break;
         case KW_STATIC: {
             if (stmt_flags_get_static(*f) != false) {
@@ -1182,7 +1182,7 @@ parse_error stmt_flags_from_kw(
                     p, keyword_strings[KW_STATIC], start, end);
                 return PE_UNEXPECTED_TOKEN;
             }
-            stmt_flags_set_static(f, true);
+            stmt_flags_set_static(f);
         } break;
         default: {
             return PE_EOEX;
