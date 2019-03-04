@@ -28,6 +28,7 @@ void mutex_fin(mutex* m);
 int atomic_ptr_init(atomic_ptr* a, void* value);
 void atomic_ptr_store(atomic_ptr* a, void* value);
 void* atomic_ptr_load(atomic_ptr* a);
+bool atomic_ptr_cas(atomic_ptr* a, void** oldval, void* newval);
 void atomic_ptr_fin(atomic_ptr* a);
 
 int atomic_ureg_init(atomic_ureg* a, ureg value);
@@ -38,6 +39,7 @@ ureg atomic_ureg_add(atomic_ureg* a, ureg v);
 ureg atomic_ureg_inc(atomic_ureg* a);
 ureg atomic_ureg_sub(atomic_ureg* a, ureg v);
 ureg atomic_ureg_dec(atomic_ureg* a);
+bool atomic_ureg_cas(atomic_ureg* a, ureg* oldval, ureg newval);
 void atomic_ureg_fin(atomic_ureg* a);
 
 int atomic_sreg_init(atomic_sreg* a, sreg value);

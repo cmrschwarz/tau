@@ -14,6 +14,10 @@ void* atomic_ptr_load(atomic_ptr* a)
 {
     return atomic_load(a);
 }
+bool atomic_ptr_cas(atomic_ptr* a, void** oldval, void* newval)
+{
+    return atomic_compare_exchange_weak(a, oldval, newval);
+}
 void atomic_ptr_fin(atomic_ptr* a)
 {
 }
@@ -22,6 +26,10 @@ int atomic_ureg_init(atomic_ureg* a, ureg value)
 {
     atomic_init(a, value);
     return 0;
+}
+bool atomic_ureg_cas(atomic_ureg* a, ureg* oldval, ureg newval)
+{
+    return atomic_compare_exchange_weak(a, oldval, newval);
 }
 void atomic_ureg_store(atomic_ureg* a, ureg value)
 {
