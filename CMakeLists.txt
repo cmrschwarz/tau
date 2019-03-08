@@ -27,6 +27,8 @@ set(TAUC_SRCS
     ./src/utils/zero.c
     ./src/ast.c
     ./src/utils/evmap2.c
+    ./src/mdg.c
+    ./src/mdght.c
     ./src/src_file.c
     ./src/utils/os/linux/plattform.c
 )
@@ -34,5 +36,5 @@ add_executable(tauc ${TAUC_SRCS})
 target_include_directories(tauc PUBLIC "./src" "./deps")
 # add "-pg -no-pie" for debugging with gprof
 # add "-O3 -flto" for release
-set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-pthread -lm -Wall -pedantic")
+set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-pthread -lm -Wall -pedantic -O0 -flto")
 target_compile_options(tauc PUBLIC)
