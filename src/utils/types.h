@@ -36,7 +36,7 @@ typedef int64_t s64;
 
 #define UREG_MAX UINTPTR_MAX
 #define SREG_MAX INTPTR_MAX
-#define SREG_MIN INTPTR_MAX
+#define SREG_MIN INTPTR_MIN
 
 // EXPLORE: on which plattforms is this correct?
 typedef float f32;
