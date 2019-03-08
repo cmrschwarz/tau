@@ -1,4 +1,6 @@
 #pragma once
+#include "types.h"
+
 #define OS_POSIX 1
 #define OS_LINUX 1
 #define OS_OSX 0
@@ -13,7 +15,11 @@
 #define CMPLR_MSVC 0
 #define CMPLR_CLANG 0
 
-// could point to a (caching)function returning this at runtime
+// these could point to a (caching)function returning this at runtime
 #define PAGE_SIZE 4096
+#define CACHE_LINE_SIZE 64
+
+ureg plattform_get_page_size();
+ureg plattform_get_cache_line_size();
 
 #define DEBUG 1

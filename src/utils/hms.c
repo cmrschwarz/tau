@@ -9,8 +9,8 @@ static const char* TOMBSTONE_KEY = "";
 
 static inline ureg hms_hash_pos(hms* h, const char* key)
 {
-    // this uses the FNV-1a algorithm
-    // TODO: search for a better one :D
+// this uses the FNV-1a algorithm
+// TODO: search for a better one :D
 #if UREG_MAX == U64_MAX
     ureg hash = 14695981039346656037ULL;
     const ureg prime = 1099511628211ULL;
@@ -47,8 +47,7 @@ int hms_init_with_capacity(hms* h, ureg capacity, thread_allocator* tal)
 }
 int hms_init(hms* h, thread_allocator* tal)
 {
-    return hms_init_with_capacity(
-        h, allocator_get_segment_size() / sizeof(hms_node), tal);
+    return hms_init_with_capacity(h, PAGE_SIZE / sizeof(hms_node), tal);
 }
 void hms_fin(hms* h)
 {

@@ -26,7 +26,6 @@ typedef struct {
 
 int allocator_init();
 void allocator_fin();
-ureg allocator_get_segment_size();
 
 int tal_init(thread_allocator* tal);
 void tal_fin(thread_allocator* tal);
@@ -39,9 +38,9 @@ int tal_realloc(
 void tal_free(thread_allocator* tal, memblock* b);
 
 #if OS_LINUX
-#    include "os/linux/allocator_linux.h"
+#include "os/linux/allocator_linux.h"
 #elif USE_LIBC
-#    include "os/libc/allocator_libc.h"
+#include "os/libc/allocator_libc.h"
 #else
-#    error no allocator present for the configured plattform
+#error no allocator present for the configured plattform
 #endif

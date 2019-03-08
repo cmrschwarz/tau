@@ -7,18 +7,13 @@
 #include <memory.h>
 #include <signal.h>
 #include <sys/mman.h>
-#include <sys/unistd.h>
 // this is a really basic allocator using mmap
 // this will eventually be replaced by allocator_linux_caching
 // but for now, it's good enough
 
-static struct allocator {
-    ureg segment_size;
-} ALLOCATOR;
-
 int allocator_init()
 {
-    ALLOCATOR.segment_size = sysconf(_SC_PAGESIZE);
+
     return OK;
 }
 
@@ -26,11 +21,6 @@ int allocator_init()
 // that complains here if we had fewer or more deallocations --> leaks
 void allocator_fin()
 {
-}
-
-ureg allocator_get_segment_size()
-{
-    return ALLOCATOR.segment_size;
 }
 
 int tal_init(thread_allocator* tal)

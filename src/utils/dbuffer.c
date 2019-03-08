@@ -17,7 +17,7 @@ int dbuffer_init_with_capacity(
 
 int dbuffer_init(dbuffer* db, thread_allocator* tal)
 {
-    return dbuffer_init_with_capacity(db, tal, allocator_get_segment_size());
+    return dbuffer_init_with_capacity(db, tal, PAGE_SIZE);
 }
 bool dbuffer_is_emtpy(dbuffer* db)
 {
