@@ -161,6 +161,7 @@ typedef struct scope {
     symbol symbol;
     body body;
     struct scope* parent;
+    struct scope* preprocessor;
     ast_node** imports;
     ast_node** includes;
 } scope;

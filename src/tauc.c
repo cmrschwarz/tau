@@ -12,6 +12,10 @@ int tauc_init()
     int r = thread_context_init(&TAUC.main_thread_context);
     if (r) return ERR;
     r = pool_init(&TAUC.permmem, &TAUC.main_thread_context.tal);
+    if (!r) {
+        r = mdg_init(&TAUC.mdg, &TAUC.main_thread_context.tal);
+        if (r) pool_fin(&TAUC.permmem);
+    }
     if (r) {
         thread_context_fin(&TAUC.main_thread_context);
         master_error_log_report("thread setup error: memory allocation failed");

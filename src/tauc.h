@@ -1,5 +1,6 @@
 #pragma once
 #include "error_log.h"
+#include "mdg.h"
 #include "parser.h"
 #include "utils/allocator.h"
 #include "utils/pool.h"
@@ -38,6 +39,7 @@ typedef struct tauc {
     thread_context main_thread_context;
     worker_thread* worker_threads;
     pool permmem;
+    mdg mdg;
     union {
         stage_1_share s1;
     } stage_share;
