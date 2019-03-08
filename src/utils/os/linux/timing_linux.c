@@ -1,8 +1,8 @@
 #include "../../plattform.h"
 #if OS_LINUX
-#    include "../../time_conversions.h"
-#    include "../../timing.h"
-#    include <time.h>
+#include "../../time_conversions.h"
+#include "../../timing.h"
+#include <time.h>
 
 int timer_init_bare(timer* t)
 {

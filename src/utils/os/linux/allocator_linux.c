@@ -1,13 +1,13 @@
 #include "../../../error_log.h"
 #include "../../plattform.h"
 #if OS_LINUX
-#    include "../../allocator.h"
-#    include "../../math_utils.h"
-#    include <linux/mman.h>
-#    include <memory.h>
-#    include <signal.h>
-#    include <sys/mman.h>
-#    include <sys/unistd.h>
+#include "../../allocator.h"
+#include "../../math_utils.h"
+#include <linux/mman.h>
+#include <memory.h>
+#include <signal.h>
+#include <sys/mman.h>
+#include <sys/unistd.h>
 // this is a really basic allocator using mmap
 // this will eventually be replaced by allocator_linux_caching
 // but for now, it's good enough

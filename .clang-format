@@ -13,7 +13,7 @@ AllowShortCaseLabelsOnASingleLine: true
 AllowShortLoopsOnASingleLine: true
 AllowShortFunctionsOnASingleLine: false
 AllowShortBlocksOnASingleLine: false
-IndentPPDirectives: AfterHash
+#IndentPPDirectives: AfterHash
 PenaltyReturnTypeOnItsOwnLine: 100
 IndentCaseLabels: true
 ---

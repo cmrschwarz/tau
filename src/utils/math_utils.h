@@ -32,9 +32,9 @@ static inline ureg ceil_to_pow2(ureg v)
     v |= v >> 4;
     v |= v >> 8;
     v |= v >> 16;
-#    if REG_WIDTH_64
+#if REG_WIDTH_64
     v |= v >> 32;
-#    endif
+#endif
     v++;
 #endif
     return v;
