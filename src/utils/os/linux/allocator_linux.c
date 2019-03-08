@@ -1,8 +1,10 @@
-#include "../../../error_log.h"
 #include "../../plattform.h"
 #if OS_LINUX
+#include "../../../error_log.h"
 #include "../../allocator.h"
 #include "../../math_utils.h"
+#include "../../panic.h"
+#include "inttypes.h"
 #include <linux/mman.h>
 #include <memory.h>
 #include <signal.h>
@@ -13,30 +15,49 @@
 
 int allocator_init()
 {
-
     return OK;
 }
 
-// TODO(cmrs): debugging feature counting allocations
-// that complains here if we had fewer or more deallocations --> leaks
 void allocator_fin()
 {
 }
 
+static inline void bumpallocdelta(thread_allocator* tal)
+{
+#if DEBUG
+    tal->alloc_delta++;
+#endif
+}
+
+static inline void decallocdelta(thread_allocator* tal)
+{
+#if DEBUG
+    tal->alloc_delta--;
+#endif
+}
+
 int tal_init(thread_allocator* tal)
 {
-    // tal->alloc_count = 0;
+#if DEBUG
+    tal->alloc_delta = 0;
+#endif
     return OK;
 }
 
 void tal_fin(thread_allocator* tal)
 {
+#if DEBUG
+    if (tal->alloc_delta != 0) {
+        printf(
+            "debug: memory leaks detected: allocs - frees = %" PRId64 "\n",
+            tal->alloc_delta);
+    }
+#endif
 }
 
 int tal_alloc(thread_allocator* tal, ureg size, memblock* b)
 {
-    // printf("allocation %llu\n", tal->ac);
-    // tal->alloc_count++;
+    bumpallocdelta(tal);
     b->start = mmap(
         NULL, size, PROT_READ | PROT_WRITE,
         MAP_PRIVATE | MAP_ANONYMOUS | MAP_UNINITIALIZED, -1, 0);
@@ -46,8 +67,8 @@ int tal_alloc(thread_allocator* tal, ureg size, memblock* b)
 }
 int tal_allocz(thread_allocator* tal, ureg size, memblock* b)
 {
-    // removing the MAP_UNITIALIZED flag guarantees that the memory will be
-    // cleared
+    bumpallocdelta(tal);
+    // without the MAP_UNITIALIZED flag memory will be zero
     b->start = mmap(
         NULL, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (b->start == MAP_FAILED) return ERR;
@@ -68,11 +89,32 @@ int tal_realloc(
 
 void tal_free(thread_allocator* tal, memblock* b)
 {
-    // tal->alloc_count--;
-    // printf("free %llu\n", tal->ac);
+    decallocdelta(tal);
     int res = munmap(b->start, ptrdiff(b->end, b->start));
-    // a failing free is UB --> trigger a segfault
-    if (res) raise(SIGSEGV);
+    if (res) panic("fatal: memory deallocation failure");
+}
+
+// TODO: implement properly
+void* tal_gpmalloc(thread_allocator* tal, ureg size)
+{
+    // no bumpallocdelta here because of the threading guarantees
+    // TODO: implement free counting
+    return malloc(size);
+}
+void allocator_gpfree(void* mem)
+{
+    free(mem);
+}
+
+void* tal_tlmalloc(thread_allocator* tal, ureg size)
+{
+    bumpallocdelta(tal);
+    return malloc(size);
+}
+void tal_tlfree(thread_allocator* tal, void* mem)
+{
+    decallocdelta(tal);
+    free(mem);
 }
 
 #endif

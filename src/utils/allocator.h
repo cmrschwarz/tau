@@ -2,21 +2,6 @@
 #include "threading.h"
 #include "types.h"
 
-/*
-typedef int (*alloc_fn)(void* al, ureg size, memblock* b);
-typedef int (*allocv_fn)(void* al, ureg size, memblock* b);
-typedef int (*realloc_fn)(void* al, ureg used_size, ureg size, memblock* b);
-typedef int (*free_fn)(void* al, memblock* b);
-
-typedef struct {
-    void* allocator;
-    alloc_fn alloc;
-    allocv_fn allocv;
-    realloc_fn realloc;
-    free_fn free;
-}allocator;
-*/
-
 typedef struct thread_allocator thread_allocator;
 
 typedef struct {
@@ -30,9 +15,24 @@ void allocator_fin();
 int tal_init(thread_allocator* tal);
 void tal_fin(thread_allocator* tal);
 
+// general purpose allocation like malloc.
+// can be freed using allocator_gpfree on any thread
+void* tal_gpmalloc(thread_allocator* tal, ureg size);
+void allocator_gpfree(void* mem);
+
+// general purpose thread_local allocation
+// must be freed using tal_tlfree on the same thread with the same tal
+void* tal_tlmalloc(thread_allocator* tal, ureg size);
+void tal_tlfree(thread_allocator* tal, void* mem);
+
+// used for large allocations. size must be multiple of PAGE_SIZE
+// memblock returned is potentially bigger than requested and can be fully used
+// must be freed with tal_free on the same thread using the same tal
 int tal_alloc(thread_allocator* tal, ureg size, memblock* b);
+
 // like alloc, but guarantees that the memory is zeroed
 int tal_allocz(thread_allocator* tal, ureg size, memblock* b);
+
 int tal_realloc(
     thread_allocator* tal, ureg used_size, ureg new_size, memblock* b);
 void tal_free(thread_allocator* tal, memblock* b);

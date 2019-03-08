@@ -1,5 +1,10 @@
 #pragma once
+#include "../../plattform.h"
 #include "../../threading.h"
 typedef struct thread_allocator {
-    ureg alloc_count; // allocation count for debugging
+#if DEBUG
+    sreg alloc_delta;
+#else
+    char _; // to avoid size 0
+#endif
 } thread_allocator;
