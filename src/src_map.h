@@ -12,6 +12,8 @@ typedef struct thread_context thread_context;
 typedef ureg src_range;
 static const ureg SRC_RANGE_INVALID = ((ureg)0x1) << (REG_BITS - 1);
 
+typedef struct src_file src_file;
+
 typedef struct line_store {
     struct line_store* prev;
     ureg* end;
@@ -21,23 +23,16 @@ typedef struct line_store {
 typedef struct src_map {
     ureg* last_line;
     line_store* last_line_store;
-    bool is_paste_area;
 } src_map;
 
-typedef struct file {
-    src_map src_map;
-    char* path;
-} file;
-
 typedef struct src_range_large {
-    src_map* map; // this is NULL if the src_range doesn't change it
+    src_file* file;
     ureg start;
     ureg end;
 } src_range_large;
 
 typedef struct paste_area {
     src_map src_map;
-    struct file* origin_file;
     src_range_large pasted_from;
 } paste_area;
 
@@ -46,11 +41,7 @@ typedef struct src_pos {
     ureg column;
 } src_pos;
 
-// THINK: who manages memory of the string here
-int file_init(file* f, thread_context* tc, char* path);
-void file_fin(file* f);
-
-int src_map_init(src_map* m, thread_context* tc, bool is_paste_area);
+int src_map_init(src_map* m, thread_context* tc);
 int src_map_fin(src_map* m);
 int src_map_add_line(src_map* m, thread_context* tc, ureg line_start);
 // this can't fail without programmer's error as the storage is already

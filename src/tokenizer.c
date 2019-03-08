@@ -1,5 +1,6 @@
 #include "tokenizer.h"
 #include "error_log.h"
+#include "src_file.h"
 #include "tauc.h"
 #include "utils/math_utils.h"
 #include "utils/panic.h"
@@ -193,8 +194,7 @@ int tk_init(tokenizer* tk, thread_context* tc)
 {
     memblock b;
     tk->tc = tc;
-    if (tal_alloc(&tk->tc->tal, allocator_get_segment_size() * 8, &b))
-        return -1;
+    if (tal_alloc(&tk->tc->tal, PAGE_SIZE * 8, &b)) return -1;
     tk->file_buffer_start = (char*)b.start;
     tk->file_buffer_end = (char*)b.end;
     tk->token_buffer_end = tk->token_buffer + TK_TOKEN_BUFFER_SIZE;
@@ -211,7 +211,7 @@ void tk_fin(tokenizer* tk)
     if (tk->file_stream != NULL) tk_close_file(tk);
 }
 
-int tk_open_stream(tokenizer* tk, file* f, FILE* stream)
+int tk_open_stream(tokenizer* tk, src_file* f, FILE* stream)
 {
     tk->file = f;
     tk->file_stream = stream;
@@ -227,7 +227,7 @@ int tk_open_stream(tokenizer* tk, file* f, FILE* stream)
     tk->status = TK_STATUS_OK;
     return OK;
 }
-int tk_open_file(tokenizer* tk, file* f)
+int tk_open_file(tokenizer* tk, src_file* f)
 {
     FILE* fs = fopen(f->path, "r");
     if (fs == NULL) {

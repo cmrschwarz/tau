@@ -97,4 +97,4 @@ static inline bool token_has_string(token* t)
     return t->type < 4;
 }
 
-void token_debug_print(file* f, token* t);
+void token_debug_print(src_file* f, token* t);

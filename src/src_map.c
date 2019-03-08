@@ -28,9 +28,8 @@ static inline int append_line_store(src_map* m, thread_context* tc, ureg size)
     m->last_line = ptradd(s, sizeof(line_store));
     return 0;
 }
-int src_map_init(src_map* m, thread_context* tc, bool is_paste_area)
+int src_map_init(src_map* m, thread_context* tc)
 {
-    m->is_paste_area = is_paste_area;
     m->last_line_store = NULL;
     int r = append_line_store(m, tc, LINE_STORE_MIN_SIZE);
     if (r) return r;
@@ -132,7 +131,7 @@ src_pos src_map_get_pos(src_map* m, ureg pos)
 src_range src_range_pack(thread_context* tc, src_range_large* d)
 {
     // PERF: maybe allocate these somewhere else
-    if (!d->map) {
+    if (!d->file) {
         ureg len = d->end - d->start;
         if (len > SRC_RANGE_MAX_LENGTH || d->start > SRC_RANGE_MAX_START) {
             ureg* tgt = pool_alloc(&tc->permmem, sizeof(ureg) * 2);
@@ -146,9 +145,9 @@ src_range src_range_pack(thread_context* tc, src_range_large* d)
         }
     }
     else {
-        src_map** tgt = (src_map**)pool_alloc(&tc->permmem, sizeof(ureg) * 3);
+        src_file** tgt = (src_file**)pool_alloc(&tc->permmem, sizeof(ureg) * 3);
         if (!tgt) return SRC_RANGE_INVALID;
-        *tgt = d->map;
+        *tgt = d->file;
         ureg* range = (void*)(tgt + 1);
         *range = d->start;
         range++;
@@ -170,15 +169,15 @@ void src_range_unpack(src_range r, src_range_large* d)
 {
     if (r & SRC_RANGE_EXTERN_BIT) {
         if (r & SRC_RANGE_NEW_MAP_BIT) {
-            src_map** tgt = (void*)(r << 2);
-            d->map = *tgt;
+            src_file** tgt = (void*)(r << 2);
+            d->file = *tgt;
             ureg* range = (ureg*)(tgt + 1);
             d->start = *range;
             range++;
             d->end = *range;
         }
         else {
-            d->map = NULL;
+            d->file = NULL;
             ureg* tgt = (ureg*)(r << 2);
             d->start = *tgt;
             tgt++;
@@ -186,7 +185,7 @@ void src_range_unpack(src_range r, src_range_large* d)
         }
     }
     else {
-        d->map = NULL;
+        d->file = NULL;
         d->start = r >> SRC_RANGE_LENGTH_BITS;
         ureg len = (r & SRC_RANGE_MAX_LENGTH);
         d->end = d->start + len;
@@ -203,13 +202,4 @@ ureg src_range_get_end(src_range r)
     src_range_large l;
     src_range_unpack(r, &l);
     return l.end;
-}
-int file_init(file* f, thread_context* tc, char* path)
-{
-    f->path = path;
-    return src_map_init(&f->src_map, tc, false);
-}
-void file_fin(file* f)
-{
-    src_map_fin(&f->src_map);
 }

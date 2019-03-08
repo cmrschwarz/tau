@@ -18,7 +18,7 @@ typedef enum PACK_ENUM tk_status {
 #define TK_MIN_FILE_READ_SIZE 4096
 typedef struct {
     FILE* file_stream;
-    file* file;
+    src_file* file;
     token token_buffer[TK_TOKEN_BUFFER_SIZE];
     token* token_buffer_end;
     token* loaded_tokens_start;
@@ -34,8 +34,8 @@ typedef struct {
 int tk_init(tokenizer* tk, thread_context* tc);
 void tk_fin(tokenizer* tk);
 
-int tk_open_stream(tokenizer* tk, file* f, FILE* stream);
-int tk_open_file(tokenizer* tk, file* f);
+int tk_open_stream(tokenizer* tk, src_file* f, FILE* stream);
+int tk_open_file(tokenizer* tk, src_file* f);
 int tk_close_file(tokenizer* tk);
 
 // any peek or consume invalidates all pointers to voided tokens

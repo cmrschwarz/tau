@@ -2,6 +2,7 @@
 #include "error_log.h"
 #include "keywords.h"
 #include "print_ast.h"
+#include "src_file.h"
 #include "tauc.h"
 #include "tokenizer.h"
 #include "utils/math_utils.h"
@@ -1078,7 +1079,7 @@ parse_error parse_eof_delimited_body(parser* p, body* b, ast_node_type pt)
     p->parent_type = old_parent_type;
     return pe;
 }
-parse_error parser_parse_file(parser* p, file* f)
+parse_error parser_parse_file(parser* p, src_file* f)
 {
     // This is test code. it sucks
     int r = tk_open_file(&p->tk, f);

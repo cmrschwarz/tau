@@ -1,6 +1,7 @@
 #include "tauc.h"
 #include "error_log.h"
 #include "print_ast.h"
+#include "src_file.h"
 #include "utils/allocator.h"
 
 struct tauc TAUC;
@@ -19,7 +20,7 @@ int tauc_init()
     return OK;
 }
 
-int test_tokenizer(file* f)
+int test_tokenizer(src_file* f)
 {
     if (tk_open_file(&TAUC.main_thread_context.stage.s1.p.tk, f)) return ERR;
     token* t;
@@ -34,11 +35,9 @@ int tauc_run(int argc, char** argv)
     int r = parser_init(
         &TAUC.main_thread_context.stage.s1.p, &TAUC.main_thread_context);
     if (r) return ERR;
-    file* f = (file*)pool_alloc(&TAUC.permmem, sizeof(file));
+    src_file* f = (src_file*)pool_alloc(&TAUC.permmem, sizeof(src_file));
     if (!f) return -1;
-    if (file_init(
-            f, &TAUC.main_thread_context,
-            "/media/nas_mirror/projects/tau/test/test.tau"))
+    if (src_file_init(f, &TAUC.main_thread_context, "test/test.tau"))
         return ERR;
     if (parser_parse_file(&TAUC.main_thread_context.stage.s1.p, f)) return ERR;
     print_astn((stmt*)&TAUC.main_thread_context.stage.s1.p.root, 0);
