@@ -213,7 +213,8 @@ static inline void* alloc_perm(parser* p, ureg size)
 static inline char* alloc_string_ppool(parser* p, string s, pool* pool)
 {
     ureg len = string_len(s);
-    char* mem = (char*)alloc_ppool(p, align_size(len + 1, sizeof(void*)), pool);
+    char* mem = (char*)alloc_ppool(
+        p, ceil_to_mult_of_pow_two(len + 1, sizeof(void*)), pool);
     if (!mem) return NULL;
     memcpy(mem, s.start, len);
     mem[len] = '\0';

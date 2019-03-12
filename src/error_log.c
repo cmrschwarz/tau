@@ -798,7 +798,8 @@ char* error_log_cat_strings(error_log* e, ureg count, char** strs)
     for (ureg i = 0; i < count; i++) {
         len += strlen(strs[i]);
     }
-    char* str = (char*)error_log_alloc(e, align_size(len + 1, REG_BYTES));
+    char* str =
+        (char*)error_log_alloc(e, ceil_to_mult_of_pow_two(len + 1, REG_BYTES));
     if (!str) return NULL;
     char* d = str;
     for (ureg i = 0; i < count; i++) {

@@ -76,10 +76,10 @@ static inline void ptrswapt(void** a, void** b, void** c)
     *a = *b;
     *b = *c;
 }
+// macro useful for compile time evaluation
+#define CEIL_TO_MULT_OF_POW2(val, pow2) (((val + pow2 - 1) / pow2) * pow2)
 
-static inline ureg align_size(ureg siz, ureg alignment)
+static inline ureg ceil_to_mult_of_pow_two(ureg val, ureg pow2)
 {
-    ureg mod = siz % alignment;
-    if (mod) siz += alignment - mod;
-    return siz;
+    return CEIL_TO_MULT_OF_POW2(val, pow2);
 }
