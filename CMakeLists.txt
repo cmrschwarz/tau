@@ -32,9 +32,20 @@ set(TAUC_SRCS
     ./src/src_file.c
     ./src/utils/os/linux/plattform.c
 )
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -lm -Wall -pedantic")
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+    # add "-pg -no-pie" for profiling with gprof
+    message("Creating Debug Buildfiles")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g")
+    set(TAUC_SRCS ${TAUC_SRCS} ./test/main_test.c)
+    
+else()
+    message("Creating Release Buildfiles")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -flto")
+endif()
+
 add_executable(tauc ${TAUC_SRCS})
 target_include_directories(tauc PUBLIC "./src" "./deps")
-# add "-pg -no-pie" for debugging with gprof
-# add "-O3 -flto" for release
-set(CMAKE_C_FLAGS ${CMAKE_C_FLAGS} "-pthread -lm -Wall -pedantic -O0 -flto")
 target_compile_options(tauc PUBLIC)

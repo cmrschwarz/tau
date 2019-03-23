@@ -4,12 +4,20 @@
 #include "utils/allocator.h"
 #include "utils/debug_utils.h"
 #include "utils/math_utils.h"
+#include "utils/plattform.h"
 #include "utils/timing.h"
 #include "utils/types.h"
 #include <stdio.h>
 
+#if DEBUG
+#include "../test/main_test.h"
+#endif
+
 int main(int argc, char** argv)
 {
+#if DEBUG
+    return main_test(argc, argv);
+#endif
     int r;
     r = allocator_init();
     if (r) return EXIT_FAILURE;
