@@ -4,49 +4,130 @@
 #include "math_utils.h"
 #include "threading.h"
 
+typedef atomic_ptr aseglist;
+
 typedef struct aseglist_node {
-    struct aseglist_node* next;
+    struct aseglist_node* prev;
+    atomic_sreg space;
 } aseglist_node;
 
-typedef struct aseglist {
-    atomic_ptr head;
-    atomic_ureg size;
-} aseglist;
+#define ASEGLIST_CAPACITY_CONSUMPTION                                          \
+    ((sizeof(aseglist_node) + sizeof(void*) - 1) / sizeof(void*))
+#define ASEGLIST_ELEM_OFFSET (ASEGLIST_CAPACITY_CONSUMPTION * sizeof(void*))
+// must be larger  than ASEGLIST_ELEM_OFFSET
+#define ASEGLIST_INITIAL_SIZE (8 * sizeof(void*))
 
 typedef struct aseglist_iterator {
-    aseglist_node* node;
     void** pos;
+    void** end;
+    aseglist_node* node;
 } aseglist_iterator;
 
 static inline void aseglist_iterator_begin(aseglist_iterator* it, aseglist* l)
 {
+    aseglist_node* n;
+    do {
+        n = atomic_ptr_load(l);
+    } while (!n);
+    it->pos = ptradd(
+        n, ASEGLIST_ELEM_OFFSET + atomic_sreg_load(&n->space) * sizeof(void*));
+    ureg size = *(ureg*)ptradd(n, ASEGLIST_ELEM_OFFSET);
+    it->end = ptradd(n, size);
+    it->node = n;
+}
+
+static inline ureg aseglist_iterator_get_remaining_count(aseglist_iterator* it)
+{
+    ureg curr_node_size = ptrdiff(it->end, it->node);
+    ureg node_count = ulog2(curr_node_size) - ulog2(ASEGLIST_INITIAL_SIZE / 2);
+    ureg tot_size = 2 * curr_node_size - ASEGLIST_INITIAL_SIZE;
+    ureg curr_node_unused =
+        curr_node_size - ASEGLIST_ELEM_OFFSET - ptrdiff(it->end, it->pos);
+    return (tot_size - curr_node_unused) / sizeof(void*) -
+           (node_count * ASEGLIST_CAPACITY_CONSUMPTION);
 }
 static inline void* aseglist_iterator_next(aseglist_iterator* it)
 {
-    return 0;
+    if (it->pos == it->end) {
+        aseglist_node* prev = it->node->prev;
+        if (prev == NULL) return NULL;
+        ureg size_old = ptrdiff(it->end, it->node) / 2;
+        it->pos = ptradd(prev, sizeof(aseglist_node));
+        it->end = ptradd(prev, size_old);
+        it->node = prev;
+    };
+    return *it->pos++;
 }
 static inline void aseglist_iterator_fin(aseglist_iterator* it)
 {
 }
 
-static inline int aseglist_node_init(aseglist_node* n, ureg size)
+static inline aseglist_node* aseglist_node_new(thread_allocator* tal, ureg size)
 {
-    return 0;
+    aseglist_node* n = tal_gpmalloc(tal, size);
+    if (!n) return NULL;
+    int r = atomic_sreg_init(
+        &n->space, (size - sizeof(aseglist_node)) / sizeof(void*));
+    if (r) {
+        allocator_gpfree(n);
+        return NULL;
+    }
+    *(ureg*)ptradd(n, ASEGLIST_ELEM_OFFSET) = size;
+    return n;
 }
-static inline void aseglist_node_fin(aseglist_node* n)
+static inline void aseglist_node_free(aseglist_node* n)
 {
+    atomic_sreg_fin(&n->space);
+    allocator_gpfree(n);
 }
 
-static inline int aseglist_init(aseglist* l)
+static inline int aseglist_init(aseglist* l, thread_allocator* tal)
 {
-    return 0;
+    aseglist_node* n = aseglist_node_new(tal, ASEGLIST_INITIAL_SIZE);
+    if (!n) return ERR;
+    int r = atomic_ptr_init(l, n);
+    if (r) {
+        aseglist_node_free(n);
+        return r;
+    }
+    n->prev = NULL;
+    return OK;
 }
 
 static inline void aseglist_fin(aseglist* l)
 {
+
+    aseglist_node* n = atomic_ptr_load(l);
+    aseglist_node* ntemp;
+    do {
+        ntemp = n;
+        n = n->prev;
+        aseglist_node_free(ntemp);
+    } while (n != NULL);
 }
 
-static inline int aseglist_add(aseglist* l, atomic_pool* pool, void* val)
+static inline int aseglist_add(aseglist* l, thread_allocator* tal, void* data)
 {
-    return 0;
+    while (true) {
+        aseglist_node* node = atomic_ptr_load(l);
+        if (!node) continue;
+        sreg space = atomic_sreg_dec(&node->space) - 1;
+        if (space > 0) {
+            ((void**)ptradd(node, ASEGLIST_ELEM_OFFSET))[space] = data;
+            return OK;
+        }
+        else if (space == 0) {
+            atomic_ptr_store(l, NULL);
+            ureg size_new = (*(ureg*)ptradd(node, ASEGLIST_ELEM_OFFSET)) * 2;
+            aseglist_node* node_new = aseglist_node_new(tal, size_new);
+            if (!node_new) {
+                atomic_ptr_store(l, node);
+                return ERR;
+            }
+            atomic_ptr_store(l, node_new);
+            *(void**)ptradd(node, ASEGLIST_ELEM_OFFSET) = data;
+            node_new->prev = node;
+            return OK;
+        }
+    }
 }
