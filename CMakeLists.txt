@@ -34,18 +34,19 @@ set(TAUC_SRCS
 )
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -lm -Wall -pedantic")
-
+set(TAUC_PP_DIRECTIVES "")
 if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
     # add "-pg -no-pie" for profiling with gprof
     message("Creating Debug Buildfiles")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g")
     set(TAUC_SRCS ${TAUC_SRCS} ./test/main_test.c)
-    
 else()
     message("Creating Release Buildfiles")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -flto")
+    set(TAUC_PP_DIRECTIVES ${TAUC_PP_DIRECTIVES} CMAKE_NO_DEBUG)
 endif()
 
 add_executable(tauc ${TAUC_SRCS})
 target_include_directories(tauc PUBLIC "./src" "./deps")
+target_compile_definitions(tauc PRIVATE ${TAUC_PP_DIRECTIVES})
 target_compile_options(tauc PUBLIC)

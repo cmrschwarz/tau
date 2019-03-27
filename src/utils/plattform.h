@@ -22,4 +22,8 @@
 ureg plattform_get_page_size();
 ureg plattform_get_cache_line_size();
 
+#if CMAKE_NO_DEBUG
+#define DEBUG 0
+#else
 #define DEBUG 1
+#endif
