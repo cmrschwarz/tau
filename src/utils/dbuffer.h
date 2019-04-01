@@ -6,12 +6,11 @@ typedef struct dbuffer {
     u8* start;
     u8* end;
     u8* head;
-    thread_allocator* tal;
 } dbuffer;
 
 // 0: success, -1: allocation failiure
-int dbuffer_init_with_capacity(dbuffer* db, thread_allocator* tal, ureg size);
-int dbuffer_init(dbuffer* db, thread_allocator* tal);
+int dbuffer_init_with_capacity(dbuffer* db, ureg size);
+int dbuffer_init(dbuffer* db);
 
 void dbuffer_fin(dbuffer* db);
 

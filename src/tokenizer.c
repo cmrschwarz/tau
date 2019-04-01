@@ -106,16 +106,16 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding)
         size_to_keep += ptrdiff(tk->file_buffer_pos, *holding);
     }
     ureg buff_size = ptrdiff(tk->file_buffer_end, tk->file_buffer_start);
-    memblock b;
-    bool realloc = buff_size - size_to_keep < TK_MIN_FILE_READ_SIZE;
-    if (realloc) {
+    void* old_buff = NULL;
+    if (buff_size - size_to_keep < TK_MIN_FILE_READ_SIZE) {
         buff_size *= 2;
-        if (tal_alloc(&tk->tc->tal, buff_size, &b)) {
+        old_buff = tk->file_buffer_start;
+        tk->file_buffer_start = tmalloc(buff_size);
+        if (!tk->file_buffer_start) {
             error_log_report_allocation_failiure(&tk->tc->error_log);
             return -1;
         }
-        ptrswap(&b.start, (void**)&tk->file_buffer_start);
-        ptrswap(&b.end, (void**)&tk->file_buffer_end);
+        tk->file_buffer_end = ptradd(tk->file_buffer_start, buff_size);
     }
     tk->file_buffer_head = tk->file_buffer_start;
     t = tk->loaded_tokens_start;
@@ -133,8 +133,8 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding)
         *holding = tk->file_buffer_head;
         tk->file_buffer_head = (char*)ptradd(tk->file_buffer_head, slen);
     }
-    if (realloc) {
-        tal_free(&tk->tc->tal, &b);
+    if (old_buff) {
+        tfree(old_buff);
     }
     tk->file_buffer_pos = tk->file_buffer_head;
     ureg siz = fread(
@@ -192,11 +192,11 @@ static inline char tk_consume_char(tokenizer* tk)
 
 int tk_init(tokenizer* tk, thread_context* tc)
 {
-    memblock b;
     tk->tc = tc;
-    if (tal_alloc(&tk->tc->tal, PAGE_SIZE * 8, &b)) return -1;
-    tk->file_buffer_start = (char*)b.start;
-    tk->file_buffer_end = (char*)b.end;
+    ureg size = PAGE_SIZE * 8;
+    tk->file_buffer_start = tmalloc(size);
+    if (!tk->file_buffer_start) return -1;
+    tk->file_buffer_end = ptradd(tk->file_buffer_start, size);
     tk->token_buffer_end = tk->token_buffer + TK_TOKEN_BUFFER_SIZE;
     tk->loaded_tokens_start = tk->token_buffer; // head is set on open_file
 
@@ -204,10 +204,7 @@ int tk_init(tokenizer* tk, thread_context* tc)
 }
 void tk_fin(tokenizer* tk)
 {
-    memblock b;
-    b.start = tk->file_buffer_start;
-    b.end = tk->file_buffer_end;
-    tal_free(&tk->tc->tal, &b);
+    tfree(tk->file_buffer_start);
     if (tk->file_stream != NULL) tk_close_file(tk);
 }
 

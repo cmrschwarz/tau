@@ -20,34 +20,32 @@ static inline ureg mdght_fold(mdght* h, ureg hash)
     return fnv_fold(hash, h->size_bits, h->hash_mask);
 }
 
-int mdght_init_with_capacity(mdght* h, ureg capacity, thread_allocator* tal)
+int mdght_init_with_capacity(mdght* h, ureg capacity)
 {
-    memblock b;
     // we alloc zero initialized so all values are NULL pointers
-    if (tal_allocz(tal, capacity * sizeof(mdg_node*), &b)) return -1;
-    h->tal = tal;
+    ureg size = capacity * sizeof(mdg_node*);
+    h->table_start = (mdg_node**)tmallocz(size);
+    if (!h->table_start) return ERR;
+    h->table_end = (mdg_node**)ptradd(h->table_start, size);
+
     // this limits the "used size" to a power of 2
     // elements after that size will be used for colliding elements,
     // but the hash function will not give out their indices directly
     h->size_bits = ulog2(capacity);
-    h->table_start = (mdg_node**)b.start;
-    h->table_end = (mdg_node**)b.end;
+
     h->hash_mask = (1 << h->size_bits) - 1;
     h->elem_count = 0;
     h->grow_on_elem_count = capacity / 4 * 3; // grow on 75 %
-    return 0;
+    return OK;
 }
 
-int mdght_init(mdght* h, thread_allocator* tal)
+int mdght_init(mdght* h)
 {
-    return mdght_init_with_capacity(h, PAGE_SIZE / sizeof(mdg_node*), tal);
+    return mdght_init_with_capacity(h, PAGE_SIZE / sizeof(mdg_node*));
 }
 void mdght_fin(mdght* h)
 {
-    memblock b;
-    b.start = h->table_start;
-    b.end = h->table_end;
-    tal_free(h->tal, &b);
+    tfree(h->table_start);
 }
 mdg_node** mdght_insert_ph(mdght* h, ureg phash, mdg_node* n)
 {
@@ -161,17 +159,17 @@ mdg_node* mdght_remove_node(mdght* h, mdg_node* n)
 
 int mdght_grow(mdght* h)
 {
-    memblock b;
-    if (tal_allocz(h->tal, ptrdiff(h->table_end, h->table_start) * 2, &b))
-        return -1;
+    ureg size_new = ptrdiff(h->table_end, h->table_start) * 2;
+    void* memnew = tmallocz(size_new);
+    if (!memnew) return -1;
     mdg_node** old = h->table_start;
     mdg_node** old_end = h->table_end;
-    h->table_start = (mdg_node**)b.start;
-    h->table_end = (mdg_node**)b.end;
-    ureg size = ptrdiff(b.end, b.start) / sizeof(mdg_node**);
-    h->size_bits = ulog2(size);
-    h->hash_mask = size - 1;
-    h->grow_on_elem_count = size / 4 * 3;
+    h->table_start = (mdg_node**)memnew;
+    h->table_end = (mdg_node**)ptradd(memnew, size_new);
+    ureg capacity_new = size_new / sizeof(mdg_node**);
+    h->size_bits = ulog2(capacity_new);
+    h->hash_mask = capacity_new - 1;
+    h->grow_on_elem_count = capacity_new / 4 * 3;
     mdg_node** z = old;
     h->elem_count = 0;
     while (z != old_end) {
@@ -180,8 +178,6 @@ int mdght_grow(mdght* h)
         }
         z++;
     }
-    b.start = old;
-    b.end = old_end;
-    tal_free(h->tal, &b);
+    tfree(old);
     return 0;
 }

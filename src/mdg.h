@@ -56,13 +56,12 @@ typedef struct mdg {
     evmap2 evm;
     atomic_pool node_pool;
     pool ident_pool;
-    thread_allocator* tal;
     mdght mdghts[2]; // PERF: might cause some false sharing
     mdg_new_node changes[MDG_MAX_CHANGES];
     ureg change_count;
 } mdg;
 
-int mdg_init(mdg* m, thread_allocator* tal);
+int mdg_init(mdg* m);
 void mdg_fin(mdg* m);
 
 mdght* mdg_start_read(mdg* m);

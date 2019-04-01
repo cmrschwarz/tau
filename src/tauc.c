@@ -11,9 +11,9 @@ int tauc_init()
     TAUC.worker_threads = NULL;
     int r = thread_context_init(&TAUC.main_thread_context);
     if (r) return ERR;
-    r = pool_init(&TAUC.permmem, &TAUC.main_thread_context.tal);
+    r = pool_init(&TAUC.permmem);
     if (!r) {
-        r = mdg_init(&TAUC.mdg, &TAUC.main_thread_context.tal);
+        r = mdg_init(&TAUC.mdg);
         if (r) pool_fin(&TAUC.permmem);
     }
     if (r) {
@@ -62,28 +62,19 @@ void thread_context_fin(thread_context* tc)
 {
     pool_fin(&tc->stagemem);
     pool_fin(&tc->permmem);
-    tal_fin(&tc->tal);
     error_log_fin(&tc->error_log);
 }
 
 int thread_context_init(thread_context* tc)
 {
-    int r = tal_init(&tc->tal);
+    int r = pool_init(&tc->permmem);
     if (r) {
-        master_error_log_report(
-            "thread setup error: allocator initialization failed");
-        return r;
-    }
-    r = pool_init(&tc->permmem, &tc->tal);
-    if (r) {
-        tal_fin(&tc->tal);
         master_error_log_report("thread setup error: memory allocation failed");
         return r;
     }
-    r = pool_init(&tc->stagemem, &tc->tal);
+    r = pool_init(&tc->stagemem);
     if (r) {
         pool_fin(&tc->permmem);
-        tal_fin(&tc->tal);
         master_error_log_report("thread setup error: memory allocation failed");
         return r;
     }

@@ -10,11 +10,11 @@ typedef struct atomic_pool {
     mutex mtx;
 } atomic_pool;
 
-static inline int atomic_pool_init(atomic_pool* p, thread_allocator* tal)
+static inline int atomic_pool_init(atomic_pool* p)
 {
     int r = mutex_init(&p->mtx);
     if (r) return r;
-    r = pool_init(&p->pool, tal);
+    r = pool_init(&p->pool);
     if (r) {
         mutex_fin(&p->mtx);
         return r;

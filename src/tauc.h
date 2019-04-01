@@ -20,7 +20,6 @@ typedef struct stage_1 {
 struct tauc;
 typedef struct thread_context {
     struct tauc* tauc;
-    thread_allocator tal;
     error_log error_log;
     pool permmem;
     pool stagemem;

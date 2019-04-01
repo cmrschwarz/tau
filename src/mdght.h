@@ -15,14 +15,13 @@ typedef struct mdght {
     ureg grow_on_elem_count;
     ureg hash_mask;
     ureg size_bits;
-    thread_allocator* tal;
 } mdght;
 
 ureg mdght_get_hash_str(mdg_node* parent, string str);
 ureg mdght_get_hash(mdg_node* parent, const char* str);
 
-int mdght_init(mdght* h, thread_allocator* tal);
-int mdght_init_with_capacity(mdght* h, ureg capacity, thread_allocator* tal);
+int mdght_init(mdght* h);
+int mdght_init_with_capacity(mdght* h, ureg capacity);
 void mdght_fin(mdght* h);
 
 mdg_node** mdght_insert(mdght* h, mdg_node* n);

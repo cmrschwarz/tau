@@ -18,20 +18,16 @@ void sbuffer_fin(sbuffer* sb)
     do {
         d = sb->last;
         sb->last = d->prev;
-        memblock b;
-        b.start = (void*)&d;
-        b.end = (void*)d->end;
-        tal_free(sb->tal, &b);
+        tfree(d);
     } while (sb->last != NULL);
 }
 
 sbuffer_segment* sbuffer_segment_create(sbuffer* sb, ureg size)
 {
-    memblock b;
-    if (tal_alloc(sb->tal, size, &b)) return NULL;
-    sbuffer_segment* seg = (sbuffer_segment*)b.start;
-    seg->end = (u8*)b.end;
-    seg->start = (u8*)b.start + sizeof(sbuffer_segment);
+    sbuffer_segment* seg = (sbuffer_segment*)tmalloc(size);
+    if (!seg) return NULL;
+    seg->end = (u8*)ptradd(seg, size);
+    seg->start = (u8*)(seg + 1);
     seg->head = seg->start;
     return seg;
 }

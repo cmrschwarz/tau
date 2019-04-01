@@ -62,14 +62,14 @@ static inline void aseglist_iterator_fin(aseglist_iterator* it)
 {
 }
 
-static inline aseglist_node* aseglist_node_new(thread_allocator* tal, ureg size)
+static inline aseglist_node* aseglist_node_new(ureg size)
 {
-    aseglist_node* n = tal_gpmalloc(tal, size);
+    aseglist_node* n = tmalloc(size);
     if (!n) return NULL;
     int r = atomic_sreg_init(
         &n->space, (size - sizeof(aseglist_node)) / sizeof(void*));
     if (r) {
-        allocator_gpfree(n);
+        tfree(n);
         return NULL;
     }
     *(ureg*)ptradd(n, ASEGLIST_ELEM_OFFSET) = size;
@@ -78,12 +78,12 @@ static inline aseglist_node* aseglist_node_new(thread_allocator* tal, ureg size)
 static inline void aseglist_node_free(aseglist_node* n)
 {
     atomic_sreg_fin(&n->space);
-    allocator_gpfree(n);
+    tfree(n);
 }
 
-static inline int aseglist_init(aseglist* l, thread_allocator* tal)
+static inline int aseglist_init(aseglist* l)
 {
-    aseglist_node* n = aseglist_node_new(tal, ASEGLIST_INITIAL_SIZE);
+    aseglist_node* n = aseglist_node_new(ASEGLIST_INITIAL_SIZE);
     if (!n) return ERR;
     int r = atomic_ptr_init(l, n);
     if (r) {
@@ -106,7 +106,7 @@ static inline void aseglist_fin(aseglist* l)
     } while (n != NULL);
 }
 
-static inline int aseglist_add(aseglist* l, thread_allocator* tal, void* data)
+static inline int aseglist_add(aseglist* l, void* data)
 {
     while (true) {
         aseglist_node* node = atomic_ptr_load(l);
@@ -119,7 +119,7 @@ static inline int aseglist_add(aseglist* l, thread_allocator* tal, void* data)
         else if (space == 0) {
             atomic_ptr_store(l, NULL);
             ureg size_new = (*(ureg*)ptradd(node, ASEGLIST_ELEM_OFFSET)) * 2;
-            aseglist_node* node_new = aseglist_node_new(tal, size_new);
+            aseglist_node* node_new = aseglist_node_new(size_new);
             if (!node_new) {
                 atomic_ptr_store(l, node);
                 return ERR;

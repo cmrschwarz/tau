@@ -15,19 +15,18 @@ int mdg_fin_partial(mdg* m, int i, int r)
     return r;
 }
 
-int mdg_init(mdg* m, thread_allocator* tal)
+int mdg_init(mdg* m)
 {
-    int r = pool_init(&m->ident_pool, tal);
+    int r = pool_init(&m->ident_pool);
     if (r) return r;
-    r = atomic_pool_init(&m->node_pool, tal);
+    r = atomic_pool_init(&m->node_pool);
     if (r) return mdg_fin_partial(m, 4, r);
     r = evmap2_init(&m->evm, MDG_MAX_CHANGES - MDG_MAX_CHANGES_PER_WRITE);
     if (r) return mdg_fin_partial(m, 3, r);
-    r = mdght_init(&m->mdghts[0], tal);
+    r = mdght_init(&m->mdghts[0]);
     if (r) return mdg_fin_partial(m, 2, r);
-    r = mdght_init(&m->mdghts[1], tal);
+    r = mdght_init(&m->mdghts[1]);
     if (r) return mdg_fin_partial(m, 1, r);
-    m->tal = tal;
     m->change_count = 0;
     return 0;
 }

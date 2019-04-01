@@ -19,12 +19,12 @@ int main(int argc, char** argv)
     return main_test(argc, argv);
 #endif
     int r;
-    r = allocator_init();
+    r = talloc_init();
     if (r) return EXIT_FAILURE;
 
     r = master_error_log_init();
     if (r) {
-        allocator_fin();
+        talloc_fin();
         return EXIT_FAILURE;
     }
 
@@ -41,7 +41,7 @@ int main(int argc, char** argv)
     }
 
     // terminate gracefully
-    allocator_fin();
+    talloc_fin();
     master_error_log_fin();
     return r ? EXIT_FAILURE : EXIT_SUCCESS;
 }

@@ -10,8 +10,7 @@ set(TAUC_SRCS
     ./src/utils/os/libc/atomics_libc.c
     ./src/utils/os/libc/allocator_libc.c
     ./src/utils/os/linux/threading_linux.c
-    ./src/utils/os/linux/allocator_linux_caching.c
-    ./src/utils/os/linux/allocator_linux.c
+    ./src/utils/os/libc/allocator_libc.c
     ./src/utils/os/linux/timing_linux.c
     ./src/utils/timing_common.c
     ./src/utils/pool.c

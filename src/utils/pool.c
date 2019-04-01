@@ -4,23 +4,17 @@
 #include "math_utils.h"
 static inline pool_segment* pool_alloc_segment(pool* p, ureg size)
 {
-    memblock b;
-    if (tal_alloc(p->tal, size, &b)) return NULL;
-    pool_segment* seg = (pool_segment*)b.start;
-    seg->head = (u8*)ptradd(seg, sizeof(pool_segment));
-    seg->end = (u8*)b.end;
+    pool_segment* seg = (pool_segment*)tmalloc(size);
+    seg->head = (u8*)(seg + 1);
+    seg->end = (u8*)ptradd(seg, size);
     return seg;
 }
 static inline void pool_free_segment(pool* p, pool_segment* s)
 {
-    memblock b;
-    b.start = (void*)s;
-    b.end = s->end;
-    tal_free(p->tal, &b);
+    tfree(s);
 }
-int pool_init(pool* p, thread_allocator* tal)
+int pool_init(pool* p)
 {
-    p->tal = tal;
     pool_segment* seg = pool_alloc_segment(p, PAGE_SIZE);
     if (!seg) return ERR;
     p->segments = seg;
