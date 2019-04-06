@@ -2,11 +2,10 @@
 #include "src_map.h"
 #include "utils/allocator.h"
 #include "utils/c_extensions.h"
+#include "utils/error.h"
 #include "utils/pool.h"
 #include "utils/threading.h"
 
-#define OK 0 // zero to allow error handling like if(res){errorhandling}
-#define ERR -1
 #define TAUC_MAX_GLOBAL_ERRORS 64
 typedef enum PACK_ENUM error_stage {
     ES_TOKENIZER,
