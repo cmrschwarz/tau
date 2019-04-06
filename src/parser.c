@@ -1,5 +1,6 @@
 #include "parser.h"
 #include "error_log.h"
+#include "file_map.h"
 #include "keywords.h"
 #include "print_ast.h"
 #include "tauc.h"
@@ -23,70 +24,70 @@ parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
 parse_error parse_braced_delimited_body(
     parser* p, ureg bstart, ureg bend, body* b, ast_node_type pt);
 static const unsigned char op_precedence[] = {
-    [OP_POST_INCREMENT] = 15,
-    [OP_POST_DECREMENT] = 15,
-    [OP_CALL] = 15,
-    [OP_ACCESS] = 15,
-    [OP_SCOPE_ACCESS] = 15,
-    [OP_MEMBER_ACCESS] = 15,
+        [OP_POST_INCREMENT] = 15,
+        [OP_POST_DECREMENT] = 15,
+        [OP_CALL] = 15,
+        [OP_ACCESS] = 15,
+        [OP_SCOPE_ACCESS] = 15,
+        [OP_MEMBER_ACCESS] = 15,
 
-    [OP_PRE_INCREMENT] = 14,
-    [OP_PRE_DECREMENT] = 14,
-    [OP_UNARY_PLUS] = 14,
-    [OP_UNARY_MINUS] = 14,
-    [OP_NOT] = 14,
-    [OP_BITWISE_NOT] = 14,
-    [OP_DEREF] = 14,
-    [OP_POINTER_OF] = 14,
-    [OP_REF_OF] = 14,
-    [OP_RREF_OF] = 14,
-    [OP_CLOSURE_BY_VALUE] = 14,
-    [OP_CONST] = 14,
+        [OP_PRE_INCREMENT] = 14,
+        [OP_PRE_DECREMENT] = 14,
+        [OP_UNARY_PLUS] = 14,
+        [OP_UNARY_MINUS] = 14,
+        [OP_NOT] = 14,
+        [OP_BITWISE_NOT] = 14,
+        [OP_DEREF] = 14,
+        [OP_POINTER_OF] = 14,
+        [OP_REF_OF] = 14,
+        [OP_RREF_OF] = 14,
+        [OP_CLOSURE_BY_VALUE] = 14,
+        [OP_CONST] = 14,
 
-    [OP_BITWISE_AND] = 13,
+        [OP_BITWISE_AND] = 13,
 
-    [OP_BITWISE_XOR] = 12,
+        [OP_BITWISE_XOR] = 12,
 
-    [OP_BITWISE_OR] = 11,
+        [OP_BITWISE_OR] = 11,
 
-    [OP_MUL] = 10,
-    [OP_DIV] = 10,
-    [OP_MOD] = 10,
+        [OP_MUL] = 10,
+        [OP_DIV] = 10,
+        [OP_MOD] = 10,
 
-    [OP_ADD] = 9,
-    [OP_SUB] = 9,
+        [OP_ADD] = 9,
+        [OP_SUB] = 9,
 
-    [OP_LSHIFT] = 8,
-    [OP_RSHIFT] = 8,
+        [OP_LSHIFT] = 8,
+        [OP_RSHIFT] = 8,
 
-    [OP_CAST] = 7,
+        [OP_CAST] = 7,
 
-    [OP_LESS_THAN] = 6,
-    [OP_LESS_THAN_OR_EQUAL] = 6,
-    [OP_GREATER_THAN] = 6,
-    [OP_GREATER_THAN_OR_EQUAL] = 6,
+        [OP_LESS_THAN] = 6,
+        [OP_LESS_THAN_OR_EQUAL] = 6,
+        [OP_GREATER_THAN] = 6,
+        [OP_GREATER_THAN_OR_EQUAL] = 6,
 
-    [OP_EQUAL] = 5,
-    [OP_UNEQAL] = 5,
+        [OP_EQUAL] = 5,
+        [OP_UNEQAL] = 5,
 
-    [OP_AND] = 4,
+        [OP_AND] = 4,
 
-    [OP_XOR] = 3,
+        [OP_XOR] = 3,
 
-    [OP_OR] = 2,
+        [OP_OR] = 2,
 
-    [OP_ASSIGN] = 1,
-    [OP_ADD_ASSIGN] = 1,
-    [OP_SUB_ASSIGN] = 1,
-    [OP_MUL_ASSIGN] = 1,
-    [OP_DIV_ASSIGN] = 1,
-    [OP_MOD_ASSIGN] = 1,
-    [OP_LSHIFT_ASSIGN] = 1,
-    [OP_RSHIFT_ASSIGN] = 1,
-    [OP_BITWISE_AND_ASSIGN] = 1,
-    [OP_BITWISE_XOR_ASSIGN] = 1,
-    [OP_BITWISE_OR_ASSIGN] = 1,
-    [OP_BITWISE_NOT_ASSIGN] = 1,
+        [OP_ASSIGN] = 1,
+        [OP_ADD_ASSIGN] = 1,
+        [OP_SUB_ASSIGN] = 1,
+        [OP_MUL_ASSIGN] = 1,
+        [OP_DIV_ASSIGN] = 1,
+        [OP_MOD_ASSIGN] = 1,
+        [OP_LSHIFT_ASSIGN] = 1,
+        [OP_RSHIFT_ASSIGN] = 1,
+        [OP_BITWISE_AND_ASSIGN] = 1,
+        [OP_BITWISE_XOR_ASSIGN] = 1,
+        [OP_BITWISE_OR_ASSIGN] = 1,
+        [OP_BITWISE_NOT_ASSIGN] = 1,
 
 };
 #define PREC_BASELINE 0
@@ -212,7 +213,8 @@ static inline void* alloc_perm(parser* p, ureg size)
 static inline char* alloc_string_ppool(parser* p, string s, pool* pool)
 {
     ureg len = string_len(s);
-    char* mem = (char*)alloc_ppool(p, align_size(len + 1, sizeof(void*)), pool);
+    char* mem = (char*)alloc_ppool(
+        p, ceil_to_mult_of_pow_two(len + 1, sizeof(void*)), pool);
     if (!mem) return NULL;
     memcpy(mem, s.start, len);
     mem[len] = '\0';
@@ -252,23 +254,23 @@ static inline void parser_error_3a(
 }
 char* get_parent_context_msg(parser* p)
 {
-    if (p->curr_scope == &p->root.scope_sealed.scope) return NULL;
+    if (p->curr_scope == &p->root.scope) return NULL;
     switch (p->curr_scope->symbol.stmt.type) {
-        case SCF_FUNC: return "in this function's body";
-        case SCF_FUNC_GENERIC: return "in this generic function's body";
+        case SC_FUNC: return "in this function's body";
+        case SC_FUNC_GENERIC: return "in this generic function's body";
         case SC_STRUCT: return "in this struct's body";
         case SC_STRUCT_GENERIC: return "in this generic struct's body";
         case SC_TRAIT: return "in this struct's body";
         case SC_TRAIT_GENERIC: return "in this generic struct's body";
-        case SCS_MODULE: return "in this module's body";
-        case SCS_MODULE_GENERIC: return "in this generic module's body";
-        case SCF_EXTEND: return "in this extend statement's body";
+        case SC_MODULE: return "in this module's body";
+        case SC_MODULE_GENERIC: return "in this generic module's body";
+        case SC_EXTEND: return "in this extend statement's body";
         case EXPR_WHILE:
         case EXPR_FOR:
         case EXPR_FOR_EACH:
         case EXPR_LOOP: return "in this loop's body";
         case EXPR_IF: return "in this if expressions's body";
-        case SCF_EXTEND_GENERIC:
+        case SC_EXTEND_GENERIC:
             return "in this generic extend statement's body";
         case EXPR_LAMBDA: return "in this lambda's body";
         default: panic("unexpected parent context");
@@ -331,10 +333,10 @@ int parser_init(parser* p, thread_context* tc)
         tk_fin(&p->tk);
         return r;
     }
-    p->root.scope_sealed.scope.symbol.name = NULL;
-    p->root.scope_sealed.scope.symbol.stmt.type = SCS_MODULE;
-    p->root.scope_sealed.scope.body.children = NULL;
-    p->root.scope_sealed.scope.symbol.stmt.next = NULL;
+    p->root.scope.symbol.name = NULL;
+    p->root.scope.symbol.stmt.type = SC_MODULE;
+    p->root.scope.body.children = NULL;
+    p->root.scope.symbol.stmt.next = NULL;
     p->curr_scope = (scope*)&p->root;
     return OK;
 }
@@ -1078,18 +1080,18 @@ parse_error parse_eof_delimited_body(parser* p, body* b, ast_node_type pt)
     p->parent_type = old_parent_type;
     return pe;
 }
-parse_error parser_parse_file(parser* p, file* f)
+parse_error parser_parse_file(parser* p, src_file* f)
 {
     // This is test code. it sucks
     int r = tk_open_file(&p->tk, f);
     if (r) return PE_TK_ERROR;
-    stmt* old_children = p->root.scope_sealed.scope.body.children;
-    parse_error pe = parse_eof_delimited_body(
-        p, &p->root.scope_sealed.scope.body, SCS_MODULE);
+    stmt* old_children = p->root.scope.body.children;
+    parse_error pe =
+        parse_eof_delimited_body(p, &p->root.scope.body, SC_MODULE);
     stmt** old_head = &old_children;
     while (*old_head) old_head = &(*old_head)->next;
-    *old_head = p->root.scope_sealed.scope.body.children;
-    p->root.scope_sealed.scope.body.children = old_children;
+    *old_head = p->root.scope.body.children;
+    p->root.scope.body.children = old_children;
     tk_close_file(&p->tk);
     return pe;
 }
@@ -1158,7 +1160,7 @@ parse_error stmt_flags_from_kw(
                     p, keyword_strings[KW_CONST], start, end);
                 return PE_UNEXPECTED_TOKEN;
             }
-            stmt_flags_set_const(f, true);
+            stmt_flags_set_const(f);
         } break;
         case KW_SEALED: {
             if (stmt_flags_get_sealed(*f) != false) {
@@ -1166,7 +1168,7 @@ parse_error stmt_flags_from_kw(
                     p, keyword_strings[KW_SEALED], start, end);
                 return PE_UNEXPECTED_TOKEN;
             }
-            stmt_flags_set_sealed(f, true);
+            stmt_flags_set_sealed(f);
         } break;
         case KW_VIRTUAL: {
             if (stmt_flags_get_virtual(*f) != false) {
@@ -1174,7 +1176,7 @@ parse_error stmt_flags_from_kw(
                     p, keyword_strings[KW_VIRTUAL], start, end);
                 return PE_UNEXPECTED_TOKEN;
             }
-            stmt_flags_set_virtual(f, true);
+            stmt_flags_set_virtual(f);
         } break;
         case KW_STATIC: {
             if (stmt_flags_get_static(*f) != false) {
@@ -1182,7 +1184,7 @@ parse_error stmt_flags_from_kw(
                     p, keyword_strings[KW_STATIC], start, end);
                 return PE_UNEXPECTED_TOKEN;
             }
-            stmt_flags_set_static(f, true);
+            stmt_flags_set_static(f);
         } break;
         default: {
             return PE_EOEX;
@@ -1323,27 +1325,27 @@ parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     if (!name) return PE_INSANE;
     tk_void(&p->tk);
     PEEK(p, t);
-    scope_full* scf;
+    scope* sc;
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        scf = alloc_perm(p, sizeof(scf_func_generic));
-        if (!scf) return PE_INSANE;
+        sc = alloc_perm(p, sizeof(sc_func_generic));
+        if (!sc) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((scf_func_generic*)scf)->generic_params, true, start, decl_end,
+            p, &((sc_func_generic*)sc)->generic_params, true, start, decl_end,
             "in this function declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        scf = alloc_perm(p, sizeof(scf_func));
-        if (!scf) return PE_INSANE;
+        sc = alloc_perm(p, sizeof(sc_func));
+        if (!sc) return PE_INSANE;
     }
-    scf->scope.symbol.name = name;
-    scf->parent = p->curr_scope;
-    pe = symbol_fill_srange(p, &scf->scope.symbol, start, decl_end);
+    sc->symbol.name = name;
+    sc->parent = p->curr_scope;
+    pe = symbol_fill_srange(p, &sc->symbol, start, decl_end);
     if (pe) return pe;
     if (t->type != TT_PAREN_OPEN) {
         parser_error_2a(
@@ -1354,14 +1356,14 @@ parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     }
     tk_void(&p->tk);
     sym_param_decl** pd =
-        generic ? &((scf_func_generic*)scf)->params : &((scf_func*)scf)->params;
+        generic ? &((sc_func_generic*)sc)->params : &((sc_func*)sc)->params;
     pe = parse_param_list(
         p, pd, false, start, decl_end, "in this function declaration");
     if (pe) return pe;
-    scf->scope.symbol.stmt.type = generic ? SCF_FUNC_GENERIC : SCF_FUNC;
-    scf->scope.symbol.stmt.flags = flags;
-    *n = (stmt*)scf;
-    return parse_scope(p, &scf->scope);
+    sc->symbol.stmt.type = generic ? SC_FUNC_GENERIC : SC_FUNC;
+    sc->symbol.stmt.flags = flags;
+    *n = (stmt*)sc;
+    return parse_scope(p, sc);
 }
 parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
@@ -1427,24 +1429,24 @@ parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        md = alloc_perm(p, sizeof(scs_module_generic));
+        md = alloc_perm(p, sizeof(sc_module_generic));
         if (!md) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((scs_module_generic*)md)->generic_params, true, start,
-            decl_end, "in this module declaration");
+            p, &((sc_module_generic*)md)->generic_params, true, start, decl_end,
+            "in this module declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        md = alloc_perm(p, sizeof(scs_module));
+        md = alloc_perm(p, sizeof(sc_module));
         if (!md) return PE_INSANE;
     }
     md->symbol.name = name;
     pe = symbol_fill_srange(p, &md->symbol, start, decl_end);
     if (pe) return pe;
-    md->symbol.stmt.type = generic ? SCS_MODULE_GENERIC : SCS_MODULE;
+    md->symbol.stmt.type = generic ? SC_MODULE_GENERIC : SC_MODULE;
     md->symbol.stmt.flags = flags;
     *n = (stmt*)md;
     return parse_eof_delimited_body(p, &md->body, md->symbol.stmt.type);
@@ -1466,37 +1468,37 @@ parse_error parse_extend_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     if (!name) return PE_INSANE;
     tk_void(&p->tk);
     PEEK(p, t);
-    scope_full* scf;
+    scope* sc;
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        scf = alloc_perm(p, sizeof(scf_extend_generic));
-        if (!scf) return PE_INSANE;
+        sc = alloc_perm(p, sizeof(sc_extend_generic));
+        if (!sc) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((scf_extend_generic*)scf)->generic_params, true, start,
-            decl_end, "in this extend declaration");
+            p, &((sc_extend_generic*)sc)->generic_params, true, start, decl_end,
+            "in this extend declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        scf = alloc_perm(p, sizeof(scf_extend));
-        if (!scf) return PE_INSANE;
+        sc = alloc_perm(p, sizeof(sc_extend));
+        if (!sc) return PE_INSANE;
     }
-    scf->scope.symbol.name = name;
-    pe = symbol_fill_srange(p, &scf->scope.symbol, start, decl_end);
+    sc->symbol.name = name;
+    pe = symbol_fill_srange(p, &sc->symbol, start, decl_end);
     if (pe) return pe;
-    scf->scope.symbol.stmt.type = generic ? SCF_EXTEND_GENERIC : SCF_EXTEND;
-    scf->scope.symbol.stmt.flags = flags;
-    scf->parent = p->curr_scope;
+    sc->symbol.stmt.type = generic ? SC_EXTEND_GENERIC : SC_EXTEND;
+    sc->symbol.stmt.flags = flags;
+    sc->parent = p->curr_scope;
     PEEK(p, t);
     if (t->type == TT_SEMICOLON) {
         if (p->curr_scope->body.children == NULL) {
             tk_consume(&p->tk);
             pe = parse_eof_delimited_body(
-                p, &scf->scope.body, generic ? SCF_EXTEND_GENERIC : SCF_EXTEND);
-            *n = (stmt*)scf;
+                p, &sc->body, generic ? SC_EXTEND_GENERIC : SC_EXTEND);
+            *n = (stmt*)sc;
             return pe;
         }
         else {
@@ -1511,8 +1513,8 @@ parse_error parse_extend_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
             return PE_HANDLED;
         }
     }
-    *n = (stmt*)scf;
-    return parse_body(p, &scf->scope.body, scf->scope.symbol.stmt.type);
+    *n = (stmt*)sc;
+    return parse_body(p, &sc->body, sc->symbol.stmt.type);
 }
 parse_error parse_trait_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
@@ -1560,8 +1562,8 @@ parse_error parse_trait_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 bool body_supports_exprs(ast_node_type pt)
 {
     switch (pt) {
-        case SCF_FUNC:
-        case SCF_FUNC_GENERIC:
+        case SC_FUNC:
+        case SC_FUNC_GENERIC:
         case EXPR_LOOP:
         case EXPR_WHILE:
         case EXPR_FOR:

@@ -1,86 +1,77 @@
 #include "tauc.h"
 #include "error_log.h"
+#include "file_map.h"
 #include "print_ast.h"
 #include "utils/allocator.h"
 
 struct tauc TAUC;
 
+static inline int tauc_partial_fin(int r, int i)
+{
+    switch (i) {
+        case 4: file_map_fin(&TAUC.file_map);
+        case 3: mdg_fin(&TAUC.mdg);
+        case 2: pool_fin(&TAUC.permmem);
+        case 1: thread_context_fin(&TAUC.main_thread_context);
+        case 0: break;
+    }
+    if (r)
+        master_error_log_report(
+            "fatal initialization error: memory allocation failed");
+    return r;
+}
 int tauc_init()
 {
     TAUC.worker_threads = NULL;
     int r = thread_context_init(&TAUC.main_thread_context);
-    if (r) return ERR;
-    r = pool_init(&TAUC.permmem, &TAUC.main_thread_context.tal);
-    if (r) {
-        thread_context_fin(&TAUC.main_thread_context);
-        master_error_log_report("thread setup error: memory allocation failed");
-        return ERR;
-    }
+    if (r) return tauc_partial_fin(r, 0);
+    r = pool_init(&TAUC.permmem);
+    if (r) return tauc_partial_fin(r, 1);
+    r = mdg_init(&TAUC.mdg);
+    if (r) return tauc_partial_fin(r, 2);
+    r = file_map_init(&TAUC.file_map);
+    if (r) return tauc_partial_fin(r, 3);
     return OK;
 }
-
-int test_tokenizer(file* f)
+void tauc_fin()
 {
-    if (tk_open_file(&TAUC.main_thread_context.stage.s1.p.tk, f)) return ERR;
-    token* t;
-    do {
-        t = tk_consume(&TAUC.main_thread_context.stage.s1.p.tk);
-        token_debug_print(f, t);
-    } while (t != NULL && t->type != TT_EOF);
-    return tk_close_file(&TAUC.main_thread_context.stage.s1.p.tk);
+    tauc_partial_fin(4, 0);
 }
+
 int tauc_run(int argc, char** argv)
 {
     int r = parser_init(
         &TAUC.main_thread_context.stage.s1.p, &TAUC.main_thread_context);
     if (r) return ERR;
-    file* f = (file*)pool_alloc(&TAUC.permmem, sizeof(file));
-    if (!f) return -1;
-    if (file_init(
-            f, &TAUC.main_thread_context,
-            "/media/nas_mirror/projects/tau/test/test.tau"))
-        return ERR;
-    if (parser_parse_file(&TAUC.main_thread_context.stage.s1.p, f)) return ERR;
-    print_astn((stmt*)&TAUC.main_thread_context.stage.s1.p.root, 0);
+    if (argc < 2) return 0;
+    for (int i = 1; i < argc; i++) {
+        src_file* f = file_map_get_file_from_path(
+            &TAUC.file_map, string_from_cstr(argv[i]));
+        if (!f) return ERR;
+        if (parser_parse_file(&TAUC.main_thread_context.stage.s1.p, f))
+            return ERR;
+        print_astn((stmt*)&TAUC.main_thread_context.stage.s1.p.root, 0);
+    }
     return OK;
-}
-
-void tauc_fin_temps()
-{
-}
-
-void tauc_fin()
-{
-    pool_fin(&TAUC.permmem);
-    thread_context_fin(&TAUC.main_thread_context);
 }
 
 void thread_context_fin(thread_context* tc)
 {
     pool_fin(&tc->stagemem);
     pool_fin(&tc->permmem);
-    tal_fin(&tc->tal);
     error_log_fin(&tc->error_log);
 }
 
 int thread_context_init(thread_context* tc)
 {
-    int r = tal_init(&tc->tal);
+    int r = pool_init(&tc->permmem);
     if (r) {
-        master_error_log_report(
-            "thread setup error: allocator initialization failed");
-        return r;
-    }
-    r = pool_init(&tc->permmem, &tc->tal);
-    if (r) {
-        tal_fin(&tc->tal);
         master_error_log_report("thread setup error: memory allocation failed");
         return r;
     }
-    r = pool_init(&tc->stagemem, &tc->tal);
+    r = pool_init(&tc->stagemem);
     if (r) {
         pool_fin(&tc->permmem);
-        tal_fin(&tc->tal);
         master_error_log_report("thread setup error: memory allocation failed");
         return r;
     }

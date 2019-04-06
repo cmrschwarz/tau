@@ -1,4 +1,5 @@
 #include "error_log.h"
+#include "file_map.h"
 #include "math.h"
 #include "stdio.h"
 #include "tauc.h"
@@ -96,7 +97,7 @@ void* error_log_alloc(error_log* el, ureg size)
 }
 static inline void error_fill(
     error* e, error_stage stage, bool warn, error_type type, char* message,
-    file* file, ureg position)
+    src_file* file, ureg position)
 {
     e->stage = stage;
     e->warn = warn;
@@ -114,7 +115,7 @@ error_fill_annot(error_annotation* ea, ureg start, ureg end, char* msg)
 }
 
 void error_log_report_simple(
-    error_log* el, error_stage stage, bool warn, char* message, file* file,
+    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
     ureg position)
 {
     error* e = (error*)error_log_alloc(el, sizeof(error));
@@ -124,7 +125,7 @@ void error_log_report_simple(
 }
 
 void error_log_report_annotated(
-    error_log* el, error_stage stage, bool warn, char* message, file* file,
+    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
     ureg start, ureg end, char* annotation)
 {
     error_annotated* e =
@@ -136,7 +137,7 @@ void error_log_report_annotated(
     error_log_report(el, (error*)e);
 }
 void error_log_report_annotated_twice(
-    error_log* el, error_stage stage, bool warn, char* message, file* file,
+    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
     ureg start1, ureg end1, char* annotation1, ureg start2, ureg end2,
     char* annotation2)
 {
@@ -153,7 +154,7 @@ void error_log_report_annotated_twice(
     error_log_report(el, (error*)e);
 }
 void error_log_report_annotated_thrice(
-    error_log* el, error_stage stage, bool warn, char* message, file* file,
+    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
     ureg start1, ureg end1, char* annotation1, ureg start2, ureg end2,
     char* annotation2, ureg start3, ureg end3, char* annotation3)
 {
@@ -212,14 +213,15 @@ ureg get_line_nr_offset(ureg max_line)
         return 1;
     }
 }
-int print_filepath(ureg line_nr_offset, src_pos pos, file* file)
+int print_filepath(ureg line_nr_offset, src_pos pos, src_file* file)
 {
     for (ureg r = 0; r < line_nr_offset; r++) pe(" ");
-    pectc(ANSICOLOR_BLUE, "==>", ANSICOLOR_CLEAR);
+    pectc(ANSICOLOR_BLUE, "==> ", ANSICOLOR_CLEAR);
+    src_file_print_path(file, true);
     // TODO: the column index is currently based on the number of byte,
     // not the number of unicode code points, but tools expect the latter
     fprintf(
-        stderr, " %s:%llu:%llu\n", file->path,
+        stderr, ":%llu:%llu\n",
         pos.line + 1, // make indices start at one
         pos.column + 1);
     return OK;
@@ -276,8 +278,8 @@ void print_until(
 }
 // TODO: allow putting annotation above with  vvv/,,, error here or
 int print_src_line(
-    FILE* fh, file* file, ureg line, ureg max_line_length, err_point* ep_start,
-    err_point* ep_end)
+    FILE* fh, src_file* file, ureg line, ureg max_line_length,
+    err_point* ep_start, err_point* ep_end)
 {
     pec(ANSICOLOR_BOLD ANSICOLOR_BLUE);
     fprintf(stderr, "%llu", line + 1);
@@ -381,9 +383,8 @@ int print_src_line(
             ureg after_tab = bpos;
             print_until(&bpos, &next, buffer, &after_tab, &length_diff);
             switch (mode) {
-                case 3:
-                    (ep_pos + 1)->length_diff_start = length_diff;
-                    // fallthrough
+                case 3: (ep_pos + 1)->length_diff_start = length_diff;
+                // fallthrough
                 case 0:
                     ep_pos->length_diff_start = length_diff;
                     pec(ep_pos->squigly_color);
@@ -556,7 +557,7 @@ ureg extend_em(
         }
     }
 }
-int report_error(error* e, FILE* fh, file* file)
+int report_error(error* e, FILE* fh, src_file* file)
 {
     static err_point err_points[ERR_POINT_BUFFER_SIZE];
     pec(ANSICOLOR_BOLD);
@@ -693,11 +694,11 @@ int printCriticalError(char* msg)
     pe("\n");
     return OK;
 }
-int printFileIOError(char* filepath)
+int printFileIOError(src_file* f)
 {
     pectc(ANSICOLOR_RED ANSICOLOR_BOLD, "reporting error: ", ANSICOLOR_CLEAR);
     pe("file IO error prevents giving error context in '");
-    pe(filepath);
+    src_file_print_path(f, true);
     pe("'\n");
     return OK;
 }
@@ -730,7 +731,7 @@ void master_error_log_unwind(pool* p)
         }
         // stable, in place sorting
         errors_grail_sort(errors, err_count);
-        file* file = NULL;
+        src_file* file = NULL;
         FILE* fh = NULL;
         for (error** e = errors; e != errors + err_count; e++) {
             if (file != (*e)->file) {
@@ -740,14 +741,25 @@ void master_error_log_unwind(pool* p)
                 }
                 file = (*e)->file;
                 if (file != NULL) {
-                    fh = fopen(file->path, "r");
+                    char pathbuff[256];
+                    ureg pathlen = src_file_get_path_len(file);
+                    char* path;
+                    if (pathlen < 256) {
+                        src_file_write_path(file, pathbuff);
+                        path = pathbuff;
+                    }
+                    else {
+                        path = tmalloc(pathlen + 1);
+                        src_file_write_path(file, pathbuff);
+                    }
+                    fh = fopen(path, "r");
                     if (fh == NULL) {
-                        printFileIOError(file->path);
+                        printFileIOError(file);
                     }
                 }
             }
             if (report_error(*e, fh, file)) {
-                printFileIOError(file->path);
+                printFileIOError(file);
                 if (fh) {
                     fclose(fh);
                     fh = NULL;
@@ -797,7 +809,8 @@ char* error_log_cat_strings(error_log* e, ureg count, char** strs)
     for (ureg i = 0; i < count; i++) {
         len += strlen(strs[i]);
     }
-    char* str = (char*)error_log_alloc(e, align_size(len + 1, REG_BYTES));
+    char* str =
+        (char*)error_log_alloc(e, ceil_to_mult_of_pow_two(len + 1, REG_BYTES));
     if (!str) return NULL;
     char* d = str;
     for (ureg i = 0; i < count; i++) {

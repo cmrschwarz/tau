@@ -3,21 +3,18 @@
 #include "math_utils.h"
 #include <memory.h>
 
-int dbuffer_init_with_capacity(
-    dbuffer* db, thread_allocator* tal, ureg capacity)
+int dbuffer_init_with_capacity(dbuffer* db, ureg capacity)
 {
-    db->tal = tal;
-    memblock b;
-    if (tal_alloc(tal, capacity, &b)) return -1;
-    db->start = b.start;
-    db->head = b.start;
-    db->end = b.end;
+    db->start = tmalloc(capacity);
+    if (!db->start) return -1;
+    db->head = db->start;
+    db->end = ptradd(db->start, capacity);
     return 0;
 }
 
-int dbuffer_init(dbuffer* db, thread_allocator* tal)
+int dbuffer_init(dbuffer* db)
 {
-    return dbuffer_init_with_capacity(db, tal, allocator_get_segment_size());
+    return dbuffer_init_with_capacity(db, PAGE_SIZE);
 }
 bool dbuffer_is_emtpy(dbuffer* db)
 {
@@ -25,10 +22,7 @@ bool dbuffer_is_emtpy(dbuffer* db)
 }
 void dbuffer_fin(dbuffer* db)
 {
-    memblock b;
-    b.start = db->start;
-    b.end = db->end;
-    tal_free(db->tal, &b);
+    tfree(db->start);
 }
 ureg dbuffer_get_size(dbuffer* db)
 {
@@ -47,19 +41,17 @@ ureg dbuffer_get_free_space(dbuffer* db)
 
 int dbuffer_set_capacity(dbuffer* db, ureg capacity)
 {
-    memblock b;
-    b.start = db->start;
-    b.end = db->end;
     ureg filled_space = dbuffer_get_size(db);
-    if (tal_realloc(db->tal, filled_space, capacity, &b)) return -1;
-    if (ptrdiff(b.end, b.start) >= filled_space) {
-        db->head = (u8*)b.start + filled_space;
+    void* buff_new = trealloc(db->start, filled_space, capacity);
+    if (!buff_new) return -1;
+    db->start = buff_new;
+    db->end = ptradd(buff_new, capacity);
+    if (capacity >= filled_space) {
+        db->head = db->start + filled_space;
     }
     else {
-        db->head = b.end;
+        db->head = db->start + capacity;
     }
-    db->end = b.end;
-    db->start = b.start;
     return 0;
 }
 

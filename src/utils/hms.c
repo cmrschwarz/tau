@@ -9,8 +9,8 @@ static const char* TOMBSTONE_KEY = "";
 
 static inline ureg hms_hash_pos(hms* h, const char* key)
 {
-    // this uses the FNV-1a algorithm
-    // TODO: search for a better one :D
+// this uses the FNV-1a algorithm
+// TODO: search for a better one :D
 #if UREG_MAX == U64_MAX
     ureg hash = 14695981039346656037ULL;
     const ureg prime = 1099511628211ULL;
@@ -28,35 +28,28 @@ static inline ureg hms_hash_pos(hms* h, const char* key)
     return hash;
 }
 
-int hms_init_with_capacity(hms* h, ureg capacity, thread_allocator* tal)
+int hms_init_with_capacity(hms* h, ureg capacity)
 {
-    memblock b;
-    // THINK whether allocating without z and then zeroing the keys is faster
-    if (tal_allocz(tal, capacity * sizeof(hms_node), &b)) return -1;
-    h->tal = tal;
+    ureg size = capacity * sizeof(hms_node);
+    h->map = tmallocz(size);
+    if (!h->map) return -1;
     // this limits the "used size" to a power of 2
     // elements after that size will be used for colliding elements,
     // but the hash function will not give out their indices directly
     h->size_bits = ulog2(capacity);
-    h->map = (hms_node*)b.start;
-    h->map_end = (hms_node*)b.end;
+    h->map_end = (hms_node*)ptradd(h->map, size);
     h->hash_mask = (1 << h->size_bits) - 1;
     h->elem_count = 0;
     h->grow_on_elem_count = capacity / 4 * 3;
     return 0;
 }
-int hms_init(hms* h, thread_allocator* tal)
+int hms_init(hms* h)
 {
-    return hms_init_with_capacity(
-        h, allocator_get_segment_size() / sizeof(hms_node), tal);
+    return hms_init_with_capacity(h, PAGE_SIZE / sizeof(hms_node));
 }
 void hms_fin(hms* h)
 {
-    memblock b;
-    b.start = h->map;
-    b.end = h->map_end;
-    tal_free(h->tal, &b);
-    ;
+    tfree(h->map);
 }
 int hms_set(hms* h, const char* key, void* value)
 {
@@ -127,16 +120,16 @@ void* hms_remove(hms* h, const char* key)
 
 int hms_grow(hms* h)
 {
-    memblock b;
-    if (tal_alloc(h->tal, ptrdiff(h->map_end, h->map) * 2, &b)) return -1;
+    ureg size_new = ptrdiff(h->map_end, h->map) * 2;
+    ureg capacity_new = size_new / sizeof(hms_node);
     hms_node* old = h->map;
     hms_node* old_end = h->map_end;
-    h->map = (hms_node*)b.start;
-    h->map_end = (hms_node*)b.end;
-    ureg size = ptrdiff(b.end, b.start);
-    h->size_bits = ulog2(size);
-    h->hash_mask = size - 1;
-    h->grow_on_elem_count = size / 4 * 3;
+    h->map = (hms_node*)tmalloc(size_new);
+    if (!h->map) return -1;
+    h->map_end = (hms_node*)ptradd(h->map, size_new);
+    h->size_bits = ulog2(capacity_new);
+    h->hash_mask = size_new - 1;
+    h->grow_on_elem_count = capacity_new / 4 * 3;
     hms_node* z = h->map;
     while (z != h->map_end) {
         z->key = NULL;
@@ -156,8 +149,6 @@ int hms_grow(hms* h)
         }
         z++;
     }
-    b.start = old;
-    b.end = old_end;
-    tal_free(h->tal, &b);
+    tfree(old);
     return 0;
 }

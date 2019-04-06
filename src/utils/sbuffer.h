@@ -13,7 +13,6 @@ typedef struct sbuffer_segment {
 typedef struct sbuffer {
     sbuffer_segment* first;
     sbuffer_segment* last;
-    thread_allocator* tal;
 } sbuffer;
 
 int sbuffer_init(sbuffer* sb, ureg pages_per_segment);

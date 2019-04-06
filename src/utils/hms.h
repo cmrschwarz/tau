@@ -15,12 +15,11 @@ typedef struct hms_t {
     ureg grow_on_elem_count;
     ureg hash_mask;
     ureg size_bits;
-    thread_allocator* tal;
 } hms;
 
 ureg hms_hashpos(hms* h, const char* key);
-int hms_init(hms* h, thread_allocator* tal);
-int hms_init_with_capacity(hms* h, ureg n, thread_allocator* tal);
+int hms_init(hms* h);
+int hms_init_with_capacity(hms* h, ureg n);
 void hms_fin(hms* h);
 int hms_set(hms* h, const char* key, void* value);
 void* hms_get(hms* h, const char* key);

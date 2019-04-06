@@ -1,5 +1,7 @@
 #include "token.h"
+#include "file_map.h"
 #include "stdio.h"
+
 const char* token_strings[255] = {
     [TT_IF] = "if",
     [TT_ELSE] = "else",
@@ -78,7 +80,7 @@ const char* token_strings[255] = {
     [TT_STRING] = 0,
     [TT_EOF] = "EOF",
 };
-void token_debug_print(file* f, token* t)
+void token_debug_print(src_file* f, token* t)
 {
     if (t == NULL) {
         puts("ERROR");

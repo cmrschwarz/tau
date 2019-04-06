@@ -1,5 +1,6 @@
 #include "tokenizer.h"
 #include "error_log.h"
+#include "file_map.h"
 #include "tauc.h"
 #include "utils/math_utils.h"
 #include "utils/panic.h"
@@ -105,16 +106,16 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding)
         size_to_keep += ptrdiff(tk->file_buffer_pos, *holding);
     }
     ureg buff_size = ptrdiff(tk->file_buffer_end, tk->file_buffer_start);
-    memblock b;
-    bool realloc = buff_size - size_to_keep < TK_MIN_FILE_READ_SIZE;
-    if (realloc) {
+    void* old_buff = NULL;
+    if (buff_size - size_to_keep < TK_MIN_FILE_READ_SIZE) {
         buff_size *= 2;
-        if (tal_alloc(&tk->tc->tal, buff_size, &b)) {
+        old_buff = tk->file_buffer_start;
+        tk->file_buffer_start = tmalloc(buff_size);
+        if (!tk->file_buffer_start) {
             error_log_report_allocation_failiure(&tk->tc->error_log);
             return -1;
         }
-        ptrswap(&b.start, (void**)&tk->file_buffer_start);
-        ptrswap(&b.end, (void**)&tk->file_buffer_end);
+        tk->file_buffer_end = ptradd(tk->file_buffer_start, buff_size);
     }
     tk->file_buffer_head = tk->file_buffer_start;
     t = tk->loaded_tokens_start;
@@ -132,8 +133,8 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding)
         *holding = tk->file_buffer_head;
         tk->file_buffer_head = (char*)ptradd(tk->file_buffer_head, slen);
     }
-    if (realloc) {
-        tal_free(&tk->tc->tal, &b);
+    if (old_buff) {
+        tfree(old_buff);
     }
     tk->file_buffer_pos = tk->file_buffer_head;
     ureg siz = fread(
@@ -191,12 +192,11 @@ static inline char tk_consume_char(tokenizer* tk)
 
 int tk_init(tokenizer* tk, thread_context* tc)
 {
-    memblock b;
     tk->tc = tc;
-    if (tal_alloc(&tk->tc->tal, allocator_get_segment_size() * 8, &b))
-        return -1;
-    tk->file_buffer_start = (char*)b.start;
-    tk->file_buffer_end = (char*)b.end;
+    ureg size = PAGE_SIZE * 8;
+    tk->file_buffer_start = tmalloc(size);
+    if (!tk->file_buffer_start) return -1;
+    tk->file_buffer_end = ptradd(tk->file_buffer_start, size);
     tk->token_buffer_end = tk->token_buffer + TK_TOKEN_BUFFER_SIZE;
     tk->loaded_tokens_start = tk->token_buffer; // head is set on open_file
 
@@ -204,14 +204,11 @@ int tk_init(tokenizer* tk, thread_context* tc)
 }
 void tk_fin(tokenizer* tk)
 {
-    memblock b;
-    b.start = tk->file_buffer_start;
-    b.end = tk->file_buffer_end;
-    tal_free(&tk->tc->tal, &b);
+    tfree(tk->file_buffer_start);
     if (tk->file_stream != NULL) tk_close_file(tk);
 }
 
-int tk_open_stream(tokenizer* tk, file* f, FILE* stream)
+int tk_open_stream(tokenizer* tk, src_file* f, FILE* stream)
 {
     tk->file = f;
     tk->file_stream = stream;
@@ -227,9 +224,24 @@ int tk_open_stream(tokenizer* tk, file* f, FILE* stream)
     tk->status = TK_STATUS_OK;
     return OK;
 }
-int tk_open_file(tokenizer* tk, file* f)
+int tk_open_file(tokenizer* tk, src_file* f)
 {
-    FILE* fs = fopen(f->path, "r");
+    if (src_file_start_parse(f, tk->tc)) {
+        return ERR;
+    }
+    char pathbuff[256];
+    ureg pathlen = src_file_get_path_len(f);
+    char* path;
+    if (pathlen < 256) {
+        src_file_write_path(f, pathbuff);
+        path = pathbuff;
+    }
+    else {
+        path = tmalloc(pathlen + 1);
+        src_file_write_path(f, pathbuff);
+    }
+    FILE* fs = fopen(path, "r");
+    if (path != pathbuff) tfree(path);
     if (fs == NULL) {
         return ERR;
     }

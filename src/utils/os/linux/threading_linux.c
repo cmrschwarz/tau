@@ -2,10 +2,10 @@
 #include "../../threading.h"
 #if OS_LINUX
 
-#    include <pthread.h>
-#    include <stdio.h>
-#    include <time.h>
-#    include <unistd.h>
+#include <pthread.h>
+#include <stdio.h>
+#include <time.h>
+#include <unistd.h>
 int mutex_init(mutex* m)
 {
     return pthread_mutex_init(m, NULL);
@@ -14,9 +14,9 @@ bool mutex_try_lock(mutex* m)
 {
     return pthread_mutex_trylock(m) == 0;
 }
-int mutex_lock(mutex* m)
+void mutex_lock(mutex* m)
 {
-    return pthread_mutex_lock(m);
+    if (pthread_mutex_lock(m)) panic("mutex lock failed");
 }
 void mutex_unlock(mutex* m)
 {

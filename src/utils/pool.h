@@ -9,12 +9,10 @@ typedef struct pool_segment {
 } pool_segment;
 
 typedef struct pool {
-    struct pool* next;
-    thread_allocator* tal;
     pool_segment* segments;
 } pool;
 
-int pool_init(pool* p, thread_allocator* tal);
+int pool_init(pool* p);
 void pool_fin(pool* p);
 void* pool_alloc(pool* p, ureg size);
 void pool_clear(pool* p);

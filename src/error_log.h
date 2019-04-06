@@ -2,11 +2,10 @@
 #include "src_map.h"
 #include "utils/allocator.h"
 #include "utils/c_extensions.h"
+#include "utils/error.h"
 #include "utils/pool.h"
 #include "utils/threading.h"
 
-#define OK 0 // zero to allow error handling like if(res){errorhandling}
-#define ERR -1
 #define TAUC_MAX_GLOBAL_ERRORS 64
 typedef enum PACK_ENUM error_stage {
     ES_TOKENIZER,
@@ -28,7 +27,7 @@ typedef struct error {
     bool warn;
     error_stage stage;
     error_type type;
-    file* file;
+    src_file* file;
     ureg position;
     char* message;
 } error;
@@ -83,17 +82,17 @@ void error_log_init(error_log* el, pool* error_mem_pool);
 void error_log_fin(error_log* el);
 bool error_log_sane_state(error_log* el);
 void error_log_report_simple(
-    error_log* el, error_stage stage, bool warn, char* message, file* file,
+    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
     ureg position);
 void error_log_report_annotated(
-    error_log* el, error_stage stage, bool warn, char* message, file* file,
+    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
     ureg start, ureg end, char* annotation);
 void error_log_report_annotated_twice(
-    error_log* el, error_stage stage, bool warn, char* message, file* file,
+    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
     ureg start1, ureg end1, char* annotation1, ureg start2, ureg end2,
     char* annotation2);
 void error_log_report_annotated_thrice(
-    error_log* el, error_stage stage, bool warn, char* message, file* file,
+    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
     ureg start1, ureg end1, char* annotation1, ureg start2, ureg end2,
     char* annotation2, ureg start3, ureg end3, char* annotation3);
 

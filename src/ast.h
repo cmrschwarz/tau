@@ -3,7 +3,9 @@
 #include "utils/c_extensions.h"
 
 typedef u8 stmt_flags;
+typedef u8 err_flags;
 #define ASTN_FLAGS_DEFAULT 0
+#define ERR_FLAGS_DEFAULT 0
 
 typedef enum PACK_ENUM access_modifier {
     AM_UNSPECIFIED = 0,
@@ -13,13 +15,13 @@ typedef enum PACK_ENUM access_modifier {
 } access_modifier;
 
 typedef enum PACK_ENUM ast_node_type {
-    SCS_MODULE,
-    SCS_MODULE_GENERIC,
+    SC_MODULE,
+    SC_MODULE_GENERIC,
 
-    SCF_EXTEND,
-    SCF_EXTEND_GENERIC,
-    SCF_FUNC,
-    SCF_FUNC_GENERIC,
+    SC_EXTEND,
+    SC_EXTEND_GENERIC,
+    SC_FUNC,
+    SC_FUNC_GENERIC,
 
     SC_STRUCT,
     SC_STRUCT_GENERIC,
@@ -140,6 +142,7 @@ typedef struct expr {
 typedef struct stmt {
     ast_node_type type;
     stmt_flags flags;
+    err_flags eflags;
     struct stmt* next;
 } stmt;
 
@@ -157,20 +160,11 @@ typedef struct body {
 typedef struct scope {
     symbol symbol;
     body body;
+    struct scope* parent;
+    struct scope* preprocessor;
+    ast_node** imports;
+    ast_node** includes;
 } scope;
-
-typedef struct scope_full {
-    scope scope;
-    scope* parent;
-    ast_node** imports;
-    ast_node** includes;
-} scope_full;
-
-typedef struct scope_sealed {
-    scope scope;
-    ast_node** imports;
-    ast_node** includes;
-} scope_sealed;
 
 typedef struct expr_named {
     expr expr;
@@ -273,16 +267,16 @@ typedef struct sym_param_decl {
     expr* default_value;
 } sym_param_decl;
 
-typedef struct scf_func {
-    scope_full scope_full;
+typedef struct sc_func {
+    scope scope;
     sym_param_decl* params;
-} scf_func;
+} sc_func;
 
-typedef struct scf_func_generic {
-    scope_full scope_full;
+typedef struct sc_func_generic {
+    scope scope;
     sym_param_decl* generic_params;
     sym_param_decl* params;
-} scf_func_generic;
+} sc_func_generic;
 
 typedef struct sc_struct {
     scope scope;
@@ -302,23 +296,23 @@ typedef struct sc_trait_generic {
     sym_param_decl* generic_params;
 } sc_trait_generic;
 
-typedef struct scs_module {
-    scope_sealed scope_sealed;
-} scs_module;
+typedef struct sc_module {
+    scope scope;
+} sc_module;
 
-typedef struct scs_module_generic {
-    scope_sealed scope_sealed;
+typedef struct sc_module_generic {
+    scope scope;
     sym_param_decl* generic_params;
-} scs_module_generic;
+} sc_module_generic;
 
-typedef struct scf_extend {
-    scope_full scope_full;
-} scf_extend;
+typedef struct sc_extend {
+    scope scope;
+} sc_extend;
 
-typedef struct scf_extend_generic {
-    scope_full scope_full;
+typedef struct sc_extend_generic {
+    scope scope;
     sym_param_decl* generic_params;
-} scf_extend_generic;
+} sc_extend_generic;
 
 typedef struct sym_var {
     symbol symbol;
@@ -418,17 +412,20 @@ void get_expr_bounds(expr* n, ureg* start, ureg* end);
 void stmt_flags_set_access_mod(stmt_flags* f, access_modifier m);
 access_modifier stmt_flags_get_access_mod(stmt_flags f);
 
-void stmt_flags_set_const(stmt_flags* f, bool cnst);
+void stmt_flags_set_const(stmt_flags* f);
 bool stmt_flags_get_const(stmt_flags f);
 
-void stmt_flags_set_sealed(stmt_flags* f, bool sld);
+void stmt_flags_set_sealed(stmt_flags* f);
 bool stmt_flags_get_sealed(stmt_flags f);
 
-void stmt_flags_set_virtual(stmt_flags* f, bool virt);
+void stmt_flags_set_virtual(stmt_flags* f);
 bool stmt_flags_get_virtual(stmt_flags f);
 
-void stmt_flags_set_static(stmt_flags* f, bool stat);
+void stmt_flags_set_static(stmt_flags* f);
 bool stmt_flags_get_static(stmt_flags f);
 
-void stmt_flags_set_module_extension(stmt_flags* f, bool ext);
+void stmt_flags_set_module_extension(stmt_flags* f);
 bool stmt_flags_get_module_extension(stmt_flags f);
+
+void err_flags_set_redeclared(err_flags* f);
+bool err_flags_get_redeclared(err_flags f);
