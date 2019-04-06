@@ -13,11 +13,8 @@
 #include "../test/main_test.h"
 #endif
 
-int main(int argc, char** argv)
+int main_release(int argc, char** argv)
 {
-#if DEBUG
-    return main_test(argc, argv);
-#endif
     int r;
     r = talloc_init();
     if (r) return EXIT_FAILURE;
@@ -44,4 +41,13 @@ int main(int argc, char** argv)
     talloc_fin();
     master_error_log_fin();
     return r ? EXIT_FAILURE : EXIT_SUCCESS;
+}
+
+int main(int argc, char** argv)
+{
+#if DEBUG
+    return main_test(argc, argv);
+#else
+    return main_release(argc, argv);
+#endif
 }
