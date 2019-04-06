@@ -1,6 +1,7 @@
 #pragma once
 #include "stdio.h"
 #include "types.h"
+#include <stdio.h>
 #include <string.h>
 
 typedef struct {
@@ -48,6 +49,15 @@ static inline string string_create(char* start, char* end)
 static inline ureg string_len(string s)
 {
     return s.end - s.start;
+}
+
+static inline void string_print(string s)
+{
+    fwrite(s.start, 1, string_len(s), stdout);
+}
+static inline void string_print_stderr(string s)
+{
+    fwrite(s.start, 1, string_len(s), stderr);
 }
 
 // TODO: try to make use of the really good standard
@@ -101,15 +111,6 @@ static inline char* string_to_cstr(string s)
 static inline void string_free_cstr(char* s)
 {
     free(s);
-}
-
-static inline void string_print(string str)
-{
-    char* c = str.start;
-    while (c != str.end) {
-        putchar(*c);
-        c++;
-    }
 }
 
 static inline bool is_utf8_continuation(char c)

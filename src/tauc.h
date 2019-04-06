@@ -1,5 +1,6 @@
 #pragma once
 #include "error_log.h"
+#include "file_map.h"
 #include "mdg.h"
 #include "parser.h"
 #include "utils/allocator.h"
@@ -39,6 +40,7 @@ typedef struct tauc {
     worker_thread* worker_threads;
     pool permmem;
     mdg mdg;
+    file_map file_map;
     union {
         stage_1_share s1;
     } stage_share;
@@ -49,7 +51,6 @@ extern struct tauc TAUC;
 // MAIN THREAD ONLY
 int tauc_init();
 int tauc_run(int argc, char** argv);
-void tauc_fin_temps();
 void tauc_fin();
 
 int thread_context_init(thread_context* tc);

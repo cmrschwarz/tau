@@ -28,7 +28,7 @@ set(TAUC_SRCS
     ./src/utils/evmap2.c
     ./src/mdg.c
     ./src/mdght.c
-    ./src/src_file.c
+    ./src/file_map.c
     ./src/utils/os/linux/plattform.c
 )
 

@@ -1,6 +1,6 @@
 #include "error_log.h"
+#include "file_map.h"
 #include "math.h"
-#include "src_file.h"
 #include "stdio.h"
 #include "tauc.h"
 #include "utils/math_utils.h"
@@ -216,11 +216,12 @@ ureg get_line_nr_offset(ureg max_line)
 int print_filepath(ureg line_nr_offset, src_pos pos, src_file* file)
 {
     for (ureg r = 0; r < line_nr_offset; r++) pe(" ");
-    pectc(ANSICOLOR_BLUE, "==>", ANSICOLOR_CLEAR);
+    pectc(ANSICOLOR_BLUE, "==> ", ANSICOLOR_CLEAR);
+    src_file_print_path(file, true);
     // TODO: the column index is currently based on the number of byte,
     // not the number of unicode code points, but tools expect the latter
     fprintf(
-        stderr, " %s:%llu:%llu\n", file->path,
+        stderr, ":%llu:%llu\n",
         pos.line + 1, // make indices start at one
         pos.column + 1);
     return OK;
@@ -382,8 +383,7 @@ int print_src_line(
             ureg after_tab = bpos;
             print_until(&bpos, &next, buffer, &after_tab, &length_diff);
             switch (mode) {
-                case 3:
-                    (ep_pos + 1)->length_diff_start = length_diff;
+                case 3: (ep_pos + 1)->length_diff_start = length_diff;
                 // fallthrough
                 case 0:
                     ep_pos->length_diff_start = length_diff;
@@ -694,11 +694,11 @@ int printCriticalError(char* msg)
     pe("\n");
     return OK;
 }
-int printFileIOError(char* filepath)
+int printFileIOError(src_file* f)
 {
     pectc(ANSICOLOR_RED ANSICOLOR_BOLD, "reporting error: ", ANSICOLOR_CLEAR);
     pe("file IO error prevents giving error context in '");
-    pe(filepath);
+    src_file_print_path(f, true);
     pe("'\n");
     return OK;
 }
@@ -741,14 +741,25 @@ void master_error_log_unwind(pool* p)
                 }
                 file = (*e)->file;
                 if (file != NULL) {
-                    fh = fopen(file->path, "r");
+                    char pathbuff[256];
+                    ureg pathlen = src_file_get_path_len(file);
+                    char* path;
+                    if (pathlen < 256) {
+                        src_file_write_path(file, pathbuff);
+                        path = pathbuff;
+                    }
+                    else {
+                        path = tmalloc(pathlen + 1);
+                        src_file_write_path(file, pathbuff);
+                    }
+                    fh = fopen(path, "r");
                     if (fh == NULL) {
-                        printFileIOError(file->path);
+                        printFileIOError(file);
                     }
                 }
             }
             if (report_error(*e, fh, file)) {
-                printFileIOError(file->path);
+                printFileIOError(file);
                 if (fh) {
                     fclose(fh);
                     fh = NULL;

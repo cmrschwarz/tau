@@ -1,6 +1,6 @@
 #include "tokenizer.h"
 #include "error_log.h"
-#include "src_file.h"
+#include "file_map.h"
 #include "tauc.h"
 #include "utils/math_utils.h"
 #include "utils/panic.h"
@@ -226,7 +226,22 @@ int tk_open_stream(tokenizer* tk, src_file* f, FILE* stream)
 }
 int tk_open_file(tokenizer* tk, src_file* f)
 {
-    FILE* fs = fopen(f->path, "r");
+    if (src_file_start_parse(f, tk->tc)) {
+        return ERR;
+    }
+    char pathbuff[256];
+    ureg pathlen = src_file_get_path_len(f);
+    char* path;
+    if (pathlen < 256) {
+        src_file_write_path(f, pathbuff);
+        path = pathbuff;
+    }
+    else {
+        path = tmalloc(pathlen + 1);
+        src_file_write_path(f, pathbuff);
+    }
+    FILE* fs = fopen(path, "r");
+    if (path != pathbuff) tfree(path);
     if (fs == NULL) {
         return ERR;
     }
