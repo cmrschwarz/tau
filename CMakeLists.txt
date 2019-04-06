@@ -29,6 +29,7 @@ set(TAUC_SRCS
     ./src/mdg.c
     ./src/mdght.c
     ./src/file_map.c
+    ./src/job_queue.c
     ./src/utils/os/linux/plattform.c
 )
 
