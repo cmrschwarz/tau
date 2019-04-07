@@ -212,6 +212,7 @@ src_file* file_map_get_file(file_map* fm, src_dir* parent, string name)
         mutex_unlock(&fm->lock);
         return NULL;
     }
+    *fp = f;
     fm->elem_count++;
     if (fm->elem_count == fm->grow_on_elem_count) {
         if (file_map_grow(fm)) {
