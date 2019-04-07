@@ -216,6 +216,7 @@ src_file* file_map_get_file(file_map* fm, src_dir* parent, string name)
     if (fm->elem_count == fm->grow_on_elem_count) {
         if (file_map_grow(fm)) {
             mutex_unlock(&fm->lock);
+            src_file_fin(f);
             return NULL;
         }
     }
@@ -245,6 +246,7 @@ src_dir* file_map_get_dir(file_map* fm, src_dir* parent, string name)
     if (fm->elem_count == fm->grow_on_elem_count) {
         if (file_map_grow(fm)) {
             mutex_unlock(&fm->lock);
+            src_dir_fin(dir);
             return NULL;
         }
         *(src_dir**)file_map_get_raw(fm, parent, name) = dir;
