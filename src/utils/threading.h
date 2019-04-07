@@ -24,6 +24,13 @@ void mutex_lock(mutex* m);
 void mutex_unlock(mutex* m);
 void mutex_fin(mutex* m);
 
+// Condition variables
+int cond_var_init(cond_var* cv);
+void cond_var_wait(cond_var* cv, mutex* m);
+void cond_var_notify_one(cond_var* cv);
+void cond_var_notify_all(cond_var* cv);
+void cond_var_fin(cond_var* cv);
+
 // Atomics
 // add,sub,inc and dec return the previously stored value
 

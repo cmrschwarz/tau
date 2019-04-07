@@ -27,6 +27,27 @@ void mutex_fin(mutex* m)
     if (pthread_mutex_destroy(m)) panic("mutex deallocation failed");
 }
 
+int cond_var_init(cond_var* cv)
+{
+    return pthread_cond_init(cv, NULL);
+}
+void cond_var_wait(cond_var* cv, mutex* m)
+{
+    if (pthread_cond_wait(cv, m)) panic("cond var wait failed");
+}
+void cond_var_notify_one(cond_var* cv)
+{
+    if (pthread_cond_signal(cv)) panic("cond var notify one failed");
+}
+void cond_var_notify_all(cond_var* cv)
+{
+    if (pthread_cond_broadcast(cv)) panic("cond var notify all failed");
+}
+void cond_var_fin(cond_var* cv)
+{
+    if (pthread_cond_destroy(cv)) panic("cond var deallocation failed");
+}
+
 int thread_yield()
 {
     return sched_yield();

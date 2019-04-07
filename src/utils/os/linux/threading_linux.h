@@ -12,3 +12,4 @@ typedef struct {
 } thread;
 
 typedef pthread_mutex_t mutex;
+typedef pthread_cond_t cond_var;
