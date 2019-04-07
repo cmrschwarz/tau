@@ -112,11 +112,17 @@ int file_map_init(file_map* fm)
         pool_fin(&fm->file_mem_pool);
         return ERR;
     }
+    if (mutex_init(&fm->lock)) {
+        pool_fin(&fm->string_mem_pool);
+        pool_fin(&fm->file_mem_pool);
+        return ERR;
+    }
     // we alloc zero initialized so all values are NULL pointers
     static const ureg START_SIZE = PAGE_SIZE;
     static const ureg START_CAPACITY = PAGE_SIZE / sizeof(file_map_head**);
     fm->table_start = (file_map_head**)tmallocz(START_SIZE);
     if (!fm->table_start) {
+        mutex_fin(&fm->lock);
         pool_fin(&fm->string_mem_pool);
         pool_fin(&fm->file_mem_pool);
         return ERR;
