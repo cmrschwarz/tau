@@ -74,7 +74,7 @@ typedef struct master_error_log {
 extern master_error_log MASTER_ERROR_LOG;
 int master_error_log_init();
 void master_error_log_report(char* critical_error);
-void master_error_log_unwind(pool* memory);
+void master_error_log_unwind();
 void master_error_log_fin();
 
 // THREAD SAFE

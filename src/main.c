@@ -30,11 +30,11 @@ int main_release(int argc, char** argv)
     if (!r) {
         r = tauc_run(argc, argv);
         // report any erros that occured
-        master_error_log_unwind(&TAUC.permmem);
-        tauc_fin();
+        master_error_log_unwind();
+        tauc_fin(); // UGLY: most of tauc isn't required for error reporting
     }
     else {
-        master_error_log_unwind(&TAUC.permmem);
+        master_error_log_unwind();
     }
 
     // terminate gracefully

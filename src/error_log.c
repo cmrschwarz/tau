@@ -702,7 +702,7 @@ int printFileIOError(src_file* f)
     pe("'\n");
     return OK;
 }
-void master_error_log_unwind(pool* p)
+void master_error_log_unwind()
 {
     ureg err_count = 0;
     error_log* el = MASTER_ERROR_LOG.error_logs;
@@ -715,7 +715,7 @@ void master_error_log_unwind(pool* p)
         el = el->next;
     }
     if (err_count == 0) return;
-    error** errors = (error**)pool_alloc(p, err_count * sizeof(error*));
+    error** errors = (error**)tmalloc(err_count * sizeof(error*));
     if (errors != NULL) {
         // insert backwards revert link list order
         error** pos = errors + err_count - 1;
@@ -771,6 +771,7 @@ void master_error_log_unwind(pool* p)
             }
         }
         if (fh) fclose(fh);
+        tfree(errors);
     }
     for (ureg i = 0; i < MASTER_ERROR_LOG.global_error_count; i++) {
         printCriticalError(MASTER_ERROR_LOG.global_errors[i]);
