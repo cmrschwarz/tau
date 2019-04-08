@@ -100,9 +100,16 @@ int tauc_add_worker_thread()
     }
     r = thread_launch(&wt->thread, worker_thread_fn, wt);
     if (r) {
+        // all other initialization failiures are due to memory allocation,
+        // which is deemed fatal for the CALLING thread
+        // a thread spawn failiure isn't really though, so we make the error
+        // appear in the new context, and make the old one continue like we
+        // succeeded
         thread_context_fin(&wt->tc);
+        error_log_report_critical_failiure(
+            &wt->tc.error_log, "failed to spawn additional worker thread");
         atomic_ureg_store(&wt->stage, WTS_FAILED);
-        return r;
+        return OK; // this is intentional, see above
     }
     return OK;
 }
@@ -147,7 +154,8 @@ static inline int thread_context_run(thread_context* tc)
             break;
         }
         else if (jqr == JQR_SUCCESS_WITH_REINFORCEMENTS_REQUEST) {
-            tauc_add_worker_thread();
+            r = tauc_add_worker_thread();
+            if (r) break;
         }
         else if (jqr == JQR_ERROR) {
             r = ERR;
