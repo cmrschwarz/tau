@@ -179,6 +179,7 @@ void error_log_report(error_log* el, error* e)
 }
 void error_log_report_critical_failiure(error_log* el, char* msg)
 {
+    if (el->critical_failiure_point != FAILURE_NONE) return;
     if (el->errors != NULL) {
         el->critical_failiure_point = el->errors;
         el->critical_failiure_msg = msg;
