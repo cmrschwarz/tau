@@ -164,8 +164,14 @@ static inline int thread_context_run(thread_context* tc)
         if (j.type == JOB_PARSE) {
             r = parser_parse_file(&tc->parser, j.concrete.parse.file);
         }
+        else if (j.type == JOB_RESOLVE) {
+            r = ERR; // TODO: implement resolving
+        }
         else {
-            r = 0;
+            error_log_report_critical_failiure(
+                &tc->error_log, "unknown job type");
+            r = ERR;
+            break;
         }
         if (r) break;
     }
