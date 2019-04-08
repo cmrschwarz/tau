@@ -24,70 +24,70 @@ parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
 parse_error parse_braced_delimited_body(
     parser* p, ureg bstart, ureg bend, body* b, ast_node_type pt);
 static const unsigned char op_precedence[] = {
-        [OP_POST_INCREMENT] = 15,
-        [OP_POST_DECREMENT] = 15,
-        [OP_CALL] = 15,
-        [OP_ACCESS] = 15,
-        [OP_SCOPE_ACCESS] = 15,
-        [OP_MEMBER_ACCESS] = 15,
+    [OP_POST_INCREMENT] = 15,
+    [OP_POST_DECREMENT] = 15,
+    [OP_CALL] = 15,
+    [OP_ACCESS] = 15,
+    [OP_SCOPE_ACCESS] = 15,
+    [OP_MEMBER_ACCESS] = 15,
 
-        [OP_PRE_INCREMENT] = 14,
-        [OP_PRE_DECREMENT] = 14,
-        [OP_UNARY_PLUS] = 14,
-        [OP_UNARY_MINUS] = 14,
-        [OP_NOT] = 14,
-        [OP_BITWISE_NOT] = 14,
-        [OP_DEREF] = 14,
-        [OP_POINTER_OF] = 14,
-        [OP_REF_OF] = 14,
-        [OP_RREF_OF] = 14,
-        [OP_CLOSURE_BY_VALUE] = 14,
-        [OP_CONST] = 14,
+    [OP_PRE_INCREMENT] = 14,
+    [OP_PRE_DECREMENT] = 14,
+    [OP_UNARY_PLUS] = 14,
+    [OP_UNARY_MINUS] = 14,
+    [OP_NOT] = 14,
+    [OP_BITWISE_NOT] = 14,
+    [OP_DEREF] = 14,
+    [OP_POINTER_OF] = 14,
+    [OP_REF_OF] = 14,
+    [OP_RREF_OF] = 14,
+    [OP_CLOSURE_BY_VALUE] = 14,
+    [OP_CONST] = 14,
 
-        [OP_BITWISE_AND] = 13,
+    [OP_BITWISE_AND] = 13,
 
-        [OP_BITWISE_XOR] = 12,
+    [OP_BITWISE_XOR] = 12,
 
-        [OP_BITWISE_OR] = 11,
+    [OP_BITWISE_OR] = 11,
 
-        [OP_MUL] = 10,
-        [OP_DIV] = 10,
-        [OP_MOD] = 10,
+    [OP_MUL] = 10,
+    [OP_DIV] = 10,
+    [OP_MOD] = 10,
 
-        [OP_ADD] = 9,
-        [OP_SUB] = 9,
+    [OP_ADD] = 9,
+    [OP_SUB] = 9,
 
-        [OP_LSHIFT] = 8,
-        [OP_RSHIFT] = 8,
+    [OP_LSHIFT] = 8,
+    [OP_RSHIFT] = 8,
 
-        [OP_CAST] = 7,
+    [OP_CAST] = 7,
 
-        [OP_LESS_THAN] = 6,
-        [OP_LESS_THAN_OR_EQUAL] = 6,
-        [OP_GREATER_THAN] = 6,
-        [OP_GREATER_THAN_OR_EQUAL] = 6,
+    [OP_LESS_THAN] = 6,
+    [OP_LESS_THAN_OR_EQUAL] = 6,
+    [OP_GREATER_THAN] = 6,
+    [OP_GREATER_THAN_OR_EQUAL] = 6,
 
-        [OP_EQUAL] = 5,
-        [OP_UNEQAL] = 5,
+    [OP_EQUAL] = 5,
+    [OP_UNEQAL] = 5,
 
-        [OP_AND] = 4,
+    [OP_AND] = 4,
 
-        [OP_XOR] = 3,
+    [OP_XOR] = 3,
 
-        [OP_OR] = 2,
+    [OP_OR] = 2,
 
-        [OP_ASSIGN] = 1,
-        [OP_ADD_ASSIGN] = 1,
-        [OP_SUB_ASSIGN] = 1,
-        [OP_MUL_ASSIGN] = 1,
-        [OP_DIV_ASSIGN] = 1,
-        [OP_MOD_ASSIGN] = 1,
-        [OP_LSHIFT_ASSIGN] = 1,
-        [OP_RSHIFT_ASSIGN] = 1,
-        [OP_BITWISE_AND_ASSIGN] = 1,
-        [OP_BITWISE_XOR_ASSIGN] = 1,
-        [OP_BITWISE_OR_ASSIGN] = 1,
-        [OP_BITWISE_NOT_ASSIGN] = 1,
+    [OP_ASSIGN] = 1,
+    [OP_ADD_ASSIGN] = 1,
+    [OP_SUB_ASSIGN] = 1,
+    [OP_MUL_ASSIGN] = 1,
+    [OP_DIV_ASSIGN] = 1,
+    [OP_MOD_ASSIGN] = 1,
+    [OP_LSHIFT_ASSIGN] = 1,
+    [OP_RSHIFT_ASSIGN] = 1,
+    [OP_BITWISE_AND_ASSIGN] = 1,
+    [OP_BITWISE_XOR_ASSIGN] = 1,
+    [OP_BITWISE_OR_ASSIGN] = 1,
+    [OP_BITWISE_NOT_ASSIGN] = 1,
 
 };
 #define PREC_BASELINE 0
@@ -202,9 +202,9 @@ static inline void* alloc_ppool(parser* p, ureg size, pool* pool)
     if (!mem) error_log_report_allocation_failiure(&p->tk.tc->error_log);
     return mem;
 }
-static inline void* alloc_stage(parser* p, ureg size)
+static inline void* alloc_temp(parser* p, ureg size)
 {
-    return alloc_ppool(p, size, &p->tk.tc->stagemem);
+    return alloc_ppool(p, size, &p->tk.tc->tempmem);
 }
 static inline void* alloc_perm(parser* p, ureg size)
 {
@@ -220,9 +220,9 @@ static inline char* alloc_string_ppool(parser* p, string s, pool* pool)
     mem[len] = '\0';
     return mem;
 }
-static inline char* alloc_string_stage(parser* p, string s)
+static inline char* alloc_string_temp(parser* p, string s)
 {
-    return alloc_string_ppool(p, s, &p->tk.tc->stagemem);
+    return alloc_string_ppool(p, s, &p->tk.tc->tempmem);
 }
 static inline char* alloc_string_perm(parser* p, string s)
 {
@@ -328,7 +328,7 @@ int parser_init(parser* p, thread_context* tc)
 {
     int r = tk_init(&p->tk, tc);
     if (r) return r;
-    r = list_builder_init(&p->lb, &p->tk.tc->stagemem, 64);
+    r = list_builder_init(&p->lb, &p->tk.tc->tempmem, 64);
     if (r) {
         tk_fin(&p->tk);
         return r;
@@ -371,7 +371,7 @@ static inline expr* parse_str_value(parser* p, token* t)
     expr_str_value* sv = (expr_str_value*)alloc_perm(p, sizeof(expr_str_value));
     if (!sv) return NULL;
     sv->expr.type = ent;
-    sv->value = alloc_string_stage(p, t->str);
+    sv->value = alloc_string_temp(p, t->str);
     if (!sv->value) return NULL;
     if (expr_fill_srange(p, &sv->expr, t->start, t->end)) return NULL;
     return (expr*)sv;
@@ -715,7 +715,7 @@ parse_error parse_goto_expr(parser* p, ureg start, ureg end, expr** tgt)
     }
     expr_goto* g = alloc_perm(p, sizeof(expr_goto));
     g->expr.type = EXPR_GOTO;
-    g->target.name = alloc_string_stage(p, t->str);
+    g->target.name = alloc_string_temp(p, t->str);
     if (!g->target.name) return PE_INSANE;
     tk_void(&p->tk);
     *tgt = (expr*)g;
@@ -734,7 +734,7 @@ parse_error parse_give_expr(parser* p, ureg start, ureg end, expr** tgt)
         if (!t2) return PE_TK_ERROR;
         if (t2->type != TT_SEMICOLON && token_to_binary_op(t2) == OP_NOOP &&
             token_to_postfix_unary_op(t2) == OP_NOOP) {
-            g->target.name = alloc_string_stage(p, t1->str);
+            g->target.name = alloc_string_temp(p, t1->str);
             if (!g->target.name) return PE_INSANE;
             tk_void(&p->tk);
         }
@@ -1670,7 +1670,7 @@ parse_error parse_label(parser* p, ureg start, ureg end, stmt** tgt)
             start, end, "");
         return PE_HANDLED;
     }
-    char* label_name = alloc_string_stage(p, t->str);
+    char* label_name = alloc_string_temp(p, t->str);
     if (!label_name) return PE_INSANE;
     tk_void(&p->tk);
     PEEK(p, t);
