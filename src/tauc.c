@@ -145,7 +145,7 @@ int thread_context_init(thread_context* tc)
 }
 static inline int thread_context_run(thread_context* tc)
 {
-    int r;
+    int r = OK;
     job_queue_result jqr;
     job j;
     while (true) {
