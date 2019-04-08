@@ -18,9 +18,11 @@
 // these could point to a (caching)function returning this at runtime
 #define PAGE_SIZE 4096
 #define CACHE_LINE_SIZE 64
+#define VIRT_CORE_COUNT plattform_get_virt_core_count()
 
 ureg plattform_get_page_size();
 ureg plattform_get_cache_line_size();
+ureg plattform_get_virt_core_count();
 
 #if CMAKE_NO_DEBUG
 #define DEBUG 0
