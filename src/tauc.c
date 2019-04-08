@@ -73,6 +73,7 @@ int tauc_run(int argc, char** argv)
 void worker_thread_fn(void* ctx)
 {
     worker_thread* wt = (worker_thread*)ctx;
+    job_queue_inform_thread_added(&TAUC.job_queue);
     thread_context_run(&wt->tc);
     atomic_ureg_store(&wt->stage, WTS_TERMINATED);
 }
@@ -138,10 +139,20 @@ int thread_context_init(thread_context* tc)
 static inline int thread_context_run(thread_context* tc)
 {
     int r;
+    job_queue_result jqr;
     job j;
     while (true) {
-        r = job_queue_pop(&TAUC.job_queue, &j);
-        if (r) break;
+        jqr = job_queue_pop(&TAUC.job_queue, &j);
+        if (jqr == JQR_DONE) {
+            break;
+        }
+        else if (jqr == JQR_SUCCESS_WITH_REINFORCEMENTS_REQUEST) {
+            tauc_add_worker_thread();
+        }
+        else if (jqr == JQR_ERROR) {
+            r = ERR;
+            break;
+        }
         if (j.type == JOB_PARSE) {
             r = parser_parse_file(&tc->parser, j.concrete.parse.file);
         }

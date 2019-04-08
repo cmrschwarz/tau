@@ -3,6 +3,14 @@
 #include "mdg.h"
 #include "utils/c_extensions.h"
 #include "utils/threading.h"
+
+typedef enum job_queue_result {
+    JQR_SUCCESS = 0,
+    JQR_SUCCESS_WITH_REINFORCEMENTS_REQUEST,
+    JQR_DONE,
+    JQR_ERROR,
+} job_queue_result;
+
 typedef enum PACK_ENUM job_type {
     JOB_PARSE,
     JOB_RESOLVE,
@@ -29,13 +37,21 @@ typedef struct job_queue {
     job* buffer_end;
     job* head;
     job* tail;
+    ureg idle_threads_count;
+    ureg threads_count;
+    cond_var has_jobs;
     mutex lock;
 } job_queue;
 
 int job_queue_init(job_queue* jq);
 void job_queue_fin(job_queue* jq);
 
-int job_queue_request_parse(job_queue* jq, src_file* f);
-int job_queue_request_resolve(job_queue* jq, mdg_node* node);
+job_queue_result job_queue_request_parse(job_queue* jq, src_file* f);
+job_queue_result job_queue_request_resolve(job_queue* jq, mdg_node* node);
 
-int job_queue_pop(job_queue* jq, job* j);
+job_queue_result job_queue_pop(job_queue* jq, job* j);
+
+void job_queue_inform_thread_added(job_queue* jq);
+
+// debugging utility
+void job_queue_force_done(job_queue* jq);
