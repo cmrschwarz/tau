@@ -199,7 +199,7 @@ int tk_init(tokenizer* tk, thread_context* tc)
     tk->file_buffer_end = ptradd(tk->file_buffer_start, size);
     tk->token_buffer_end = tk->token_buffer + TK_TOKEN_BUFFER_SIZE;
     tk->loaded_tokens_start = tk->token_buffer; // head is set on open_file
-
+    tk->file_stream = NULL;
     return 0;
 }
 void tk_fin(tokenizer* tk)
