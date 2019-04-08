@@ -38,8 +38,8 @@ int main_release(int argc, char** argv)
     }
 
     // terminate gracefully
-    talloc_fin();
     master_error_log_fin();
+    talloc_fin();
     return r ? EXIT_FAILURE : EXIT_SUCCESS;
 }
 
