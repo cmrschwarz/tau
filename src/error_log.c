@@ -82,8 +82,7 @@ void error_log_init(error_log* el, pool* error_mem_pool)
     el->errors = NULL;
     el->error_mem_pool = error_mem_pool;
     el->next = NULL;
-    el->allocation_failure_point = FAILURE_NONE;
-    el->synchronization_failure_point = FAILURE_NONE;
+    el->critical_failiure_point = FAILURE_NONE;
 }
 void error_log_fin(error_log* el)
 {
@@ -178,23 +177,23 @@ void error_log_report(error_log* el, error* e)
     e->previous = el->errors;
     el->errors = e;
 }
-void error_log_report_allocation_failiure(error_log* el)
+void error_log_report_critical_failiure(error_log* el, char* msg)
 {
     if (el->errors != NULL) {
-        el->allocation_failure_point = el->errors;
+        el->critical_failiure_point = el->errors;
+        el->critical_failiure_msg = msg;
     }
     else {
-        el->allocation_failure_point = FAILURE_FIRST;
+        el->critical_failiure_point = FAILURE_FIRST;
     }
+}
+void error_log_report_allocation_failiure(error_log* el)
+{
+    error_log_report_critical_failiure(el, "allocation failiure");
 }
 void error_log_report_synchronization_failiure(error_log* el)
 {
-    if (el->errors != NULL) {
-        el->synchronization_failure_point = el->errors;
-    }
-    else {
-        el->synchronization_failure_point = FAILURE_FIRST;
-    }
+    error_log_report_critical_failiure(el, "synchronization failiure");
 }
 
 int pe(char* msg)
@@ -687,6 +686,15 @@ int compare_errs(const error* a, const error* b)
 #define SORT_TYPE error*
 #define SORT_CMP(x, y) compare_errs(x, y)
 #include "sort.h"
+int printCriticalThreadError(char* msg)
+{
+    pectc(
+        ANSICOLOR_RED ANSICOLOR_BOLD,
+        "critical error in worker thread: ", ANSICOLOR_CLEAR);
+    pe(msg);
+    pe("\n");
+    return OK;
+}
 int printCriticalError(char* msg)
 {
     pectc(ANSICOLOR_RED ANSICOLOR_BOLD, "critical error: ", ANSICOLOR_CLEAR);
@@ -773,6 +781,13 @@ void master_error_log_unwind()
         if (fh) fclose(fh);
         tfree(errors);
     }
+    el = MASTER_ERROR_LOG.error_logs;
+    while (el != NULL) {
+        if (el->critical_failiure_point != FAILURE_NONE) {
+            printCriticalThreadError(el->critical_failiure_msg);
+        }
+        el = el->next;
+    }
     for (ureg i = 0; i < MASTER_ERROR_LOG.global_error_count; i++) {
         printCriticalError(MASTER_ERROR_LOG.global_errors[i]);
     }
@@ -783,10 +798,7 @@ void master_error_log_unwind()
 
 bool error_log_sane_state(error_log* el)
 {
-    // PERF: maybe cache this
-    return (
-        el->allocation_failure_point == FAILURE_NONE &&
-        el->synchronization_failure_point == FAILURE_NONE);
+    return (el->critical_failiure_point == FAILURE_NONE);
 }
 
 char* error_log_cat_strings_2(error_log* e, char* s1, char* s2)

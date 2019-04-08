@@ -6,7 +6,7 @@
 #include "utils/pool.h"
 #include "utils/threading.h"
 
-#define TAUC_MAX_GLOBAL_ERRORS 64
+#define TAUC_MAX_GLOBAL_ERRORS 16
 typedef enum PACK_ENUM error_stage {
     ES_TOKENIZER,
     ES_PARSER,
@@ -54,8 +54,8 @@ typedef struct master_error_log master_error_log;
 typedef struct error_log {
     struct error_log* next;
     error* errors;
-    error* allocation_failure_point;
-    error* synchronization_failure_point;
+    error* critical_failiure_point;
+    char* critical_failiure_msg;
     pool* error_mem_pool;
 } error_log;
 
@@ -104,3 +104,4 @@ void* error_log_alloc(error_log* e, ureg size);
 void error_log_report(error_log* el, error* e);
 void error_log_report_allocation_failiure(error_log* el);
 void error_log_report_synchronization_failiure(error_log* el);
+void error_log_report_critical_failiure(error_log* el, char* msg);
