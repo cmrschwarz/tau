@@ -1824,7 +1824,7 @@ parse_error parse_statement(parser* p, stmt** tgt)
 parse_error parse_braced_delimited_body(
     parser* p, ureg bstart, ureg bend, body* b, ast_node_type pt)
 {
-    parse_error pe;
+    parse_error pe = PE_OK;
     token* t;
     PEEK(p, t);
     stmt** head = &b->children;
