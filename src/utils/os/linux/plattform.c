@@ -15,6 +15,7 @@ ureg plattform_get_page_size()
 ureg plattform_get_cache_line_size()
 {
     if (!_cache_line_size) {
+        bool success = true;
 #ifdef _SC_LEVEL1_DCACHE_LINESIZE
         _cache_line_size = sysconf(_SC_LEVEL1_DCACHE_LINESIZE);
 #else
@@ -23,13 +24,16 @@ ureg plattform_get_cache_line_size()
             "/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size",
             "r");
         if (p) {
-            fscanf(p, "%zu", &_cache_line_size);
+            success = (fscanf(p, "%zu", &_cache_line_size) == 1);
             fclose(p);
         }
         else {
-            _cache_line_size = 32; // fallback
+            success = false;
         }
 #endif
+        if (!success) {
+            _cache_line_size = 32; // fallback
+        }
     }
 
     return _cache_line_size;
