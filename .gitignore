@@ -1,6 +1,5 @@
 /bin
 /.vscode
 /build
-/test
 /temp
 /${workspaceRoot}
