@@ -118,8 +118,9 @@ int file_map_init(file_map* fm)
         return ERR;
     }
     // we alloc zero initialized so all values are NULL pointers
-    static const ureg START_SIZE = PAGE_SIZE;
-    static const ureg START_CAPACITY = PAGE_SIZE / sizeof(file_map_head**);
+    const ureg START_SIZE = plattform_get_page_size();
+    const ureg START_CAPACITY =
+        plattform_get_page_size() / sizeof(file_map_head**);
     fm->table_start = (file_map_head**)tmallocz(START_SIZE);
     if (!fm->table_start) {
         mutex_fin(&fm->lock);

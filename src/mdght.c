@@ -41,7 +41,8 @@ int mdght_init_with_capacity(mdght* h, ureg capacity)
 
 int mdght_init(mdght* h)
 {
-    return mdght_init_with_capacity(h, PAGE_SIZE / sizeof(mdg_node*));
+    return mdght_init_with_capacity(
+        h, plattform_get_page_size() / sizeof(mdg_node*));
 }
 void mdght_fin(mdght* h)
 {

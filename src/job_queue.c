@@ -87,7 +87,7 @@ static inline job_queue_result job_queue_push(job_queue* jq, job jb)
     }
     *j = jb;
     if (jq->idle_threads_count == 0) {
-        if (jq->threads_count < VIRT_CORE_COUNT) {
+        if (jq->threads_count < plattform_get_virt_core_count()) {
             reinforcements = true;
         }
         mutex_unlock(&jq->lock);

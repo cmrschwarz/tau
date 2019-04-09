@@ -193,7 +193,7 @@ static inline char tk_consume_char(tokenizer* tk)
 int tk_init(tokenizer* tk, thread_context* tc)
 {
     tk->tc = tc;
-    ureg size = PAGE_SIZE * 8;
+    ureg size = plattform_get_page_size() * 8;
     tk->file_buffer_start = tmalloc(size);
     if (!tk->file_buffer_start) return -1;
     tk->file_buffer_end = ptradd(tk->file_buffer_start, size);

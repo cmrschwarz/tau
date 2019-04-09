@@ -15,7 +15,7 @@ static inline void pool_free_segment(pool* p, pool_segment* s)
 }
 int pool_init(pool* p)
 {
-    pool_segment* seg = pool_alloc_segment(p, PAGE_SIZE);
+    pool_segment* seg = pool_alloc_segment(p, plattform_get_page_size());
     if (!seg) return ERR;
     p->segments = seg;
     seg->next = NULL;

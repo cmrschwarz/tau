@@ -5,7 +5,7 @@
 
 int sbuffer_init(sbuffer* sb, ureg pages_per_segment)
 {
-    sb->first = sbuffer_segment_create(sb, PAGE_SIZE);
+    sb->first = sbuffer_segment_create(sb, plattform_get_page_size());
     if (!sb->first) return -1;
     sb->last = sb->first;
     sb->first->next = NULL;

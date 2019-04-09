@@ -14,7 +14,7 @@ int dbuffer_init_with_capacity(dbuffer* db, ureg capacity)
 
 int dbuffer_init(dbuffer* db)
 {
-    return dbuffer_init_with_capacity(db, PAGE_SIZE);
+    return dbuffer_init_with_capacity(db, plattform_get_page_size());
 }
 bool dbuffer_is_emtpy(dbuffer* db)
 {

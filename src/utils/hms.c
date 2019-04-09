@@ -45,7 +45,8 @@ int hms_init_with_capacity(hms* h, ureg capacity)
 }
 int hms_init(hms* h)
 {
-    return hms_init_with_capacity(h, PAGE_SIZE / sizeof(hms_node));
+    return hms_init_with_capacity(
+        h, plattform_get_page_size() / sizeof(hms_node));
 }
 void hms_fin(hms* h)
 {
