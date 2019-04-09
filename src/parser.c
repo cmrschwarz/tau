@@ -813,14 +813,13 @@ parse_while(parser* p, expr** tgt, ureg start, ureg end, char* label)
     pe = parse_expr_body(p, &w->while_body, EXPR_WHILE);
     if (pe) return pe;
     PEEK(p, t);
-    if (t->type != TT_STRING || !kw_equals(KW_FINALLY, t->str)) {
-        parser_error_2a(
-            p, "invalid while loop syntax", t->start, t->end,
-            "expected finally block", start, end, "for this while loop");
-        return PE_HANDLED;
+    if (t->type == TT_STRING && kw_equals(KW_FINALLY, t->str)) {
+        tk_void(&p->tk);
+        pe = parse_expr_body(p, &w->finally_body, EXPR_WHILE);
     }
-    tk_void(&p->tk);
-    pe = parse_expr_body(p, &w->finally_body, EXPR_WHILE);
+    else {
+        w->finally_body = NULL;
+    }
     return pe;
 }
 parse_error parse_if(parser* p, expr** tgt, ureg start, ureg end)
@@ -844,14 +843,13 @@ parse_error parse_if(parser* p, expr** tgt, ureg start, ureg end)
     pe = parse_expr_body(p, &i->if_body, EXPR_IF);
     if (pe) return pe;
     PEEK(p, t);
-    if (t->type != TT_STRING || !kw_equals(KW_ELSE, t->str)) {
-        parser_error_2a(
-            p, "invalid if expression syntax", t->start, t->end,
-            "expected else block", start, end, "for this if expression");
-        return PE_HANDLED;
+    if (t->type == TT_STRING && kw_equals(KW_ELSE, t->str)) {
+        tk_void(&p->tk);
+        pe = parse_expr_body(p, &i->else_body, EXPR_IF);
     }
-    tk_void(&p->tk);
-    pe = parse_expr_body(p, &i->else_body, EXPR_IF);
+    else {
+        i->else_body = NULL;
+    }
     return pe;
 }
 static inline parse_error parse_single_value(parser* p, token* t, expr** ex)

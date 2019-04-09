@@ -333,10 +333,12 @@ void print_expr(expr* ex, ureg indent)
             print_expr(w->condition, indent);
             pc(' ');
             print_expr(w->while_body, indent);
-            pc('\n');
-            print_indent(indent);
-            p("finally ");
-            print_expr(w->finally_body, indent);
+            if (w->finally_body) {
+                pc('\n');
+                print_indent(indent);
+                p("finally ");
+                print_expr(w->finally_body, indent);
+            }
         } break;
         case EXPR_IF: {
             expr_if* i = (expr_if*)ex;
@@ -344,10 +346,12 @@ void print_expr(expr* ex, ureg indent)
             print_expr(i->condition, indent);
             pc(' ');
             print_expr(i->if_body, indent);
-            pc('\n');
-            print_indent(indent);
-            p("else ");
-            print_expr(i->else_body, indent);
+            if (i->else_body) {
+                pc('\n');
+                print_indent(indent);
+                p("else ");
+                print_expr(i->else_body, indent);
+            }
         } break;
         default: {
             p("<unknown expr>");
