@@ -218,6 +218,7 @@ void print_astn(stmt* astn, ureg indent)
 
 void print_expr_list(expr** el, ureg indent)
 {
+    if (!el) return;
     while (*el) {
         print_expr(*el, indent);
         el++;
