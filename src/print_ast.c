@@ -1,5 +1,6 @@
 #include "print_ast.h"
 #include "error_log.h"
+#include "parser.h"
 #include "stdio.h"
 #include "utils/math_utils.h"
 
@@ -87,7 +88,8 @@ void print_astn(stmt* astn, ureg indent)
         case STMT_EXPRESSION: {
             stmt_expr* e = (stmt_expr*)astn;
             print_expr(e->expr, indent);
-            p(";\n");
+            if (!expr_allowed_to_drop_semicolon(e->expr->type)) pc(';');
+            pc('\n');
         } break;
         case SC_FUNC: {
             sc_func* f = (sc_func*)astn;

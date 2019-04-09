@@ -24,3 +24,5 @@ typedef struct parser {
 int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
 parse_error parser_parse_file(parser* p, src_file* f);
+
+bool expr_allowed_to_drop_semicolon(ast_node_type astn);

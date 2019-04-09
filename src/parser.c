@@ -163,6 +163,19 @@ static inline op_type token_to_binary_op(token* t)
         default: return OP_NOOP;
     }
 }
+bool expr_allowed_to_drop_semicolon(ast_node_type astn)
+{
+    switch (astn) {
+        case EXPR_FOR:
+        case EXPR_FOR_EACH:
+        case EXPR_WHILE:
+        case EXPR_LOOP:
+        case EXPR_SWITCH:
+        case EXPR_IF:
+        case EXPR_BLOCK: return true;
+        default: return false;
+    }
+}
 static inline op_type token_to_prefix_unary_op(token* t)
 {
     switch (t->type) {
@@ -1599,15 +1612,19 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
     if (pe) return pe;
     PEEK(p, t);
     if (t->type != TT_SEMICOLON) {
-        ureg end;
-        get_expr_bounds(expr, NULL, &end); // TODO improve for loops etc.
-        parser_error_2a(
-            p, "missing semicolon", t->start, t->end,
-            "expected ';' to terminate the expression statement", start, end,
-            "in this expression");
-        return PE_HANDLED;
+        if (!expr_allowed_to_drop_semicolon(expr->type)) {
+            ureg end;
+            get_expr_bounds(expr, NULL, &end); // TODO improve for loops etc.
+            parser_error_2a(
+                p, "missing semicolon", t->start, t->end,
+                "expected ';' to terminate the expression statement", start,
+                end, "in this expression");
+            return PE_HANDLED;
+        }
     }
-    tk_void(&p->tk);
+    else {
+        tk_void(&p->tk);
+    }
     if (pe) return pe;
     return expr_to_stmt(p, tgt, expr, start, t->end);
 }
