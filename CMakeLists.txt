@@ -35,7 +35,7 @@ set(TAUC_SRCS
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -lm -Wall -pedantic")
 set(TAUC_PP_DIRECTIVES "")
-if (CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "")
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     # add "-pg -no-pie" for profiling with gprof
     message("Creating Debug Buildfiles")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g")
