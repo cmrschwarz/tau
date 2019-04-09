@@ -723,64 +723,69 @@ void master_error_log_unwind()
         }
         el = el->next;
     }
-    if (err_count == 0) return;
-    error** errors = (error**)tmalloc(err_count * sizeof(error*));
-    if (errors != NULL) {
-        // insert backwards revert link list order
-        error** pos = errors + err_count - 1;
-        el = MASTER_ERROR_LOG.error_logs;
-        while (el != NULL) {
-            error* e = el->errors;
-            while (e != NULL) {
-                *pos = e;
-                pos--;
-                e = e->previous;
+    if (err_count != 0) {
+        error** errors = (error**)tmalloc(err_count * sizeof(error*));
+        if (errors != NULL) {
+            // insert backwards revert link list order
+            error** pos = errors + err_count - 1;
+            el = MASTER_ERROR_LOG.error_logs;
+            while (el != NULL) {
+                error* e = el->errors;
+                while (e != NULL) {
+                    *pos = e;
+                    pos--;
+                    e = e->previous;
+                }
+                el = el->next;
             }
-            el = el->next;
+            // stable, in place sorting
+            errors_grail_sort(errors, err_count);
+            src_file* file = NULL;
+            FILE* fh = NULL;
+            for (error** e = errors; e != errors + err_count; e++) {
+                if (file != (*e)->file) {
+                    if (fh) {
+                        fclose(fh);
+                        fh = NULL;
+                    }
+                    file = (*e)->file;
+                    if (file != NULL) {
+                        char pathbuff[256];
+                        ureg pathlen = src_file_get_path_len(file);
+                        char* path;
+                        if (pathlen < 256) {
+                            src_file_write_path(file, pathbuff);
+                            path = pathbuff;
+                        }
+                        else {
+                            path = tmalloc(pathlen + 1);
+                            src_file_write_path(file, pathbuff);
+                        }
+                        fh = fopen(path, "r");
+                        if (fh == NULL) {
+                            printFileIOError(file);
+                        }
+                    }
+                }
+                if (report_error(*e, fh, file)) {
+                    printFileIOError(file);
+                    if (fh) {
+                        fclose(fh);
+                        fh = NULL;
+                    }
+                }
+                if (e != errors + err_count - 1 ||
+                    MASTER_ERROR_LOG.global_error_count > 0 || errors == NULL) {
+                    pe("\n");
+                }
+            }
+            if (fh) fclose(fh);
+            tfree(errors);
         }
-        // stable, in place sorting
-        errors_grail_sort(errors, err_count);
-        src_file* file = NULL;
-        FILE* fh = NULL;
-        for (error** e = errors; e != errors + err_count; e++) {
-            if (file != (*e)->file) {
-                if (fh) {
-                    fclose(fh);
-                    fh = NULL;
-                }
-                file = (*e)->file;
-                if (file != NULL) {
-                    char pathbuff[256];
-                    ureg pathlen = src_file_get_path_len(file);
-                    char* path;
-                    if (pathlen < 256) {
-                        src_file_write_path(file, pathbuff);
-                        path = pathbuff;
-                    }
-                    else {
-                        path = tmalloc(pathlen + 1);
-                        src_file_write_path(file, pathbuff);
-                    }
-                    fh = fopen(path, "r");
-                    if (fh == NULL) {
-                        printFileIOError(file);
-                    }
-                }
-            }
-            if (report_error(*e, fh, file)) {
-                printFileIOError(file);
-                if (fh) {
-                    fclose(fh);
-                    fh = NULL;
-                }
-            }
-            if (e != errors + err_count - 1 ||
-                MASTER_ERROR_LOG.global_error_count > 0 || errors == NULL) {
-                pe("\n");
-            }
+        else {
+            printCriticalError(
+                "memory allocation failiure during error reporting");
         }
-        if (fh) fclose(fh);
-        tfree(errors);
     }
     el = MASTER_ERROR_LOG.error_logs;
     while (el != NULL) {
@@ -791,9 +796,6 @@ void master_error_log_unwind()
     }
     for (ureg i = 0; i < MASTER_ERROR_LOG.global_error_count; i++) {
         printCriticalError(MASTER_ERROR_LOG.global_errors[i]);
-    }
-    if (errors == NULL) {
-        printCriticalError("memory allocation failiure during error reporting");
     }
 }
 
