@@ -150,8 +150,9 @@ mdg_node* mdg_add_module(mdg* m, mdg_node* parent, sc_module* mod, string ident)
 int mdg_add_dependency(mdg* m, mdg_node* n, mdg_node* dependency)
 {
     rwslock_read(&n->lock);
-    aseglist_add(&n->dependencies, dependency);
+    int r = aseglist_add(&n->dependencies, dependency);
     rwslock_end_read(&n->lock);
+    return r;
 }
 mdg_group* mdg_group_new()
 {
