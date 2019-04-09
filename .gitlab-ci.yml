@@ -1,15 +1,26 @@
-# Use the official gcc image
-image: gcc
+image: alpine
 
-before_script:
-    # Install build dependencies
-    - apt-get update && apt-get -y install cmake
+stages:
+    - build
+    - test
 
-myapp:
-    # Build the application
+build:
     stage: build
+    before_script:
+        - apk update
+        - apk add gcc make cmake build-base
     script:
         - mkdir build
         - cd build
-        - cmake -DCMAKE_BUILD_TYPE=Release ../
+        - cmake -DCMAKE_BUILD_TYPE=Debug ../
         - make
+    artifacts:
+        paths:
+            - ./build
+            - ./build/tauc
+        expire_in: 20 minutes
+
+test:
+    stage: test
+    script:
+        - ./build/tauc
