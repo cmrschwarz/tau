@@ -130,11 +130,22 @@ fail:
     return pe(res, "job_queue_test");
 }
 
-int main_release(int argc, char** argv);
 int release_test()
 {
-    char* cli_args[2] = {"", "test/test.tau"};
-    int r = main_release(2, cli_args);
+    static char* cli_args[2] = {"", "test/test.tau"};
+    int r = master_error_log_init();
+    if (!r) {
+        r = tauc_init();
+        if (!r) {
+            r = tauc_run(2, cli_args);
+            master_error_log_unwind();
+            tauc_fin();
+        }
+        else {
+            master_error_log_unwind();
+        }
+        master_error_log_fin();
+    }
     return pe(r, "release_test");
 }
 
