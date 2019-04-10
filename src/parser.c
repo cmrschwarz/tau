@@ -418,7 +418,7 @@ parse_error parse_param_decl(
     if (!d->symbol.name) return PE_INSANE;
     d->symbol.stmt.type = SYM_PARAM;
     // TODO: flags parsing
-    d->symbol.stmt.flags = ASTN_FLAGS_DEFAULT;
+    d->symbol.stmt.flags = STMT_FLAGS_DEFAULT;
     tk_void(&p->tk);
     PEEK(p, t);
     if (t->type != TT_COLON) {
@@ -1734,13 +1734,13 @@ parse_error parse_label(parser* p, ureg start, ureg end, stmt** tgt)
 parse_error parse_statement(parser* p, stmt** tgt)
 {
     parse_error pe;
-    stmt_flags flags = ASTN_FLAGS_DEFAULT;
+    stmt_flags flags = STMT_FLAGS_DEFAULT;
     token* t;
     PEEK(p, t);
     ureg start = t->start;
     while (true) {
         if (t->type != TT_STRING) {
-            if (flags == ASTN_FLAGS_DEFAULT) {
+            if (flags == STMT_FLAGS_DEFAULT) {
                 if (body_supports_exprs(p->parent_type)) {
                     return parse_expr_stmt(p, tgt);
                 }
@@ -1801,7 +1801,7 @@ parse_error parse_statement(parser* p, stmt** tgt)
                 }
                 default:; // fallthrough
             }
-            if (flags == ASTN_FLAGS_DEFAULT) {
+            if (flags == STMT_FLAGS_DEFAULT) {
                 // TODO: require, import, include
                 switch (kw) {
                     case KW_LABEL: {
@@ -1819,7 +1819,7 @@ parse_error parse_statement(parser* p, stmt** tgt)
                 return parse_alias(p, start, t->end, flags, tgt);
             }
         }
-        if (flags == ASTN_FLAGS_DEFAULT) {
+        if (flags == STMT_FLAGS_DEFAULT) {
             if (body_supports_exprs(p->parent_type)) {
                 return parse_expr_stmt(p, tgt);
             }

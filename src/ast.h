@@ -4,7 +4,7 @@
 
 typedef u8 stmt_flags;
 typedef u8 err_flags;
-#define ASTN_FLAGS_DEFAULT 0
+#define STMT_FLAGS_DEFAULT 0
 #define ERR_FLAGS_DEFAULT 0
 
 typedef enum PACK_ENUM access_modifier {
