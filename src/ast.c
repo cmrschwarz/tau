@@ -55,7 +55,7 @@ void stmt_get_highlight_bounds(stmt* stmt, ureg* start, ureg* end)
         case SC_EXTEND_GENERIC:
         case SC_STRUCT_GENERIC:
         case SC_TRAIT_GENERIC:
-        case SYM_VAR_DECL:
+        case SYM_VAR:
         case SC_FUNC_GENERIC: {
             src_range dr = ((symbol*)stmt)->decl_range;
             src_range_large srl;

@@ -401,8 +401,7 @@ parse_error expr_to_stmt(parser* p, stmt** tgt, expr* e, ureg start, ureg end)
     return PE_OK;
 }
 parse_error parse_param_decl(
-    parser* p, sym_param_decl** tgt, ureg ctx_start, ureg ctx_end,
-    char* msg_context)
+    parser* p, sym_param** tgt, ureg ctx_start, ureg ctx_end, char* msg_context)
 {
     parse_error pe;
     token* t;
@@ -413,11 +412,11 @@ parse_error parse_param_decl(
             "expected parameter identifier", ctx_start, ctx_end, msg_context);
         return PE_UNEXPECTED_TOKEN;
     }
-    sym_param_decl* d = alloc_perm(p, sizeof(sym_param_decl));
+    sym_param* d = alloc_perm(p, sizeof(sym_param));
     if (!d) return PE_INSANE;
     d->symbol.name = alloc_string_perm(p, t->str);
     if (!d->symbol.name) return PE_INSANE;
-    d->symbol.stmt.type = SYM_PARAM_DECL;
+    d->symbol.stmt.type = SYM_PARAM;
     // TODO: flags parsing
     d->symbol.stmt.flags = ASTN_FLAGS_DEFAULT;
     tk_void(&p->tk);
@@ -1212,7 +1211,7 @@ parse_error parse_var_decl(
     if (!vd) return PE_INSANE;
     vd->symbol.name = alloc_string_perm(p, ident);
     if (!vd->symbol.name) return PE_INSANE;
-    vd->symbol.stmt.type = SYM_VAR_DECL;
+    vd->symbol.stmt.type = SYM_VAR;
     vd->symbol.stmt.flags = flags;
     token* t;
     PEEK(p, t);
@@ -1282,7 +1281,7 @@ parse_error parse_var_decl(
     return PE_OK;
 }
 parse_error parse_param_list(
-    parser* p, sym_param_decl** tgt, bool generic, ureg ctx_start, ureg ctx_end,
+    parser* p, sym_param** tgt, bool generic, ureg ctx_start, ureg ctx_end,
     char* msg)
 {
     token* t;
@@ -1299,7 +1298,7 @@ parse_error parse_param_list(
             *tgt = NULL;
             return pe;
         }
-        tgt = (sym_param_decl**)&(*tgt)->symbol.stmt.next;
+        tgt = (sym_param**)&(*tgt)->symbol.stmt.next;
         PEEK(p, t);
         if (t->type == TT_COMMA) {
             tk_void(&p->tk);
@@ -1366,7 +1365,7 @@ parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
         return PE_HANDLED;
     }
     tk_void(&p->tk);
-    sym_param_decl** pd =
+    sym_param** pd =
         generic ? &((sc_func_generic*)sc)->params : &((sc_func*)sc)->params;
     pe = parse_param_list(
         p, pd, false, start, decl_end, "in this function declaration");

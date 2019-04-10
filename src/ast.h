@@ -29,8 +29,8 @@ typedef enum PACK_ENUM ast_node_type {
     SC_TRAIT_GENERIC,
 
     SYM_ALIAS,
-    SYM_VAR_DECL,
-    SYM_PARAM_DECL,
+    SYM_VAR,
+    SYM_PARAM,
     SYM_LABEL,
 
     STMT_EXPRESSION,
@@ -261,21 +261,21 @@ typedef struct stmt_expr {
     src_range expr_range; // debatable
 } stmt_expr;
 
-typedef struct sym_param_decl {
+typedef struct sym_param {
     symbol symbol;
     expr* type;
     expr* default_value;
-} sym_param_decl;
+} sym_param;
 
 typedef struct sc_func {
     scope scope;
-    sym_param_decl* params;
+    sym_param* params;
 } sc_func;
 
 typedef struct sc_func_generic {
     scope scope;
-    sym_param_decl* generic_params;
-    sym_param_decl* params;
+    sym_param* generic_params;
+    sym_param* params;
 } sc_func_generic;
 
 typedef struct sc_struct {
@@ -284,7 +284,7 @@ typedef struct sc_struct {
 
 typedef struct sc_struct_generic {
     scope scope;
-    sym_param_decl* generic_params;
+    sym_param* generic_params;
 } sc_struct_generic;
 
 typedef struct sc_trait {
@@ -293,7 +293,7 @@ typedef struct sc_trait {
 
 typedef struct sc_trait_generic {
     scope scope;
-    sym_param_decl* generic_params;
+    sym_param* generic_params;
 } sc_trait_generic;
 
 typedef struct sc_module {
@@ -302,7 +302,7 @@ typedef struct sc_module {
 
 typedef struct sc_module_generic {
     scope scope;
-    sym_param_decl* generic_params;
+    sym_param* generic_params;
 } sc_module_generic;
 
 typedef struct sc_extend {
@@ -311,7 +311,7 @@ typedef struct sc_extend {
 
 typedef struct sc_extend_generic {
     scope scope;
-    sym_param_decl* generic_params;
+    sym_param* generic_params;
 } sc_extend_generic;
 
 typedef struct sym_var {
@@ -400,7 +400,7 @@ typedef struct expr_type_slice {
 
 typedef struct expr_lambda {
     expr expr;
-    sym_param_decl* params;
+    sym_param* params;
     body body;
 } expr_lambda;
 

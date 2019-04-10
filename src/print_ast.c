@@ -63,7 +63,7 @@ void print_body(body* body, ureg indent)
         head = head->next;
     }
 }
-void print_astn_params_decl(sym_param_decl* d, ureg indent)
+void print_sym_params(sym_param* d, ureg indent)
 {
     while (d != NULL) {
         pu(d->symbol.name);
@@ -77,7 +77,7 @@ void print_astn_params_decl(sym_param_decl* d, ureg indent)
             p("= ");
             print_expr(d->default_value, indent);
         }
-        d = (sym_param_decl*)d->symbol.stmt.next;
+        d = (sym_param*)d->symbol.stmt.next;
         if (d) p(", ");
     }
 }
@@ -96,7 +96,7 @@ void print_astn(stmt* astn, ureg indent)
             p("func ");
             pu(f->scope.symbol.name);
             p("(");
-            print_astn_params_decl(f->params, indent);
+            print_sym_params(f->params, indent);
             pc(')');
             print_body_braced_nl(&f->scope.body, indent);
         } break;
@@ -105,10 +105,10 @@ void print_astn(stmt* astn, ureg indent)
             p("func ");
             pu(f->scope.symbol.name);
             p("[");
-            print_astn_params_decl(f->generic_params, indent);
+            print_sym_params(f->generic_params, indent);
             pc(']');
             p("(");
-            print_astn_params_decl(f->params, indent);
+            print_sym_params(f->params, indent);
             pc(')');
             print_body_braced_nl(&f->scope.body, indent);
         } break;
@@ -123,7 +123,7 @@ void print_astn(stmt* astn, ureg indent)
             p("struct ");
             pinn(s->scope.symbol.name);
             p("[");
-            print_astn_params_decl(s->generic_params, indent);
+            print_sym_params(s->generic_params, indent);
             pc(']');
             print_body_braced_nl(&s->scope.body, indent);
         } break;
@@ -138,7 +138,7 @@ void print_astn(stmt* astn, ureg indent)
             p("trait ");
             pinn(t->scope.symbol.name);
             p("[");
-            print_astn_params_decl(t->generic_params, indent);
+            print_sym_params(t->generic_params, indent);
             pc(']');
             print_body_braced_nl(&t->scope.body, indent);
         } break;
@@ -153,7 +153,7 @@ void print_astn(stmt* astn, ureg indent)
             p("module ");
             pinn(m->scope.symbol.name);
             p("[");
-            print_astn_params_decl(m->generic_params, indent);
+            print_sym_params(m->generic_params, indent);
             pc(']');
             print_body_braced_nl(&m->scope.body, indent);
         } break;
@@ -168,11 +168,11 @@ void print_astn(stmt* astn, ureg indent)
             p("extend ");
             pinn(e->scope.symbol.name);
             p("[");
-            print_astn_params_decl(e->generic_params, indent);
+            print_sym_params(e->generic_params, indent);
             pc(']');
             print_body_braced_nl(&e->scope.body, indent);
         } break;
-        case SYM_VAR_DECL: {
+        case SYM_VAR: {
             sym_var* d = (sym_var*)astn;
             if (stmt_flags_get_const(d->symbol.stmt.flags)) p("const ");
             pu(d->symbol.name);
