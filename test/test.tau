@@ -1,3 +1,9 @@
 func main(args: String[]){
+    func test_compound_assignment(){
+        ((), a, ((),),) = 17;
+        (x, y, (a,b,c), d) := foo();
+        (x, y:, (a,b: int,c), d) = foo();
+        (a, b) += 3;
+    }
     return 0;
 }

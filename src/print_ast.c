@@ -81,6 +81,43 @@ void print_sym_params(sym_param* d, ureg indent)
         if (d) p(", ");
     }
 }
+void print_expr_list(expr** el, ureg indent)
+{
+    if (!el) return;
+    while (*el) {
+        print_expr(*el, indent);
+        el++;
+        if (*el) p(", ");
+    }
+}
+void print_compound_decl_list(expr** el, ureg indent)
+{
+    while (*el) {
+        if ((**el).type == SYM_VAR_UNINITIALIZED) {
+            sym_var* d = (sym_var*)*el;
+            if (stmt_flags_get_const(d->symbol.stmt.flags)) p("const ");
+            pu(d->symbol.name);
+            if (d->type != NULL) {
+                p(": ");
+                print_expr(d->type, indent);
+            }
+        }
+        else if ((**el).type == EXPR_TUPLE) {
+            expr_tuple* t = (expr_tuple*)(*el);
+            pc('(');
+            print_compound_decl_list(t->elements, indent);
+            if (t->elements && !t->elements[1]) {
+                pc(',');
+            }
+            pc(')');
+        }
+        else {
+            print_expr(*el, indent);
+        }
+        el++;
+        if (*el) p(", ");
+    }
+}
 void print_astn(stmt* astn, ureg indent)
 {
     print_indent(indent);
@@ -90,6 +127,25 @@ void print_astn(stmt* astn, ureg indent)
             print_expr(e->expr, indent);
             if (!expr_allowed_to_drop_semicolon(e->expr->type)) pc(';');
             pc('\n');
+        } break;
+        case STMT_COMPOUND_ASSIGN: {
+            stmt_compound_assignment* ca = (stmt_compound_assignment*)astn;
+            pc('(');
+            bool colon = stmt_flags_get_compound_decl(ca->stmt.flags);
+            if (colon) {
+                print_compound_decl_list(ca->elements, indent);
+            }
+            else {
+                print_expr_list(ca->elements, indent);
+            }
+            if (ca->elements && !ca->elements[1]) {
+                pc(',');
+            }
+            p(") ");
+            if (colon) pc(':');
+            p("= ");
+            print_expr(ca->value, indent);
+            p(";\n");
         } break;
         case SC_FUNC: {
             sc_func* f = (sc_func*)astn;
@@ -215,16 +271,6 @@ void print_astn(stmt* astn, ureg indent)
         }
     }
 }
-
-void print_expr_list(expr** el, ureg indent)
-{
-    if (!el) return;
-    while (*el) {
-        print_expr(*el, indent);
-        el++;
-        if (*el) p(", ");
-    }
-}
 void print_expr(expr* ex, ureg indent)
 {
     switch (ex->type) {
@@ -233,6 +279,16 @@ void print_expr(expr* ex, ureg indent)
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)ex;
             print_body_braced(&b->body, indent);
+        } break;
+        case SYM_VAR_UNINITIALIZED: {
+            sym_var* d = (sym_var*)ex;
+            if (stmt_flags_get_const(d->symbol.stmt.flags)) p("const ");
+            pu(d->symbol.name);
+            pc(':');
+            if (d->type != NULL) {
+                pc(' ');
+                print_expr(d->type, indent);
+            }
         } break;
         case EXPR_BINARY_LITERAL:
             pc('\'');
@@ -285,14 +341,18 @@ void print_expr(expr* ex, ureg indent)
             break;
         }
         case EXPR_ARRAY: {
-            pc('{');
+            pc('[');
             print_expr_list(((expr_array*)ex)->elements, indent);
-            pc('}');
+            pc(']');
         } break;
         case EXPR_TUPLE: {
-            pc('[');
-            print_expr_list(((expr_tuple*)ex)->elements, indent);
-            pc(']');
+            expr** elements = ((expr_tuple*)ex)->elements;
+            pc('(');
+            print_expr_list(elements, indent);
+            if (elements && !elements[1]) {
+                pc(',');
+            }
+            pc(')');
         } break;
         case EXPR_OP_CALL: {
             expr_call* c = (expr_call*)ex;

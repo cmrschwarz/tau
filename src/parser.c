@@ -528,118 +528,84 @@ parse_error parse_expr_node_list(
     if (!*tgt) return PE_INSANE;
     return PE_OK;
 }
-static inline parse_error parse_tuple(parser* p, token* t, expr** ex)
+static inline parse_error parse_array(parser* p, token* t, expr** ex)
 {
     ureg t_start = t->start;
     ureg t_end = t->end;
     tk_void(&p->tk);
-    expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
-    if (!tp) return PE_INSANE;
-    tp->expr.type = EXPR_TUPLE;
-    parse_error pe =
-        parse_expr_node_list(p, NULL, &tp->elements, "tuple", TT_BRACKET_CLOSE);
-    // EMSG: suboptimal e.g. for case [,,]
+    expr_array* arr = alloc_perm(p, sizeof(expr_array));
+    if (!arr) return PE_INSANE;
+    arr->expr.type = EXPR_ARRAY;
+    parse_error pe = parse_expr_node_list(
+        p, NULL, &arr->elements, "array", TT_BRACKET_CLOSE);
+    // TODO: EMSG: suboptimal e.g. for case [,,]
     if (pe == PE_UNEXPECTED_TOKEN) {
         PEEK(p, t);
         parser_error_2a(
-            p, "unclosed tuple", t->start, t->end,
+            p, "array brackets missmatch", t->start, t->end,
             "reached end of expression due to unexpected token", t_start, t_end,
-            "didn't find a matching bracket for this tuple");
+            "didn't find a matching bracket for this array");
         return PE_HANDLED;
     }
     if (pe != PE_OK) return pe;
     PEEK(p, t);
-    if (expr_fill_srange(p, &tp->expr, t_start, t->end)) return PE_INSANE;
-    tk_void(&p->tk);
-    *ex = (expr*)tp;
-    return PE_OK;
-}
-
-static inline parse_error
-parse_expr_body_or_array(parser* p, token* t, expr** ex)
-{
-    ureg t_start = t->start;
-    ureg t_end = t->end;
-    tk_void(&p->tk);
-    stmt* s = NULL;
-    expr* e = NULL;
-    ast_node_type pold = p->parent_type;
-    p->parent_type = EXPR_ARRAY;
-    parse_error pe = parse_statement(p, &s);
-    p->parent_type = pold;
-    if (pe == PE_NOT_A_STATEMENT) {
-        PEEK(p, t);
-        if (t->type != TT_BRACE_CLOSE) {
-            pe = parse_expression(p, &e);
-            if (pe == PE_EOEX) {
-                PEEK(p, t);
-                parser_error_1a_pc(
-                    p, "invalid expression token", t->start, t->end,
-                    "expected expression");
-                return PE_HANDLED;
-            }
-            if (pe) return pe;
-            PEEK(p, t);
-            if (t->type == TT_SEMICOLON) {
-                tk_void(&p->tk);
-                pe = expr_to_stmt(
-                    p, &s, e, src_range_get_start(e->srange), t->end);
-                if (pe) return pe;
-            }
-            else if (t->type == TT_COMMA) {
-                tk_void(&p->tk);
-            }
-        }
-    }
-    else if (pe != PE_OK) {
-        return pe;
-    }
-    if (s) {
-        expr_block* b = alloc_perm(p, sizeof(expr_block));
-        if (!b) return PE_INSANE;
-        b->expr.type = EXPR_BLOCK;
-        pe = parse_braced_delimited_body(
-            p, t_start, t_end, &b->body, EXPR_BLOCK);
-        if (pe) return pe;
-        s->next = b->body.children;
-        b->body.children = s;
-        *ex = (expr*)b;
-        return PE_OK;
-    }
-    expr_array* arr = alloc_perm(p, sizeof(expr_array));
-    if (!arr) return PE_INSANE;
-    arr->expr.type = EXPR_ARRAY;
-    if (e) {
-        pe =
-            parse_expr_node_list(p, e, &arr->elements, "array", TT_BRACE_CLOSE);
-        // EMSG: suboptimal e.g. for case {,,}
-        if (pe == PE_UNEXPECTED_TOKEN) {
-            PEEK(p, t);
-            parser_error_2a(
-                p, "unclosed array", t->start, t->end,
-                "reached end of expression due to unexpected token", t_start,
-                t_end, "didn't find a matching brace for this array");
-            return PE_HANDLED;
-        }
-        if (pe != PE_OK) return pe;
-        PEEK(p, t);
-    }
-    else {
-        arr->elements = (expr**)&NULL_PTR;
-    }
     if (expr_fill_srange(p, &arr->expr, t_start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
     *ex = (expr*)arr;
     return PE_OK;
 }
 static inline parse_error
-parse_parenthesis_group(parser* p, token* t, expr** ex)
+parse_tuple_post_first_comma(parser* p, ureg t_start, ureg t_end, expr** ex)
 {
-    ureg t_start = t->start;
-    ureg t_end = t->end;
+    expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
+    tp->expr.type = EXPR_TUPLE;
+    void** list = list_builder_start(&p->lb);
+    list_builder_add(&p->lb, *ex);
+    token* t;
+    PEEK(p, t);
+    bool err = false;
+    while (true) {
+        if (t->type == TT_PAREN_CLOSE) break;
+        parse_error pe = parse_expression(p, ex);
+        if (pe) {
+            if (pe == PE_EOEX) {
+                err = true;
+                break;
+            }
+            return pe;
+        }
+        list_builder_add(&p->lb, *ex);
+        PEEK(p, t);
+        if (t->type == TT_COMMA) {
+            tk_void(&p->tk);
+            PEEK(p, t);
+            continue;
+        }
+        if (t->type == TT_PAREN_CLOSE) break;
+        err = true;
+        break;
+    }
+    if (err) {
+        parser_error_2a(
+            p, "tuple parenthesis missmatch", t->start, t->end,
+            "reached end of expression due to unexpected token", t_start, t_end,
+            "didn't find a matching parenthesis for this tuple");
+        return PE_HANDLED;
+    }
     tk_void(&p->tk);
-    parse_error pe = parse_expression_of_prec(p, ex, PREC_BASELINE);
-    if (pe != PE_OK && pe != PE_EOEX) return pe;
+    ureg count;
+    tp->elements = (expr**)list_builder_pop_list_zt(
+        &p->lb, list, &p->tk.tc->permmem, &count);
+    if (!tp->elements) return PE_INSANE;
+    PEEK(p, t);
+    tp->expr.srange = src_range_pack_lines(p->tk.tc, t_start, t->start);
+    *ex = (expr*)tp;
+    return PE_OK;
+}
+static inline parse_error
+build_expr_parentheses(parser* p, ureg t_start, ureg t_end, expr** ex)
+{
+    token* t;
     PEEK(p, t);
     if (t->type != TT_PAREN_CLOSE) {
         parser_error_2a(
@@ -648,22 +614,255 @@ parse_parenthesis_group(parser* p, token* t, expr** ex)
             "didn't find a match for this parenthesis");
         return PE_HANDLED;
     }
-    if (pe == PE_EOEX) {
-        parser_error_2a(
-            p, "empty parenthesis pair", t->start, t->end,
-            "found closing parenthesis", t_start, t_end,
-            "expected an evaluable expression");
-        return PE_HANDLED;
-    }
+    tk_void(&p->tk);
     expr_parentheses* pr =
         (expr_parentheses*)alloc_perm(p, sizeof(expr_parentheses));
     if (!pr) return PE_INSANE;
     pr->expr.type = EXPR_OP_PARENTHESES;
     pr->child = *ex;
     if (expr_fill_srange(p, &pr->expr, t_start, t->end)) return PE_INSANE;
-    tk_void(&p->tk);
     *ex = (expr*)pr;
     return PE_OK;
+}
+static inline parse_error
+build_empty_tuple(parser* p, ureg t_start, ureg t_end, expr** ex)
+{
+    expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
+    if (!tp) return PE_INSANE;
+    tp->expr.type = EXPR_TUPLE;
+    tp->expr.srange = src_range_pack_lines(p->tk.tc, t_start, t_end);
+    tp->elements = NULL;
+    *ex = (expr*)tp;
+    return PE_OK;
+}
+static inline parse_error
+parse_paren_group_or_tuple(parser* p, token* t, expr** ex)
+{
+    ureg t_start = t->start;
+    ureg t_end = t->end;
+    tk_void(&p->tk);
+    PEEK(p, t);
+    if (t->type == TT_PAREN_CLOSE) {
+        tk_void(&p->tk);
+        return build_empty_tuple(p, t_start, t->end, ex);
+    }
+    parse_error pe = parse_expression_of_prec(p, ex, PREC_BASELINE);
+    if (pe != PE_OK && pe != PE_EOEX) return pe;
+    PEEK(p, t);
+    if (t->type == TT_COMMA) {
+        tk_void(&p->tk);
+        return parse_tuple_post_first_comma(p, t_start, t_end, ex);
+    }
+    else {
+        return build_expr_parentheses(p, t_start, t_end, ex);
+    }
+}
+typedef union tuple_ident_node {
+    sym_var_uninitialized var;
+    expr_identifier ident;
+} tuple_ident_node;
+static inline parse_error
+parse_uninitialized_var_in_tuple(parser* p, token* t, expr** ex)
+{
+    sym_var_uninitialized* v = alloc_perm(p, sizeof(tuple_ident_node));
+    v->symbol.stmt.type = SYM_VAR_UNINITIALIZED;
+    v->symbol.stmt.eflags = ERR_FLAGS_DEFAULT;
+    v->symbol.stmt.flags = STMT_FLAGS_DEFAULT;
+    stmt_flags_set_compound_decl(&v->symbol.stmt.flags);
+    v->symbol.name = alloc_string_perm(p, t->str);
+    if (!v->symbol.name) return PE_INSANE;
+    v->symbol.decl_range = src_range_pack_lines(p->tk.tc, t->start, t->end);
+    tk_void_n(&p->tk, 2);
+    PEEK(p, t);
+    if (t->type == TT_COMMA || t->type == TT_PAREN_CLOSE) {
+        v->type = NULL;
+        *ex = (expr*)v;
+        return PE_OK;
+    }
+    else {
+        ureg t_start = t->start;
+        parse_error pe = parse_expression(p, &v->type);
+        if (!pe) {
+            *ex = (expr*)v;
+            return PE_OK;
+        }
+        if (pe == PE_EOEX) {
+            PEEK(p, t);
+            parser_error_1a(
+                p, "invalid var declaration syntax", t_start, t->end,
+                "expected a type expression or a comma");
+            return PE_HANDLED;
+        }
+        return pe;
+    }
+}
+
+static inline parse_error
+build_ident_node_in_tuple(parser* p, token* t, expr** ex)
+{
+    tuple_ident_node* tin = alloc_perm(p, sizeof(tuple_ident_node));
+    sym_var_uninitialized* v = &tin->var;
+    v->symbol.stmt.type = SYM_VAR_UNINITIALIZED;
+    v->symbol.stmt.eflags = ERR_FLAGS_DEFAULT;
+    v->symbol.stmt.flags = STMT_FLAGS_DEFAULT;
+    v->symbol.name = alloc_string_perm(p, t->str);
+    if (!v->symbol.name) return PE_INSANE;
+    v->symbol.decl_range = src_range_pack_lines(p->tk.tc, t->start, t->end);
+    v->type = NULL;
+    *ex = (expr*)tin;
+    tk_void(&p->tk);
+    return PE_OK;
+}
+static inline void turn_ident_nodes_to_exprs(expr** elems)
+{
+    if (!elems) return;
+    while (*elems) {
+        if ((**elems).type == SYM_VAR_UNINITIALIZED) {
+            tuple_ident_node* tin = (tuple_ident_node*)*elems;
+            if (tin->var.type == NULL &&
+                !stmt_flags_get_compound_decl(tin->var.symbol.stmt.flags)) {
+                ureg srange = tin->var.symbol.decl_range;
+                tin->ident.value = tin->var.symbol.name;
+                tin->ident.expr.srange = srange;
+                tin->ident.expr.type = EXPR_IDENTIFIER;
+            }
+        }
+        else if ((**elems).type == EXPR_TUPLE) {
+            turn_ident_nodes_to_exprs((**((expr_tuple**)elems)).elements);
+        }
+        elems++;
+    }
+}
+static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
+    parser* p, token* t, expr** ex, expr*** elem_list, bool* contains_decls,
+    ureg* list_end)
+{
+    parse_error pe;
+    ureg t_start = t->start;
+    ureg t_end = t->end;
+    tk_void(&p->tk);
+    PEEK(p, t);
+    if (t->type == TT_PAREN_CLOSE) {
+        tk_void(&p->tk);
+        return build_empty_tuple(p, t_start, t->end, ex);
+    }
+    void** element_list = NULL;
+    if (t->type != TT_STRING) {
+        pe = parse_expression(p, ex);
+        if (pe == PE_EOEX) {
+            PEEK(p, t);
+            parser_error_1a(
+                p, "unexpected token after opening parenthesis", t->start,
+                t->end,
+                "expected an expression, a declaration or a closing "
+                "parenthesis");
+            return PE_HANDLED;
+        }
+        if (pe) return pe;
+        PEEK(p, t);
+        if (t->type == TT_COMMA) {
+            element_list = list_builder_start(&p->lb);
+            if (list_builder_add(&p->lb, *ex)) return PE_INSANE;
+        }
+        else {
+            return build_expr_parentheses(p, t_start, t_end, ex);
+        }
+    }
+    else {
+        token* t2;
+        t2 = tk_peek_2nd(&p->tk);
+        if (!t2) return PE_TK_ERROR;
+        if (t2->type == TT_COLON) {
+            *contains_decls = true;
+            pe = parse_uninitialized_var_in_tuple(p, t, ex);
+            if (pe) return pe;
+            PEEK(p, t);
+        }
+        else if (t2->type != TT_COMMA) {
+            pe = parse_expression(p, ex);
+            if (pe) return pe;
+            PEEK(p, t);
+            if (t->type == TT_PAREN_CLOSE) {
+                return build_expr_parentheses(p, t_start, t_end, ex);
+            }
+            PEEK(p, t);
+        }
+        else {
+            pe = build_ident_node_in_tuple(p, t, ex);
+            if (pe) return pe;
+            t = t2;
+        }
+        element_list = list_builder_start(&p->lb);
+        if (list_builder_add(&p->lb, *ex)) return PE_INSANE;
+    }
+    while (true) {
+        if (t->type == TT_COMMA) {
+            tk_void(&p->tk);
+            PEEK(p, t);
+        }
+        else if (t->type != TT_PAREN_CLOSE) {
+            parser_error_1a(
+                p, "unexpected token in tuple", t->start, t->end,
+                "expected an expression, a comma or a closing parenthesis");
+            return PE_HANDLED;
+        }
+        if (t->type == TT_PAREN_CLOSE) {
+            tk_void(&p->tk);
+            expr** res_elem_list = (expr**)list_builder_pop_list_zt(
+                &p->lb, element_list, &p->tk.tc->permmem, &t_end);
+            if (!res_elem_list) return PE_INSANE;
+            if (elem_list) {
+                *elem_list = res_elem_list;
+                *list_end = t->end;
+            }
+            else {
+                expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
+                if (!tp) return PE_INSANE;
+                tp->expr.type = EXPR_TUPLE;
+                tp->expr.srange =
+                    src_range_pack_lines(p->tk.tc, t_start, t->end);
+                tp->elements = res_elem_list;
+                *ex = (expr*)tp;
+            }
+            return PE_OK;
+        }
+        if (t->type == TT_STRING) {
+            token* t2;
+            t2 = tk_peek_2nd(&p->tk);
+            if (!t2) return PE_TK_ERROR;
+            if (t2->type == TT_COLON) {
+                *contains_decls = true;
+                pe = parse_uninitialized_var_in_tuple(p, t, ex);
+                if (pe) return pe;
+            }
+            else if (t2->type == TT_COMMA || t2->type == TT_PAREN_CLOSE) {
+                pe = build_ident_node_in_tuple(p, t, ex);
+                if (pe) return pe;
+            }
+            else {
+                pe = parse_expression(p, ex);
+                if (pe) return pe;
+            }
+        }
+        else if (t->type == TT_PAREN_OPEN) {
+            pe = parse_paren_group_or_tuple_or_compound_decl(
+                p, t, ex, NULL, contains_decls, NULL);
+            if (pe) return pe;
+        }
+        else {
+            pe = parse_expression(p, ex);
+            if (pe == PE_EOEX) {
+                parser_error_1a(
+                    p, "unexpected token in tuple", t->start, t->end,
+                    "expected an expression, a declaration or a closing "
+                    "parenthesis");
+                return PE_HANDLED;
+            }
+            if (pe) return pe;
+        }
+        if (list_builder_add(&p->lb, *ex)) return PE_INSANE;
+        PEEK(p, t);
+    }
 }
 static inline parse_error
 parse_prefix_unary_op(parser* p, token* t, ast_node_type op, expr** ex)
@@ -763,7 +962,7 @@ parse_error parse_give_expr(parser* p, ureg start, ureg end, expr** tgt)
     *tgt = &g->expr;
     return PE_OK;
 }
-parse_error parse_expr_body(parser* p, expr** tgt, ast_node body_type)
+parse_error parse_expr_body(parser* p, expr** tgt, ast_node_type body_type)
 {
     ast_node_type old_parent_type = p->parent_type;
     p->parent_type = body_type;
@@ -855,13 +1054,18 @@ static inline parse_error parse_single_value(parser* p, token* t, expr** ex)
 {
     switch (t->type) {
         case TT_PAREN_OPEN: {
-            return parse_parenthesis_group(p, t, ex);
+            return parse_paren_group_or_tuple(p, t, ex);
         }
         case TT_BRACKET_OPEN: {
-            return parse_tuple(p, t, ex);
+            return parse_array(p, t, ex);
         }
         case TT_BRACE_OPEN: {
-            return parse_expr_body_or_array(p, t, ex);
+            tk_void(&p->tk);
+            expr_block* b = alloc_perm(p, sizeof(expr_block));
+            b->expr.type = EXPR_BLOCK;
+            *ex = (expr*)b;
+            return parse_braced_delimited_body(
+                p, t->start, t->end, &b->body, EXPR_BLOCK);
         }
         case TT_STRING: {
             keyword_id kw = kw_match(t->str);
@@ -1592,13 +1796,101 @@ bool body_customizes_exprs(ast_node_type pt)
 {
     return pt == EXPR_ARRAY;
 }
+static inline parse_error parse_compound_assignment(
+    parser* p, ureg t_start, ureg t_end, expr** elements, stmt** tgt,
+    bool had_colon)
+{
+    stmt_compound_assignment* ca =
+        alloc_perm(p, sizeof(stmt_compound_assignment));
+    if (!ca) return PE_INSANE;
+    ca->elements = elements;
+    ca->stmt.type = STMT_COMPOUND_ASSIGN;
+    ca->stmt.flags = STMT_FLAGS_DEFAULT;
+    ca->stmt.eflags = ERR_FLAGS_DEFAULT;
+    if (had_colon) stmt_flags_set_compound_decl(&ca->stmt.flags);
+    parse_error pe = parse_expression(p, &ca->value);
+    token* t;
+    if (pe == PE_EOEX) {
+        PEEK(p, t);
+        parser_error_2a(
+            p, "unexpected token", t->start, t->end, "expected expression",
+            t_start, t_end, "in this compound assignment statement");
+    }
+    if (pe) return pe;
+    PEEK(p, t);
+    if (t->type != TT_SEMICOLON) {
+        ureg exp_end;
+        get_expr_bounds(ca->value, NULL, &exp_end);
+        parser_error_2a(
+            p, "missing semicolon", t->start, t->end,
+            "expected ';' to terminate the  statement", t_start, exp_end,
+            "in this compound assignment statement");
+        return PE_HANDLED;
+    }
+    tk_void(&p->tk);
+    *tgt = (stmt*)ca;
+    return PE_OK;
+}
 parse_error parse_expr_stmt(parser* p, stmt** tgt)
 {
-    expr* expr;
+    expr* ex;
+    parse_error pe;
     token* t;
     PEEK(p, t);
-    ureg start = t->start;
-    parse_error pe = parse_expression(p, &expr);
+    ureg t_start = t->start;
+    if (t->type == TT_PAREN_OPEN) {
+        bool contains_decls = false;
+        ureg t_end;
+        expr** elems = NULL;
+        pe = parse_paren_group_or_tuple_or_compound_decl(
+            p, t, &ex, &elems, &contains_decls, &t_end);
+        if (pe) return pe;
+        if (elems) {
+            PEEK(p, t);
+            if (t->type == TT_COLON) {
+                t = tk_peek_2nd(&p->tk);
+                if (!t) return PE_TK_ERROR;
+                if (t->type == TT_EQUALS) {
+                    tk_void_n(&p->tk, 2);
+                    return parse_compound_assignment(
+                        p, t_start, t->end, elems, tgt, true);
+                }
+                contains_decls = true;
+            }
+            if (t->type == TT_EQUALS) {
+                tk_void(&p->tk);
+                turn_ident_nodes_to_exprs(elems);
+                return parse_compound_assignment(
+                    p, t_start, t->end, elems, tgt, false);
+            }
+            else {
+                if (contains_decls) {
+                    parser_error_2a(
+                        p, "unexpected token", t->start, t->end,
+                        "expected '=' or ':=' to parse compound assignment",
+                        t_start, t_end,
+                        "after this compound which contains declarations");
+                }
+                else {
+                    turn_ident_nodes_to_exprs(elems);
+                    expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
+                    if (!tp) return PE_INSANE;
+                    tp->expr.type = EXPR_TUPLE;
+                    tp->expr.srange =
+                        src_range_pack_lines(p->tk.tc, t_start, t->end);
+                    tp->elements = elems;
+                    ex = (expr*)tp;
+                }
+            }
+        }
+        // EMSG: if there is an invalid token following, this will lead to a
+        // "missing semicolon for expression" error down the line which is not
+        // ideal
+        pe = parse_expression_of_prec_post_value(p, &ex, PREC_BASELINE);
+    }
+    else {
+        pe = parse_expression(p, &ex);
+    }
     if (pe == PE_EOEX) {
         PEEK(p, t);
         parser_error_1a_pc(
@@ -1609,12 +1901,12 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
     if (pe) return pe;
     PEEK(p, t);
     if (t->type != TT_SEMICOLON) {
-        if (!expr_allowed_to_drop_semicolon(expr->type)) {
+        if (!expr_allowed_to_drop_semicolon(ex->type)) {
             ureg end;
-            get_expr_bounds(expr, NULL, &end); // TODO improve for loops etc.
+            get_expr_bounds(ex, NULL, &end); // TODO improve for loops etc.
             parser_error_2a(
                 p, "missing semicolon", t->start, t->end,
-                "expected ';' to terminate the expression statement", start,
+                "expected ';' to terminate the expression statement", t_start,
                 end, "in this expression");
             return PE_HANDLED;
         }
@@ -1623,7 +1915,7 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
         tk_void(&p->tk);
     }
     if (pe) return pe;
-    return expr_to_stmt(p, tgt, expr, start, t->end);
+    return expr_to_stmt(p, tgt, ex, t_start, t->end);
 }
 parse_error
 parse_alias(parser* p, ureg start, ureg end, stmt_flags flags, stmt** tgt)
@@ -1744,9 +2036,6 @@ parse_error parse_statement(parser* p, stmt** tgt)
                 if (body_supports_exprs(p->parent_type)) {
                     return parse_expr_stmt(p, tgt);
                 }
-                else if (body_customizes_exprs(p->parent_type)) {
-                    return PE_NOT_A_STATEMENT;
-                }
             }
             parser_error_1a_pc(
                 p, "unexpected token in statement", t->start, t->end,
@@ -1822,9 +2111,6 @@ parse_error parse_statement(parser* p, stmt** tgt)
         if (flags == STMT_FLAGS_DEFAULT) {
             if (body_supports_exprs(p->parent_type)) {
                 return parse_expr_stmt(p, tgt);
-            }
-            else if (body_customizes_exprs(p->parent_type)) {
-                return PE_NOT_A_STATEMENT;
             }
         }
         tk_void(&p->tk);

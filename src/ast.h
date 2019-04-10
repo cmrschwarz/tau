@@ -30,10 +30,12 @@ typedef enum PACK_ENUM ast_node_type {
 
     SYM_ALIAS,
     SYM_VAR,
+    SYM_VAR_UNINITIALIZED,
     SYM_PARAM,
     SYM_LABEL,
 
     STMT_EXPRESSION,
+    STMT_COMPOUND_ASSIGN,
 
     EXPR_BLOCK,
 
@@ -320,6 +322,17 @@ typedef struct sym_var {
     expr* value;
 } sym_var;
 
+typedef struct sym_var_uninitialized {
+    symbol symbol;
+    expr* type;
+} sym_var_uninitialized;
+
+typedef struct stmt_compound_assignment {
+    stmt stmt;
+    expr** elements;
+    expr* value;
+} stmt_compound_assignment;
+
 typedef struct expr_parentheses {
     expr expr;
     expr* child;
@@ -424,8 +437,8 @@ bool stmt_flags_get_virtual(stmt_flags f);
 void stmt_flags_set_static(stmt_flags* f);
 bool stmt_flags_get_static(stmt_flags f);
 
-void stmt_flags_set_module_extension(stmt_flags* f);
-bool stmt_flags_get_module_extension(stmt_flags f);
+void stmt_flags_set_compound_decl(stmt_flags* f);
+bool stmt_flags_get_compound_decl(stmt_flags f);
 
 void err_flags_set_redeclared(err_flags* f);
 bool err_flags_get_redeclared(err_flags f);

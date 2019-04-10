@@ -10,7 +10,6 @@ typedef enum parse_error {
     PE_UNEXPECTED_TOKEN,
     PE_HANDLED,
     PE_TK_ERROR,
-    PE_NOT_A_STATEMENT,
 } parse_error;
 
 typedef struct parser {

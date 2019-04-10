@@ -80,7 +80,7 @@ void stmt_get_highlight_bounds(stmt* stmt, ureg* start, ureg* end)
 #define SEALED_OFFSET 3
 #define VIRTUAL_OFFSET 2
 #define STATIC_OFFSET 1
-#define EXTEND_OFFSET 0
+#define COMPUND_DECL_OFFSET 0
 
 static inline void bitmask_set_bit(u8* data, ureg offs)
 {
@@ -152,13 +152,13 @@ bool stmt_flags_get_static(stmt_flags f)
     return bitmask_get_bit(f, STATIC_OFFSET);
 }
 
-void stmt_flags_set_module_extension(stmt_flags* f)
+void stmt_flags_set_compound_decl(stmt_flags* f)
 {
-    bitmask_set_bit(f, EXTEND_OFFSET);
+    bitmask_set_bit(f, COMPUND_DECL_OFFSET);
 }
-bool stmt_flags_get_module_extension(stmt_flags f)
+bool stmt_flags_get_compound_decl(stmt_flags f)
 {
-    return bitmask_get_bit(f, EXTEND_OFFSET);
+    return bitmask_get_bit(f, COMPUND_DECL_OFFSET);
 }
 
 #define REDECL_OFFSET 7
