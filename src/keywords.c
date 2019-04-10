@@ -44,9 +44,7 @@ char* keyword_strings[] = {
 
 bool kw_equals(keyword_id id, string str)
 {
-    return (
-        strncmp(keyword_strings[id], str.start, ptrdiff(str.end, str.start)) ==
-        0);
+    return (string_cmp_cstr(str, keyword_strings[id]) == 0);
 }
 
 keyword_id kw_match(string str)
