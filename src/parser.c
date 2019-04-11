@@ -962,11 +962,30 @@ parse_error parse_give_expr(parser* p, ureg start, ureg end, expr** tgt)
     *tgt = &g->expr;
     return PE_OK;
 }
+static inline parse_error parse_expr_block(parser* p, expr** ex)
+{
+    token* t;
+    PEEK(p, t);
+    tk_void(&p->tk);
+    expr_block* b = alloc_perm(p, sizeof(expr_block));
+    b->expr.type = EXPR_BLOCK;
+    *ex = (expr*)b;
+    return parse_braced_delimited_body(
+        p, t->start, t->end, &b->body, EXPR_BLOCK);
+}
 parse_error parse_expr_body(parser* p, expr** tgt, ast_node_type body_type)
 {
     ast_node_type old_parent_type = p->parent_type;
     p->parent_type = body_type;
-    parse_error pe = parse_expression(p, tgt);
+    token* t;
+    PEEK(p, t);
+    parse_error pe;
+    if (t->type == TT_BRACE_OPEN) {
+        pe = parse_expr_block(p, tgt);
+    }
+    else {
+        pe = parse_expression(p, tgt);
+    }
     if (pe == PE_EOEX) {
         token* t;
         PEEK(p, t);
@@ -1060,12 +1079,7 @@ static inline parse_error parse_single_value(parser* p, token* t, expr** ex)
             return parse_array(p, t, ex);
         }
         case TT_BRACE_OPEN: {
-            tk_void(&p->tk);
-            expr_block* b = alloc_perm(p, sizeof(expr_block));
-            b->expr.type = EXPR_BLOCK;
-            *ex = (expr*)b;
-            return parse_braced_delimited_body(
-                p, t->start, t->end, &b->body, EXPR_BLOCK);
+            return parse_expr_block(p, ex);
         }
         case TT_STRING: {
             keyword_id kw = kw_match(t->str);
