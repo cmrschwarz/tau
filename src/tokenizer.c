@@ -461,6 +461,11 @@ static token* tk_load(tokenizer* tk)
                     tok->type = TT_DOUBLE_EQUALS;
                     return tk_return_head(tk, 2);
                 }
+                else if (peek == '>') {
+                    tk_void_char_peek(tk);
+                    tok->type = TT_FAT_ARROW;
+                    return tk_return_head(tk, 2);
+                }
                 else {
                     tok->type = TT_EQUALS;
                     return tk_return_head(tk, 1);

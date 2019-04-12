@@ -81,6 +81,7 @@ typedef enum PACK_ENUM {
     TT_COLON,
     TT_DOUBLE_COLON,
     TT_ARROW,
+    TT_FAT_ARROW,
 } token_type;
 
 extern const char* token_strings[255];

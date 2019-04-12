@@ -73,6 +73,7 @@ const char* token_strings[255] = {
     [TT_COLON] = ":",
     [TT_DOUBLE_COLON] = "::",
     [TT_ARROW] = "->",
+    [TT_FAT_ARROW] = "=>",
 
     [TT_NUMBER] = 0,
     [TT_LITERAL] = 0,
