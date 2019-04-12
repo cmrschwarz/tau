@@ -45,7 +45,7 @@ typedef enum PACK_ENUM ast_node_type {
     EXPR_CONTINUE,
     EXPR_BREAK,
 
-    EXPR_SWITCH,
+    EXPR_MATCH,
     EXPR_IF,
     EXPR_FOR,
     EXPR_FOR_EACH,

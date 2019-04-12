@@ -36,7 +36,7 @@ typedef enum PACK_ENUM keyword_id {
     KW_GOTO,
     KW_IF,
     KW_ELSE,
-    KW_SWITCH,
+    KW_MATCH,
     KW_LET,
     KW_COUNT,
     KW_INVALID_KEYWORD,
