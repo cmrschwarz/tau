@@ -253,7 +253,8 @@ typedef struct match_arm {
 
 typedef struct expr_match {
     expr_named expr_named;
-    match_arm* match_arms;
+    expr* match_expr;
+    match_arm** match_arms;
     ureg body_end;
 } expr_match;
 

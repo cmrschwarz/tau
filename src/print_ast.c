@@ -400,6 +400,30 @@ void print_expr(expr* ex, ureg indent)
                 print_expr(w->finally_body, indent);
             }
         } break;
+        case EXPR_MATCH: {
+            expr_match* m = (expr_match*)ex;
+            if (m->expr_named.name != NULL) {
+                p("label ");
+                ps(m->expr_named.name);
+            }
+            p("match ");
+            print_expr(m->match_expr, indent);
+            p(" {\n");
+            match_arm** ma = m->match_arms;
+            indent++;
+            while (*ma) {
+                print_indent(indent);
+                print_expr((**ma).condition, indent);
+                p(" => ");
+                print_expr((**ma).body, indent);
+                if ((**ma).body->type != EXPR_BLOCK) pc(';');
+                pc('\n');
+                ma++;
+            }
+            indent--;
+            print_indent(indent);
+            pc('}');
+        } break;
         case EXPR_IF: {
             expr_if* i = (expr_if*)ex;
             p("if ");

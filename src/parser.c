@@ -23,6 +23,7 @@ parse_error parse_expression(parser* p, expr** ex);
 parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
 parse_error parse_braced_delimited_body(
     parser* p, ureg bstart, ureg bend, body* b, ast_node_type pt);
+
 static const unsigned char op_precedence[] = {
     [OP_POST_INCREMENT] = 15,
     [OP_POST_DECREMENT] = 15,
@@ -88,8 +89,8 @@ static const unsigned char op_precedence[] = {
     [OP_BITWISE_XOR_ASSIGN] = 1,
     [OP_BITWISE_OR_ASSIGN] = 1,
     [OP_BITWISE_NOT_ASSIGN] = 1,
-
 };
+
 #define PREC_BASELINE 0
 
 static inline bool is_left_associative(ast_node_type t)
@@ -170,7 +171,7 @@ bool expr_allowed_to_drop_semicolon(ast_node_type astn)
         case EXPR_FOR_EACH:
         case EXPR_WHILE:
         case EXPR_LOOP:
-        case EXPR_SWITCH:
+        case EXPR_MATCH:
         case EXPR_IF:
         case EXPR_BLOCK: return true;
         default: return false;
@@ -1007,6 +1008,92 @@ parse_error parse_loop(parser* p, expr** tgt, ureg start, ureg end, char* label)
     *tgt = (expr*)l;
     return parse_expr_body(p, &l->body, EXPR_LOOP);
 }
+parse_error parse_match(parser* p, expr** tgt, char* label)
+{
+    token* t;
+    PEEK(p, t);
+    ureg start = t->start;
+    ureg t_end = t->end;
+    tk_void(&p->tk);
+    expr_match* em = alloc_perm(p, sizeof(expr_match));
+    em->expr_named.expr.type = EXPR_MATCH;
+    em->expr_named.name = label;
+    parse_error pe = parse_expression(p, &em->match_expr);
+    if (pe == PE_EOEX) {
+        PEEK(p, t);
+        parser_error_2a(
+            p, "invalid match syntax", t->start, t->end,
+            "expected match expression", start, t_end, "in this match");
+    }
+    if (pe) return pe;
+    PEEK(p, t);
+    if (t->type != TT_BRACE_OPEN) {
+        ureg e_end;
+        get_expr_bounds(&em->expr_named.expr, NULL, &e_end);
+        parser_error_2a(
+            p, "invalid match syntax", t->start, t->end,
+            "expected match expression", start, e_end, "in this match");
+    }
+    tk_void(&p->tk);
+    void** list = list_builder_start(&p->lb);
+    ast_node_type old_parent_type = p->parent_type;
+    p->parent_type = EXPR_MATCH;
+    while (true) {
+        PEEK(p, t);
+        if (t->type == TT_BRACE_CLOSE) {
+            ureg count;
+            em->match_arms = (match_arm**)list_builder_pop_list_zt(
+                &p->lb, list, &p->tk.tc->permmem, &count);
+            if (!em->match_arms) return PE_INSANE;
+            *tgt = (expr*)em;
+            tk_void(&p->tk);
+            em->body_end = t->end;
+            p->parent_type = old_parent_type;
+            return PE_OK;
+        }
+        else {
+            match_arm* ma = alloc_perm(p, sizeof(match_arm));
+            if (!ma) return PE_INSANE;
+            pe = parse_expression(p, &ma->condition);
+            if (pe == PE_EOEX) {
+                parser_error_1a(
+                    p, "invalid match syntax", t->start, t->end,
+                    "expected match arm condition");
+                p->parent_type = old_parent_type;
+                return PE_HANDLED;
+            }
+            if (pe) return pe;
+            PEEK(p, t);
+            if (t->type != TT_FAT_ARROW) {
+                ureg exp_start, exp_end;
+                get_expr_bounds(ma->condition, &exp_start, &exp_end);
+                parser_error_2a(
+                    p, "invalid match syntax", t->start, t->end,
+                    "expected '=>'", exp_start, exp_end,
+                    "after this match condition");
+                p->parent_type = old_parent_type;
+                return PE_HANDLED;
+            }
+            tk_void(&p->tk);
+            pe = parse_expr_body(p, &ma->body, EXPR_MATCH);
+            if (pe) return pe;
+            PEEK(p, t);
+            if (t->type == TT_SEMICOLON) {
+                tk_void(&p->tk);
+            }
+            else {
+                if (ma->body->type != EXPR_BLOCK) {
+                    parser_error_2a(
+                        p, "invalid match syntax", t->start, t->end,
+                        "expected semicolon", start, t_end, "in this match");
+                    p->parent_type = old_parent_type;
+                    return PE_HANDLED;
+                }
+            }
+            list_builder_add(&p->lb, ma);
+        }
+    }
+}
 parse_error
 parse_while(parser* p, expr** tgt, ureg start, ureg end, char* label)
 {
@@ -1089,12 +1176,17 @@ static inline parse_error parse_single_value(parser* p, token* t, expr** ex)
                     return parse_loop(p, ex, t->start, t->end, NULL);
                 }
                 case KW_LABEL: {
+                    // TODO: label in expression
                 }
                 case KW_FOR: {
+                    // TODO: for loop
                 }
                 case KW_WHILE: {
                     tk_void(&p->tk);
                     return parse_while(p, ex, t->start, t->end, NULL);
+                }
+                case KW_MATCH: {
+                    return parse_match(p, ex, NULL);
                 }
                 case KW_IF: {
                     tk_void(&p->tk);
@@ -2002,38 +2094,40 @@ parse_error parse_label(parser* p, ureg start, ureg end, stmt** tgt)
         *tgt = (stmt*)g;
         return PE_OK;
     }
-    else {
-        parse_error pe;
-        expr* ex;
-        keyword_id kw = kw_match(t->str);
-        switch (kw) {
-            case KW_WHILE:
-                tk_void(&p->tk);
-                pe = parse_while(p, &ex, t->start, t->end, label_name);
-                break;
-            case KW_LOOP:
-                tk_void(&p->tk);
-                pe = parse_loop(p, &ex, t->start, t->end, label_name);
-                break;
-            case KW_FOR:    // TODO
-            case KW_SWITCH: // TODO
-            default:
-                parser_error_2a(
-                    p, "invalid label statement syntax", t->start, t->end,
-                    "expected loop statement or semicolon", start, end, "");
-                return PE_HANDLED;
+    parse_error pe;
+    expr* ex;
+    keyword_id kw = kw_match(t->str);
+    switch (kw) {
+        case KW_WHILE:
+            tk_void(&p->tk);
+            pe = parse_while(p, &ex, t->start, t->end, label_name);
+            break;
+        case KW_LOOP:
+            tk_void(&p->tk);
+            pe = parse_loop(p, &ex, t->start, t->end, label_name);
+            break;
+        case KW_FOR: // TODO
+        case KW_MATCH: {
+            pe = parse_match(p, &ex, label_name);
+            break;
         }
-        if (pe) return pe;
-        pe = parse_expression_of_prec_post_value(p, &ex, PREC_BASELINE);
+        default:
+            parser_error_2a(
+                p, "invalid label statement syntax", t->start, t->end,
+                "expected loop statement or semicolon", start, end, "");
+            return PE_HANDLED;
+    }
+    if (pe) return pe;
+    pe = parse_expression_of_prec_post_value(p, &ex, PREC_BASELINE);
         if (pe == PE_EOEX) {
-            PEEK(p, t);
+    PEEK(p, t);
             parser_error_1a(
                 p, "missing semicolon in label expression statement", t->start,
                 t->end, "expected ';' to terminate expression statement");
         }
         tk_void(&p->tk);
-        return expr_to_stmt(p, tgt, ex, start, t->end);
-    }
+    return expr_to_stmt(p, tgt, ex, start, t->end);
+}
     return PE_OK;
 }
 
