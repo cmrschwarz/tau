@@ -2119,16 +2119,18 @@ parse_error parse_label(parser* p, ureg start, ureg end, stmt** tgt)
     }
     if (pe) return pe;
     pe = parse_expression_of_prec_post_value(p, &ex, PREC_BASELINE);
-        if (pe == PE_EOEX) {
     PEEK(p, t);
+    if (t->type == TT_SEMICOLON) {
+        tk_void(&p->tk);
+    }
+    else {
+        if (!expr_allowed_to_drop_semicolon(ex->type)) {
             parser_error_1a(
                 p, "missing semicolon in label expression statement", t->start,
                 t->end, "expected ';' to terminate expression statement");
         }
-        tk_void(&p->tk);
+    }
     return expr_to_stmt(p, tgt, ex, start, t->end);
-}
-    return PE_OK;
 }
 
 parse_error parse_statement(parser* p, stmt** tgt)
