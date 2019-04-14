@@ -21,8 +21,7 @@ parse_error parse_scope(parser* p, scope* s);
 parse_error parse_body(parser* p, body* b, ast_node_type pt);
 parse_error parse_expression(parser* p, expr** ex);
 parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
-parse_error parse_braced_delimited_body(
-    parser* p, ureg bstart, ureg bend, body* b, ast_node_type pt);
+parse_error parse_braced_delimited_body(parser* p, body* b, ast_node_type pt);
 
 static const unsigned char op_precedence[] = {
     [OP_POST_INCREMENT] = 15,
@@ -556,7 +555,7 @@ static inline parse_error parse_array(parser* p, token* t, expr** ex)
     return PE_OK;
 }
 static inline parse_error
-parse_tuple_post_first_comma(parser* p, ureg t_start, ureg t_end, expr** ex)
+parse_tuple_after_first_comma(parser* p, ureg t_start, ureg t_end, expr** ex)
 {
     expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
     tp->expr.type = EXPR_TUPLE;
@@ -652,7 +651,7 @@ parse_paren_group_or_tuple(parser* p, token* t, expr** ex)
     PEEK(p, t);
     if (t->type == TT_COMMA) {
         tk_void(&p->tk);
-        return parse_tuple_post_first_comma(p, t_start, t_end, ex);
+        return parse_tuple_after_first_comma(p, t_start, t_end, ex);
     }
     else {
         return build_expr_parentheses(p, t_start, t_end, ex);
@@ -866,8 +865,9 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
     }
 }
 static inline parse_error
-parse_prefix_unary_op(parser* p, token* t, ast_node_type op, expr** ex)
+parse_prefix_unary_op(parser* p, ast_node_type op, expr** ex)
 {
+    token* t = tk_aquire(&p->tk);
     expr_op_unary* ou = (expr_op_unary*)alloc_perm(p, sizeof(expr_op_unary));
     if (!ou) return PE_INSANE;
     if (expr_fill_srange(p, &ou->expr, t->start, t->end)) return PE_INSANE;
@@ -891,12 +891,15 @@ parse_prefix_unary_op(parser* p, token* t, ast_node_type op, expr** ex)
     *ex = (expr*)ou;
     return PE_OK;
 }
-parse_error parse_return_expr(parser* p, ureg start, ureg end, expr** tgt)
+parse_error parse_return_expr(parser* p, expr** tgt)
 {
+    token* t = tk_aquire(&p->tk);
+    ureg start = t->start;
+    ureg end = t->end;
+    tk_void(&p->tk);
     expr_return* r = alloc_perm(p, sizeof(expr_return));
     if (!r) return PE_INSANE;
     r->expr.type = EXPR_RETURN;
-    token* t;
     PEEK(p, t);
     if (t->type == TT_SEMICOLON) {
         r->value = NULL;
@@ -916,9 +919,12 @@ parse_error parse_return_expr(parser* p, ureg start, ureg end, expr** tgt)
     *tgt = &r->expr;
     return PE_OK;
 }
-parse_error parse_goto_expr(parser* p, ureg start, ureg end, expr** tgt)
+parse_error parse_goto_expr(parser* p, expr** tgt)
 {
-    token* t;
+    token* t = tk_aquire(&p->tk);
+    ureg start = t->start;
+    ureg end = t->end;
+    tk_void(&p->tk);
     PEEK(p, t);
     if (t->type != TT_STRING) {
         parser_error_2a(
@@ -933,13 +939,17 @@ parse_error parse_goto_expr(parser* p, ureg start, ureg end, expr** tgt)
     *tgt = (expr*)g;
     return PE_OK;
 }
-parse_error parse_give_expr(parser* p, ureg start, ureg end, expr** tgt)
+parse_error parse_give_expr(parser* p, expr** tgt)
 {
+    token* t1 = tk_aquire(&p->tk);
+    ureg start = t1->start;
+    ureg end = t1->end;
+    tk_void(&p->tk);
     expr_give* g = alloc_perm(p, sizeof(expr_give));
     if (!g) return PE_INSANE;
     g->expr.type = EXPR_GIVE;
     g->target.name = NULL;
-    token* t1;
+
     PEEK(p, t1);
     if (t1->type == TT_STRING) {
         token* t2 = tk_peek_2nd(&p->tk);
@@ -965,14 +975,10 @@ parse_error parse_give_expr(parser* p, ureg start, ureg end, expr** tgt)
 }
 static inline parse_error parse_expr_block(parser* p, expr** ex)
 {
-    token* t;
-    PEEK(p, t);
-    tk_void(&p->tk);
     expr_block* b = alloc_perm(p, sizeof(expr_block));
     b->expr.type = EXPR_BLOCK;
     *ex = (expr*)b;
-    return parse_braced_delimited_body(
-        p, t->start, t->end, &b->body, EXPR_BLOCK);
+    return parse_braced_delimited_body(p, &b->body, EXPR_BLOCK);
 }
 parse_error parse_expr_body(parser* p, expr** tgt, ast_node_type body_type)
 {
@@ -998,11 +1004,14 @@ parse_error parse_expr_body(parser* p, expr** tgt, ast_node_type body_type)
     p->parent_type = old_parent_type;
     return pe;
 }
-parse_error parse_loop(parser* p, expr** tgt, ureg start, ureg end, char* label)
+parse_error parse_loop(parser* p, expr** tgt, char* label)
 {
+    token* t = tk_aquire(&p->tk);
+    tk_void(&p->tk);
     expr_loop* l = alloc_perm(p, sizeof(expr_loop));
     if (!l) return PE_INSANE;
-    l->expr_named.expr.srange = src_range_pack_lines(p->tk.tc, start, end);
+    l->expr_named.expr.srange =
+        src_range_pack_lines(p->tk.tc, t->start, t->end);
     l->expr_named.name = label;
     l->expr_named.expr.type = EXPR_LOOP;
     *tgt = (expr*)l;
@@ -1010,8 +1019,7 @@ parse_error parse_loop(parser* p, expr** tgt, ureg start, ureg end, char* label)
 }
 parse_error parse_match(parser* p, expr** tgt, char* label)
 {
-    token* t;
-    PEEK(p, t);
+    token* t = tk_aquire(&p->tk);
     ureg start = t->start;
     ureg t_end = t->end;
     tk_void(&p->tk);
@@ -1094,13 +1102,15 @@ parse_error parse_match(parser* p, expr** tgt, char* label)
         }
     }
 }
-parse_error
-parse_while(parser* p, expr** tgt, ureg start, ureg end, char* label)
+parse_error parse_while(parser* p, expr** tgt, char* label)
 {
+    token* t = tk_aquire(&p->tk);
+    ureg start = t->start;
+    ureg end = t->end;
+    tk_void(&p->tk);
     expr_while* w = alloc_perm(p, sizeof(expr_while));
     if (!w) return PE_INSANE;
     parse_error pe = parse_expression(p, &w->condition);
-    token* t;
     if (pe == PE_EOEX) {
         PEEK(p, t);
         parser_error_2a(
@@ -1126,12 +1136,15 @@ parse_while(parser* p, expr** tgt, ureg start, ureg end, char* label)
     }
     return pe;
 }
-parse_error parse_if(parser* p, expr** tgt, ureg start, ureg end)
+parse_error parse_if(parser* p, expr** tgt)
 {
+    token* t = tk_aquire(&p->tk);
+    ureg start = t->start;
+    ureg end = t->end;
+    tk_void(&p->tk);
     expr_if* i = alloc_perm(p, sizeof(expr_if));
     if (!i) return PE_INSANE;
     parse_error pe = parse_expression(p, &i->condition);
-    token* t;
     if (pe == PE_EOEX) {
         PEEK(p, t);
         parser_error_2a(
@@ -1156,53 +1169,85 @@ parse_error parse_if(parser* p, expr** tgt, ureg start, ureg end)
     }
     return pe;
 }
-static inline parse_error parse_single_value(parser* p, token* t, expr** ex)
+static inline void check_unepected_expr_after_label(
+    parser* p, char* label, ureg label_start, ureg label_end)
 {
+    if (!label) return;
+    token* t = tk_aquire(&p->tk);
+    parser_error_2a(
+        p, "unexpected expression after label", t->start, t->end,
+        "expected control flow statement or semicolon", label_start, label_end,
+        "after this label");
+}
+static inline parse_error parse_labeled_value_expr(
+    parser* p, expr** ex, ureg label_start, ureg label_end, char* label)
+{
+    token* t;
+    PEEK(p, t);
     switch (t->type) {
         case TT_PAREN_OPEN: {
+            check_unepected_expr_after_label(p, label, label_start, label_end);
             return parse_paren_group_or_tuple(p, t, ex);
         }
         case TT_BRACKET_OPEN: {
+            check_unepected_expr_after_label(p, label, label_start, label_end);
             return parse_array(p, t, ex);
         }
         case TT_BRACE_OPEN: {
+            check_unepected_expr_after_label(p, label, label_start, label_end);
             return parse_expr_block(p, ex);
         }
         case TT_STRING: {
             keyword_id kw = kw_match(t->str);
             switch (kw) {
                 case KW_LOOP: {
-                    tk_void(&p->tk);
-                    return parse_loop(p, ex, t->start, t->end, NULL);
+                    return parse_loop(p, ex, label);
                 }
                 case KW_LABEL: {
-                    // TODO: label in expression
+                    check_unepected_expr_after_label(
+                        p, label, label_start, label_end);
+                    token* t2 = tk_peek_2nd(&p->tk);
+                    if (t2->type != TT_STRING) {
+                        parser_error_2a(
+                            p, "unexpected token in label expression",
+                            t2->start, t2->end, "expected label name", t->start,
+                            t->end, "in this label expression");
+                        return PE_HANDLED;
+                    }
+                    tk_void_n(&p->tk, 2);
+                    char* label = alloc_string_perm(p, t2->str);
+                    if (!label) return PE_INSANE;
+                    return parse_labeled_value_expr(
+                        p, ex, t->start, t2->end, label);
                 }
                 case KW_FOR: {
                     // TODO: for loop
                 }
                 case KW_WHILE: {
-                    tk_void(&p->tk);
-                    return parse_while(p, ex, t->start, t->end, NULL);
+                    return parse_while(p, ex, label);
                 }
                 case KW_MATCH: {
-                    return parse_match(p, ex, NULL);
+                    return parse_match(p, ex, label);
                 }
                 case KW_IF: {
-                    tk_void(&p->tk);
-                    return parse_if(p, ex, t->start, t->end);
+                    check_unepected_expr_after_label(
+                        p, label, label_start, label_end);
+                    return parse_if(p, ex);
                 }
                 case KW_RETURN: {
-                    tk_void(&p->tk);
-                    return parse_return_expr(p, t->start, t->end, ex);
+                    check_unepected_expr_after_label(
+                        p, label, label_start, label_end);
+                    return parse_return_expr(p, ex);
                 }
                 case KW_GIVE: {
-                    tk_void(&p->tk);
-                    return parse_give_expr(p, t->start, t->end, ex);
+                    check_unepected_expr_after_label(
+                        p, label, label_start, label_end);
+                    return parse_give_expr(p, ex);
                 }
                 case KW_GOTO: {
-                    tk_void(&p->tk);
-                    return parse_goto_expr(p, t->start, t->end, ex);
+                    check_unepected_expr_after_label(
+                        p, label, label_start, label_end);
+                    return parse_goto_expr(p, ex);
                 }
                 case KW_INVALID_KEYWORD:
                 default:; // fallthrough
@@ -1221,8 +1266,13 @@ static inline parse_error parse_single_value(parser* p, token* t, expr** ex)
         } break;
     }
 }
-static inline parse_error parse_call(parser* p, token* t, expr** ex, expr* lhs)
+static inline parse_error parse_value_expr(parser* p, expr** ex)
 {
+    return parse_labeled_value_expr(p, ex, 0, 0, NULL);
+}
+static inline parse_error parse_call(parser* p, expr** ex, expr* lhs)
+{
+    token* t = tk_aquire(&p->tk);
     ureg t_start = t->start;
     tk_void(&p->tk);
     expr_call* call = alloc_perm(p, sizeof(expr_call));
@@ -1248,9 +1298,9 @@ static inline parse_error parse_call(parser* p, token* t, expr** ex, expr* lhs)
     *ex = (expr*)call;
     return PE_OK;
 }
-static inline parse_error
-parse_access(parser* p, token* t, expr** ex, expr* lhs)
+static inline parse_error parse_access(parser* p, expr** ex, expr* lhs)
 {
+    token* t = tk_aquire(&p->tk);
     ureg t_start = t->start;
     tk_void(&p->tk);
     expr_access* acc = alloc_perm(p, sizeof(expr_access));
@@ -1277,15 +1327,16 @@ parse_access(parser* p, token* t, expr** ex, expr* lhs)
     return PE_OK;
 }
 static inline parse_error
-parse_postfix_unary_op(parser* p, token* t, op_type op, expr** ex, expr* lhs)
+parse_postfix_unary_op(parser* p, op_type op, expr** ex, expr* lhs)
 {
     if (op == OP_CALL) {
-        return parse_call(p, t, ex, lhs);
+        return parse_call(p, ex, lhs);
     }
     else if (op == OP_ACCESS) {
-        return parse_access(p, t, ex, lhs);
+        return parse_access(p, ex, lhs);
     }
     else {
+        token* t = tk_aquire(&p->tk);
         tk_void(&p->tk);
         expr_op_unary* ou =
             (expr_op_unary*)alloc_perm(p, sizeof(expr_op_unary));
@@ -1299,8 +1350,9 @@ parse_postfix_unary_op(parser* p, token* t, op_type op, expr** ex, expr* lhs)
     }
 }
 static inline parse_error
-parse_binary_op(parser* p, token* t, op_type op, expr** ex, expr* lhs)
+parse_binary_op(parser* p, op_type op, expr** ex, expr* lhs)
 {
+    token* t = tk_aquire(&p->tk);
     tk_void(&p->tk);
     expr_op_binary* ob = (expr_op_binary*)alloc_perm(p, sizeof(expr_op_binary));
     if (!ob) return PE_INSANE;
@@ -1337,7 +1389,7 @@ parse_error parse_expression_of_prec_post_value(parser* p, expr** ex, ureg prec)
         op = token_to_postfix_unary_op(t);
         if (op == OP_NOOP) break;
         if (op_precedence[op] < prec) return PE_OK;
-        pe = parse_postfix_unary_op(p, t, op, ex, *ex);
+        pe = parse_postfix_unary_op(p, op, ex, *ex);
         if (pe) return pe;
     }
     // parse arbitrarily many binary operators
@@ -1345,7 +1397,7 @@ parse_error parse_expression_of_prec_post_value(parser* p, expr** ex, ureg prec)
         op = token_to_binary_op(t);
         if (op == OP_NOOP) break;
         if (op_precedence[op] < prec) return PE_OK;
-        pe = parse_binary_op(p, t, op, ex, *ex);
+        pe = parse_binary_op(p, op, ex, *ex);
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -1360,11 +1412,11 @@ parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec)
     // parse one prefix op(recursive) or a plain value
     op_type op = token_to_prefix_unary_op(t);
     if (op != OP_NOOP) {
-        pe = parse_prefix_unary_op(p, t, op, ex);
+        pe = parse_prefix_unary_op(p, op, ex);
         if (pe) return pe;
     }
     else {
-        pe = parse_single_value(p, t, ex);
+        pe = parse_value_expr(p, ex);
         if (pe) return pe;
     }
     return parse_expression_of_prec_post_value(p, ex, prec);
@@ -1408,6 +1460,8 @@ parse_error parser_parse_file(parser* p, src_file* f)
     stmt* old_children = p->root.scope.body.children;
     parse_error pe =
         parse_eof_delimited_body(p, &p->root.scope.body, SC_MODULE);
+    // DBUG:
+    print_astn((stmt*)&p->root, 0);
     stmt** old_head = &old_children;
     while (*old_head) old_head = &(*old_head)->next;
     *old_head = p->root.scope.body.children;
@@ -1512,10 +1566,14 @@ parse_error stmt_flags_from_kw(
     }
     return PE_OK;
 }
-parse_error parse_var_decl(
-    parser* p, ureg start, ureg col_end, stmt_flags flags, string ident,
-    stmt** n)
+parse_error parse_var_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
+    token* t = tk_aquire(&p->tk);
+    string ident = t->str;
+    tk_void(&p->tk);
+    t = tk_aquire(&p->tk);
+    ureg col_end = t->end;
+    tk_void(&p->tk);
     parse_error pe;
     sym_var* vd = alloc_perm(p, sizeof(sym_var));
     if (!vd) return PE_INSANE;
@@ -1523,7 +1581,6 @@ parse_error parse_var_decl(
     if (!vd->symbol.name) return PE_INSANE;
     vd->symbol.stmt.type = SYM_VAR;
     vd->symbol.stmt.flags = flags;
-    token* t;
     PEEK(p, t);
     if (t->type == TT_EQUALS) {
         ureg eq_end = t->end;
@@ -1630,6 +1687,7 @@ parse_error parse_param_list(
 }
 parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
+    tk_void(&p->tk);
     token* t;
     parse_error pe;
     PEEK(p, t);
@@ -1687,6 +1745,7 @@ parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 }
 parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
+    tk_void(&p->tk);
     token* t;
     parse_error pe;
     PEEK(p, t);
@@ -1730,6 +1789,7 @@ parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 }
 parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
+    tk_void(&p->tk);
     token* t;
     parse_error pe;
     PEEK(p, t);
@@ -1773,6 +1833,7 @@ parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 }
 parse_error parse_extend_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
+    tk_void(&p->tk);
     token* t;
     parse_error pe;
     PEEK(p, t);
@@ -1838,6 +1899,7 @@ parse_error parse_extend_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 }
 parse_error parse_trait_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
 {
+    tk_void(&p->tk);
     token* t;
     parse_error pe;
     PEEK(p, t);
@@ -1902,7 +1964,7 @@ bool body_customizes_exprs(ast_node_type pt)
 {
     return pt == EXPR_ARRAY;
 }
-static inline parse_error parse_compound_assignment(
+static inline parse_error parse_compound_assignment_after_equals(
     parser* p, ureg t_start, ureg t_end, expr** elements, stmt** tgt,
     bool had_colon)
 {
@@ -1958,7 +2020,7 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
                 if (!t) return PE_TK_ERROR;
                 if (t->type == TT_EQUALS) {
                     tk_void_n(&p->tk, 2);
-                    return parse_compound_assignment(
+                    return parse_compound_assignment_after_equals(
                         p, t_start, t->end, elems, tgt, true);
                 }
                 contains_decls = true;
@@ -1966,7 +2028,7 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
             if (t->type == TT_EQUALS) {
                 tk_void(&p->tk);
                 turn_ident_nodes_to_exprs(elems);
-                return parse_compound_assignment(
+                return parse_compound_assignment_after_equals(
                     p, t_start, t->end, elems, tgt, false);
             }
             else {
@@ -2023,14 +2085,16 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
     if (pe) return pe;
     return expr_to_stmt(p, tgt, ex, t_start, t->end);
 }
-parse_error
-parse_alias(parser* p, ureg start, ureg end, stmt_flags flags, stmt** tgt)
+parse_error parse_alias(parser* p, ureg start, stmt_flags flags, stmt** tgt)
 {
+    token* t = tk_aquire(&p->tk);
+    ureg end = t->end;
+    tk_void(&p->tk);
     sym_alias* a = alloc_perm(p, sizeof(sym_alias));
     if (!a) return PE_INSANE;
     a->symbol.stmt.type = SYM_ALIAS;
     a->symbol.stmt.flags = flags;
-    token* t;
+
     PEEK(p, t);
     if (t->type == TT_STAR) {
         a->symbol.name = NULL;
@@ -2072,67 +2136,6 @@ parse_alias(parser* p, ureg start, ureg end, stmt_flags flags, stmt** tgt)
     *tgt = &a->symbol.stmt;
     return PE_OK;
 }
-parse_error parse_label(parser* p, ureg start, ureg end, stmt** tgt)
-{
-    token* t;
-    PEEK(p, t);
-    if (t->type != TT_STRING) {
-        parser_error_2a(
-            p, "missing label name", t->start, t->end, "expected label name",
-            start, end, "");
-        return PE_HANDLED;
-    }
-    char* label_name = alloc_string_temp(p, t->str);
-    if (!label_name) return PE_INSANE;
-    tk_void(&p->tk);
-    PEEK(p, t);
-    if (t->type == TT_SEMICOLON) {
-        tk_void(&p->tk);
-        sym_label* g = alloc_perm(p, sizeof(sym_label));
-        g->symbol.stmt.type = SYM_LABEL;
-        g->symbol.name = label_name;
-        *tgt = (stmt*)g;
-        return PE_OK;
-    }
-    parse_error pe;
-    expr* ex;
-    keyword_id kw = kw_match(t->str);
-    switch (kw) {
-        case KW_WHILE:
-            tk_void(&p->tk);
-            pe = parse_while(p, &ex, t->start, t->end, label_name);
-            break;
-        case KW_LOOP:
-            tk_void(&p->tk);
-            pe = parse_loop(p, &ex, t->start, t->end, label_name);
-            break;
-        case KW_FOR: // TODO
-        case KW_MATCH: {
-            pe = parse_match(p, &ex, label_name);
-            break;
-        }
-        default:
-            parser_error_2a(
-                p, "invalid label statement syntax", t->start, t->end,
-                "expected loop statement or semicolon", start, end, "");
-            return PE_HANDLED;
-    }
-    if (pe) return pe;
-    pe = parse_expression_of_prec_post_value(p, &ex, PREC_BASELINE);
-    PEEK(p, t);
-    if (t->type == TT_SEMICOLON) {
-        tk_void(&p->tk);
-    }
-    else {
-        if (!expr_allowed_to_drop_semicolon(ex->type)) {
-            parser_error_1a(
-                p, "missing semicolon in label expression statement", t->start,
-                t->end, "expected ';' to terminate expression statement");
-        }
-    }
-    return expr_to_stmt(p, tgt, ex, start, t->end);
-}
-
 parse_error parse_statement(parser* p, stmt** tgt)
 {
     parse_error pe;
@@ -2156,8 +2159,7 @@ parse_error parse_statement(parser* p, stmt** tgt)
         token* t2 = tk_peek_2nd(&p->tk);
         if (!t2) return PE_TK_ERROR;
         if (t2->type == TT_COLON) {
-            tk_void_n(&p->tk, 2);
-            return parse_var_decl(p, start, t2->end, flags, t->str, tgt);
+            return parse_var_decl(p, start, flags, tgt);
         }
         keyword_id kw = kw_match_visibility_or_mutability(t->str);
         if (kw != KW_INVALID_KEYWORD) {
@@ -2175,28 +2177,22 @@ parse_error parse_statement(parser* p, stmt** tgt)
             kw = kw_match(t->str);
             switch (kw) {
                 case KW_FUNC: {
-                    tk_void(&p->tk);
                     return parse_func_decl(p, start, flags, tgt);
                 }
                 case KW_STRUCT: {
-                    tk_void(&p->tk);
                     return parse_struct_decl(p, start, flags, tgt);
                 }
                 case KW_TRAIT: {
-                    tk_void(&p->tk);
                     return parse_trait_decl(p, start, flags, tgt);
                 }
                 case KW_MODULE: {
-                    tk_void(&p->tk);
                     return parse_module_decl(p, start, flags, tgt);
                 }
                 case KW_EXTEND: {
-                    tk_void(&p->tk);
                     return parse_extend_decl(p, start, flags, tgt);
                 }
                 case KW_ALIAS: {
-                    tk_void(&p->tk);
-                    return parse_alias(p, start, t->end, flags, tgt);
+                    return parse_alias(p, start, flags, tgt);
                 }
                 default:; // fallthrough
             }
@@ -2204,8 +2200,25 @@ parse_error parse_statement(parser* p, stmt** tgt)
                 // TODO: require, import, include
                 switch (kw) {
                     case KW_LABEL: {
-                        tk_void(&p->tk);
-                        return parse_label(p, start, t->end, tgt);
+                        token* t3 = tk_peek_3rd(&p->tk);
+                        if (t3->type == TT_SEMICOLON) {
+                            token* t2 = tk_peek_2nd(&p->tk);
+                            if (t2->type != TT_STRING) {
+                                parser_error_2a(
+                                    p, "missing label name", t2->start, t2->end,
+                                    "expected label name", t->start, t->end,
+                                    "in this label statement");
+                                return PE_HANDLED;
+                            }
+                            char* label_name = alloc_string_temp(p, t2->str);
+                            if (!label_name) return PE_INSANE;
+                            tk_void_n(&p->tk, 3);
+                            sym_label* g = alloc_perm(p, sizeof(sym_label));
+                            g->symbol.stmt.type = SYM_LABEL;
+                            g->symbol.name = label_name;
+                            *tgt = (stmt*)g;
+                            return PE_OK;
+                        }
                     }
                     default:; // fallthrough
                 }
@@ -2214,8 +2227,7 @@ parse_error parse_statement(parser* p, stmt** tgt)
         else if (t2->type == TT_STAR && kw_equals(KW_ALIAS, t->str)) {
             t2 = tk_peek_3rd(&p->tk);
             if (t2->type == TT_ARROW) {
-                tk_void(&p->tk);
-                return parse_alias(p, start, t->end, flags, tgt);
+                return parse_alias(p, start, flags, tgt);
             }
         }
         if (flags == STMT_FLAGS_DEFAULT) {
@@ -2231,11 +2243,13 @@ parse_error parse_statement(parser* p, stmt** tgt)
         return PE_UNEXPECTED_TOKEN;
     }
 }
-parse_error parse_braced_delimited_body(
-    parser* p, ureg bstart, ureg bend, body* b, ast_node_type pt)
+parse_error parse_braced_delimited_body(parser* p, body* b, ast_node_type pt)
 {
+    token* t = tk_aquire(&p->tk);
+    ureg bstart = t->start;
+    ureg bend = t->end;
+    tk_void(&p->tk);
     parse_error pe = PE_OK;
-    token* t;
     PEEK(p, t);
     stmt** head = &b->children;
     *head = NULL; // fist element must be zero for extend to check
@@ -2303,8 +2317,7 @@ parse_error parse_body(parser* p, body* b, ast_node_type pt)
         p->parent_type = old_parent_type;
     }
     else {
-        tk_void(&p->tk);
-        pe = parse_braced_delimited_body(p, t->start, t->end, b, pt);
+        pe = parse_braced_delimited_body(p, b, pt);
     }
     return pe;
 }
