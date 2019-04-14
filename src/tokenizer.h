@@ -48,3 +48,9 @@ token* tk_peek_3rd(tokenizer* p);
 token* tk_peek_nth(tokenizer* tk, int n);
 void tk_void(tokenizer* tk);
 void tk_void_n(tokenizer* tk, int n);
+
+// get a token that was already peeked at
+static inline token* tk_aquire(tokenizer* tk)
+{
+    return tk->loaded_tokens_start;
+}
