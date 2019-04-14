@@ -52,7 +52,7 @@ token* tk_peek_nth(tokenizer* tk, int n)
     }
     int rem = tk->loaded_tokens_head - t;
     if (rem >= n) {
-        return t + n;
+        return t + n - 1;
     }
     else {
         n -= rem;
