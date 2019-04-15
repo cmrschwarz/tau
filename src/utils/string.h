@@ -97,6 +97,24 @@ static inline int string_cmp_cstr(string l, char* r)
     }
 }
 
+static inline bool string_eq(string l, string r)
+{
+    ureg len = string_len(l);
+    if (len != string_len(r)) return false;
+    return !memcmp(l.start, r.start, len);
+}
+
+static inline bool string_eq_cstr(string l, const char* r)
+{
+    while (l.start != l.end) {
+        if (*l.start != *r) return false;
+        l.start++;
+        r++;
+    }
+    if (*r != '\0') return false;
+    return true;
+}
+
 static inline char* string_to_cstr(string s)
 {
     // this is temporary until we get rid of c strings entirely
