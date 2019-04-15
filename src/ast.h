@@ -212,28 +212,28 @@ typedef struct expr_block {
 typedef struct expr_if {
     expr expr;
     expr* condition;
-    expr* if_body;
-    expr* else_body;
+    body if_body;
+    body else_body;
 } expr_if;
 
 typedef struct expr_loop {
     expr_named expr_named;
-    expr* body;
+    body body;
 } expr_loop;
 
 typedef struct expr_while {
     expr_named expr_named;
     expr* condition;
-    expr* while_body;
-    expr* finally_body;
+    body while_body;
+    body finally_body;
 } expr_while;
 
 typedef struct expr_for_in {
     expr_named expr_named;
     stmt* decl;
     expr* range;
-    expr* for_body;
-    expr* finally_body;
+    body for_body;
+    body finally_body;
 } expr_for_in;
 
 typedef struct expr_for {
@@ -241,14 +241,14 @@ typedef struct expr_for {
     stmt* decl;
     expr* condition;
     stmt* iteration;
-    expr* for_body;
-    expr* finally_body;
+    body for_body;
+    body finally_body;
 } expr_for;
 
 typedef struct match_arm {
     struct match_arm* next;
     expr* condition; // debatable
-    expr* body;
+    body body;
 } match_arm;
 
 typedef struct expr_match {

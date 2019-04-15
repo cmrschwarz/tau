@@ -383,7 +383,7 @@ void print_expr(expr* ex, ureg indent)
                 ps(l->expr_named.name);
             }
             p("loop ");
-            print_expr(l->body, indent);
+            print_body(&l->body, indent);
         } break;
         case EXPR_WHILE: {
             expr_while* w = (expr_while*)ex;
@@ -394,12 +394,12 @@ void print_expr(expr* ex, ureg indent)
             p("while ");
             print_expr(w->condition, indent);
             pc(' ');
-            print_expr(w->while_body, indent);
-            if (w->finally_body) {
+            print_body(&w->while_body, indent);
+            if (w->finally_body.children) {
                 pc('\n');
                 print_indent(indent);
                 p("finally ");
-                print_expr(w->finally_body, indent);
+                print_body(&w->finally_body, indent);
             }
         } break;
         case EXPR_MATCH: {
@@ -417,8 +417,7 @@ void print_expr(expr* ex, ureg indent)
                 print_indent(indent);
                 print_expr((**ma).condition, indent);
                 p(" => ");
-                print_expr((**ma).body, indent);
-                if ((**ma).body->type != EXPR_BLOCK) pc(';');
+                print_body(&(**ma).body, indent);
                 pc('\n');
                 ma++;
             }
@@ -431,12 +430,12 @@ void print_expr(expr* ex, ureg indent)
             p("if ");
             print_expr(i->condition, indent);
             pc(' ');
-            print_expr(i->if_body, indent);
-            if (i->else_body) {
+            print_body(&i->if_body, indent);
+            if (i->else_body.children) {
                 pc('\n');
                 print_indent(indent);
                 p("else ");
-                print_expr(i->else_body, indent);
+                print_body(&i->else_body, indent);
             }
         } break;
         default: {
