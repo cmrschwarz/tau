@@ -16,6 +16,7 @@ func main(args: String[]){
         label y loop{
             return 12;
         }
+        (x: int) := foo;
         
         x:= label y while true{
             }

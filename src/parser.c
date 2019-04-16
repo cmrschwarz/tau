@@ -1987,7 +1987,19 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
         pe = parse_expression_of_prec_post_value(p, &ex, PREC_BASELINE);
     }
     else {
-        pe = parse_expression(p, &ex);
+        op_type op = token_to_prefix_unary_op(t);
+        if (op != OP_NOOP) {
+            pe = parse_prefix_unary_op(p, op, &ex);
+            if (pe) return pe;
+            pe = parse_expression_of_prec_post_value(p, &ex, PREC_BASELINE);
+        }
+        else {
+            pe = parse_value_expr(p, &ex);
+            if (pe) return pe;
+            if (!expr_allowed_to_drop_semicolon(ex)) {
+                pe = parse_expression_of_prec_post_value(p, &ex, PREC_BASELINE);
+            }
+        }
     }
     if (pe == PE_EOEX) {
         PEEK(p, t);
