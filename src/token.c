@@ -93,10 +93,10 @@ const char* token_strings[255] = {
     [TT_ARROW] = "->",
     [TT_FAT_ARROW] = "=>",
 
-    [TT_NUMBER] = 0,
-    [TT_LITERAL] = 0,
-    [TT_BINARY_LITERAL] = 0,
-    [TT_STRING] = 0,
+    [TT_NUMBER] = "expression",
+    [TT_LITERAL] = "expression",
+    [TT_BINARY_LITERAL] = "expression",
+    [TT_STRING] = "expression",
     [TT_EOF] = "EOF",
 };
 

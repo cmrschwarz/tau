@@ -24,70 +24,70 @@ parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
 parse_error parse_braced_delimited_body(parser* p, body* b);
 
 static const unsigned char op_precedence[] = {
-        [OP_POST_INCREMENT] = 15,
-        [OP_POST_DECREMENT] = 15,
-        [OP_CALL] = 15,
-        [OP_ACCESS] = 15,
-        [OP_SCOPE_ACCESS] = 15,
-        [OP_MEMBER_ACCESS] = 15,
+    [OP_POST_INCREMENT] = 15,
+    [OP_POST_DECREMENT] = 15,
+    [OP_CALL] = 15,
+    [OP_ACCESS] = 15,
+    [OP_SCOPE_ACCESS] = 15,
+    [OP_MEMBER_ACCESS] = 15,
 
-        [OP_PRE_INCREMENT] = 14,
-        [OP_PRE_DECREMENT] = 14,
-        [OP_UNARY_PLUS] = 14,
-        [OP_UNARY_MINUS] = 14,
-        [OP_NOT] = 14,
-        [OP_BITWISE_NOT] = 14,
-        [OP_DEREF] = 14,
-        [OP_POINTER_OF] = 14,
-        [OP_REF_OF] = 14,
-        [OP_RREF_OF] = 14,
-        [OP_CLOSURE_BY_VALUE] = 14,
-        [OP_CONST] = 14,
+    [OP_PRE_INCREMENT] = 14,
+    [OP_PRE_DECREMENT] = 14,
+    [OP_UNARY_PLUS] = 14,
+    [OP_UNARY_MINUS] = 14,
+    [OP_NOT] = 14,
+    [OP_BITWISE_NOT] = 14,
+    [OP_DEREF] = 14,
+    [OP_POINTER_OF] = 14,
+    [OP_REF_OF] = 14,
+    [OP_RREF_OF] = 14,
+    [OP_CLOSURE_BY_VALUE] = 14,
+    [OP_CONST] = 14,
 
-        [OP_BITWISE_AND] = 13,
+    [OP_BITWISE_AND] = 13,
 
-        [OP_BITWISE_XOR] = 12,
+    [OP_BITWISE_XOR] = 12,
 
-        [OP_BITWISE_OR] = 11,
+    [OP_BITWISE_OR] = 11,
 
-        [OP_MUL] = 10,
-        [OP_DIV] = 10,
-        [OP_MOD] = 10,
+    [OP_MUL] = 10,
+    [OP_DIV] = 10,
+    [OP_MOD] = 10,
 
-        [OP_ADD] = 9,
-        [OP_SUB] = 9,
+    [OP_ADD] = 9,
+    [OP_SUB] = 9,
 
-        [OP_LSHIFT] = 8,
-        [OP_RSHIFT] = 8,
+    [OP_LSHIFT] = 8,
+    [OP_RSHIFT] = 8,
 
-        [OP_CAST] = 7,
+    [OP_CAST] = 7,
 
-        [OP_LESS_THAN] = 6,
-        [OP_LESS_THAN_OR_EQUAL] = 6,
-        [OP_GREATER_THAN] = 6,
-        [OP_GREATER_THAN_OR_EQUAL] = 6,
+    [OP_LESS_THAN] = 6,
+    [OP_LESS_THAN_OR_EQUAL] = 6,
+    [OP_GREATER_THAN] = 6,
+    [OP_GREATER_THAN_OR_EQUAL] = 6,
 
-        [OP_EQUAL] = 5,
-        [OP_UNEQAL] = 5,
+    [OP_EQUAL] = 5,
+    [OP_UNEQAL] = 5,
 
-        [OP_AND] = 4,
+    [OP_AND] = 4,
 
-        [OP_XOR] = 3,
+    [OP_XOR] = 3,
 
-        [OP_OR] = 2,
+    [OP_OR] = 2,
 
-        [OP_ASSIGN] = 1,
-        [OP_ADD_ASSIGN] = 1,
-        [OP_SUB_ASSIGN] = 1,
-        [OP_MUL_ASSIGN] = 1,
-        [OP_DIV_ASSIGN] = 1,
-        [OP_MOD_ASSIGN] = 1,
-        [OP_LSHIFT_ASSIGN] = 1,
-        [OP_RSHIFT_ASSIGN] = 1,
-        [OP_BITWISE_AND_ASSIGN] = 1,
-        [OP_BITWISE_XOR_ASSIGN] = 1,
-        [OP_BITWISE_OR_ASSIGN] = 1,
-        [OP_BITWISE_NOT_ASSIGN] = 1,
+    [OP_ASSIGN] = 1,
+    [OP_ADD_ASSIGN] = 1,
+    [OP_SUB_ASSIGN] = 1,
+    [OP_MUL_ASSIGN] = 1,
+    [OP_DIV_ASSIGN] = 1,
+    [OP_MOD_ASSIGN] = 1,
+    [OP_LSHIFT_ASSIGN] = 1,
+    [OP_RSHIFT_ASSIGN] = 1,
+    [OP_BITWISE_AND_ASSIGN] = 1,
+    [OP_BITWISE_XOR_ASSIGN] = 1,
+    [OP_BITWISE_OR_ASSIGN] = 1,
+    [OP_BITWISE_NOT_ASSIGN] = 1,
 };
 
 #define PREC_BASELINE 0
@@ -650,6 +650,19 @@ build_empty_tuple(parser* p, ureg t_start, ureg t_end, expr** ex)
     *ex = (expr*)tp;
     return PE_OK;
 }
+static inline parse_error require_default_flags(
+    parser* p, token* t, stmt_flags flags, ureg start, ureg end)
+{
+    if (flags == STMT_FLAGS_DEFAULT) return PE_OK;
+    char* loc_msg = error_log_cat_strings_2(
+        &p->tk.tc->error_log, token_strings[t->type],
+        " does not accept any modifiers");
+    if (!loc_msg) return PE_INSANE;
+    parser_error_2a(
+        p, loc_msg, start, end, "invalid modifier(s)", t->start, t->end,
+        "before this statement");
+    return PE_HANDLED;
+}
 static inline parse_error
 parse_paren_group_or_tuple(parser* p, token* t, expr** ex)
 {
@@ -677,7 +690,7 @@ parse_paren_group_or_tuple(parser* p, token* t, expr** ex)
             "expected comma or closing parenthesis", t_start, t_end,
             "in parenthesized expression starting here");
         return PE_HANDLED;
-}
+    }
 }
 typedef union tuple_ident_node {
     sym_var_uninitialized var;
@@ -916,10 +929,12 @@ parse_prefix_unary_op(parser* p, ast_node_type op, expr** ex)
     *ex = (expr*)ou;
     return PE_OK;
 }
-parse_error parse_return_stmt(parser* p, stmt** tgt)
+parse_error parse_return_stmt(
+    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
 {
     token* t = tk_aquire(&p->tk);
-    ureg start = t->start;
+    parse_error pe = require_default_flags(p, t, flags, start, flags_end);
+    if (pe) return pe;
     ureg end = t->end;
     tk_void(&p->tk);
     stmt_return* r = alloc_perm(p, sizeof(stmt_return));
@@ -944,10 +959,12 @@ parse_error parse_return_stmt(parser* p, stmt** tgt)
     *tgt = (stmt*)r;
     return PE_OK;
 }
-parse_error parse_goto_stmt(parser* p, stmt** tgt)
+parse_error parse_goto_stmt(
+    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
 {
     token* t = tk_aquire(&p->tk);
-    ureg start = t->start;
+    parse_error pe = require_default_flags(p, t, flags, start, flags_end);
+    if (pe) return pe;
     ureg end = t->end;
     tk_void(&p->tk);
     PEEK(p, t);
@@ -964,10 +981,12 @@ parse_error parse_goto_stmt(parser* p, stmt** tgt)
     *tgt = (stmt*)g;
     return PE_OK;
 }
-parse_error parse_give_stmt(parser* p, stmt** tgt)
+parse_error parse_give_stmt(
+    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
 {
     token* t1 = tk_aquire(&p->tk);
-    ureg start = t1->start;
+    parse_error pe = require_default_flags(p, t1, flags, start, flags_end);
+    if (pe) return pe;
     ureg end = t1->end;
     tk_void(&p->tk);
     stmt_give* g = alloc_perm(p, sizeof(stmt_give));
@@ -975,7 +994,7 @@ parse_error parse_give_stmt(parser* p, stmt** tgt)
     g->stmt.type = STMT_GIVE;
     g->target = NULL; // TODO
 
-    parse_error pe = parse_expression(p, &g->value);
+    pe = parse_expression(p, &g->value);
     if (pe == PE_EOEX) {
         PEEK(p, t1);
         parser_error_2a(
@@ -1490,59 +1509,8 @@ static inline parse_error stmt_flags_from_kw_set_access_mod(
     }
     return PE_OK;
 }
-parse_error stmt_flags_from_kw(
-    parser* p, stmt_flags* f, token_type kw, ureg start, ureg end)
-{
-    // TODO: enforce order
-    switch (kw) {
-        case TT_KW_PRIVATE:
-            return stmt_flags_from_kw_set_access_mod(
-                p, f, AM_PRIVATE, start, end);
-        case TT_KW_PROTECTED:
-            return stmt_flags_from_kw_set_access_mod(
-                p, f, AM_PROTECTED, start, end);
-        case TT_KW_PUBLIC:
-            return stmt_flags_from_kw_set_access_mod(
-                p, f, AM_PUBLIC, start, end);
-        case TT_KW_CONST: {
-            if (stmt_flags_get_const(*f) != false) {
-                report_redundant_specifier(
-                    p, token_strings[TT_KW_CONST], start, end);
-                return PE_UNEXPECTED_TOKEN;
-            }
-            stmt_flags_set_const(f);
-        } break;
-        case TT_KW_SEALED: {
-            if (stmt_flags_get_sealed(*f) != false) {
-                report_redundant_specifier(
-                    p, token_strings[TT_KW_SEALED], start, end);
-                return PE_UNEXPECTED_TOKEN;
-            }
-            stmt_flags_set_sealed(f);
-        } break;
-        case TT_KW_VIRTUAL: {
-            if (stmt_flags_get_virtual(*f) != false) {
-                report_redundant_specifier(
-                    p, token_strings[TT_KW_VIRTUAL], start, end);
-                return PE_UNEXPECTED_TOKEN;
-            }
-            stmt_flags_set_virtual(f);
-        } break;
-        case TT_KW_STATIC: {
-            if (stmt_flags_get_static(*f) != false) {
-                report_redundant_specifier(
-                    p, token_strings[TT_KW_STATIC], start, end);
-                return PE_UNEXPECTED_TOKEN;
-            }
-            stmt_flags_set_static(f);
-        } break;
-        default: {
-            return PE_EOEX;
-        } break;
-    }
-    return PE_OK;
-}
-parse_error parse_var_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
+parse_error parse_var_decl(
+    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
 {
     token* t = tk_aquire(&p->tk);
     string ident = t->str;
@@ -1645,7 +1613,8 @@ parse_error parse_param_list(
     *tgt = NULL;
     return PE_OK;
 }
-parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
+parse_error parse_func_decl(
+    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
 {
     tk_void(&p->tk);
     token* t;
@@ -1703,7 +1672,8 @@ parse_error parse_func_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     *n = (stmt*)sc;
     return parse_scope(p, sc);
 }
-parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
+parse_error parse_struct_decl(
+    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
 {
     tk_void(&p->tk);
     token* t;
@@ -1747,7 +1717,8 @@ parse_error parse_struct_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     *n = (stmt*)st;
     return parse_body(p, &st->body);
 }
-parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
+parse_error parse_module_decl(
+    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
 {
     tk_void(&p->tk);
     token* t;
@@ -1791,7 +1762,8 @@ parse_error parse_module_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     *n = (stmt*)md;
     return parse_eof_delimited_body(p, &md->body, md->symbol.stmt.type);
 }
-parse_error parse_extend_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
+parse_error parse_extend_decl(
+    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
 {
     tk_void(&p->tk);
     token* t;
@@ -1857,7 +1829,8 @@ parse_error parse_extend_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
     *n = (stmt*)sc;
     return parse_body(p, &sc->body);
 }
-parse_error parse_trait_decl(parser* p, ureg start, stmt_flags flags, stmt** n)
+parse_error parse_trait_decl(
+    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
 {
     tk_void(&p->tk);
     token* t;
@@ -2023,7 +1996,8 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
     if (pe) return pe;
     return expr_to_stmt(p, tgt, ex, t_start, t->end);
 }
-parse_error parse_alias(parser* p, ureg start, stmt_flags flags, stmt** tgt)
+parse_error
+parse_alias(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
 {
     token* t = tk_aquire(&p->tk);
     ureg end = t->end;
@@ -2065,6 +2039,87 @@ parse_error parse_alias(parser* p, ureg start, stmt_flags flags, stmt** tgt)
     *tgt = &a->symbol.stmt;
     return PE_OK;
 }
+parse_error
+parse_label(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
+{
+    token* t = tk_aquire(&p->tk);
+    parse_error pe = require_default_flags(p, t, flags, start, flags_end);
+    if (pe) return pe;
+    token* t3 = tk_peek_3rd(&p->tk);
+    if (t3->type == TT_SEMICOLON) {
+        token* t2 = tk_peek_2nd(&p->tk);
+        if (t2->type != TT_STRING) {
+            parser_error_2a(
+                p, "missing label name", t2->start, t2->end,
+                "expected label name", t->start, t->end,
+                "in this label statement");
+            return PE_HANDLED;
+        }
+        char* label_name = alloc_string_temp(p, t2->str);
+        if (!label_name) return PE_INSANE;
+        tk_void_n(&p->tk, 2);
+        sym_label* g = alloc_perm(p, sizeof(sym_label));
+        g->symbol.stmt.type = SYM_LABEL;
+        g->symbol.name = label_name;
+        *tgt = (stmt*)g;
+        return PE_OK;
+    }
+    else {
+        return parse_expr_stmt(p, tgt);
+    }
+}
+static inline parse_error stmt_flags_from_kw(
+    parser* p, stmt_flags* f, token_type kw, ureg start, ureg end)
+{
+    // TODO: enforce order
+    switch (kw) {
+        case TT_KW_PRIVATE:
+            return stmt_flags_from_kw_set_access_mod(
+                p, f, AM_PRIVATE, start, end);
+        case TT_KW_PROTECTED:
+            return stmt_flags_from_kw_set_access_mod(
+                p, f, AM_PROTECTED, start, end);
+        case TT_KW_PUBLIC:
+            return stmt_flags_from_kw_set_access_mod(
+                p, f, AM_PUBLIC, start, end);
+        case TT_KW_CONST: {
+            if (stmt_flags_get_const(*f) != false) {
+                report_redundant_specifier(
+                    p, token_strings[TT_KW_CONST], start, end);
+                return PE_UNEXPECTED_TOKEN;
+            }
+            stmt_flags_set_const(f);
+        } break;
+        case TT_KW_SEALED: {
+            if (stmt_flags_get_sealed(*f) != false) {
+                report_redundant_specifier(
+                    p, token_strings[TT_KW_SEALED], start, end);
+                return PE_UNEXPECTED_TOKEN;
+            }
+            stmt_flags_set_sealed(f);
+        } break;
+        case TT_KW_VIRTUAL: {
+            if (stmt_flags_get_virtual(*f) != false) {
+                report_redundant_specifier(
+                    p, token_strings[TT_KW_VIRTUAL], start, end);
+                return PE_UNEXPECTED_TOKEN;
+            }
+            stmt_flags_set_virtual(f);
+        } break;
+        case TT_KW_STATIC: {
+            if (stmt_flags_get_static(*f) != false) {
+                report_redundant_specifier(
+                    p, token_strings[TT_KW_STATIC], start, end);
+                return PE_UNEXPECTED_TOKEN;
+            }
+            stmt_flags_set_static(f);
+        } break;
+        default: {
+            return PE_EOEX;
+        } break;
+    }
+    return PE_OK;
+}
 parse_error parse_statement(parser* p, stmt** tgt)
 {
     parse_error pe;
@@ -2072,108 +2127,75 @@ parse_error parse_statement(parser* p, stmt** tgt)
     token* t;
     PEEK(p, t);
     ureg start = t->start;
-    while (true) {
-        // TODO: require, import, include
-        switch (t->type) {
-            case TT_KW_FUNC: {
-                return parse_func_decl(p, start, flags, tgt);
-            }
-            case TT_KW_STRUCT: {
-                return parse_struct_decl(p, start, flags, tgt);
-            }
-            case TT_KW_TRAIT: {
-                return parse_trait_decl(p, start, flags, tgt);
-            }
-            case TT_KW_MODULE: {
-                return parse_module_decl(p, start, flags, tgt);
-            }
-            case TT_KW_EXTEND: {
-                return parse_extend_decl(p, start, flags, tgt);
-            }
-            case TT_KW_ALIAS: {
-                return parse_alias(p, start, flags, tgt);
-            }
-            default:; // fallthrough
-        }
-        if (flags == STMT_FLAGS_DEFAULT) {
-            switch (t->type) {
-                case TT_KW_LABEL: {
-                    token* t3 = tk_peek_3rd(&p->tk);
-                    if (t3->type == TT_SEMICOLON) {
-                        token* t2 = tk_peek_2nd(&p->tk);
-                        if (t2->type != TT_STRING) {
-                            parser_error_2a(
-                                p, "missing label name", t2->start, t2->end,
-                                "expected label name", t->start, t->end,
-                                "in this label statement");
-                            return PE_HANDLED;
-                        }
-                        char* label_name = alloc_string_temp(p, t2->str);
-                        if (!label_name) return PE_INSANE;
-                        tk_void_n(&p->tk, 2);
-                        sym_label* g = alloc_perm(p, sizeof(sym_label));
-                        g->symbol.stmt.type = SYM_LABEL;
-                        g->symbol.name = label_name;
-                        *tgt = (stmt*)g;
-                        return PE_OK;
-                    }
-                } break;
-                case TT_KW_GIVE: {
-                    return parse_give_stmt(p, tgt);
-                }
-                case TT_KW_BREAK: {
-                    break; // TODO
-                }
-                case TT_KW_CONTINUE: {
-                    break; // TODO
-                }
-                case TT_KW_RETURN: {
-                    return parse_return_stmt(p, tgt);
-                }
-                case TT_KW_DO: {
-                    break; // TODO
-                }
-                case TT_KW_GOTO: {
-                    return parse_goto_stmt(p, tgt);
-                }
-                default:; // fallthrough
-            }
-        }
-        if (t->type != TT_STRING) {
-            if (flags == STMT_FLAGS_DEFAULT) {
-                if (curr_scope_supports_exprs(p))
-                    return parse_expr_stmt(p, tgt);
-            }
-            parser_error_1a_pc(
-                p, "unexpected token in statement", t->start, t->end,
-                stmt_flags_get_const(flags) ? "expected keyword"
-                                            : "expected identifier or keyword");
-            return PE_HANDLED;
-        }
-        token* t2 = tk_peek_2nd(&p->tk);
-        if (!t2) return PE_TK_ERROR;
-        if (t2->type == TT_COLON) {
-            return parse_var_decl(p, start, flags, tgt);
-        }
+    ureg flags_end = t->start;
 
+    while (true) {
         pe = stmt_flags_from_kw(p, &flags, t->type, start, t->end);
         if (pe == PE_OK) {
+            flags_end = t->end;
             tk_void(&p->tk);
             PEEK(p, t);
             continue;
         }
         if (pe != PE_EOEX) return pe;
-        // fallthrough on pe == PE_EOEX
-
-        if (flags == STMT_FLAGS_DEFAULT) {
-            if (curr_scope_supports_exprs(p)) return parse_expr_stmt(p, tgt);
+        switch (t->type) {
+            case TT_KW_FUNC:
+                return parse_func_decl(p, flags, start, flags_end, tgt);
+            case TT_KW_STRUCT:
+                return parse_struct_decl(p, flags, start, flags_end, tgt);
+            case TT_KW_TRAIT:
+                return parse_trait_decl(p, flags, start, flags_end, tgt);
+            case TT_KW_MODULE:
+                return parse_module_decl(p, flags, start, flags_end, tgt);
+            case TT_KW_EXTEND:
+                return parse_extend_decl(p, flags, start, flags_end, tgt);
+            case TT_KW_ALIAS:
+                return parse_alias(p, flags, start, flags_end, tgt);
+            case TT_KW_REQUIRE: break; // TODO
+            case TT_KW_IMPORT: break;  // TODO
+            case TT_KW_INCLUDE: break; // TODO
+            case TT_KW_LABEL:
+                return parse_label(p, flags, start, flags_end, tgt);
+            case TT_KW_GIVE:
+                return parse_give_stmt(p, flags, start, flags_end, tgt);
+            case TT_KW_BREAK: break;    // TODO
+            case TT_KW_CONTINUE: break; // TODO
+            case TT_KW_DO: break;       // TODO
+            case TT_KW_RETURN:
+                return parse_return_stmt(p, flags, start, flags_end, tgt);
+            case TT_KW_GOTO:
+                return parse_goto_stmt(p, flags, start, flags_end, tgt);
+            case TT_STRING: {
+                token* t2 = tk_peek_2nd(&p->tk);
+                if (!t2) return PE_TK_ERROR;
+                if (t2->type == TT_COLON) {
+                    return parse_var_decl(p, flags, start, flags_end, tgt);
+                }
+                if (curr_scope_supports_exprs(p)) {
+                    pe = require_default_flags(p, t, flags, start, flags_end);
+                    if (pe) return pe;
+                    return parse_expr_stmt(p, tgt);
+                }
+                t = tk_peek_2nd(&p->tk);
+                parser_error_1a(
+                    p, "unexpected token in statement", t->start, t->end,
+                    "expected ':' to initiate a declaration");
+                return PE_UNEXPECTED_TOKEN;
+            }
+            default: {
+                if (curr_scope_supports_exprs(p)) {
+                    pe = require_default_flags(p, t, flags, start, flags_end);
+                    if (pe) return pe;
+                    return parse_expr_stmt(p, tgt);
+                }
+                parser_error_1a_pc(
+                    p, "unexpected token in statement", t->start, t->end,
+                    stmt_flags_get_const(flags)
+                        ? "expected keyword"
+                        : "expected identifier or keyword");
+                return PE_HANDLED;
+            }
         }
-        tk_void(&p->tk);
-        PEEK(p, t);
-        parser_error_1a_pc(
-            p, "unexpected token in statement", t->start, t->end,
-            "expected ':' to initiate a declaration");
-        return PE_UNEXPECTED_TOKEN;
     }
 }
 parse_error parse_braced_delimited_body(parser* p, body* b)
