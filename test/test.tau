@@ -13,14 +13,15 @@ func main(args: String[]){
             }
         };
         
-        label y loop{
+        while true label y loop{
             return 12;
         }
         (x: int) := foo;
         
-        x:= label y while true{
+        x:= label z do label y while true{
             }
             finally {
+                x++;
             } 
             * 3;
            

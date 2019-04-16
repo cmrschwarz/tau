@@ -399,6 +399,31 @@ void print_expr(expr* ex, ureg indent)
                 print_body(&w->finally_body, indent);
             }
         } break;
+        case EXPR_DO: {
+            expr_do* ed = (expr_do*)ex;
+            p("do ");
+            print_expr(ed->expr_body, indent);
+            if (ed->tail_stmt) {
+                print_astn(ed->tail_stmt, indent);
+            }
+        } break;
+        case EXPR_DO_WHILE: {
+            expr_do_while* dw = (expr_do_while*)ex;
+            if (dw->expr_named.name != NULL) {
+                p("label ");
+                ps(dw->expr_named.name);
+            }
+            p("do ");
+            print_body(&dw->do_body, indent);
+            p(" while ");
+            print_expr(dw->condition, indent);
+            if (dw->finally_body.children) {
+                pc('\n');
+                print_indent(indent);
+                p("finally ");
+                print_body(&dw->finally_body, indent);
+            }
+        } break;
         case EXPR_MATCH: {
             expr_match* m = (expr_match*)ex;
             if (m->expr_named.name != NULL) {

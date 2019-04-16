@@ -51,6 +51,7 @@ typedef enum PACK_ENUM ast_node_type {
     EXPR_FOR_EACH,
     EXPR_WHILE,
     EXPR_DO_WHILE,
+    EXPR_DO,
     EXPR_LOOP,
 
     EXPR_NUMBER,
@@ -227,6 +228,19 @@ typedef struct expr_loop {
     expr_named expr_named;
     body body;
 } expr_loop;
+
+typedef struct expr_do {
+    expr expr;
+    expr* expr_body;
+    stmt* tail_stmt;
+} expr_do;
+
+typedef struct expr_do_while {
+    expr_named expr_named;
+    expr* condition;
+    body do_body;
+    body finally_body;
+} expr_do_while;
 
 typedef struct expr_while {
     expr_named expr_named;

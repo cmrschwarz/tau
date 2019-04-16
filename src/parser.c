@@ -1015,23 +1015,21 @@ static inline parse_error parse_expr_block(parser* p, expr** ex)
     *ex = (expr*)b;
     return parse_braced_delimited_body(p, &b->body);
 }
-parse_error parse_loop(parser* p, expr** tgt, char* label)
+parse_error parse_loop(parser* p, expr** tgt, ureg start, char* label)
 {
     token* t = tk_aquire(&p->tk);
     tk_void(&p->tk);
     expr_loop* l = alloc_perm(p, sizeof(expr_loop));
     if (!l) return PE_INSANE;
-    l->expr_named.expr.srange =
-        src_range_pack_lines(p->tk.tc, t->start, t->end);
+    l->expr_named.expr.srange = src_range_pack_lines(p->tk.tc, start, t->end);
     l->expr_named.name = label;
     l->expr_named.expr.type = EXPR_LOOP;
     *tgt = (expr*)l;
     return parse_body(p, &l->body);
 }
-parse_error parse_match(parser* p, expr** tgt, char* label)
+parse_error parse_match(parser* p, expr** tgt, ureg start, char* label)
 {
     token* t = tk_aquire(&p->tk);
-    ureg start = t->start;
     ureg t_end = t->end;
     tk_void(&p->tk);
     expr_match* em = alloc_perm(p, sizeof(expr_match));
@@ -1109,10 +1107,98 @@ parse_error parse_match(parser* p, expr** tgt, char* label)
         }
     }
 }
-parse_error parse_while(parser* p, expr** tgt, char* label)
+parse_error parse_do(parser* p, expr** tgt, ureg start, char* label)
 {
     token* t = tk_aquire(&p->tk);
-    ureg start = t->start;
+    ureg end = t->end;
+    tk_void(&p->tk);
+    PEEK(p, t);
+    expr* e = NULL;
+    body b;
+    parse_error pe;
+    if (t->type == TT_BRACE_OPEN) {
+        pe = parse_braced_delimited_body(p, &b);
+        if (pe) return pe;
+    }
+    else {
+        pe = parse_expression(p, &e);
+        if (pe == PE_EOEX) {
+            parser_error_2a(
+                p, "unexpected token in do expression", t->start, t->end,
+                "expected expression", start, end, "do expression starts here");
+        }
+        if (pe) return pe;
+    }
+    PEEK(p, t);
+    if (t->type == TT_KW_WHILE) {
+        tk_void(&p->tk);
+        if (e) {
+            expr_to_stmt(
+                p, &b.children, e, start, src_range_get_end(e->srange));
+            b.children->next = NULL;
+            b.srange = e->srange;
+        }
+        expr_do_while* edw = alloc_perm(p, sizeof(expr_do_while));
+        edw->expr_named.name = label;
+        edw->expr_named.expr.type = EXPR_DO_WHILE;
+        edw->expr_named.expr.srange =
+            src_range_pack_lines(p->tk.tc, start, end);
+        *tgt = (expr*)edw;
+        edw->do_body = b;
+        pe = parse_expression(p, &edw->condition);
+        if (pe == PE_EOEX) {
+            parser_error_2a(
+                p, "invalid do while loop syntax", t->start, t->end,
+                "expected while condition expression", start, end,
+                "do while starts here");
+        }
+        PEEK(p, t);
+        if (t->type == TT_KW_FINALLY) {
+            tk_void(&p->tk);
+            pe = parse_body(p, &edw->finally_body);
+        }
+        else {
+            edw->finally_body.children = NULL;
+        }
+        return pe;
+    }
+    else {
+        if (label) {
+            parser_error_2a(
+                p, "invalid do while loop syntax", t->start, t->end,
+                "expected while keyword", start, end, "do while starts here");
+            return PE_HANDLED;
+        }
+        if (!e) {
+            expr_block* eb = alloc_perm(p, sizeof(expr_block));
+            eb->body = b;
+            eb->expr.srange = b.srange;
+            eb->expr.type = EXPR_BLOCK;
+            e = (expr*)eb;
+        }
+    }
+    expr_do* ed = alloc_perm(p, sizeof(expr_do));
+    ed->expr.type = EXPR_DO;
+    ed->expr_body = e;
+    *tgt = (expr*)ed;
+    PEEK(p, t);
+    switch (t->type) {
+        case TT_KW_CONTINUE: {
+            // TODO
+        } break;
+        case TT_KW_BREAK: {
+            pe = parse_give_stmt(
+                p, STMT_FLAGS_DEFAULT, t->start, t->start, &ed->tail_stmt);
+        } break;
+        default: {
+            ed->tail_stmt = NULL;
+        } break;
+    }
+    return pe;
+}
+parse_error parse_while(parser* p, expr** tgt, ureg start, char* label)
+{
+    token* t = tk_aquire(&p->tk);
     ureg end = t->end;
     tk_void(&p->tk);
     expr_while* w = alloc_perm(p, sizeof(expr_while));
@@ -1205,7 +1291,7 @@ static inline parse_error parse_labeled_value_expr(
             return parse_expr_block(p, ex);
         }
         case TT_KW_LOOP: {
-            return parse_loop(p, ex, label);
+            return parse_loop(p, ex, label_start, label);
         }
         case TT_KW_LABEL: {
             check_unepected_expr_after_label(p, label, label_start, label_end);
@@ -1226,10 +1312,13 @@ static inline parse_error parse_labeled_value_expr(
             // TODO: for loop
         }
         case TT_KW_WHILE: {
-            return parse_while(p, ex, label);
+            return parse_while(p, ex, label_start, label);
+        }
+        case TT_KW_DO: {
+            return parse_do(p, ex, label_start, label);
         }
         case TT_KW_MATCH: {
-            return parse_match(p, ex, label);
+            return parse_match(p, ex, label_start, label);
         }
         case TT_KW_IF: {
             check_unepected_expr_after_label(p, label, label_start, label_end);
@@ -2175,7 +2264,6 @@ parse_error parse_statement(parser* p, stmt** tgt)
                 return parse_give_stmt(p, flags, start, flags_end, tgt);
             case TT_KW_BREAK: break;    // TODO
             case TT_KW_CONTINUE: break; // TODO
-            case TT_KW_DO: break;       // TODO
             case TT_KW_RETURN:
                 return parse_return_stmt(p, flags, start, flags_end, tgt);
             case TT_KW_GOTO:
