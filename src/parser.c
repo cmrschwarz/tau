@@ -668,9 +668,16 @@ parse_paren_group_or_tuple(parser* p, token* t, expr** ex)
         tk_void(&p->tk);
         return parse_tuple_after_first_comma(p, t_start, t_end, ex);
     }
-    else { // TODO: check for paren
+    else if (t->type == TT_PAREN_CLOSE) {
         return build_expr_parentheses(p, t_start, t_end, ex);
     }
+    else {
+        parser_error_2a(
+            p, "unexpected token after expression", t->start, t->end,
+            "expected comma or closing parenthesis", t_start, t_end,
+            "in parenthesized expression starting here");
+        return PE_HANDLED;
+}
 }
 typedef union tuple_ident_node {
     sym_var_uninitialized var;
@@ -766,10 +773,12 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         pe = parse_expression(p, ex);
         if (pe == PE_EOEX) {
             PEEK(p, t);
-            parser_error_1a(
+            parser_error_2a(
                 p, "unexpected token after opening parenthesis", t->start,
-                t->end, "expected an expression, a declaration or a closing "
-                        "parenthesis");
+                t->end,
+                "expected an expression, a declaration or a closing "
+                "parenthesis",
+                t_start, t_end, "opening parenthesis here");
             return PE_HANDLED;
         }
         if (pe) return pe;
@@ -815,9 +824,10 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             PEEK(p, t);
         }
         else if (t->type != TT_PAREN_CLOSE) {
-            parser_error_1a(
+            parser_error_2a(
                 p, "unexpected token in tuple", t->start, t->end,
-                "expected an expression, a comma or a closing parenthesis");
+                "expected a comma or a closing parenthesis", t_start, t_end,
+                "tuple starts here");
             return PE_HANDLED;
         }
         if (t->type == TT_PAREN_CLOSE) {
@@ -866,10 +876,11 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         else {
             pe = parse_expression(p, ex);
             if (pe == PE_EOEX) {
-                parser_error_1a(
+                parser_error_2a(
                     p, "unexpected token in tuple", t->start, t->end,
                     "expected an expression, a declaration or a closing "
-                    "parenthesis");
+                    "parenthesis",
+                    t_start, t_end, "tuple starts here");
                 return PE_HANDLED;
             }
             if (pe) return pe;
