@@ -163,6 +163,19 @@ static inline op_type token_to_binary_op(token* t)
         default: return OP_NOOP;
     }
 }
+bool expr_allowed_to_drop_semicolon(expr* e)
+{
+    switch (e->type) {
+        case EXPR_FOR:
+        case EXPR_FOR_EACH:
+        case EXPR_WHILE:
+        case EXPR_LOOP:
+        case EXPR_MATCH:
+        case EXPR_IF:
+        case EXPR_BLOCK: return true;
+        default: return false;
+    }
+}
 bool stmt_allowed_to_drop_semicolon(stmt* s)
 {
     switch (s->type) {
@@ -175,18 +188,8 @@ bool stmt_allowed_to_drop_semicolon(stmt* s)
         case SC_STRUCT_GENERIC:
         case SC_TRAIT:
         case SC_TRAIT_GENERIC: return true;
-        case STMT_EXPRESSION: {
-            switch (((stmt_expr*)s)->expr->type) {
-                case EXPR_FOR:
-                case EXPR_FOR_EACH:
-                case EXPR_WHILE:
-                case EXPR_LOOP:
-                case EXPR_MATCH:
-                case EXPR_IF:
-                case EXPR_BLOCK: return true;
-                default: return false;
-            }
-        }
+        case STMT_EXPRESSION:
+            return expr_allowed_to_drop_semicolon(((stmt_expr*)s)->expr);
         default: return false;
     }
 }

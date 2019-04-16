@@ -24,3 +24,4 @@ void parser_fin(parser* p);
 parse_error parser_parse_file(parser* p, src_file* f);
 
 bool stmt_allowed_to_drop_semicolon(stmt* s);
+bool expr_allowed_to_drop_semicolon(expr* e);
