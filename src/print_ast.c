@@ -9,12 +9,12 @@ void pc(char c)
     putchar(c);
     fflush(stdout);
 }
-void p(char* c)
+void p(const char* c)
 {
     fputs(c, stdout);
     fflush(stdout);
 }
-void pu(char* c)
+void pu(const char* c)
 {
     if (c == NULL) {
         c = "unknown";
@@ -22,7 +22,7 @@ void pu(char* c)
     fputs(c, stdout);
     fflush(stdout);
 }
-void ps(char* c)
+void ps(const char* c)
 {
     pu(c);
     pc(' ');
@@ -47,6 +47,7 @@ void print_body_braced(body* body, ureg indent)
     while (head) {
         print_indent(indent);
         print_astn(head, indent);
+        if (!stmt_allowed_to_drop_semicolon(head)) pc(';');
         pc('\n');
         head = head->next;
     }
@@ -56,16 +57,12 @@ void print_body_braced(body* body, ureg indent)
 }
 void print_body(body* body, ureg indent)
 {
-    stmt* head = body->children;
-    if (!head) {
-        pc(';');
-        return;
+    if (!body_is_braced(body) && body->children && !body->children->next) {
+        print_astn(body->children, indent);
     }
-    if (!head->next) {
-        print_astn(head, indent);
-        return;
+    else {
+        print_body_braced(body, indent);
     }
-    return print_body_braced(body, indent);
 }
 void print_sym_params(sym_param* d, ureg indent)
 {
@@ -122,13 +119,17 @@ void print_compound_decl_list(expr** el, ureg indent)
         if (*el) p(", ");
     }
 }
+void print_astn_nl(stmt* astn, ureg indent)
+{
+    print_astn(astn, indent);
+    pc('\n');
+}
 void print_astn(stmt* astn, ureg indent)
 {
     switch (astn->type) {
         case STMT_EXPRESSION: {
             stmt_expr* e = (stmt_expr*)astn;
             print_expr(e->expr, indent);
-            if (!expr_allowed_to_drop_semicolon(e->expr->type)) pc(';');
         } break;
         case STMT_COMPOUND_ASSIGN: {
             stmt_compound_assignment* ca = (stmt_compound_assignment*)astn;
@@ -147,7 +148,6 @@ void print_astn(stmt* astn, ureg indent)
             if (colon) pc(':');
             p("= ");
             print_expr(ca->value, indent);
-            p(";");
         } break;
         case SC_FUNC: {
             sc_func* f = (sc_func*)astn;
@@ -246,7 +246,6 @@ void print_astn(stmt* astn, ureg indent)
                 p("= ");
                 print_expr(d->value, indent);
             }
-            p(";");
         } break;
         case SYM_ALIAS: {
             sym_alias* a = (sym_alias*)astn;
@@ -260,13 +259,30 @@ void print_astn(stmt* astn, ureg indent)
             }
             p(" -> ");
             print_expr(a->target, indent);
-            p(";");
         } break;
         case SYM_LABEL: {
             sym_label* l = (sym_label*)astn;
             p("label ");
             p(l->symbol.name);
-            p(";");
+        } break;
+        case STMT_GIVE: {
+            stmt_give* g = (stmt_give*)astn;
+            p("give ");
+            if (g->target && g->target->name) ps(g->target->name);
+            if (g->value != NULL) print_expr(g->value, indent);
+        } break;
+        case STMT_RETURN: {
+            stmt_return* r = (stmt_return*)astn;
+            p("return");
+            if (r->value != NULL) {
+                pc(' ');
+                print_expr(r->value, indent);
+            }
+        } break;
+        case STMT_GOTO: {
+            stmt_goto* g = (stmt_goto*)astn;
+            p("goto ");
+            p(g->target.name);
         } break;
         default: {
             p("<Unkown Statement>;");
@@ -311,25 +327,6 @@ void print_expr(expr* ex, ureg indent)
             print_expr(b->rhs, indent);
             break;
         }
-        case EXPR_GIVE: {
-            expr_give* g = (expr_give*)ex;
-            p("give ");
-            if (g->target.name) ps(g->target.name);
-            if (g->value != NULL) print_expr(g->value, indent);
-        } break;
-        case EXPR_RETURN: {
-            expr_return* r = (expr_return*)ex;
-            p("return");
-            if (r->value != NULL) {
-                pc(' ');
-                print_expr(r->value, indent);
-            }
-        } break;
-        case EXPR_GOTO: {
-            expr_goto* g = (expr_goto*)ex;
-            p("goto ");
-            p(g->target.name);
-        } break;
         case EXPR_OP_UNARY: {
             expr_op_unary* u = (expr_op_unary*)ex;
             if (is_unary_op_postfix(u->expr.op_type)) {
@@ -432,8 +429,13 @@ void print_expr(expr* ex, ureg indent)
             pc(' ');
             print_body(&i->if_body, indent);
             if (i->else_body.children) {
-                pc('\n');
-                print_indent(indent);
+                if (body_is_braced(&i->if_body)) {
+                    pc('\n');
+                    print_indent(indent);
+                }
+                else {
+                    pc(' ');
+                }
                 p("else ");
                 print_body(&i->else_body, indent);
             }

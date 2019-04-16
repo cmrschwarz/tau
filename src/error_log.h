@@ -29,13 +29,13 @@ typedef struct error {
     error_type type;
     src_file* file;
     ureg position;
-    char* message;
+    const char* message;
 } error;
 
 typedef struct error_annotated {
     error error;
     ureg end;
-    char* annotation;
+    const char* annotation;
 } error_annotated;
 
 typedef struct error_multi_annotated {
@@ -46,7 +46,7 @@ typedef struct error_multi_annotated {
 typedef struct error_annotation {
     ureg start;
     ureg end;
-    char* annotation;
+    const char* annotation;
 } error_annotation;
 
 typedef struct master_error_log master_error_log;
@@ -55,7 +55,7 @@ typedef struct error_log {
     struct error_log* next;
     error* errors;
     error* critical_failiure_point;
-    char* critical_failiure_msg;
+    const char* critical_failiure_msg;
     pool* error_mem_pool;
 } error_log;
 
@@ -64,7 +64,7 @@ typedef struct master_error_log {
     char* global_errors[TAUC_MAX_GLOBAL_ERRORS];
     ureg global_error_count;
     ureg tab_size;
-    char* tab_spaces;
+    const char* tab_spaces;
     bool err_tty;
     sreg max_err_line_length;
     sreg sane_err_line_length;
@@ -82,26 +82,28 @@ void error_log_init(error_log* el, pool* error_mem_pool);
 void error_log_fin(error_log* el);
 bool error_log_sane_state(error_log* el);
 void error_log_report_simple(
-    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
-    ureg position);
+    error_log* el, error_stage stage, bool warn, const char* message,
+    src_file* file, ureg position);
 void error_log_report_annotated(
-    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
-    ureg start, ureg end, char* annotation);
+    error_log* el, error_stage stage, bool warn, const char* message,
+    src_file* file, ureg start, ureg end, const char* annotation);
 void error_log_report_annotated_twice(
-    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
-    ureg start1, ureg end1, char* annotation1, ureg start2, ureg end2,
-    char* annotation2);
+    error_log* el, error_stage stage, bool warn, const char* message,
+    src_file* file, ureg start1, ureg end1, const char* annotation1,
+    ureg start2, ureg end2, const char* annotation2);
 void error_log_report_annotated_thrice(
-    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
-    ureg start1, ureg end1, char* annotation1, ureg start2, ureg end2,
-    char* annotation2, ureg start3, ureg end3, char* annotation3);
+    error_log* el, error_stage stage, bool warn, const char* message,
+    src_file* file, ureg start1, ureg end1, const char* annotation1,
+    ureg start2, ureg end2, const char* annotation2, ureg start3, ureg end3,
+    const char* annotation3);
 
-char* error_log_cat_strings_2(error_log* e, char* s1, char* s2);
-char* error_log_cat_strings_3(error_log* e, char* s1, char* s2, char* s3);
-char* error_log_cat_strings(error_log* e, ureg count, char** strs);
+char* error_log_cat_strings_2(error_log* e, const char* s1, const char* s2);
+char* error_log_cat_strings_3(
+    error_log* e, const char* s1, const char* s2, const char* s3);
+char* error_log_cat_strings(error_log* e, ureg count, const char** strs);
 
 void* error_log_alloc(error_log* e, ureg size);
 void error_log_report(error_log* el, error* e);
 void error_log_report_allocation_failiure(error_log* el);
 void error_log_report_synchronization_failiure(error_log* el);
-void error_log_report_critical_failiure(error_log* el, char* msg);
+void error_log_report_critical_failiure(error_log* el, const char* msg);

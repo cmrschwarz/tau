@@ -1,6 +1,13 @@
 #include "ast.h"
 #include "utils/panic.h"
 
+bool body_is_braced(body* b)
+{
+    if (b->children && !b->children->next) {
+        return (b->srange != b->children->srange);
+    }
+    return true;
+}
 bool is_unary_op_postfix(op_type t)
 {
     switch (t) {
@@ -39,37 +46,6 @@ void get_expr_bounds(expr* n, ureg* start, ureg* end)
             src_range_unpack(((expr*)n)->srange, &r);
             if (start) *start = r.start;
             if (end) *end = r.end;
-            return;
-        }
-    }
-}
-void stmt_get_highlight_bounds(stmt* stmt, ureg* start, ureg* end)
-{
-    switch (stmt->type) {
-        case SC_MODULE:
-        case SC_EXTEND:
-        case SC_STRUCT:
-        case SC_TRAIT:
-        case SC_FUNC:
-        case SC_MODULE_GENERIC:
-        case SC_EXTEND_GENERIC:
-        case SC_STRUCT_GENERIC:
-        case SC_TRAIT_GENERIC:
-        case SYM_VAR:
-        case SC_FUNC_GENERIC: {
-            src_range dr = ((symbol*)stmt)->decl_range;
-            src_range_large srl;
-            src_range_unpack(dr, &srl);
-            if (start) *start = srl.start;
-            if (end) *end = srl.end;
-            return;
-        }
-        case STMT_EXPRESSION: {
-            get_expr_bounds(((stmt_expr*)stmt)->expr, start, end);
-            return;
-        }
-        default: {
-            panic("unexpected astnt");
             return;
         }
     }

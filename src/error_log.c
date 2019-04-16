@@ -95,8 +95,8 @@ void* error_log_alloc(error_log* el, ureg size)
     return e;
 }
 static inline void error_fill(
-    error* e, error_stage stage, bool warn, error_type type, char* message,
-    src_file* file, ureg position)
+    error* e, error_stage stage, bool warn, error_type type,
+    const char* message, src_file* file, ureg position)
 {
     e->stage = stage;
     e->warn = warn;
@@ -106,7 +106,7 @@ static inline void error_fill(
     e->message = message;
 }
 static inline void
-error_fill_annot(error_annotation* ea, ureg start, ureg end, char* msg)
+error_fill_annot(error_annotation* ea, ureg start, ureg end, const char* msg)
 {
     ea->start = start;
     ea->end = end;
@@ -114,8 +114,8 @@ error_fill_annot(error_annotation* ea, ureg start, ureg end, char* msg)
 }
 
 void error_log_report_simple(
-    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
-    ureg position)
+    error_log* el, error_stage stage, bool warn, const char* message,
+    src_file* file, ureg position)
 {
     error* e = (error*)error_log_alloc(el, sizeof(error));
     if (!e) return;
@@ -124,8 +124,8 @@ void error_log_report_simple(
 }
 
 void error_log_report_annotated(
-    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
-    ureg start, ureg end, char* annotation)
+    error_log* el, error_stage stage, bool warn, const char* message,
+    src_file* file, ureg start, ureg end, const char* annotation)
 {
     error_annotated* e =
         (error_annotated*)error_log_alloc(el, sizeof(error_annotated));
@@ -136,9 +136,9 @@ void error_log_report_annotated(
     error_log_report(el, (error*)e);
 }
 void error_log_report_annotated_twice(
-    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
-    ureg start1, ureg end1, char* annotation1, ureg start2, ureg end2,
-    char* annotation2)
+    error_log* el, error_stage stage, bool warn, const char* message,
+    src_file* file, ureg start1, ureg end1, const char* annotation1,
+    ureg start2, ureg end2, const char* annotation2)
 {
     error_multi_annotated* e = (error_multi_annotated*)error_log_alloc(
         el, sizeof(error_multi_annotated) + sizeof(error_annotated));
@@ -153,9 +153,10 @@ void error_log_report_annotated_twice(
     error_log_report(el, (error*)e);
 }
 void error_log_report_annotated_thrice(
-    error_log* el, error_stage stage, bool warn, char* message, src_file* file,
-    ureg start1, ureg end1, char* annotation1, ureg start2, ureg end2,
-    char* annotation2, ureg start3, ureg end3, char* annotation3)
+    error_log* el, error_stage stage, bool warn, const char* message,
+    src_file* file, ureg start1, ureg end1, const char* annotation1,
+    ureg start2, ureg end2, const char* annotation2, ureg start3, ureg end3,
+    const char* annotation3)
 {
     error_multi_annotated* e = (error_multi_annotated*)error_log_alloc(
         el, sizeof(error_multi_annotated) + 2 * sizeof(error_annotated));
@@ -177,7 +178,7 @@ void error_log_report(error_log* el, error* e)
     e->previous = el->errors;
     el->errors = e;
 }
-void error_log_report_critical_failiure(error_log* el, char* msg)
+void error_log_report_critical_failiure(error_log* el, const char* msg)
 {
     if (el->critical_failiure_point != FAILURE_NONE) return;
     if (el->errors != NULL) {
@@ -197,7 +198,7 @@ void error_log_report_synchronization_failiure(error_log* el)
     error_log_report_critical_failiure(el, "synchronization failiure");
 }
 
-int pe(char* msg)
+int pe(const char* msg)
 {
     fputs(msg, stderr);
     return OK;
@@ -234,10 +235,10 @@ typedef struct err_point {
     ureg col_end;
     sreg length_diff_start;
     sreg length_diff_end;
-    char* message;
-    char* text_color;
-    char* squigly_color;
-    char* message_color;
+    const char* message;
+    const char* text_color;
+    const char* squigly_color;
+    const char* message_color;
 } err_point;
 void print_until(
     ureg* bpos, ureg* next, char* buffer, ureg* after_tab, sreg* length_diff)
@@ -500,7 +501,8 @@ int cmp_err_point(err_point l, err_point r)
 #define SORT_CMP(x, y) cmp_err_point(x, y)
 #include "sort.h"
 ureg extend_em(
-    error* e, err_point* err_points, char* annot, src_pos pos, src_pos end)
+    error* e, err_point* err_points, const char* annot, src_pos pos,
+    src_pos end)
 {
     if (end.column == 0 && end.line != pos.line) {
         ureg lstart, llength;
@@ -687,7 +689,7 @@ int compare_errs(const error* a, const error* b)
 #define SORT_TYPE error*
 #define SORT_CMP(x, y) compare_errs(x, y)
 #include "sort.h"
-int printCriticalThreadError(char* msg)
+int printCriticalThreadError(const char* msg)
 {
     pectc(
         ANSICOLOR_RED ANSICOLOR_BOLD,
@@ -696,7 +698,7 @@ int printCriticalThreadError(char* msg)
     pe("\n");
     return OK;
 }
-int printCriticalError(char* msg)
+int printCriticalError(const char* msg)
 {
     pectc(ANSICOLOR_RED ANSICOLOR_BOLD, "critical error: ", ANSICOLOR_CLEAR);
     pe(msg);
@@ -804,22 +806,23 @@ bool error_log_sane_state(error_log* el)
     return (el->critical_failiure_point == FAILURE_NONE);
 }
 
-char* error_log_cat_strings_2(error_log* e, char* s1, char* s2)
+char* error_log_cat_strings_2(error_log* e, const char* s1, const char* s2)
 {
-    char* strs[2];
+    const char* strs[2];
     strs[0] = s1;
     strs[1] = s2;
     return error_log_cat_strings(e, 2, strs);
 }
-char* error_log_cat_strings_3(error_log* e, char* s1, char* s2, char* s3)
+char* error_log_cat_strings_3(
+    error_log* e, const char* s1, const char* s2, const char* s3)
 {
-    char* strs[3];
+    const char* strs[3];
     strs[0] = s1;
     strs[1] = s2;
     strs[2] = s3;
     return error_log_cat_strings(e, 3, strs);
 }
-char* error_log_cat_strings(error_log* e, ureg count, char** strs)
+char* error_log_cat_strings(error_log* e, ureg count, const char** strs)
 {
     ureg len = 0;
     for (ureg i = 0; i < count; i++) {

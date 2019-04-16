@@ -46,7 +46,7 @@ token* tk_peek_nth(tokenizer* tk, int n)
     token* t = tk->loaded_tokens_start;
     if (tk->loaded_tokens_head < tk->loaded_tokens_start) {
         int rem = tk->token_buffer_end - t;
-        if (rem >= n) return t + n;
+        if (rem >= n) return t + n - 1;
         n -= rem;
         t = tk->token_buffer;
     }
@@ -753,9 +753,10 @@ static token* tk_load(tokenizer* tk)
                     tk_void_char_peek(tk);
                     curr = tk_peek_char_holding(tk, &str_start);
                 }
-                tok->type = TT_STRING;
                 tok->str.start = str_start;
                 tok->str.end = tk->file_buffer_pos;
+                tok->type = match_kw(tok->str);
+                if (tok->type == TT_NONE) tok->type = TT_STRING;
                 return tk_return_head(
                     tk, ptrdiff(tk->file_buffer_pos, str_start));
             }

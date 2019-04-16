@@ -3,23 +3,41 @@
 #include "stdio.h"
 
 const char* token_strings[255] = {
-    [TT_IF] = "if",
-    [TT_ELSE] = "else",
-    [TT_MATCH] = "match",
-    [TT_FOR] = "for",
-    [TT_WHILE] = "while",
-    [TT_LOOP] = "loop",
-    [TT_RETURN] = "return",
-    [TT_FUNC] = "func",
-    [TT_PUBLIC] = "public",
-    [TT_STRUCT] = "struct",
-    [TT_TRAIT] = "trait",
-    [TT_INTERFACE] = "interface",
-    [TT_MODULE] = "module",
-    [TT_EXTEND] = "extend",
-    [TT_INHERITS] = "inherits",
-    [TT_IMPLEMENTS] = "implements",
-    [TT_ALIAS] = "alias",
+    [TT_KW_MODULE] = "module",
+    [TT_KW_EXTEND] = "extend",
+    [TT_KW_REQUIRE] = "require",
+    [TT_KW_IMPORT] = "import",
+    [TT_KW_INCLUDE] = "include",
+    [TT_KW_CONST] = "const",
+    [TT_KW_MUT] = "mut",
+    [TT_KW_SEALED] = "sealed",
+    [TT_KW_VIRTUAL] = "virtual",
+    [TT_KW_STATIC] = "static",
+    [TT_KW_AS] = "as",
+    [TT_KW_FUNC] = "func",
+    [TT_KW_STRUCT] = "struct",
+    [TT_KW_TRAIT] = "trait",
+    [TT_KW_AUTO] = "auto",
+    [TT_KW_FOR] = "for",
+    [TT_KW_WHILE] = "while",
+    [TT_KW_DO] = "do",
+    [TT_KW_LOOP] = "loop",
+    [TT_KW_CONTINUE] = "continue",
+    [TT_KW_BREAK] = "break",
+    [TT_KW_RETURN] = "return",
+    [TT_KW_GIVE] = "give",
+    [TT_KW_LABEL] = "label",
+    [TT_KW_GOTO] = "goto",
+    [TT_KW_ALIAS] = "alias",
+    [TT_KW_IF] = "if",
+    [TT_KW_ELSE] = "else",
+    [TT_KW_MATCH] = "match",
+    [TT_KW_LET] = "let",
+    [TT_KW_CONST] = "const",
+    [TT_KW_PUBLIC] = "public",
+    [TT_KW_PROTECTED] = "protected",
+    [TT_KW_PRIVATE] = "private",
+    [TT_KW_FINALLY] = "finally",
 
     [TT_MINUS_EQUALS] = "-=",
     [TT_PLUS_EQUALS] = "+=",
@@ -81,6 +99,15 @@ const char* token_strings[255] = {
     [TT_STRING] = 0,
     [TT_EOF] = "EOF",
 };
+
+token_type match_kw(string str)
+{
+    for (ureg kwid = TT_MIN_KW_INDEX; kwid < TT_MAX_KW_INDEX; kwid++) {
+        if (string_eq_cstr(str, token_strings[kwid])) return kwid;
+    }
+    return TT_NONE;
+}
+
 void token_debug_print(src_file* f, token* t)
 {
     if (t == NULL) {

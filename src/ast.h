@@ -39,11 +39,11 @@ typedef enum PACK_ENUM ast_node_type {
 
     EXPR_BLOCK,
 
-    EXPR_GOTO,
-    EXPR_GIVE,
-    EXPR_RETURN,
-    EXPR_CONTINUE,
-    EXPR_BREAK,
+    STMT_GOTO,
+    STMT_GIVE,
+    STMT_RETURN,
+    STMT_CONTINUE,
+    STMT_BREAK,
 
     EXPR_MATCH,
     EXPR_IF,
@@ -145,18 +145,18 @@ typedef struct stmt {
     ast_node_type type;
     stmt_flags flags;
     err_flags eflags;
+    src_range srange;
     struct stmt* next;
 } stmt;
 
 typedef struct symbol {
     stmt stmt;
     char* name;
-    src_range decl_range;
 } symbol;
 
 typedef struct body {
     stmt* children;
-    ureg body_end;
+    src_range srange;
 } body;
 
 typedef struct scope {
@@ -182,27 +182,34 @@ typedef struct sym_alias {
     expr* target;
 } sym_alias;
 
-typedef struct expr_return {
-    expr expr;
+typedef struct stmt_return {
+    stmt stmt;
     expr* value;
-} expr_return;
+} stmt_return;
 
-typedef struct expr_give {
-    expr expr;
-    union {
-        expr* expr;
-        char* name;
-    } target;
+typedef struct stmt_give {
+    stmt stmt;
+    expr_named* target;
     expr* value;
-} expr_give;
+} stmt_give;
 
-typedef struct expr_goto {
-    expr expr;
+typedef struct stmt_break {
+    stmt stmt;
+    expr_named* target;
+} stmt_break;
+
+typedef struct stmt_continue {
+    stmt stmt;
+    expr_named* target;
+} stmt_continue;
+
+typedef struct stmt_goto {
+    stmt stmt;
     union {
         sym_label* label;
         char* name;
     } target;
-} expr_goto;
+} stmt_goto;
 
 typedef struct expr_block {
     expr expr;
@@ -417,6 +424,8 @@ typedef struct expr_lambda {
     sym_param* params;
     body body;
 } expr_lambda;
+
+bool body_is_braced(body* b);
 
 bool is_unary_op_postfix(op_type t);
 stmt* get_parent_body(scope* parent);

@@ -5,29 +5,50 @@
 #include "utils/types.h"
 
 typedef enum PACK_ENUM {
-    TT_NUMBER = 0,
-    TT_LITERAL = 1,
-    TT_BINARY_LITERAL = 2,
-    TT_STRING = 3,
-    TT_EOF,
+    TT_NUMBER,
+    TT_MIN_STR_INDEX = TT_NUMBER,
+    TT_LITERAL,
+    TT_BINARY_LITERAL,
+    TT_STRING,
+    TT_MAX_STR_INDEX = TT_STRING,
 
-    TT_IF,
-    TT_ELSE,
-    TT_MATCH,
-    TT_FOR,
-    TT_WHILE,
-    TT_LOOP,
-    TT_RETURN,
-    TT_FUNC,
-    TT_PUBLIC,
-    TT_STRUCT,
-    TT_TRAIT,
-    TT_INTERFACE,
-    TT_MODULE,
-    TT_EXTEND,
-    TT_INHERITS,
-    TT_IMPLEMENTS,
-    TT_ALIAS,
+    TT_KW_MODULE,
+    TT_MIN_KW_INDEX = TT_KW_MODULE,
+    TT_KW_IMPORT,
+    TT_KW_INCLUDE,
+    TT_KW_EXTEND,
+    TT_KW_REQUIRE,
+    TT_KW_CONST,
+    TT_KW_MUT,
+    TT_KW_SEALED,
+    TT_KW_VIRTUAL,
+    TT_KW_PUBLIC,
+    TT_KW_PROTECTED,
+    TT_KW_PRIVATE,
+    TT_KW_STATIC,
+    TT_KW_AS,
+    TT_KW_FUNC,
+    TT_KW_STRUCT,
+    TT_KW_TRAIT,
+    TT_KW_AUTO,
+    TT_KW_FOR,
+    TT_KW_WHILE,
+    TT_KW_DO,
+    TT_KW_LOOP,
+    TT_KW_FINALLY,
+    TT_KW_CONTINUE,
+    TT_KW_BREAK,
+    TT_KW_RETURN,
+    TT_KW_GIVE,
+    TT_KW_LABEL,
+    TT_KW_ALIAS,
+    TT_KW_GOTO,
+    TT_KW_IF,
+    TT_KW_ELSE,
+    TT_KW_MATCH,
+    TT_KW_LET,
+    TT_KW_COUNT,
+    TT_MAX_KW_INDEX = TT_KW_COUNT,
 
     TT_MINUS_EQUALS,
     TT_PLUS_EQUALS,
@@ -82,6 +103,9 @@ typedef enum PACK_ENUM {
     TT_DOUBLE_COLON,
     TT_ARROW,
     TT_FAT_ARROW,
+
+    TT_EOF,
+    TT_NONE,
 } token_type;
 
 extern const char* token_strings[255];
@@ -95,7 +119,13 @@ typedef struct token {
 
 static inline bool token_has_string(token* t)
 {
-    return t->type < 4;
+    return t->type >= TT_MIN_STR_INDEX && t->type <= TT_MAX_STR_INDEX;
 }
+static inline bool token_is_keyword(token* t)
+{
+    return t->type >= TT_MIN_KW_INDEX && t->type <= TT_MAX_KW_INDEX;
+}
+
+token_type match_kw(string str);
 
 void token_debug_print(src_file* f, token* t);

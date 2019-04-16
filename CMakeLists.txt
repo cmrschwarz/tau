@@ -4,7 +4,6 @@ project(tau C)
 set(TAUC_SRCS
     ./src/tokenizer.c
     ./src/parser.c
-    ./src/keywords.c
     ./src/utils/dbuffer.c
     ./src/utils/panic.c
     ./src/utils/os/libc/atomics_libc.c
