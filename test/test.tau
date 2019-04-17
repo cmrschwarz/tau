@@ -18,7 +18,7 @@ func main(args: String[]){
         }
         (x: int) := foo;
         
-        x:= label z do label y while true{
+        x:= do label y while true{
             }
             finally {
                 x++;

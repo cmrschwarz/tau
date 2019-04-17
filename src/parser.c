@@ -24,70 +24,70 @@ parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
 parse_error parse_braced_delimited_body(parser* p, body* b);
 
 static const unsigned char op_precedence[] = {
-    [OP_POST_INCREMENT] = 15,
-    [OP_POST_DECREMENT] = 15,
-    [OP_CALL] = 15,
-    [OP_ACCESS] = 15,
-    [OP_SCOPE_ACCESS] = 15,
-    [OP_MEMBER_ACCESS] = 15,
+        [OP_POST_INCREMENT] = 15,
+        [OP_POST_DECREMENT] = 15,
+        [OP_CALL] = 15,
+        [OP_ACCESS] = 15,
+        [OP_SCOPE_ACCESS] = 15,
+        [OP_MEMBER_ACCESS] = 15,
 
-    [OP_PRE_INCREMENT] = 14,
-    [OP_PRE_DECREMENT] = 14,
-    [OP_UNARY_PLUS] = 14,
-    [OP_UNARY_MINUS] = 14,
-    [OP_NOT] = 14,
-    [OP_BITWISE_NOT] = 14,
-    [OP_DEREF] = 14,
-    [OP_POINTER_OF] = 14,
-    [OP_REF_OF] = 14,
-    [OP_RREF_OF] = 14,
-    [OP_CLOSURE_BY_VALUE] = 14,
-    [OP_CONST] = 14,
+        [OP_PRE_INCREMENT] = 14,
+        [OP_PRE_DECREMENT] = 14,
+        [OP_UNARY_PLUS] = 14,
+        [OP_UNARY_MINUS] = 14,
+        [OP_NOT] = 14,
+        [OP_BITWISE_NOT] = 14,
+        [OP_DEREF] = 14,
+        [OP_POINTER_OF] = 14,
+        [OP_REF_OF] = 14,
+        [OP_RREF_OF] = 14,
+        [OP_CLOSURE_BY_VALUE] = 14,
+        [OP_CONST] = 14,
 
-    [OP_BITWISE_AND] = 13,
+        [OP_BITWISE_AND] = 13,
 
-    [OP_BITWISE_XOR] = 12,
+        [OP_BITWISE_XOR] = 12,
 
-    [OP_BITWISE_OR] = 11,
+        [OP_BITWISE_OR] = 11,
 
-    [OP_MUL] = 10,
-    [OP_DIV] = 10,
-    [OP_MOD] = 10,
+        [OP_MUL] = 10,
+        [OP_DIV] = 10,
+        [OP_MOD] = 10,
 
-    [OP_ADD] = 9,
-    [OP_SUB] = 9,
+        [OP_ADD] = 9,
+        [OP_SUB] = 9,
 
-    [OP_LSHIFT] = 8,
-    [OP_RSHIFT] = 8,
+        [OP_LSHIFT] = 8,
+        [OP_RSHIFT] = 8,
 
-    [OP_CAST] = 7,
+        [OP_CAST] = 7,
 
-    [OP_LESS_THAN] = 6,
-    [OP_LESS_THAN_OR_EQUAL] = 6,
-    [OP_GREATER_THAN] = 6,
-    [OP_GREATER_THAN_OR_EQUAL] = 6,
+        [OP_LESS_THAN] = 6,
+        [OP_LESS_THAN_OR_EQUAL] = 6,
+        [OP_GREATER_THAN] = 6,
+        [OP_GREATER_THAN_OR_EQUAL] = 6,
 
-    [OP_EQUAL] = 5,
-    [OP_UNEQAL] = 5,
+        [OP_EQUAL] = 5,
+        [OP_UNEQAL] = 5,
 
-    [OP_AND] = 4,
+        [OP_AND] = 4,
 
-    [OP_XOR] = 3,
+        [OP_XOR] = 3,
 
-    [OP_OR] = 2,
+        [OP_OR] = 2,
 
-    [OP_ASSIGN] = 1,
-    [OP_ADD_ASSIGN] = 1,
-    [OP_SUB_ASSIGN] = 1,
-    [OP_MUL_ASSIGN] = 1,
-    [OP_DIV_ASSIGN] = 1,
-    [OP_MOD_ASSIGN] = 1,
-    [OP_LSHIFT_ASSIGN] = 1,
-    [OP_RSHIFT_ASSIGN] = 1,
-    [OP_BITWISE_AND_ASSIGN] = 1,
-    [OP_BITWISE_XOR_ASSIGN] = 1,
-    [OP_BITWISE_OR_ASSIGN] = 1,
-    [OP_BITWISE_NOT_ASSIGN] = 1,
+        [OP_ASSIGN] = 1,
+        [OP_ADD_ASSIGN] = 1,
+        [OP_SUB_ASSIGN] = 1,
+        [OP_MUL_ASSIGN] = 1,
+        [OP_DIV_ASSIGN] = 1,
+        [OP_MOD_ASSIGN] = 1,
+        [OP_LSHIFT_ASSIGN] = 1,
+        [OP_RSHIFT_ASSIGN] = 1,
+        [OP_BITWISE_AND_ASSIGN] = 1,
+        [OP_BITWISE_XOR_ASSIGN] = 1,
+        [OP_BITWISE_OR_ASSIGN] = 1,
+        [OP_BITWISE_NOT_ASSIGN] = 1,
 };
 
 #define PREC_BASELINE 0
@@ -791,9 +791,8 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             PEEK(p, t);
             parser_error_2a(
                 p, "unexpected token after opening parenthesis", t->start,
-                t->end,
-                "expected an expression, a declaration or a closing "
-                "parenthesis",
+                t->end, "expected an expression, a declaration or a closing "
+                        "parenthesis",
                 t_start, t_end, "opening parenthesis here");
             return PE_HANDLED;
         }
@@ -1165,8 +1164,9 @@ parse_error parse_do(parser* p, expr** tgt, ureg start, char* label)
     else {
         if (label) {
             parser_error_2a(
-                p, "invalid do while loop syntax", t->start, t->end,
-                "expected while keyword", start, end, "do while starts here");
+                p, "labeled do only allowed with do ... while", t->start,
+                t->end, "expected while keyword", start, end,
+                "labeled do starts here");
             return PE_HANDLED;
         }
         if (!e) {
@@ -2255,15 +2255,20 @@ parse_error parse_statement(parser* p, stmt** tgt)
                 return parse_extend_decl(p, flags, start, flags_end, tgt);
             case TT_KW_ALIAS:
                 return parse_alias(p, flags, start, flags_end, tgt);
-            case TT_KW_REQUIRE: break; // TODO
-            case TT_KW_IMPORT: break;  // TODO
-            case TT_KW_INCLUDE: break; // TODO
+            case TT_KW_REQUIRE:
+                break; // TODO
+            case TT_KW_IMPORT:
+                break; // TODO
+            case TT_KW_INCLUDE:
+                break; // TODO
             case TT_KW_LABEL:
                 return parse_label(p, flags, start, flags_end, tgt);
             case TT_KW_GIVE:
                 return parse_give_stmt(p, flags, start, flags_end, tgt);
-            case TT_KW_BREAK: break;    // TODO
-            case TT_KW_CONTINUE: break; // TODO
+            case TT_KW_BREAK:
+                break; // TODO
+            case TT_KW_CONTINUE:
+                break; // TODO
             case TT_KW_RETURN:
                 return parse_return_stmt(p, flags, start, flags_end, tgt);
             case TT_KW_GOTO:
