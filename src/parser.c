@@ -994,7 +994,7 @@ parse_error parse_give_stmt(
     stmt_give* g = alloc_perm(p, sizeof(stmt_give));
     if (!g) return PE_INSANE;
     g->stmt.type = STMT_GIVE;
-    g->target = NULL; // TODO
+    g->target.name = NULL;
 
     pe = parse_expression(p, &g->value);
     if (pe == PE_EOEX) {
@@ -1004,6 +1004,39 @@ parse_error parse_give_stmt(
             "expected expression", start, end, "in this give statement");
     }
     if (pe) return pe;
+    *tgt = (stmt*)g;
+    return PE_OK;
+}
+parse_error parse_break_stmt(
+    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
+{
+    token* t = tk_aquire(&p->tk);
+    parse_error pe = require_default_flags(p, t, flags, start, flags_end);
+    if (pe) return pe;
+    ureg end = t->end;
+    tk_void(&p->tk);
+    PEEK(p, t);
+    char* target;
+    if (t->type != TT_STRING) {
+        target = NULL;
+    }
+    else if (t->type == TT_STRING) {
+        target = alloc_string_perm(p, t->str);
+        if (!target) return PE_INSANE;
+        tk_void(&p->tk);
+        PEEK(p, t);
+        if (t->type == TT_KW_GIVE) {
+            pe =
+                parse_give_stmt(p, STMT_FLAGS_DEFAULT, t->start, t->start, tgt);
+            if (pe) return pe;
+            ((stmt_give*)*tgt)->target.name = target;
+            return PE_OK;
+        }
+    }
+    stmt_break* g = alloc_perm(p, sizeof(stmt_give));
+    if (!g) return PE_INSANE;
+    g->stmt.type = STMT_BREAK;
+    g->target.name = target;
     *tgt = (stmt*)g;
     return PE_OK;
 }
@@ -2266,7 +2299,7 @@ parse_error parse_statement(parser* p, stmt** tgt)
             case TT_KW_GIVE:
                 return parse_give_stmt(p, flags, start, flags_end, tgt);
             case TT_KW_BREAK:
-                break; // TODO
+                return parse_break_stmt(p, flags, start, flags_end, tgt);
             case TT_KW_CONTINUE:
                 break; // TODO
             case TT_KW_RETURN:

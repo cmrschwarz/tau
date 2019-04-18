@@ -190,13 +190,19 @@ typedef struct stmt_return {
 
 typedef struct stmt_give {
     stmt stmt;
-    expr_named* target;
+    union {
+        expr_named* expr;
+        char* name;
+    } target;
     expr* value;
 } stmt_give;
 
 typedef struct stmt_break {
     stmt stmt;
-    expr_named* target;
+    union {
+        expr_named* expr;
+        char* name;
+    } target;
 } stmt_break;
 
 typedef struct stmt_continue {

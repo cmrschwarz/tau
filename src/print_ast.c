@@ -267,9 +267,24 @@ void print_astn(stmt* astn, ureg indent)
         } break;
         case STMT_GIVE: {
             stmt_give* g = (stmt_give*)astn;
-            p("give ");
-            if (g->target && g->target->name) ps(g->target->name);
-            if (g->value != NULL) print_expr(g->value, indent);
+            if (g->value != NULL) {
+                ps("break");
+                ps(g->target.name);
+                ps("give");
+                print_expr(g->value, indent);
+            }
+            else {
+                p("give ");
+                print_expr(g->value, indent);
+            }
+        } break;
+        case STMT_BREAK: {
+            stmt_break* b = (stmt_break*)astn;
+            p("break");
+            if (b->target.name) {
+                pc(' ');
+                p(b->target.name);
+            }
         } break;
         case STMT_RETURN: {
             stmt_return* r = (stmt_return*)astn;
