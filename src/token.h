@@ -41,7 +41,7 @@ typedef enum PACK_ENUM {
     TT_KW_RETURN,
     TT_KW_GIVE,
     TT_KW_LABEL,
-    TT_KW_ALIAS,
+    TT_KW_USING,
     TT_KW_GOTO,
     TT_KW_IF,
     TT_KW_ELSE,

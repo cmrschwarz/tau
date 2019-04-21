@@ -28,7 +28,8 @@ typedef enum PACK_ENUM ast_node_type {
     SC_TRAIT,
     SC_TRAIT_GENERIC,
 
-    SYM_ALIAS,
+    STMT_USING,
+    SYM_NAMED_USING,
     SYM_VAR,
     SYM_VAR_UNINITIALIZED,
     SYM_PARAM,
@@ -178,10 +179,15 @@ typedef struct sym_label {
     symbol symbol;
 } sym_label;
 
-typedef struct sym_alias {
+typedef struct sym_named_using {
     symbol symbol;
     expr* target;
-} sym_alias;
+} sym_named_using;
+
+typedef struct stmt_using {
+    stmt stmt;
+    expr* target;
+} stmt_using;
 
 typedef struct stmt_return {
     stmt stmt;

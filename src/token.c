@@ -2,6 +2,7 @@
 #include "file_map.h"
 #include "stdio.h"
 
+// clang-format off
 const char* token_strings[255] = {
     [TT_KW_MODULE] = "module",
     [TT_KW_EXTEND] = "extend",
@@ -28,7 +29,7 @@ const char* token_strings[255] = {
     [TT_KW_GIVE] = "give",
     [TT_KW_LABEL] = "label",
     [TT_KW_GOTO] = "goto",
-    [TT_KW_ALIAS] = "alias",
+    [TT_KW_USING] = "using",
     [TT_KW_IF] = "if",
     [TT_KW_ELSE] = "else",
     [TT_KW_MATCH] = "match",
@@ -99,6 +100,7 @@ const char* token_strings[255] = {
     [TT_STRING] = "expression",
     [TT_EOF] = "EOF",
 };
+// clang-format on
 
 token_type match_kw(string str)
 {

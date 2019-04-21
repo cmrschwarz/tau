@@ -247,18 +247,19 @@ void print_astn(stmt* astn, ureg indent)
                 print_expr(d->value, indent);
             }
         } break;
-        case SYM_ALIAS: {
-            sym_alias* a = (sym_alias*)astn;
-            if (stmt_flags_get_const(a->symbol.stmt.flags)) p("const ");
-            p("alias ");
-            if (a->symbol.name) {
-                p(a->symbol.name);
-            }
-            else {
-                pc('*');
-            }
-            p(" -> ");
-            print_expr(a->target, indent);
+        case SYM_NAMED_USING: {
+            sym_named_using* nu = (sym_named_using*)astn;
+            if (stmt_flags_get_const(nu->symbol.stmt.flags)) p("const ");
+            p("using ");
+            p(nu->symbol.name);
+            p(" = ");
+            print_expr(nu->target, indent);
+        } break;
+        case STMT_USING: {
+            stmt_using* u = (stmt_using*)astn;
+            if (stmt_flags_get_const(u->stmt.flags)) p("const ");
+            p("using ");
+            print_expr(u->target, indent);
         } break;
         case SYM_LABEL: {
             sym_label* l = (sym_label*)astn;

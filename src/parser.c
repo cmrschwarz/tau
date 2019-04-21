@@ -2134,47 +2134,55 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
     return expr_to_stmt(p, tgt, ex, t_start, t->end);
 }
 parse_error
-parse_alias(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
+parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
 {
     token* t = tk_aquire(&p->tk);
     ureg end = t->end;
     tk_void(&p->tk);
-    sym_alias* a = alloc_perm(p, sizeof(sym_alias));
-    if (!a) return PE_INSANE;
-    a->symbol.stmt.type = SYM_ALIAS;
-    a->symbol.stmt.flags = flags;
-
     PEEK(p, t);
-    if (t->type == TT_STAR) {
-        a->symbol.name = NULL;
+    if (t->type == TT_STRING) {
+        token* t2 = tk_peek_2nd(&p->tk);
+        if (!t2) return PE_TK_ERROR;
+        if (t2->type == TT_EQUALS) {
+            sym_named_using* nu = alloc_perm(p, sizeof(sym_named_using));
+            if (!nu) return PE_INSANE;
+            nu->symbol.stmt.type = SYM_NAMED_USING;
+            nu->symbol.stmt.flags = flags;
+            nu->symbol.name = alloc_string_perm(p, t->str);
+            if (!nu->symbol.name) return PE_INSANE;
+            tk_void_n(&p->tk, 2);
+            parse_error pe = parse_expression(p, &nu->target);
+            if (pe == PE_EOEX) {
+                parser_error_2a(
+                    p, "unexpected token", t->start, t->end,
+                    "expected expression", start, end,
+                    "in this named using statement");
+                return PE_HANDLED;
+            }
+            if (pe) return pe;
+            nu->symbol.stmt.srange = src_range_pack_lines(
+                p->tk.tc, start, src_range_get_end(nu->target->srange));
+            if (nu->symbol.stmt.srange == SRC_RANGE_INVALID) return PE_INSANE;
+            *tgt = (stmt*)nu;
+            return PE_OK;
+        }
     }
-    else if (t->type == TT_STRING) {
-        a->symbol.name = alloc_string_perm(p, t->str);
-        if (!a->symbol.name) return PE_INSANE;
-    }
-    else {
-        parser_error_2a(
-            p, "invalid alias syntax", t->start, t->end,
-            "expected '*' or an identifier", start, t->end, "");
-    }
-    tk_void(&p->tk);
-    PEEK(p, t);
-    if (t->type != TT_ARROW) {
-        parser_error_2a(
-            p, "unexpected token in alias statement", t->start, t->end,
-            "expected '->'", start, end, "in this alias statement");
-        return PE_HANDLED;
-    }
-    tk_void(&p->tk);
-    parse_error pe = parse_expression(p, &a->target);
+    stmt_using* u = alloc_perm(p, sizeof(stmt_using));
+    if (!u) return PE_INSANE;
+    u->stmt.type = STMT_USING;
+    u->stmt.flags = flags;
+    parse_error pe = parse_expression(p, &u->target);
     if (pe == PE_EOEX) {
         parser_error_2a(
-            p, "unexpected token in alias statement", t->start, t->end,
-            "expected expression", start, end, "in this alias statement");
+            p, "unexpected token", t->start, t->end, "expected expression",
+            start, end, "in this using statement");
         return PE_HANDLED;
     }
-    *tgt = &a->symbol.stmt;
-    return PE_OK;
+    u->stmt.srange = src_range_pack_lines(
+        p->tk.tc, start, src_range_get_end(u->target->srange));
+    if (u->stmt.srange == SRC_RANGE_INVALID) return PE_INSANE;
+    *tgt = (stmt*)u;
+    return pe;
 }
 parse_error
 parse_label(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
@@ -2286,8 +2294,8 @@ parse_error parse_statement(parser* p, stmt** tgt)
                 return parse_module_decl(p, flags, start, flags_end, tgt);
             case TT_KW_EXTEND:
                 return parse_extend_decl(p, flags, start, flags_end, tgt);
-            case TT_KW_ALIAS:
-                return parse_alias(p, flags, start, flags_end, tgt);
+            case TT_KW_USING:
+                return parse_using(p, flags, start, flags_end, tgt);
             case TT_KW_REQUIRE:
                 break; // TODO
             case TT_KW_IMPORT:
