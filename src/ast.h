@@ -288,7 +288,6 @@ typedef struct expr_match {
 typedef struct stmt_expr {
     stmt stmt;
     expr* expr;
-    src_range expr_range; // debatable
 } stmt_expr;
 
 typedef struct sym_param {

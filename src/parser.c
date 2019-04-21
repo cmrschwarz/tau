@@ -412,9 +412,9 @@ parse_error expr_to_stmt(parser* p, stmt** tgt, expr* e, ureg start, ureg end)
     stmt_expr* s = alloc_perm(p, sizeof(stmt_expr));
     if (!s) return PE_INSANE;
     s->stmt.type = STMT_EXPRESSION;
-    s->expr_range = src_range_pack_lines(p->tk.tc, start, end);
+    s->stmt.srange = src_range_pack_lines(p->tk.tc, start, end);
     s->expr = e;
-    if (s->expr_range == SRC_RANGE_INVALID) return PE_INSANE;
+    if (s->stmt.srange == SRC_RANGE_INVALID) return PE_INSANE;
     *tgt = &s->stmt;
     return PE_OK;
 }
