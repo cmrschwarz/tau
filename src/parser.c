@@ -376,17 +376,18 @@ void parser_fin(parser* p)
     tk_fin(&p->tk);
 }
 static inline parse_error
-symbol_fill_srange(parser* p, symbol* sym, ureg start, ureg end)
-{
-    sym->stmt.srange = src_range_pack_lines(p->tk.tc, start, end);
-    if (sym->stmt.srange == SRC_RANGE_INVALID) return PE_INSANE;
-    return PE_OK;
-}
-static inline parse_error
 expr_fill_srange(parser* p, expr* ex, ureg start, ureg end)
 {
     ex->srange = src_range_pack_lines(p->tk.tc, start, end);
     if (ex->srange == SRC_RANGE_INVALID) return PE_INSANE;
+    return PE_OK;
+}
+
+static inline parse_error
+stmt_fill_srange(parser* p, stmt* s, ureg start, ureg end)
+{
+    s->srange = src_range_pack_lines(p->tk.tc, start, end);
+    if (s->srange == SRC_RANGE_INVALID) return PE_INSANE;
     return PE_OK;
 }
 static inline expr* parse_str_value(parser* p, token* t)
@@ -412,9 +413,8 @@ parse_error expr_to_stmt(parser* p, stmt** tgt, expr* e, ureg start, ureg end)
     stmt_expr* s = alloc_perm(p, sizeof(stmt_expr));
     if (!s) return PE_INSANE;
     s->stmt.type = STMT_EXPRESSION;
-    s->stmt.srange = src_range_pack_lines(p->tk.tc, start, end);
     s->expr = e;
-    if (s->stmt.srange == SRC_RANGE_INVALID) return PE_INSANE;
+    if (stmt_fill_srange(p, (stmt*)s, start, end)) return PE_INSANE;
     *tgt = &s->stmt;
     return PE_OK;
 }
@@ -616,7 +616,8 @@ parse_tuple_after_first_comma(parser* p, ureg t_start, ureg t_end, expr** ex)
         &p->lb, list, &p->tk.tc->permmem, &count);
     if (!tp->elements) return PE_INSANE;
     PEEK(p, t);
-    tp->expr.srange = src_range_pack_lines(p->tk.tc, t_start, t->start);
+    // TODO: fix end
+    if (expr_fill_srange(p, (expr*)tp, t_start, t->start)) return PE_INSANE;
     *ex = (expr*)tp;
     return PE_OK;
 }
@@ -648,7 +649,7 @@ build_empty_tuple(parser* p, ureg t_start, ureg t_end, expr** ex)
     expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
     if (!tp) return PE_INSANE;
     tp->expr.type = EXPR_TUPLE;
-    tp->expr.srange = src_range_pack_lines(p->tk.tc, t_start, t_end);
+    if (expr_fill_srange(p, (expr*)tp, t_start, t_end)) return PE_INSANE;
     tp->elements = NULL;
     *ex = (expr*)tp;
     return PE_OK;
@@ -709,7 +710,7 @@ parse_uninitialized_var_in_tuple(parser* p, token* t, expr** ex)
     stmt_flags_set_compound_decl(&v->symbol.stmt.flags);
     v->symbol.name = alloc_string_perm(p, t->str);
     if (!v->symbol.name) return PE_INSANE;
-    v->symbol.stmt.srange = src_range_pack_lines(p->tk.tc, t->start, t->end);
+    if (stmt_fill_srange(p, (stmt*)v, t->start, t->end)) return PE_INSANE;
     tk_void_n(&p->tk, 2);
     PEEK(p, t);
     if (t->type == TT_COMMA || t->type == TT_PAREN_CLOSE) {
@@ -745,7 +746,7 @@ build_ident_node_in_tuple(parser* p, token* t, expr** ex)
     v->symbol.stmt.flags = STMT_FLAGS_DEFAULT;
     v->symbol.name = alloc_string_perm(p, t->str);
     if (!v->symbol.name) return PE_INSANE;
-    v->symbol.stmt.srange = src_range_pack_lines(p->tk.tc, t->start, t->end);
+    if (stmt_fill_srange(p, (stmt*)v, t->start, t->end)) return PE_INSANE;
     v->type = NULL;
     *ex = (expr*)tin;
     tk_void(&p->tk);
@@ -858,8 +859,8 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
                 expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
                 if (!tp) return PE_INSANE;
                 tp->expr.type = EXPR_TUPLE;
-                tp->expr.srange =
-                    src_range_pack_lines(p->tk.tc, t_start, t->end);
+                if (expr_fill_srange(p, (expr*)tp, t_start, t->end))
+                    return PE_INSANE;
                 tp->elements = res_elem_list;
                 *ex = (expr*)tp;
             }
@@ -945,6 +946,7 @@ parse_error parse_return_stmt(
     PEEK(p, t);
     if (t->type == TT_SEMICOLON) {
         r->value = NULL;
+        if (stmt_fill_srange(p, (stmt*)r, start, t->end)) return PE_INSANE;
     }
     else {
         parse_error pe = parse_expression(p, &r->value);
@@ -957,7 +959,11 @@ parse_error parse_return_stmt(
             return PE_HANDLED;
         }
         if (pe) return pe;
+        if (stmt_fill_srange(
+                p, (stmt*)r, start, src_range_get_end(r->value->srange)))
+            return PE_INSANE;
     }
+    if (r->stmt.srange == SRC_RANGE_INVALID) return PE_INSANE;
     *tgt = (stmt*)r;
     return PE_OK;
 }
@@ -980,6 +986,7 @@ parse_error parse_goto_stmt(
     g->target.name = alloc_string_temp(p, t->str);
     if (!g->target.name) return PE_INSANE;
     tk_void(&p->tk);
+    if (stmt_fill_srange(p, (stmt*)g, start, t->end)) return PE_INSANE;
     *tgt = (stmt*)g;
     return PE_OK;
 }
@@ -995,7 +1002,6 @@ parse_error parse_give_stmt(
     if (!g) return PE_INSANE;
     g->stmt.type = STMT_GIVE;
     g->target.name = NULL;
-
     pe = parse_expression(p, &g->value);
     if (pe == PE_EOEX) {
         PEEK(p, t1);
@@ -1004,6 +1010,9 @@ parse_error parse_give_stmt(
             "expected expression", start, end, "in this give statement");
     }
     if (pe) return pe;
+    if (stmt_fill_srange(
+            p, (stmt*)g, start, src_range_get_end(g->value->srange)))
+        return PE_INSANE;
     *tgt = (stmt*)g;
     return PE_OK;
 }
@@ -1013,7 +1022,6 @@ parse_error parse_break_stmt(
     token* t = tk_aquire(&p->tk);
     parse_error pe = require_default_flags(p, t, flags, start, flags_end);
     if (pe) return pe;
-    ureg end = t->end;
     tk_void(&p->tk);
     PEEK(p, t);
     char* target;
@@ -1037,6 +1045,7 @@ parse_error parse_break_stmt(
     if (!g) return PE_INSANE;
     g->stmt.type = STMT_BREAK;
     g->target.name = target;
+    if (stmt_fill_srange(p, (stmt*)g, start, t->end)) return PE_INSANE;
     *tgt = (stmt*)g;
     return PE_OK;
 }
@@ -1053,7 +1062,7 @@ parse_error parse_loop(parser* p, expr** tgt, ureg start, char* label)
     tk_void(&p->tk);
     expr_loop* l = alloc_perm(p, sizeof(expr_loop));
     if (!l) return PE_INSANE;
-    l->expr_named.expr.srange = src_range_pack_lines(p->tk.tc, start, t->end);
+    if (expr_fill_srange(p, (expr*)l, start, t->end)) return PE_INSANE;
     l->expr_named.name = label;
     l->expr_named.expr.type = EXPR_LOOP;
     *tgt = (expr*)l;
@@ -1173,8 +1182,7 @@ parse_error parse_do(parser* p, expr** tgt, ureg start, char* label)
         expr_do_while* edw = alloc_perm(p, sizeof(expr_do_while));
         edw->expr_named.name = label;
         edw->expr_named.expr.type = EXPR_DO_WHILE;
-        edw->expr_named.expr.srange =
-            src_range_pack_lines(p->tk.tc, start, end);
+        if (expr_fill_srange(p, (expr*)edw, start, end)) return PE_INSANE;
         *tgt = (expr*)edw;
         edw->do_body = b;
         pe = parse_expression(p, &edw->condition);
@@ -1246,7 +1254,7 @@ parse_error parse_while(parser* p, expr** tgt, ureg start, char* label)
         return PE_HANDLED;
     }
     if (pe) return pe;
-    w->expr_named.expr.srange = src_range_pack_lines(p->tk.tc, start, end);
+    if (expr_fill_srange(p, (expr*)w, start, end)) return PE_INSANE;
     w->expr_named.name = label;
     w->expr_named.expr.type = EXPR_WHILE;
     *tgt = (expr*)w;
@@ -1280,7 +1288,7 @@ parse_error parse_if(parser* p, expr** tgt)
         return PE_HANDLED;
     }
     if (pe) return pe;
-    i->expr.srange = src_range_pack_lines(p->tk.tc, start, end);
+    if (expr_fill_srange(p, (expr*)i, start, end)) return PE_INSANE;
     i->expr.type = EXPR_IF;
     *tgt = (expr*)i;
     pe = parse_body(p, &i->if_body);
@@ -1530,7 +1538,7 @@ parse_error parse_expression(parser* p, expr** ex)
 {
     return parse_expression_of_prec(p, ex, PREC_BASELINE);
 }
-parse_error check_for_semicolon_after_statement(parser* p, stmt* s)
+parse_error handle_semicolon_after_statement(parser* p, stmt* s)
 {
     token* t;
     PEEK(p, t);
@@ -1546,6 +1554,8 @@ parse_error check_for_semicolon_after_statement(parser* p, stmt* s)
         }
     }
     else {
+        src_range_set_end(p->tk.tc, &s->srange, t->end);
+        if (s->srange == SRC_RANGE_INVALID) return PE_INSANE;
         tk_void(&p->tk);
     }
     return PE_OK;
@@ -1560,7 +1570,7 @@ parse_error parse_eof_delimited_body(parser* p, body* b, ast_node_type pt)
     while (t->type != TT_EOF) {
         pe = parse_statement(p, head);
         if (pe) break;
-        pe = check_for_semicolon_after_statement(p, *head);
+        pe = handle_semicolon_after_statement(p, *head);
         if (pe) break;
         head = &(*head)->next;
         t = tk_peek(&p->tk);
@@ -1696,7 +1706,7 @@ parse_error parse_var_decl(
             vd->value = NULL;
         }
     }
-    symbol_fill_srange(p, &vd->symbol, start, t->end);
+    stmt_fill_srange(p, (stmt*)vd, start, t->end);
     *n = (stmt*)vd;
     return PE_OK;
 }
@@ -1777,7 +1787,7 @@ parse_error parse_func_decl(
     }
     sc->symbol.name = name;
     sc->parent = p->curr_scope;
-    pe = symbol_fill_srange(p, &sc->symbol, start, decl_end);
+    pe = stmt_fill_srange(p, (stmt*)sc, start, decl_end);
     if (pe) return pe;
     if (t->type != TT_PAREN_OPEN) {
         parser_error_2a(
@@ -1835,7 +1845,7 @@ parse_error parse_struct_decl(
         if (!st) return PE_INSANE;
     }
     st->symbol.name = name;
-    pe = symbol_fill_srange(p, &st->symbol, start, decl_end);
+    pe = stmt_fill_srange(p, (stmt*)st, start, decl_end);
     if (pe) return pe;
     st->symbol.stmt.type = generic ? SC_STRUCT_GENERIC : SC_STRUCT;
     st->symbol.stmt.flags = flags;
@@ -1880,7 +1890,7 @@ parse_error parse_module_decl(
         if (!md) return PE_INSANE;
     }
     md->symbol.name = name;
-    pe = symbol_fill_srange(p, &md->symbol, start, decl_end);
+    pe = stmt_fill_srange(p, (stmt*)md, start, decl_end);
     if (pe) return pe;
     md->symbol.stmt.type = generic ? SC_MODULE_GENERIC : SC_MODULE;
     md->symbol.stmt.flags = flags;
@@ -1925,7 +1935,7 @@ parse_error parse_extend_decl(
         if (!sc) return PE_INSANE;
     }
     sc->symbol.name = name;
-    pe = symbol_fill_srange(p, &sc->symbol, start, decl_end);
+    pe = stmt_fill_srange(p, (stmt*)sc, start, decl_end);
     if (pe) return pe;
     sc->symbol.stmt.type = generic ? SC_EXTEND_GENERIC : SC_EXTEND;
     sc->symbol.stmt.flags = flags;
@@ -1992,7 +2002,7 @@ parse_error parse_trait_decl(
         if (!tr) return PE_INSANE;
     }
     tr->symbol.name = name;
-    pe = symbol_fill_srange(p, &tr->symbol, start, decl_end);
+    pe = stmt_fill_srange(p, (stmt*)tr, start, decl_end);
     if (pe) return pe;
     tr->symbol.stmt.type = generic ? SC_TRAIT_GENERIC : SC_TRAIT;
     tr->symbol.stmt.flags = flags;
@@ -2095,8 +2105,8 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
                     expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
                     if (!tp) return PE_INSANE;
                     tp->expr.type = EXPR_TUPLE;
-                    tp->expr.srange =
-                        src_range_pack_lines(p->tk.tc, t_start, t->end);
+                    if (expr_fill_srange(p, (expr*)tp, t_start, t->end))
+                        return PE_INSANE;
                     tp->elements = elems;
                     ex = (expr*)tp;
                 }
@@ -2160,9 +2170,9 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
                 return PE_HANDLED;
             }
             if (pe) return pe;
-            nu->symbol.stmt.srange = src_range_pack_lines(
-                p->tk.tc, start, src_range_get_end(nu->target->srange));
-            if (nu->symbol.stmt.srange == SRC_RANGE_INVALID) return PE_INSANE;
+            if (stmt_fill_srange(
+                    p, (stmt*)nu, start, src_range_get_end(nu->target->srange)))
+                return PE_INSANE;
             *tgt = (stmt*)nu;
             return PE_OK;
         }
@@ -2178,9 +2188,9 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
             start, end, "in this using statement");
         return PE_HANDLED;
     }
-    u->stmt.srange = src_range_pack_lines(
-        p->tk.tc, start, src_range_get_end(u->target->srange));
-    if (u->stmt.srange == SRC_RANGE_INVALID) return PE_INSANE;
+    if (stmt_fill_srange(
+            p, (stmt*)u, start, src_range_get_end(u->target->srange)))
+        return PE_INSANE;
     *tgt = (stmt*)u;
     return pe;
 }
@@ -2206,6 +2216,7 @@ parse_label(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
         sym_label* g = alloc_perm(p, sizeof(sym_label));
         g->symbol.stmt.type = SYM_LABEL;
         g->symbol.name = label_name;
+        if (stmt_fill_srange(p, (stmt*)g, start, t2->end)) return PE_INSANE;
         *tgt = (stmt*)g;
         return PE_OK;
     }
@@ -2362,7 +2373,7 @@ parse_error parse_braced_delimited_body(parser* p, body* b)
         if (t->type != TT_EOF) {
             pe = parse_statement(p, head);
             if (pe) break;
-            pe = check_for_semicolon_after_statement(p, *head);
+            pe = handle_semicolon_after_statement(p, *head);
             if (pe) break;
             head = &(*head)->next;
             t = tk_peek(&p->tk);

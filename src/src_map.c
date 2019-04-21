@@ -13,10 +13,8 @@ static const ureg SRC_RANGE_MAX_LENGTH =
     (((ureg)1) << SRC_RANGE_LENGTH_BITS) - 1;
 #define SRC_RANGE_START_BITS (REG_BITS - SRC_RANGE_LENGTH_BITS - 1)
 static const ureg SRC_RANGE_MAX_START = (((ureg)1) << SRC_RANGE_START_BITS) - 1;
-static const ureg SRC_RANGE_NEW_MAP_BIT = ((ureg)1)
-                                          << (SRC_RANGE_START_BITS - 2);
-static const ureg SRC_RANGE_EXTERN_BIT = ((ureg)1)
-                                         << (SRC_RANGE_START_BITS - 1);
+static const ureg SRC_RANGE_NEW_MAP_BIT = ((ureg)1) << (REG_BITS - 2);
+static const ureg SRC_RANGE_EXTERN_BIT = ((ureg)1) << (REG_BITS - 1);
 
 static inline int append_line_store(src_map* m, thread_context* tc, ureg size)
 {
@@ -127,7 +125,24 @@ src_pos src_map_get_pos(src_map* m, ureg pos)
     p.column = pos - *pivot;
     return p;
 }
-
+void src_range_set_end(thread_context* tc, src_range* old, ureg end)
+{
+    src_range r = *old;
+    if (r & SRC_RANGE_EXTERN_BIT) {
+        if (r & SRC_RANGE_NEW_MAP_BIT) {
+            *(ureg*)ptradd((void*)(r << 2), sizeof(src_file*) + sizeof(ureg)) =
+                end;
+        }
+        else {
+            ureg* p = (ureg*)ptradd((void*)(r << 2), sizeof(ureg));
+            *p = end;
+        }
+    }
+    else {
+        ureg start = r >> SRC_RANGE_LENGTH_BITS;
+        *old = src_range_pack_lines(tc, start, end);
+    }
+}
 src_range src_range_pack(thread_context* tc, src_range_large* d)
 {
     // PERF: maybe allocate these somewhere else
@@ -159,9 +174,7 @@ src_range src_range_pack(thread_context* tc, src_range_large* d)
 
 src_range src_range_pack_lines(thread_context* tc, ureg start, ureg end)
 {
-    static src_range_large rng = {NULL, 0, 0};
-    rng.start = start;
-    rng.end = end;
+    src_range_large rng = {NULL, start, end};
     return src_range_pack(tc, &rng);
 }
 
