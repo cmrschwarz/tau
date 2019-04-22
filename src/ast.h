@@ -15,11 +15,11 @@ typedef enum PACK_ENUM access_modifier {
 } access_modifier;
 
 typedef enum PACK_ENUM ast_node_type {
-    SC_MODULE,
-    SC_MODULE_GENERIC,
+    OSC_MODULE,
+    OSC_MODULE_GENERIC,
+    OSC_EXTEND,
+    OSC_EXTEND_GENERIC,
 
-    SC_EXTEND,
-    SC_EXTEND_GENERIC,
     SC_FUNC,
     SC_FUNC_GENERIC,
 
@@ -169,6 +169,11 @@ typedef struct scope {
     ast_node** imports;
     ast_node** includes;
 } scope;
+
+typedef struct open_scope {
+    scope scope;
+    ast_node** requires;
+} open_scope;
 
 typedef struct expr_named {
     expr expr;
@@ -332,20 +337,20 @@ typedef struct sc_trait_generic {
 } sc_trait_generic;
 
 typedef struct sc_module {
-    scope scope;
+    open_scope oscope;
 } sc_module;
 
 typedef struct sc_module_generic {
-    scope scope;
+    open_scope oscope;
     sym_param* generic_params;
 } sc_module_generic;
 
 typedef struct sc_extend {
-    scope scope;
+    open_scope oscope;
 } sc_extend;
 
 typedef struct sc_extend_generic {
-    scope scope;
+    open_scope oscope;
     sym_param* generic_params;
 } sc_extend_generic;
 

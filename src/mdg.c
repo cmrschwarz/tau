@@ -131,10 +131,10 @@ mdg_node* mdg_add_module(mdg* m, mdg_node* parent, sc_module* mod, string ident)
         mdg_node* n = *np;
         if (n != NULL) {
             mdg_end_write(m);
-            mdg_node_add_target(n, &mod->scope);
+            mdg_node_add_target(n, &mod->oscope.scope);
         }
         else {
-            mod->scope.symbol.stmt.next = NULL;
+            mod->oscope.scope.symbol.stmt.next = NULL;
             n = mdg_node_create(m, ident, parent, (scope*)mod);
             if (n == NULL) {
                 mdg_end_write(m);
@@ -144,7 +144,7 @@ mdg_node* mdg_add_module(mdg* m, mdg_node* parent, sc_module* mod, string ident)
             mdg_end_write(m);
         }
     }
-    mod->scope.symbol.name = n->name;
+    mod->oscope.scope.symbol.name = n->name;
     return n;
 }
 int mdg_add_dependency(mdg* m, mdg_node* n, mdg_node* dependency)

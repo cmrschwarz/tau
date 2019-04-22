@@ -180,10 +180,10 @@ bool stmt_allowed_to_drop_semicolon(stmt* s)
 {
     switch (s->type) {
         case SC_FUNC:
-        case SC_MODULE:
-        case SC_MODULE_GENERIC:
-        case SC_EXTEND:
-        case SC_EXTEND_GENERIC:
+        case OSC_MODULE:
+        case OSC_MODULE_GENERIC:
+        case OSC_EXTEND:
+        case OSC_EXTEND_GENERIC:
         case SC_STRUCT:
         case SC_STRUCT_GENERIC:
         case SC_TRAIT:
@@ -279,7 +279,7 @@ static inline void parser_error_3a(
 }
 char* get_parent_context_msg(parser* p)
 {
-    if (p->curr_scope == &p->root.scope) return NULL;
+    if (p->curr_scope == &p->root.oscope.scope) return NULL;
     switch (p->curr_scope->symbol.stmt.type) {
         case SC_FUNC: return "in this function's body";
         case SC_FUNC_GENERIC: return "in this generic function's body";
@@ -287,15 +287,15 @@ char* get_parent_context_msg(parser* p)
         case SC_STRUCT_GENERIC: return "in this generic struct's body";
         case SC_TRAIT: return "in this struct's body";
         case SC_TRAIT_GENERIC: return "in this generic struct's body";
-        case SC_MODULE: return "in this module's body";
-        case SC_MODULE_GENERIC: return "in this generic module's body";
-        case SC_EXTEND: return "in this extend statement's body";
+        case OSC_MODULE: return "in this module's body";
+        case OSC_MODULE_GENERIC: return "in this generic module's body";
+        case OSC_EXTEND: return "in this extend statement's body";
         case EXPR_WHILE:
         case EXPR_FOR:
         case EXPR_FOR_EACH:
         case EXPR_LOOP: return "in this loop's body";
         case EXPR_IF: return "in this if expressions's body";
-        case SC_EXTEND_GENERIC:
+        case OSC_EXTEND_GENERIC:
             return "in this generic extend statement's body";
         case EXPR_LAMBDA: return "in this lambda's body";
         default: panic("unexpected parent context");
@@ -364,10 +364,10 @@ int parser_init(parser* p, thread_context* tc)
         tk_fin(&p->tk);
         return r;
     }
-    p->root.scope.symbol.name = NULL;
-    p->root.scope.symbol.stmt.type = SC_MODULE;
-    p->root.scope.body.children = NULL;
-    p->root.scope.symbol.stmt.next = NULL;
+    p->root.oscope.scope.symbol.name = NULL;
+    p->root.oscope.scope.symbol.stmt.type = OSC_MODULE;
+    p->root.oscope.scope.body.children = NULL;
+    p->root.oscope.scope.symbol.stmt.next = NULL;
     p->curr_scope = (scope*)&p->root;
     return OK;
 }
@@ -1587,15 +1587,15 @@ parse_error parser_parse_file(parser* p, src_file* f)
     // This is test code. it sucks
     int r = tk_open_file(&p->tk, f);
     if (r) return PE_TK_ERROR;
-    stmt* old_children = p->root.scope.body.children;
+    stmt* old_children = p->root.oscope.scope.body.children;
     parse_error pe =
-        parse_eof_delimited_body(p, &p->root.scope.body, SC_MODULE);
+        parse_eof_delimited_body(p, &p->root.oscope.scope.body, OSC_MODULE);
     // DBUG:
     print_astn_nl((stmt*)&p->root, 0);
     stmt** old_head = &old_children;
     while (*old_head) old_head = &(*old_head)->next;
-    *old_head = p->root.scope.body.children;
-    p->root.scope.body.children = old_children;
+    *old_head = p->root.oscope.scope.body.children;
+    p->root.oscope.scope.body.children = old_children;
     tk_close_file(&p->tk);
     return pe;
 }
@@ -1892,7 +1892,7 @@ parse_error parse_module_decl(
     md->symbol.name = name;
     pe = stmt_fill_srange(p, (stmt*)md, start, decl_end);
     if (pe) return pe;
-    md->symbol.stmt.type = generic ? SC_MODULE_GENERIC : SC_MODULE;
+    md->symbol.stmt.type = generic ? OSC_MODULE_GENERIC : OSC_MODULE;
     md->symbol.stmt.flags = flags;
     *n = (stmt*)md;
     return parse_eof_delimited_body(p, &md->body, md->symbol.stmt.type);
@@ -1937,7 +1937,7 @@ parse_error parse_extend_decl(
     sc->symbol.name = name;
     pe = stmt_fill_srange(p, (stmt*)sc, start, decl_end);
     if (pe) return pe;
-    sc->symbol.stmt.type = generic ? SC_EXTEND_GENERIC : SC_EXTEND;
+    sc->symbol.stmt.type = generic ? OSC_EXTEND_GENERIC : OSC_EXTEND;
     sc->symbol.stmt.flags = flags;
     sc->parent = p->curr_scope;
     PEEK(p, t);
@@ -1945,7 +1945,7 @@ parse_error parse_extend_decl(
         if (p->curr_scope->body.children == NULL) {
             tk_consume(&p->tk);
             pe = parse_eof_delimited_body(
-                p, &sc->body, generic ? SC_EXTEND_GENERIC : SC_EXTEND);
+                p, &sc->body, generic ? OSC_EXTEND_GENERIC : OSC_EXTEND);
             *n = (stmt*)sc;
             return pe;
         }

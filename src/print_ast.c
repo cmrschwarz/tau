@@ -200,35 +200,35 @@ void print_astn(stmt* astn, ureg indent)
             pc(']');
             print_body_braced(&t->scope.body, indent);
         } break;
-        case SC_MODULE: {
+        case OSC_MODULE: {
             sc_module* m = (sc_module*)astn;
             p("module ");
-            pinn(m->scope.symbol.name);
-            print_body_braced(&m->scope.body, indent);
+            pinn(m->oscope.scope.symbol.name);
+            print_body_braced(&m->oscope.scope.body, indent);
         } break;
-        case SC_MODULE_GENERIC: {
+        case OSC_MODULE_GENERIC: {
             sc_module_generic* m = (sc_module_generic*)astn;
             p("module ");
-            pinn(m->scope.symbol.name);
+            pinn(m->oscope.scope.symbol.name);
             p("[");
             print_sym_params(m->generic_params, indent);
             pc(']');
-            print_body_braced(&m->scope.body, indent);
+            print_body_braced(&m->oscope.scope.body, indent);
         } break;
-        case SC_EXTEND: {
+        case OSC_EXTEND: {
             sc_extend* e = (sc_extend*)astn;
             p("extend ");
-            pinn(e->scope.symbol.name);
-            print_body_braced(&e->scope.body, indent);
+            pinn(e->oscope.scope.symbol.name);
+            print_body_braced(&e->oscope.scope.body, indent);
         } break;
-        case SC_EXTEND_GENERIC: {
+        case OSC_EXTEND_GENERIC: {
             sc_extend_generic* e = (sc_extend_generic*)astn;
             p("extend ");
-            pinn(e->scope.symbol.name);
+            pinn(e->oscope.scope.symbol.name);
             p("[");
             print_sym_params(e->generic_params, indent);
             pc(']');
-            print_body_braced(&e->scope.body, indent);
+            print_body_braced(&e->oscope.scope.body, indent);
         } break;
         case SYM_VAR: {
             sym_var* d = (sym_var*)astn;
