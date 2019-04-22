@@ -19,6 +19,7 @@ typedef struct src_dir {
 } src_dir;
 
 typedef enum src_file_stage {
+    SFS_UNNEDED,
     SFS_UNPARSED,
     SFS_PARSING,
     SFS_PARSED,
@@ -27,7 +28,7 @@ typedef enum src_file_stage {
 typedef struct src_file {
     file_map_head head;
     atomic_ureg stage;
-    src_map src_map; // initialzed during parsing
+    src_map src_map; // initialized during parsing
     rwslock lock;
 } source_file;
 
@@ -36,6 +37,7 @@ ureg src_file_get_path_len(src_file* f);
 void src_file_write_path(src_file* f, char* tgt);
 
 int src_file_start_parse(src_file* f, thread_context* tc);
+int src_file_require(src_file* f);
 
 typedef struct file_map {
     file_map_head** table_start;

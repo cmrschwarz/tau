@@ -1,8 +1,8 @@
 #include "file_map.h"
+#include "tauc.h"
 #include "utils/error.h"
 #include "utils/fnv_hash.h"
 #include "utils/math_utils.h"
-
 static inline int file_map_head_init(
     file_map_head* h, file_map* fm, src_dir* parent, string name, bool is_dir)
 {
@@ -35,6 +35,23 @@ src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
     if (r) {
         atomic_ureg_fin(&f->stage);
         rwslock_fin(&f->lock);
+    }
+    return OK;
+}
+int src_file_require(src_file* f)
+{
+    ureg stage = SFS_UNNEDED;
+    bool res = false;
+    do {
+        res = atomic_ureg_cas(&f->stage, &stage, SFS_UNPARSED);
+    } while (stage == SFS_UNNEDED);
+    if (res) {
+        job_queue_result r = job_queue_request_parse(&TAUC.job_queue, f);
+        if (r == JQR_ERROR) return ERR;
+        if (r == JQR_SUCCESS_WITH_REINFORCEMENTS_REQUEST) {
+            return tauc_add_worker_thread();
+        }
+        return OK;
     }
     return OK;
 }
