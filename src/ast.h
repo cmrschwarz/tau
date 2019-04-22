@@ -480,5 +480,8 @@ bool stmt_flags_get_static(stmt_flags f);
 void stmt_flags_set_compound_decl(stmt_flags* f);
 bool stmt_flags_get_compound_decl(stmt_flags f);
 
+void stmt_flags_set_osc_required(stmt_flags* f);
+bool stmt_flags_get_osc_required(stmt_flags f);
+
 void err_flags_set_redeclared(err_flags* f);
 bool err_flags_get_redeclared(err_flags f);
