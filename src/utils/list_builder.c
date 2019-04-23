@@ -2,6 +2,7 @@
 #include "error_log.h"
 #include "math_utils.h"
 #include "memory.h"
+#include "panic.h"
 
 int list_builder_init(list_builder* b, pool* memsrc, ureg initial_capacity)
 {
@@ -20,13 +21,25 @@ void** list_builder_start(list_builder* b)
 {
     return b->head;
 }
-int list_builder_add(list_builder* b, void* el)
+void* list_builder_start_blocklist(list_builder* b)
 {
-    if (b->head < b->head_segment->end) {
-        *b->head = el;
-        b->head++;
+    return (void*)b->head;
+}
+int list_builder_add_block(list_builder* b, void* block, ureg block_size)
+{
+    assert(block_size % sizeof(void*) == 0);
+    void** head_new = ptradd(b->head, block_size);
+    if (ptradd(b->head, block_size) < b->head_segment->end) {
+        memcpy(b->head, block, block_size);
+        b->head = head_new;
     }
     else {
+        ureg size_left = ptrdiff(b->head_segment->end, b->head);
+        if (size_left) {
+            memcpy(b->head, block, size_left);
+            block = ptradd(block, size_left);
+            block_size -= size_left;
+        }
         list_build_segment* next = b->head_segment->next;
         if (next == NULL) {
             ureg size = ptrdiff(b->head_segment->end, b->head_segment) * 2;
@@ -39,21 +52,24 @@ int list_builder_add(list_builder* b, void* el)
         }
         b->head_segment = next;
         b->head = ptradd(next, sizeof(list_build_segment));
-        *b->head = el;
-        b->head++;
+        return list_builder_add_block(b, block, block_size);
     }
     return OK;
 }
-void** list_builder_pop_list(
-    list_builder* b, void** list_start, pool* tgtmem, ureg* count, ureg premem,
-    ureg postmem)
+int list_builder_add(list_builder* b, void* el)
+{
+    return list_builder_add_block(b, &el, sizeof(void*));
+}
+void* list_builder_pop_block_list(
+    list_builder* b, void* list_start, pool* tgtmem, ureg* list_size,
+    ureg premem, ureg postmem)
 {
     void** tgt;
     ureg size = 0;
     list_build_segment* s = b->head_segment;
-    if ((void**)s <= list_start && s->end > list_start) {
+    if ((void*)s <= list_start && s->end > (void*)list_start) {
         size = ptrdiff(b->head, list_start);
-        *count = size / sizeof(void*);
+        *list_size = size;
         tgt = pool_alloc(tgtmem, size + premem + postmem);
         if (!tgt) return NULL;
         memcpy(ptradd(tgt, premem), list_start, size);
@@ -64,8 +80,8 @@ void** list_builder_pop_list(
     do {
         s = s->prev;
         size += ptrdiff(s->end, s) - sizeof(list_build_segment);
-    } while (list_start <= (void**)s || list_start >= s->end);
-    *count = size / sizeof(void*);
+    } while (list_start <= (void*)s || list_start >= s->end);
+    *list_size = size;
     tgt = (void**)pool_alloc(tgtmem, size + premem + postmem);
     if (!tgt) return NULL;
     void** h = ptradd(tgt, premem);
@@ -83,7 +99,15 @@ void** list_builder_pop_list(
     b->head = list_start;
     return tgt;
 }
-
+void** list_builder_pop_list(
+    list_builder* b, void** list_start, pool* tgtmem, ureg* count, ureg premem,
+    ureg postmem)
+{
+    void** res = (void**)list_builder_pop_block_list(
+        b, (void*)list_start, tgtmem, count, premem, postmem);
+    *count /= sizeof(void*);
+    return res;
+}
 void** list_builder_pop_list_zt(
     list_builder* b, void** list_start, pool* memtgt, ureg* count)
 {

@@ -129,7 +129,11 @@ fail:
     job_queue_fin(&jq);
     return pe(res, "job_queue_test");
 }
-
+int list_builder_test()
+{
+    // TODO
+    return OK;
+}
 int release_test()
 {
     static char* cli_args[2] = {"", "test/test.tau"};
@@ -159,6 +163,7 @@ int main_test(int argc, char** argv)
     res |= file_map_test();
     res |= job_queue_test();
     res |= release_test();
+    res |= list_builder_test();
 
     if (res) {
         print_dash_padded("FAILED", false);
