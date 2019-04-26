@@ -43,9 +43,9 @@ void print_requires(require* r, ureg indent)
 {
     while (*(void**)r != NULL) {
         print_indent(indent);
-        ps("require");
+        p("require \"");
         src_file_print_path(r->file, false);
-        p(";\n");
+        p("\";\n");
         r++;
     }
 }
