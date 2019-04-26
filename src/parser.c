@@ -25,70 +25,70 @@ parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
 parse_error parse_brace_delimited_body(parser* p, body* b);
 
 static const unsigned char op_precedence[] = {
-        [OP_POST_INCREMENT] = 15,
-        [OP_POST_DECREMENT] = 15,
-        [OP_CALL] = 15,
-        [OP_ACCESS] = 15,
-        [OP_SCOPE_ACCESS] = 15,
-        [OP_MEMBER_ACCESS] = 15,
+    [OP_POST_INCREMENT] = 15,
+    [OP_POST_DECREMENT] = 15,
+    [OP_CALL] = 15,
+    [OP_ACCESS] = 15,
+    [OP_SCOPE_ACCESS] = 15,
+    [OP_MEMBER_ACCESS] = 15,
 
-        [OP_PRE_INCREMENT] = 14,
-        [OP_PRE_DECREMENT] = 14,
-        [OP_UNARY_PLUS] = 14,
-        [OP_UNARY_MINUS] = 14,
-        [OP_NOT] = 14,
-        [OP_BITWISE_NOT] = 14,
-        [OP_DEREF] = 14,
-        [OP_POINTER_OF] = 14,
-        [OP_REF_OF] = 14,
-        [OP_RREF_OF] = 14,
-        [OP_CLOSURE_BY_VALUE] = 14,
-        [OP_CONST] = 14,
+    [OP_PRE_INCREMENT] = 14,
+    [OP_PRE_DECREMENT] = 14,
+    [OP_UNARY_PLUS] = 14,
+    [OP_UNARY_MINUS] = 14,
+    [OP_NOT] = 14,
+    [OP_BITWISE_NOT] = 14,
+    [OP_DEREF] = 14,
+    [OP_POINTER_OF] = 14,
+    [OP_REF_OF] = 14,
+    [OP_RREF_OF] = 14,
+    [OP_CLOSURE_BY_VALUE] = 14,
+    [OP_CONST] = 14,
 
-        [OP_BITWISE_AND] = 13,
+    [OP_BITWISE_AND] = 13,
 
-        [OP_BITWISE_XOR] = 12,
+    [OP_BITWISE_XOR] = 12,
 
-        [OP_BITWISE_OR] = 11,
+    [OP_BITWISE_OR] = 11,
 
-        [OP_MUL] = 10,
-        [OP_DIV] = 10,
-        [OP_MOD] = 10,
+    [OP_MUL] = 10,
+    [OP_DIV] = 10,
+    [OP_MOD] = 10,
 
-        [OP_ADD] = 9,
-        [OP_SUB] = 9,
+    [OP_ADD] = 9,
+    [OP_SUB] = 9,
 
-        [OP_LSHIFT] = 8,
-        [OP_RSHIFT] = 8,
+    [OP_LSHIFT] = 8,
+    [OP_RSHIFT] = 8,
 
-        [OP_CAST] = 7,
+    [OP_CAST] = 7,
 
-        [OP_LESS_THAN] = 6,
-        [OP_LESS_THAN_OR_EQUAL] = 6,
-        [OP_GREATER_THAN] = 6,
-        [OP_GREATER_THAN_OR_EQUAL] = 6,
+    [OP_LESS_THAN] = 6,
+    [OP_LESS_THAN_OR_EQUAL] = 6,
+    [OP_GREATER_THAN] = 6,
+    [OP_GREATER_THAN_OR_EQUAL] = 6,
 
-        [OP_EQUAL] = 5,
-        [OP_UNEQAL] = 5,
+    [OP_EQUAL] = 5,
+    [OP_UNEQAL] = 5,
 
-        [OP_AND] = 4,
+    [OP_AND] = 4,
 
-        [OP_XOR] = 3,
+    [OP_XOR] = 3,
 
-        [OP_OR] = 2,
+    [OP_OR] = 2,
 
-        [OP_ASSIGN] = 1,
-        [OP_ADD_ASSIGN] = 1,
-        [OP_SUB_ASSIGN] = 1,
-        [OP_MUL_ASSIGN] = 1,
-        [OP_DIV_ASSIGN] = 1,
-        [OP_MOD_ASSIGN] = 1,
-        [OP_LSHIFT_ASSIGN] = 1,
-        [OP_RSHIFT_ASSIGN] = 1,
-        [OP_BITWISE_AND_ASSIGN] = 1,
-        [OP_BITWISE_XOR_ASSIGN] = 1,
-        [OP_BITWISE_OR_ASSIGN] = 1,
-        [OP_BITWISE_NOT_ASSIGN] = 1,
+    [OP_ASSIGN] = 1,
+    [OP_ADD_ASSIGN] = 1,
+    [OP_SUB_ASSIGN] = 1,
+    [OP_MUL_ASSIGN] = 1,
+    [OP_DIV_ASSIGN] = 1,
+    [OP_MOD_ASSIGN] = 1,
+    [OP_LSHIFT_ASSIGN] = 1,
+    [OP_RSHIFT_ASSIGN] = 1,
+    [OP_BITWISE_AND_ASSIGN] = 1,
+    [OP_BITWISE_XOR_ASSIGN] = 1,
+    [OP_BITWISE_OR_ASSIGN] = 1,
+    [OP_BITWISE_NOT_ASSIGN] = 1,
 };
 
 #define PREC_BASELINE 0
@@ -222,7 +222,17 @@ static inline op_type token_to_postfix_unary_op(token* t)
         default: return OP_NOOP;
     }
 }
-
+static inline bool is_kw_valid_label(token_type t)
+{
+    switch (t) {
+        case TT_KW_FOR:
+        case TT_KW_LOOP:
+        case TT_KW_WHILE:
+        case TT_KW_MATCH:
+        case TT_KW_DO: return true;
+        default: return false;
+    }
+}
 static inline void* alloc_ppool(parser* p, ureg size, pool* pool)
 {
     void* mem = pool_alloc(pool, size);
@@ -612,13 +622,11 @@ parse_tuple_after_first_comma(parser* p, ureg t_start, ureg t_end, expr** ex)
             "didn't find a matching parenthesis for this tuple");
         return PE_HANDLED;
     }
-    tk_void(&p->tk);
     tp->elements =
         (expr**)list_builder_pop_list_zt(&p->lb1, list, &p->tk.tc->permmem);
     if (!tp->elements) return PE_INSANE;
-    PEEK(p, t);
-    // TODO: fix end
-    if (expr_fill_srange(p, (expr*)tp, t_start, t->start)) return PE_INSANE;
+    if (expr_fill_srange(p, (expr*)tp, t_start, t->end)) return PE_INSANE;
+    tk_void(&p->tk);
     *ex = (expr*)tp;
     return PE_OK;
 }
@@ -794,8 +802,9 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             PEEK(p, t);
             parser_error_2a(
                 p, "unexpected token after opening parenthesis", t->start,
-                t->end, "expected an expression, a declaration or a closing "
-                        "parenthesis",
+                t->end,
+                "expected an expression, a declaration or a closing "
+                "parenthesis",
                 t_start, t_end, "opening parenthesis here");
             return PE_HANDLED;
         }
@@ -934,6 +943,38 @@ parse_prefix_unary_op(parser* p, ast_node_type op, expr** ex)
     *ex = (expr*)ou;
     return PE_OK;
 }
+parse_error parse_continue_stmt(
+    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
+{
+    token* t = tk_aquire(&p->tk);
+    ureg end = t->end;
+    parse_error pe = require_default_flags(p, t, flags, start, flags_end);
+    if (pe) return pe;
+    tk_void(&p->tk);
+    PEEK(p, t);
+    const char* target;
+    if (t->type == TT_STRING) {
+        target = alloc_string_perm(p, t->str);
+        if (!target) return PE_INSANE;
+    }
+    else if (is_kw_valid_label(t->type)) {
+        target = token_strings[t->type];
+    }
+    else {
+        target = NULL;
+    }
+    if (target) {
+        end = t->end;
+        tk_void(&p->tk);
+    }
+    stmt_continue* c = alloc_perm(p, sizeof(stmt_continue));
+    if (!c) return PE_INSANE;
+    stmt_init((stmt*)c, STMT_BREAK);
+    c->target.name = target;
+    if (stmt_fill_srange(p, (stmt*)c, start, end)) return PE_INSANE;
+    *tgt = (stmt*)c;
+    return PE_OK;
+}
 parse_error parse_return_stmt(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
 {
@@ -1022,17 +1063,24 @@ parse_error parse_break_stmt(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
 {
     token* t = tk_aquire(&p->tk);
+    ureg end = t->end;
     parse_error pe = require_default_flags(p, t, flags, start, flags_end);
     if (pe) return pe;
     tk_void(&p->tk);
     PEEK(p, t);
-    char* target;
-    if (t->type != TT_STRING) {
-        target = NULL;
-    }
-    else if (t->type == TT_STRING) {
+    const char* target;
+    if (t->type == TT_STRING) {
         target = alloc_string_perm(p, t->str);
         if (!target) return PE_INSANE;
+    }
+    else if (is_kw_valid_label(t->type)) {
+        target = token_strings[t->type];
+    }
+    else {
+        target = NULL;
+    }
+    if (target) {
+        end = t->end;
         tk_void(&p->tk);
         PEEK(p, t);
         if (t->type == TT_KW_GIVE) {
@@ -1047,7 +1095,7 @@ parse_error parse_break_stmt(
     if (!g) return PE_INSANE;
     g->stmt.type = STMT_BREAK;
     g->target.name = target;
-    if (stmt_fill_srange(p, (stmt*)g, start, t->end)) return PE_INSANE;
+    if (stmt_fill_srange(p, (stmt*)g, start, end)) return PE_INSANE;
     *tgt = (stmt*)g;
     return PE_OK;
 }
@@ -1226,7 +1274,8 @@ parse_error parse_do(parser* p, expr** tgt, ureg start, char* label)
     PEEK(p, t);
     switch (t->type) {
         case TT_KW_CONTINUE: {
-            // TODO
+            pe = parse_continue_stmt(
+                p, STMT_FLAGS_DEFAULT, t->start, t->start, &ed->tail_stmt);
         } break;
         case TT_KW_BREAK: {
             pe = parse_give_stmt(
@@ -2358,10 +2407,7 @@ parse_error parse_statement(parser* p, stmt** tgt)
                 pe = parse_require(p);
                 if (pe) return pe;
                 return parse_statement(p, tgt);
-            case TT_KW_IMPORT:
-                break; // TODO
-            case TT_KW_INCLUDE:
-                break; // TODO
+            case TT_KW_IMPORT: break; // TODO
             case TT_KW_LABEL:
                 return parse_label(p, flags, start, flags_end, tgt);
             case TT_KW_GIVE:
@@ -2369,7 +2415,7 @@ parse_error parse_statement(parser* p, stmt** tgt)
             case TT_KW_BREAK:
                 return parse_break_stmt(p, flags, start, flags_end, tgt);
             case TT_KW_CONTINUE:
-                break; // TODO
+                return parse_continue_stmt(p, flags, start, flags_end, tgt);
             case TT_KW_RETURN:
                 return parse_return_stmt(p, flags, start, flags_end, tgt);
             case TT_KW_GOTO:

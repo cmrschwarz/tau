@@ -208,7 +208,7 @@ typedef struct stmt_give {
     stmt stmt;
     union {
         expr_named* expr;
-        char* name;
+        const char* name;
     } target;
     expr* value;
 } stmt_give;
@@ -217,20 +217,23 @@ typedef struct stmt_break {
     stmt stmt;
     union {
         expr_named* expr;
-        char* name;
+        const char* name;
     } target;
 } stmt_break;
 
 typedef struct stmt_continue {
     stmt stmt;
-    expr_named* target;
+    union {
+        expr_named* expr;
+        const char* name;
+    } target;
 } stmt_continue;
 
 typedef struct stmt_goto {
     stmt stmt;
     union {
         sym_label* label;
-        char* name;
+        const char* name;
     } target;
 } stmt_goto;
 

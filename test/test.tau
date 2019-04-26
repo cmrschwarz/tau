@@ -15,6 +15,7 @@ func main(args: String[]){
         };
         
         while true label y loop{
+            continue for;
             return 12;
         }
         (x: int) := foo;
