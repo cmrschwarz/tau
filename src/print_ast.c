@@ -290,7 +290,7 @@ void print_astn(stmt* astn, ureg indent)
         } break;
         case STMT_GIVE: {
             stmt_give* g = (stmt_give*)astn;
-            if (g->value != NULL) {
+            if (g->target.name != NULL) {
                 ps("break");
                 ps(g->target.name);
                 ps("give");
