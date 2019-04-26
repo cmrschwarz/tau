@@ -23,9 +23,12 @@ void** list_builder_pop_list(
     list_builder* b, void** list_start, pool* memtgt, ureg* count, ureg premem,
     ureg postmem);
 
-void** list_builder_pop_list_zt(
-    list_builder* b, void** list_start, pool* memtgt, ureg* count);
+void**
+list_builder_pop_list_zt(list_builder* b, void** list_start, pool* memtgt);
 
 void* list_builder_pop_block_list(
     list_builder* b, void* list_start, pool* tgtmem, ureg* list_size,
     ureg premem, ureg postmem);
+
+void* list_builder_pop_block_list_zt(
+    list_builder* b, void* list_start, pool* tgtmem);

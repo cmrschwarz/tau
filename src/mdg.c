@@ -116,7 +116,8 @@ void mdg_node_add_target(mdg_node* n, scope* target)
         &n->targets, (void**)&target->symbol.stmt.next, (void*)target)) {
     }
 }
-mdg_node* mdg_add_module(mdg* m, mdg_node* parent, sc_module* mod, string ident)
+mdg_node*
+mdg_add_module(mdg* m, mdg_node* parent, osc_module* mod, string ident)
 {
     ureg hash = mdght_get_hash_str(parent, ident);
     mdght* h = mdg_start_read(m);
@@ -145,6 +146,9 @@ mdg_node* mdg_add_module(mdg* m, mdg_node* parent, sc_module* mod, string ident)
         }
     }
     mod->oscope.scope.symbol.name = n->name;
+    if (atomic_ureg_load(&n->stage) != MS_UNNEEDED) {
+        stmt_flags_set_osc_required(&mod->oscope.scope.symbol.stmt.flags);
+    }
     return n;
 }
 int mdg_add_dependency(mdg* m, mdg_node* n, mdg_node* dependency)

@@ -1,6 +1,17 @@
 #include "ast.h"
 #include "utils/panic.h"
 
+bool scope_is_open(scope* s)
+{
+    switch (s->symbol.stmt.type) {
+        case OSC_MODULE:
+        case OSC_EXTEND:
+        case OSC_EXTEND_GENERIC:
+        case OSC_MODULE_GENERIC: return true;
+        default: return false;
+    }
+}
+
 bool body_is_braced(body* b)
 {
     if (b->children && !b->children->next) {

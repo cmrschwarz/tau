@@ -1,5 +1,6 @@
 #include "print_ast.h"
 #include "error_log.h"
+#include "file_map.h"
 #include "parser.h"
 #include "stdio.h"
 #include "utils/math_utils.h"
@@ -38,12 +39,19 @@ void print_indent(ureg indent)
         p(MASTER_ERROR_LOG.tab_spaces);
     }
 }
-
-void print_body_braced(body* body, ureg indent)
+void print_requires(require* r, ureg indent)
+{
+    while (*(void**)r != NULL) {
+        print_indent(indent);
+        ps("require");
+        src_file_print_path(r->file, false);
+        p(";\n");
+        r++;
+    }
+}
+void print_body_elements(body* body, ureg indent)
 {
     stmt* head = body->children;
-    indent++;
-    p("{\n");
     while (head) {
         print_indent(indent);
         print_astn(head, indent);
@@ -51,7 +59,21 @@ void print_body_braced(body* body, ureg indent)
         pc('\n');
         head = head->next;
     }
+}
+void print_open_scope_body(open_scope* osc, ureg indent)
+{
+    p("{\n");
+    indent++;
+    print_requires(osc->requires, indent);
+    print_body_elements(&osc->scope.body, indent);
     indent--;
+    print_indent(indent);
+    p("}");
+}
+void print_body_braced(body* body, ureg indent)
+{
+    p("{\n");
+    print_body_elements(body, indent + 1);
     print_indent(indent);
     p("}");
 }
@@ -201,34 +223,34 @@ void print_astn(stmt* astn, ureg indent)
             print_body_braced(&t->scope.body, indent);
         } break;
         case OSC_MODULE: {
-            sc_module* m = (sc_module*)astn;
+            osc_module* m = (osc_module*)astn;
             p("module ");
             pinn(m->oscope.scope.symbol.name);
-            print_body_braced(&m->oscope.scope.body, indent);
+            print_open_scope_body(&m->oscope, indent);
         } break;
         case OSC_MODULE_GENERIC: {
-            sc_module_generic* m = (sc_module_generic*)astn;
+            osc_module_generic* m = (osc_module_generic*)astn;
             p("module ");
             pinn(m->oscope.scope.symbol.name);
             p("[");
             print_sym_params(m->generic_params, indent);
             pc(']');
-            print_body_braced(&m->oscope.scope.body, indent);
+            print_open_scope_body(&m->oscope, indent);
         } break;
         case OSC_EXTEND: {
-            sc_extend* e = (sc_extend*)astn;
+            osc_extend* e = (osc_extend*)astn;
             p("extend ");
             pinn(e->oscope.scope.symbol.name);
-            print_body_braced(&e->oscope.scope.body, indent);
+            print_open_scope_body(&e->oscope, indent);
         } break;
         case OSC_EXTEND_GENERIC: {
-            sc_extend_generic* e = (sc_extend_generic*)astn;
+            osc_extend_generic* e = (osc_extend_generic*)astn;
             p("extend ");
             pinn(e->oscope.scope.symbol.name);
             p("[");
             print_sym_params(e->generic_params, indent);
             pc(']');
-            print_body_braced(&e->oscope.scope.body, indent);
+            print_open_scope_body(&e->oscope, indent);
         } break;
         case SYM_VAR: {
             sym_var* d = (sym_var*)astn;

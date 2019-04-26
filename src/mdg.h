@@ -78,7 +78,7 @@ mdght* mdg_start_write(mdg* m);
 void mdg_end_write(mdg* m);
 
 mdg_node*
-mdg_add_module(mdg* m, mdg_node* parent, sc_module* mod, string ident);
+mdg_add_module(mdg* m, mdg_node* parent, osc_module* mod, string ident);
 
 int mdg_add_dependency(mdg* m, mdg_node* n, mdg_node* dependency);
 int mdg_node_file_parsed(mdg* m, mdg_node* n);

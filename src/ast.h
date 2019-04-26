@@ -137,6 +137,11 @@ typedef enum PACK_ENUM op_type {
 
 typedef ast_node_type ast_node;
 
+typedef struct require {
+    src_file* file;
+    src_range srange;
+} require;
+
 typedef struct expr {
     ast_node_type type;
     op_type op_type;
@@ -172,7 +177,7 @@ typedef struct scope {
 
 typedef struct open_scope {
     scope scope;
-    ast_node** requires;
+    require* requires;
 } open_scope;
 
 typedef struct expr_named {
@@ -336,23 +341,23 @@ typedef struct sc_trait_generic {
     sym_param* generic_params;
 } sc_trait_generic;
 
-typedef struct sc_module {
+typedef struct osc_module {
     open_scope oscope;
-} sc_module;
+} osc_module;
 
-typedef struct sc_module_generic {
+typedef struct osc_module_generic {
     open_scope oscope;
     sym_param* generic_params;
-} sc_module_generic;
+} osc_module_generic;
 
-typedef struct sc_extend {
+typedef struct osc_extend {
     open_scope oscope;
-} sc_extend;
+} osc_extend;
 
-typedef struct sc_extend_generic {
+typedef struct osc_extend_generic {
     open_scope oscope;
     sym_param* generic_params;
-} sc_extend_generic;
+} osc_extend_generic;
 
 typedef struct sym_var {
     symbol symbol;
@@ -454,6 +459,8 @@ typedef struct expr_lambda {
     sym_param* params;
     body body;
 } expr_lambda;
+
+bool scope_is_open(scope* s);
 
 bool body_is_braced(body* b);
 

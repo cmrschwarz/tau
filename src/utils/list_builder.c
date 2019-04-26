@@ -99,20 +99,35 @@ void* list_builder_pop_block_list(
     b->head = list_start;
     return tgt;
 }
+
+void* list_builder_pop_block_list_zt(
+    list_builder* b, void* list_start, pool* tgtmem)
+{
+    ureg size;
+    void* res = list_builder_pop_block_list(
+        b, list_start, tgtmem, &size, 0, sizeof(void*));
+    if (!res) return NULL;
+    *(void**)ptradd(res, size) = NULL;
+    return res;
+}
+
 void** list_builder_pop_list(
     list_builder* b, void** list_start, pool* tgtmem, ureg* count, ureg premem,
     ureg postmem)
 {
     void** res = (void**)list_builder_pop_block_list(
         b, (void*)list_start, tgtmem, count, premem, postmem);
+    if (!res) return NULL;
     *count /= sizeof(void*);
     return res;
 }
-void** list_builder_pop_list_zt(
-    list_builder* b, void** list_start, pool* memtgt, ureg* count)
+void**
+list_builder_pop_list_zt(list_builder* b, void** list_start, pool* memtgt)
 {
+    ureg count;
     void** tgt =
-        list_builder_pop_list(b, list_start, memtgt, count, 0, sizeof(void*));
-    tgt[*count] = NULL;
+        list_builder_pop_list(b, list_start, memtgt, &count, 0, sizeof(void*));
+    if (!tgt) return NULL;
+    tgt[count] = NULL;
     return tgt;
 }

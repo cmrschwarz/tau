@@ -17,11 +17,12 @@
 
 bool body_supports_exprs(ast_node_type pt);
 parse_error parse_statement(parser* p, stmt** tgt);
-parse_error parse_scope(parser* p, scope* s);
+parse_error parse_scope_body(parser* p, scope* s);
+parse_error parse_open_scope_body(parser* p, open_scope* s);
 parse_error parse_body(parser* p, body* b);
 parse_error parse_expression(parser* p, expr** ex);
 parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
-parse_error parse_braced_delimited_body(parser* p, body* b);
+parse_error parse_brace_delimited_body(parser* p, body* b);
 
 static const unsigned char op_precedence[] = {
         [OP_POST_INCREMENT] = 15,
@@ -359,7 +360,9 @@ int parser_init(parser* p, thread_context* tc)
 {
     int r = tk_init(&p->tk, tc);
     if (r) return r;
-    r = list_builder_init(&p->lb, &p->tk.tc->tempmem, 64);
+    r = list_builder_init(&p->lb1, &p->tk.tc->tempmem, 64);
+    r = list_builder_init(&p->lb2, &p->tk.tc->tempmem, 64);
+    r = list_builder_init(&p->lb3, &p->tk.tc->tempmem, 64);
     if (r) {
         tk_fin(&p->tk);
         return r;
@@ -512,8 +515,8 @@ parse_error parse_expr_node_list(
             return PE_OK;
         }
     }
-    void** list_start = list_builder_start(&p->lb);
-    if (prefetch) list_builder_add(&p->lb, prefetch);
+    void** list_start = list_builder_start(&p->lb1);
+    if (prefetch) list_builder_add(&p->lb1, prefetch);
     while (true) {
         expr* ex;
         parse_error pe = parse_expression(p, &ex);
@@ -527,7 +530,7 @@ parse_error parse_expr_node_list(
             return PE_HANDLED;
         }
         if (pe != PE_OK) return pe;
-        int r = list_builder_add(&p->lb, (void*)ex);
+        int r = list_builder_add(&p->lb1, (void*)ex);
         if (r) return PE_INSANE;
         PEEK(p, t);
         if (t->type == TT_COMMA) {
@@ -540,9 +543,8 @@ parse_error parse_expr_node_list(
             return PE_UNEXPECTED_TOKEN;
         }
     }
-    ureg count;
     *tgt = (expr**)list_builder_pop_list_zt(
-        &p->lb, list_start, &p->tk.tc->permmem, &count);
+        &p->lb1, list_start, &p->tk.tc->permmem);
     if (!*tgt) return PE_INSANE;
     return PE_OK;
 }
@@ -577,8 +579,8 @@ parse_tuple_after_first_comma(parser* p, ureg t_start, ureg t_end, expr** ex)
 {
     expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
     tp->expr.type = EXPR_TUPLE;
-    void** list = list_builder_start(&p->lb);
-    list_builder_add(&p->lb, *ex);
+    void** list = list_builder_start(&p->lb1);
+    list_builder_add(&p->lb1, *ex);
     token* t;
     PEEK(p, t);
     bool err = false;
@@ -592,7 +594,7 @@ parse_tuple_after_first_comma(parser* p, ureg t_start, ureg t_end, expr** ex)
             }
             return pe;
         }
-        list_builder_add(&p->lb, *ex);
+        list_builder_add(&p->lb1, *ex);
         PEEK(p, t);
         if (t->type == TT_COMMA) {
             tk_void(&p->tk);
@@ -611,9 +613,8 @@ parse_tuple_after_first_comma(parser* p, ureg t_start, ureg t_end, expr** ex)
         return PE_HANDLED;
     }
     tk_void(&p->tk);
-    ureg count;
-    tp->elements = (expr**)list_builder_pop_list_zt(
-        &p->lb, list, &p->tk.tc->permmem, &count);
+    tp->elements =
+        (expr**)list_builder_pop_list_zt(&p->lb1, list, &p->tk.tc->permmem);
     if (!tp->elements) return PE_INSANE;
     PEEK(p, t);
     // TODO: fix end
@@ -700,6 +701,7 @@ typedef union tuple_ident_node {
     sym_var_uninitialized var;
     expr_identifier ident;
 } tuple_ident_node;
+
 static inline parse_error
 parse_uninitialized_var_in_tuple(parser* p, token* t, expr** ex)
 {
@@ -800,8 +802,8 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         if (pe) return pe;
         PEEK(p, t);
         if (t->type == TT_COMMA) {
-            element_list = list_builder_start(&p->lb);
-            if (list_builder_add(&p->lb, *ex)) return PE_INSANE;
+            element_list = list_builder_start(&p->lb1);
+            if (list_builder_add(&p->lb1, *ex)) return PE_INSANE;
         }
         else {
             return build_expr_parentheses(p, t_start, t_end, ex);
@@ -831,8 +833,8 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             if (pe) return pe;
             t = t2;
         }
-        element_list = list_builder_start(&p->lb);
-        if (list_builder_add(&p->lb, *ex)) return PE_INSANE;
+        element_list = list_builder_start(&p->lb1);
+        if (list_builder_add(&p->lb1, *ex)) return PE_INSANE;
     }
     while (true) {
         if (t->type == TT_COMMA) {
@@ -849,7 +851,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         if (t->type == TT_PAREN_CLOSE) {
             tk_void(&p->tk);
             expr** res_elem_list = (expr**)list_builder_pop_list_zt(
-                &p->lb, element_list, &p->tk.tc->permmem, &t_end);
+                &p->lb1, element_list, &p->tk.tc->permmem);
             if (!res_elem_list) return PE_INSANE;
             if (elem_list) {
                 *elem_list = res_elem_list;
@@ -901,7 +903,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             }
             if (pe) return pe;
         }
-        if (list_builder_add(&p->lb, *ex)) return PE_INSANE;
+        if (list_builder_add(&p->lb1, *ex)) return PE_INSANE;
         PEEK(p, t);
     }
 }
@@ -1054,7 +1056,7 @@ static inline parse_error parse_expr_block(parser* p, expr** ex)
     expr_block* b = alloc_perm(p, sizeof(expr_block));
     b->expr.type = EXPR_BLOCK;
     *ex = (expr*)b;
-    return parse_braced_delimited_body(p, &b->body);
+    return parse_brace_delimited_body(p, &b->body);
 }
 parse_error parse_loop(parser* p, expr** tgt, ureg start, char* label)
 {
@@ -1093,13 +1095,12 @@ parse_error parse_match(parser* p, expr** tgt, ureg start, char* label)
             "expected match expression", start, e_end, "in this match");
     }
     tk_void(&p->tk);
-    void** list = list_builder_start(&p->lb);
+    void** list = list_builder_start(&p->lb1);
     while (true) {
         PEEK(p, t);
         if (t->type == TT_BRACE_CLOSE) {
-            ureg count;
             em->match_arms = (match_arm**)list_builder_pop_list_zt(
-                &p->lb, list, &p->tk.tc->permmem, &count);
+                &p->lb1, list, &p->tk.tc->permmem);
             if (!em->match_arms) return PE_INSANE;
             *tgt = (expr*)em;
             tk_void(&p->tk);
@@ -1144,7 +1145,7 @@ parse_error parse_match(parser* p, expr** tgt, ureg start, char* label)
                     "after this match arm statement");
                 return PE_HANDLED;
             }
-            list_builder_add(&p->lb, ma);
+            list_builder_add(&p->lb1, ma);
         }
     }
 }
@@ -1158,7 +1159,7 @@ parse_error parse_do(parser* p, expr** tgt, ureg start, char* label)
     body b;
     parse_error pe;
     if (t->type == TT_BRACE_OPEN) {
-        pe = parse_braced_delimited_body(p, &b);
+        pe = parse_brace_delimited_body(p, &b);
         if (pe) return pe;
     }
     else {
@@ -1538,6 +1539,14 @@ parse_error parse_expression(parser* p, expr** ex)
 {
     return parse_expression_of_prec(p, ex, PREC_BASELINE);
 }
+void report_missing_semicolon(parser* p, ureg start, ureg end)
+{
+    token* t = tk_aquire(&p->tk);
+    parser_error_2a(
+        p, "missing semicolon ", t->start, t->end,
+        "expected ';' to terminate the statement", start, end,
+        "statement started here");
+}
 parse_error handle_semicolon_after_statement(parser* p, stmt* s)
 {
     token* t;
@@ -1546,10 +1555,7 @@ parse_error handle_semicolon_after_statement(parser* p, stmt* s)
         if (!stmt_allowed_to_drop_semicolon(s)) {
             ureg start = src_range_get_start(s->srange);
             ureg end = src_range_get_end(s->srange);
-            parser_error_2a(
-                p, "missing semicolon ", t->start, t->end,
-                "expected ';' to terminate the statement", start, end,
-                "statement started here");
+            report_missing_semicolon(p, start, end);
             return PE_HANDLED;
         }
     }
@@ -1588,8 +1594,7 @@ parse_error parser_parse_file(parser* p, src_file* f)
     int r = tk_open_file(&p->tk, f);
     if (r) return PE_TK_ERROR;
     stmt* old_children = p->root.oscope.scope.body.children;
-    parse_error pe =
-        parse_eof_delimited_body(p, &p->root.oscope.scope.body, OSC_MODULE);
+    parse_error pe = parse_open_scope_body(p, &p->root.oscope);
     // DBUG:
     print_astn_nl((stmt*)&p->root, 0);
     stmt** old_head = &old_children;
@@ -1805,7 +1810,7 @@ parse_error parse_func_decl(
     sc->symbol.stmt.type = generic ? SC_FUNC_GENERIC : SC_FUNC;
     sc->symbol.stmt.flags = flags;
     *n = (stmt*)sc;
-    return parse_scope(p, sc);
+    return parse_scope_body(p, sc);
 }
 parse_error parse_struct_decl(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
@@ -1871,31 +1876,31 @@ parse_error parse_module_decl(
     if (!name) return PE_INSANE;
     tk_void(&p->tk);
     PEEK(p, t);
-    scope* md;
+    open_scope* md;
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        md = alloc_perm(p, sizeof(sc_module_generic));
+        md = alloc_perm(p, sizeof(osc_module_generic));
         if (!md) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((sc_module_generic*)md)->generic_params, true, start, decl_end,
-            "in this module declaration");
+            p, &((osc_module_generic*)md)->generic_params, true, start,
+            decl_end, "in this module declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        md = alloc_perm(p, sizeof(sc_module));
+        md = alloc_perm(p, sizeof(osc_module));
         if (!md) return PE_INSANE;
     }
-    md->symbol.name = name;
+    md->scope.symbol.name = name;
     pe = stmt_fill_srange(p, (stmt*)md, start, decl_end);
     if (pe) return pe;
-    md->symbol.stmt.type = generic ? OSC_MODULE_GENERIC : OSC_MODULE;
-    md->symbol.stmt.flags = flags;
+    md->scope.symbol.stmt.type = generic ? OSC_MODULE_GENERIC : OSC_MODULE;
+    md->scope.symbol.stmt.flags = flags;
     *n = (stmt*)md;
-    return parse_eof_delimited_body(p, &md->body, md->symbol.stmt.type);
+    return parse_open_scope_body(p, md);
 }
 parse_error parse_extend_decl(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
@@ -1920,18 +1925,18 @@ parse_error parse_extend_decl(
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        sc = alloc_perm(p, sizeof(sc_extend_generic));
+        sc = alloc_perm(p, sizeof(osc_extend_generic));
         if (!sc) return PE_INSANE;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((sc_extend_generic*)sc)->generic_params, true, start, decl_end,
-            "in this extend declaration");
+            p, &((osc_extend_generic*)sc)->generic_params, true, start,
+            decl_end, "in this extend declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        sc = alloc_perm(p, sizeof(sc_extend));
+        sc = alloc_perm(p, sizeof(osc_extend));
         if (!sc) return PE_INSANE;
     }
     sc->symbol.name = name;
@@ -2194,6 +2199,46 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
     *tgt = (stmt*)u;
     return pe;
 }
+parse_error parse_require(parser* p)
+{
+    token* t = tk_aquire(&p->tk);
+    ureg start = t->start;
+    ureg end = t->end;
+    tk_void(&p->tk);
+    if (!scope_is_open(p->curr_scope)) {
+        parser_error_1a_pc(
+            p, "invalid scope for require statement", t->start, t->end,
+            "require statement only allowed at module scope");
+        return PE_HANDLED;
+    }
+    PEEK(p, t);
+    if (t->type != TT_LITERAL) {
+        parser_error_2a(
+            p, "unexpected token", t->start, t->end,
+            "expected path pattern as string literal", start, end,
+            "in this require statement");
+        return PE_HANDLED;
+    }
+    require rq;
+    src_file* f = file_map_get_file_from_path(&TAUC.file_map, t->str);
+    rq.file = f;
+    rq.srange = src_range_pack_lines(p->tk.tc, start, t->end);
+    if (rq.srange == SRC_RANGE_INVALID) return PE_INSANE;
+    bool req = stmt_flags_get_osc_required(p->curr_scope->symbol.stmt.flags);
+    if (req) {
+        if (src_file_require(f)) return PE_INSANE;
+    }
+    end = t->end;
+    tk_void(&p->tk);
+    PEEK(p, t);
+    if (t->type != TT_SEMICOLON) {
+        report_missing_semicolon(p, start, end);
+        return PE_HANDLED;
+    }
+    tk_void(&p->tk);
+    if (list_builder_add_block(&p->lb1, &rq, sizeof(rq))) return PE_INSANE;
+    return PE_OK;
+}
 parse_error
 parse_label(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
 {
@@ -2308,7 +2353,11 @@ parse_error parse_statement(parser* p, stmt** tgt)
             case TT_KW_USING:
                 return parse_using(p, flags, start, flags_end, tgt);
             case TT_KW_REQUIRE:
-                break; // TODO
+                pe = require_default_flags(p, t, flags, start, flags_end);
+                if (pe) return pe;
+                pe = parse_require(p);
+                if (pe) return pe;
+                return parse_statement(p, tgt);
             case TT_KW_IMPORT:
                 break; // TODO
             case TT_KW_INCLUDE:
@@ -2358,7 +2407,7 @@ parse_error parse_statement(parser* p, stmt** tgt)
         }
     }
 }
-parse_error parse_braced_delimited_body(parser* p, body* b)
+parse_error parse_brace_delimited_body(parser* p, body* b)
 {
     token* t = tk_aquire(&p->tk);
     ureg bstart = t->start;
@@ -2398,13 +2447,27 @@ parse_error parse_braced_delimited_body(parser* p, body* b)
     *head = NULL;
     return pe;
 }
-// TODO: parse eof delimited scope, parse brace delimited scope
-parse_error parse_scope(parser* p, scope* s)
+
+parse_error parse_scope_body(parser* p, scope* s)
 {
     scope* old_scope = p->curr_scope;
     p->curr_scope = s;
     parse_error pe = parse_body(p, &s->body);
     p->curr_scope = old_scope;
+    return pe;
+}
+parse_error parse_open_scope_body(parser* p, open_scope* s)
+{
+    s->requires = (require*)list_builder_start_blocklist(&p->lb1);
+    s->scope.imports = (ast_node**)list_builder_start_blocklist(&p->lb2);
+    s->scope.includes = (ast_node**)list_builder_start_blocklist(&p->lb3);
+    parse_error pe = parse_scope_body(p, (scope*)s);
+    s->requires = (require*)list_builder_pop_block_list_zt(
+        &p->lb1, s->requires, &p->tk.tc->permmem);
+    s->scope.imports = (ast_node**)list_builder_pop_block_list_zt(
+        &p->lb2, s->scope.imports, &p->tk.tc->permmem);
+    s->scope.includes = (ast_node**)list_builder_pop_block_list_zt(
+        &p->lb3, s->scope.includes, &p->tk.tc->permmem);
     return pe;
 }
 parse_error parse_body(parser* p, body* b)
@@ -2423,7 +2486,7 @@ parse_error parse_body(parser* p, body* b)
         }
     }
     else {
-        pe = parse_braced_delimited_body(p, b);
+        pe = parse_brace_delimited_body(p, b);
     }
     return pe;
 }

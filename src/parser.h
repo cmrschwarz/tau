@@ -14,8 +14,8 @@ typedef enum parse_error {
 
 typedef struct parser {
     tokenizer tk;
-    list_builder lb;
-    sc_module root;
+    list_builder lb1, lb2, lb3;
+    osc_module root;
     scope* curr_scope;
 } parser;
 
