@@ -39,7 +39,7 @@ void print_indent(ureg indent)
         p(MASTER_ERROR_LOG.tab_spaces);
     }
 }
-void print_requires(require* r, ureg indent)
+void print_requires(file_require* r, ureg indent)
 {
     while (*(void**)r != NULL) {
         print_indent(indent);
@@ -558,7 +558,6 @@ char* op_to_str(op_type t)
         case OP_POST_INCREMENT: return "++";
         case OP_POST_DECREMENT: return "--";
         case OP_CONST: return "const ";
-        case OP_SCOPE_ACCESS: return "::";
         case OP_MEMBER_ACCESS: return ".";
         default: return NULL;
     }

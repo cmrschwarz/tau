@@ -83,7 +83,6 @@ typedef enum PACK_ENUM op_type {
 
     // binary ops
     OP_MEMBER_ACCESS,
-    OP_SCOPE_ACCESS,
     OP_CAST,
     OP_ASSIGN,
     OP_ADD,
@@ -137,10 +136,25 @@ typedef enum PACK_ENUM op_type {
 
 typedef ast_node_type ast_node;
 
-typedef struct require {
+typedef struct file_require {
     src_file* file;
     src_range srange;
-} require;
+} file_require;
+
+typedef struct symbol_import {
+    char* symbol_name;
+    char* alias;
+} symbol_import;
+
+typedef struct mdg_node mdg_node;
+typedef struct module_import {
+    mdg_node* tgt;
+    char* name;
+    symbol_import* selected_symbols;
+    src_range srange;
+    stmt_flags flags;
+    err_flags eflags;
+} module_import;
 
 typedef struct expr {
     ast_node_type type;
@@ -171,13 +185,12 @@ typedef struct scope {
     body body;
     struct scope* parent;
     struct scope* preprocessor;
-    ast_node** imports;
-    ast_node** includes;
+    module_import* imports;
 } scope;
 
 typedef struct open_scope {
     scope scope;
-    require* requires;
+    file_require* requires;
 } open_scope;
 
 typedef struct expr_named {

@@ -29,7 +29,6 @@ static const unsigned char op_precedence[] = {
     [OP_POST_DECREMENT] = 15,
     [OP_CALL] = 15,
     [OP_ACCESS] = 15,
-    [OP_SCOPE_ACCESS] = 15,
     [OP_MEMBER_ACCESS] = 15,
 
     [OP_PRE_INCREMENT] = 14,
@@ -160,7 +159,6 @@ static inline op_type token_to_binary_op(token* t)
 
         case TT_TILDE_EQUALS: return OP_BITWISE_NOT_ASSIGN;
         case TT_DOT: return OP_MEMBER_ACCESS;
-        case TT_DOUBLE_COLON: return OP_SCOPE_ACCESS;
         default: return OP_NOOP;
     }
 }
@@ -372,7 +370,6 @@ int parser_init(parser* p, thread_context* tc)
     if (r) return r;
     r = list_builder_init(&p->lb1, &p->tk.tc->tempmem, 64);
     r = list_builder_init(&p->lb2, &p->tk.tc->tempmem, 64);
-    r = list_builder_init(&p->lb3, &p->tk.tc->tempmem, 64);
     if (r) {
         tk_fin(&p->tk);
         return r;
@@ -2248,6 +2245,81 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
     *tgt = (stmt*)u;
     return pe;
 }
+parse_error
+parse_single_import(parser* p, mdg_node* n, ureg flags, ureg start, ureg end)
+{
+    token *t, *t2;
+    module_import mi;
+    mi.flags = flags;
+    mi.eflags = ERR_FLAGS_DEFAULT;
+    mi.selected_symbols = NULL;
+    PEEK(p, t);
+    t2 = tk_peek_2nd(&p->tk);
+    if (!t2) return PE_TK_ERROR;
+    if (t2->type == TT_EQUALS) {
+        if (t->type != TT_STRING) {
+            parser_error_2a(
+                p, "invalid import syntax", t->start, t->end,
+                "expected identifier", start, end, "in this import statement");
+            return PE_HANDLED;
+        }
+        mi.name = alloc_string_perm(p, t->str);
+        if (!mi.name) return PE_INSANE;
+        tk_void_n(&p->tk, 2);
+        PEEK(p, t);
+    }
+    else {
+        mi.name = NULL;
+    }
+    if (t->type != TT_STRING) {
+        parser_error_2a(
+            p, "invalid import syntax", t->start, t->end,
+            "expected module identifier", start, end,
+            "in this import statement");
+        return PE_HANDLED;
+    }
+    while (true) {
+        // TODO: lookup mdg node
+        end = t->end;
+        tk_void(&p->tk);
+        PEEK(p, t);
+        if (t->type == TT_DOT) {
+            end = t->end;
+            tk_void(&p->tk);
+            PEEK(p, t);
+            if (t->type == TT_BRACE_OPEN) {
+                // TODO
+            }
+            else if (t->type == TT_PAREN_OPEN) {
+                // TODO
+            }
+            else if (t->type == TT_STRING) {
+                continue;
+            }
+            else {
+                parser_error_2a(
+                    p, "invalid import syntax", t->start, t->end,
+                    "expected module identifier or '{' or '(' or '*'", start,
+                    end, "in this import statement");
+                return PE_HANDLED;
+            }
+        }
+        else {
+            break;
+        }
+    }
+    mi.srange = src_range_pack_lines(p->tk.tc, start, end);
+    if (mi.srange == SRC_RANGE_INVALID) return PE_INSANE;
+    list_builder_add_block(&p->lb1, &mi, sizeof(mi));
+    return PE_OK;
+}
+parse_error
+parse_import(parser* p, stmt_flags flags, ureg start, ureg flags_end)
+{
+    token* t = tk_aquire(&p->tk);
+    tk_void(&p->tk);
+    return parse_single_import(p, NULL, flags, start, t->end);
+}
 parse_error parse_require(parser* p)
 {
     token* t = tk_aquire(&p->tk);
@@ -2268,7 +2340,7 @@ parse_error parse_require(parser* p)
             "in this require statement");
         return PE_HANDLED;
     }
-    require rq;
+    file_require rq;
     src_file* f = file_map_get_file_from_path(&TAUC.file_map, t->str);
     rq.file = f;
     rq.srange = src_range_pack_lines(p->tk.tc, start, t->end);
@@ -2407,7 +2479,10 @@ parse_error parse_statement(parser* p, stmt** tgt)
                 pe = parse_require(p);
                 if (pe) return pe;
                 return parse_statement(p, tgt);
-            case TT_KW_IMPORT: break; // TODO
+            case TT_KW_IMPORT:
+                pe = parse_import(p, flags, start, flags_end);
+                if (pe) return pe;
+                return parse_statement(p, tgt);
             case TT_KW_LABEL:
                 return parse_label(p, flags, start, flags_end, tgt);
             case TT_KW_GIVE:
@@ -2504,16 +2579,13 @@ parse_error parse_scope_body(parser* p, scope* s)
 }
 parse_error parse_open_scope_body(parser* p, open_scope* s)
 {
-    s->requires = (require*)list_builder_start_blocklist(&p->lb1);
-    s->scope.imports = (ast_node**)list_builder_start_blocklist(&p->lb2);
-    s->scope.includes = (ast_node**)list_builder_start_blocklist(&p->lb3);
+    s->requires = (file_require*)list_builder_start_blocklist(&p->lb1);
+    s->scope.imports = (module_import*)list_builder_start_blocklist(&p->lb2);
     parse_error pe = parse_scope_body(p, (scope*)s);
-    s->requires = (require*)list_builder_pop_block_list_zt(
+    s->requires = (file_require*)list_builder_pop_block_list_zt(
         &p->lb1, s->requires, &p->tk.tc->permmem);
-    s->scope.imports = (ast_node**)list_builder_pop_block_list_zt(
+    s->scope.imports = (module_import*)list_builder_pop_block_list_zt(
         &p->lb2, s->scope.imports, &p->tk.tc->permmem);
-    s->scope.includes = (ast_node**)list_builder_pop_block_list_zt(
-        &p->lb3, s->scope.includes, &p->tk.tc->permmem);
     return pe;
 }
 parse_error parse_body(parser* p, body* b)

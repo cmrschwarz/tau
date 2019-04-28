@@ -294,6 +294,7 @@ static token* tk_load(tokenizer* tk)
             case '{': tok->type = TT_BRACE_OPEN; return tk_return_head(tk, 1);
             case '}': tok->type = TT_BRACE_CLOSE; return tk_return_head(tk, 1);
             case '[': tok->type = TT_BRACKET_OPEN; return tk_return_head(tk, 1);
+            case ':': tok->type = TT_COLON; return tk_return_head(tk, 1);
             case ']':
                 tok->type = TT_BRACKET_CLOSE;
                 return tk_return_head(tk, 1);
@@ -315,18 +316,6 @@ static token* tk_load(tokenizer* tk)
                 tok->start++;
                 src_map_add_line(&tk->file->src_map, tk->tc, tok->start);
                 continue;
-            }
-            case ':': {
-                char peek = tk_peek_char(tk);
-                if (peek == ':') {
-                    tk_void_char_peek(tk);
-                    tok->type = TT_DOUBLE_COLON;
-                    return tk_return_head(tk, 2);
-                }
-                else {
-                    tok->type = TT_COLON;
-                    return tk_return_head(tk, 1);
-                }
             }
             case '*': {
                 char peek = tk_peek_char(tk);
