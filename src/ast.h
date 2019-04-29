@@ -28,6 +28,7 @@ typedef enum PACK_ENUM ast_node_type {
     SC_TRAIT,
     SC_TRAIT_GENERIC,
 
+    STMT_IMPORT,
     STMT_USING,
     SYM_NAMED_USING,
     SYM_VAR,
@@ -141,21 +142,6 @@ typedef struct file_require {
     src_range srange;
 } file_require;
 
-typedef struct symbol_import {
-    char* symbol_name;
-    char* alias;
-} symbol_import;
-
-typedef struct mdg_node mdg_node;
-typedef struct module_import {
-    mdg_node* tgt;
-    char* name;
-    symbol_import* selected_symbols;
-    src_range srange;
-    stmt_flags flags;
-    err_flags eflags;
-} module_import;
-
 typedef struct expr {
     ast_node_type type;
     op_type op_type;
@@ -184,8 +170,6 @@ typedef struct scope {
     symbol symbol;
     body body;
     struct scope* parent;
-    struct scope* preprocessor;
-    module_import* imports;
 } scope;
 
 typedef struct open_scope {
@@ -211,6 +195,30 @@ typedef struct stmt_using {
     stmt stmt;
     expr* target;
 } stmt_using;
+
+typedef struct symbol_import {
+    // always non NULL, so list of these can be terminated by a NULL
+    char* symbol_name;
+    char* alias;
+    src_range srange;
+} symbol_import;
+
+typedef struct stmt_import stmt_import;
+typedef struct mdg_node mdg_node;
+typedef struct module_import {
+    // always non NULL, so list of these can be terminated by a NULL
+    stmt_import* statement;
+    mdg_node* tgt; // can't be first, since possibly NULL
+    char* name;
+    struct module_import* nested_imports;
+    symbol_import* selected_symbols; // points to a zero if .*
+    src_range srange;
+} module_import;
+
+typedef struct stmt_import {
+    stmt stmt;
+    module_import module_import;
+} stmt_import;
 
 typedef struct stmt_return {
     stmt stmt;

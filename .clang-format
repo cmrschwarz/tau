@@ -16,4 +16,5 @@ AllowShortBlocksOnASingleLine: false
 #IndentPPDirectives: AfterHash
 PenaltyReturnTypeOnItsOwnLine: 100
 IndentCaseLabels: true
+AlignTrailingComments: false
 ---

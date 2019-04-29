@@ -14,7 +14,7 @@ typedef enum parse_error {
 
 typedef struct parser {
     tokenizer tk;
-    list_builder lb1, lb2;
+    list_builder list_builder;
     osc_module root;
     scope* curr_scope;
 } parser;
@@ -22,6 +22,7 @@ typedef struct parser {
 int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
 parse_error parser_parse_file(parser* p, src_file* f);
+module_import* imports;
 
 bool stmt_allowed_to_drop_semicolon(stmt* s);
 bool expr_allowed_to_drop_semicolon(expr* e);

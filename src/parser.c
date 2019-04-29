@@ -25,69 +25,69 @@ parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
 parse_error parse_brace_delimited_body(parser* p, body* b);
 
 static const unsigned char op_precedence[] = {
-        [OP_POST_INCREMENT] = 15,
-        [OP_POST_DECREMENT] = 15,
-        [OP_CALL] = 15,
-        [OP_ACCESS] = 15,
-        [OP_MEMBER_ACCESS] = 15,
+    [OP_POST_INCREMENT] = 15,
+    [OP_POST_DECREMENT] = 15,
+    [OP_CALL] = 15,
+    [OP_ACCESS] = 15,
+    [OP_MEMBER_ACCESS] = 15,
 
-        [OP_PRE_INCREMENT] = 14,
-        [OP_PRE_DECREMENT] = 14,
-        [OP_UNARY_PLUS] = 14,
-        [OP_UNARY_MINUS] = 14,
-        [OP_NOT] = 14,
-        [OP_BITWISE_NOT] = 14,
-        [OP_DEREF] = 14,
-        [OP_POINTER_OF] = 14,
-        [OP_REF_OF] = 14,
-        [OP_RREF_OF] = 14,
-        [OP_CLOSURE_BY_VALUE] = 14,
-        [OP_CONST] = 14,
+    [OP_PRE_INCREMENT] = 14,
+    [OP_PRE_DECREMENT] = 14,
+    [OP_UNARY_PLUS] = 14,
+    [OP_UNARY_MINUS] = 14,
+    [OP_NOT] = 14,
+    [OP_BITWISE_NOT] = 14,
+    [OP_DEREF] = 14,
+    [OP_POINTER_OF] = 14,
+    [OP_REF_OF] = 14,
+    [OP_RREF_OF] = 14,
+    [OP_CLOSURE_BY_VALUE] = 14,
+    [OP_CONST] = 14,
 
-        [OP_BITWISE_AND] = 13,
+    [OP_BITWISE_AND] = 13,
 
-        [OP_BITWISE_XOR] = 12,
+    [OP_BITWISE_XOR] = 12,
 
-        [OP_BITWISE_OR] = 11,
+    [OP_BITWISE_OR] = 11,
 
-        [OP_MUL] = 10,
-        [OP_DIV] = 10,
-        [OP_MOD] = 10,
+    [OP_MUL] = 10,
+    [OP_DIV] = 10,
+    [OP_MOD] = 10,
 
-        [OP_ADD] = 9,
-        [OP_SUB] = 9,
+    [OP_ADD] = 9,
+    [OP_SUB] = 9,
 
-        [OP_LSHIFT] = 8,
-        [OP_RSHIFT] = 8,
+    [OP_LSHIFT] = 8,
+    [OP_RSHIFT] = 8,
 
-        [OP_CAST] = 7,
+    [OP_CAST] = 7,
 
-        [OP_LESS_THAN] = 6,
-        [OP_LESS_THAN_OR_EQUAL] = 6,
-        [OP_GREATER_THAN] = 6,
-        [OP_GREATER_THAN_OR_EQUAL] = 6,
+    [OP_LESS_THAN] = 6,
+    [OP_LESS_THAN_OR_EQUAL] = 6,
+    [OP_GREATER_THAN] = 6,
+    [OP_GREATER_THAN_OR_EQUAL] = 6,
 
-        [OP_EQUAL] = 5,
-        [OP_UNEQAL] = 5,
+    [OP_EQUAL] = 5,
+    [OP_UNEQAL] = 5,
 
-        [OP_AND] = 4,
+    [OP_AND] = 4,
 
-        [OP_XOR] = 3,
+    [OP_XOR] = 3,
 
-        [OP_OR] = 2,
+    [OP_OR] = 2,
 
-        [OP_ASSIGN] = 1,
-        [OP_ADD_ASSIGN] = 1,
-        [OP_SUB_ASSIGN] = 1,
-        [OP_MUL_ASSIGN] = 1,
-        [OP_DIV_ASSIGN] = 1,
-        [OP_MOD_ASSIGN] = 1,
-        [OP_LSHIFT_ASSIGN] = 1,
-        [OP_RSHIFT_ASSIGN] = 1,
-        [OP_BITWISE_AND_ASSIGN] = 1,
-        [OP_BITWISE_XOR_ASSIGN] = 1,
-        [OP_BITWISE_OR_ASSIGN] = 1,
-        [OP_BITWISE_NOT_ASSIGN] = 1,
+    [OP_ASSIGN] = 1,
+    [OP_ADD_ASSIGN] = 1,
+    [OP_SUB_ASSIGN] = 1,
+    [OP_MUL_ASSIGN] = 1,
+    [OP_DIV_ASSIGN] = 1,
+    [OP_MOD_ASSIGN] = 1,
+    [OP_LSHIFT_ASSIGN] = 1,
+    [OP_RSHIFT_ASSIGN] = 1,
+    [OP_BITWISE_AND_ASSIGN] = 1,
+    [OP_BITWISE_XOR_ASSIGN] = 1,
+    [OP_BITWISE_OR_ASSIGN] = 1,
+    [OP_BITWISE_NOT_ASSIGN] = 1,
 };
 
 #define PREC_BASELINE 0
@@ -368,8 +368,7 @@ int parser_init(parser* p, thread_context* tc)
 {
     int r = tk_init(&p->tk, tc);
     if (r) return r;
-    r = list_builder_init(&p->lb1, &p->tk.tc->tempmem, 64);
-    r = list_builder_init(&p->lb2, &p->tk.tc->tempmem, 64);
+    r = list_builder_init(&p->list_builder, &p->tk.tc->tempmem, 64);
     if (r) {
         tk_fin(&p->tk);
         return r;
@@ -522,8 +521,8 @@ parse_error parse_expr_node_list(
             return PE_OK;
         }
     }
-    void** list_start = list_builder_start(&p->lb1);
-    if (prefetch) list_builder_add(&p->lb1, prefetch);
+    void** list_start = list_builder_start(&p->list_builder);
+    if (prefetch) list_builder_add(&p->list_builder, prefetch);
     while (true) {
         expr* ex;
         parse_error pe = parse_expression(p, &ex);
@@ -537,7 +536,7 @@ parse_error parse_expr_node_list(
             return PE_HANDLED;
         }
         if (pe != PE_OK) return pe;
-        int r = list_builder_add(&p->lb1, (void*)ex);
+        int r = list_builder_add(&p->list_builder, (void*)ex);
         if (r) return PE_INSANE;
         PEEK(p, t);
         if (t->type == TT_COMMA) {
@@ -551,7 +550,7 @@ parse_error parse_expr_node_list(
         }
     }
     *tgt = (expr**)list_builder_pop_list_zt(
-        &p->lb1, list_start, &p->tk.tc->permmem);
+        &p->list_builder, list_start, &p->tk.tc->permmem);
     if (!*tgt) return PE_INSANE;
     return PE_OK;
 }
@@ -586,8 +585,8 @@ parse_tuple_after_first_comma(parser* p, ureg t_start, ureg t_end, expr** ex)
 {
     expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
     tp->expr.type = EXPR_TUPLE;
-    void** list = list_builder_start(&p->lb1);
-    list_builder_add(&p->lb1, *ex);
+    void** list = list_builder_start(&p->list_builder);
+    list_builder_add(&p->list_builder, *ex);
     token* t;
     PEEK(p, t);
     bool err = false;
@@ -601,7 +600,7 @@ parse_tuple_after_first_comma(parser* p, ureg t_start, ureg t_end, expr** ex)
             }
             return pe;
         }
-        list_builder_add(&p->lb1, *ex);
+        list_builder_add(&p->list_builder, *ex);
         PEEK(p, t);
         if (t->type == TT_COMMA) {
             tk_void(&p->tk);
@@ -619,8 +618,8 @@ parse_tuple_after_first_comma(parser* p, ureg t_start, ureg t_end, expr** ex)
             "didn't find a matching parenthesis for this tuple");
         return PE_HANDLED;
     }
-    tp->elements =
-        (expr**)list_builder_pop_list_zt(&p->lb1, list, &p->tk.tc->permmem);
+    tp->elements = (expr**)list_builder_pop_list_zt(
+        &p->list_builder, list, &p->tk.tc->permmem);
     if (!tp->elements) return PE_INSANE;
     if (expr_fill_srange(p, (expr*)tp, t_start, t->end)) return PE_INSANE;
     tk_void(&p->tk);
@@ -799,16 +798,17 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             PEEK(p, t);
             parser_error_2a(
                 p, "unexpected token after opening parenthesis", t->start,
-                t->end, "expected an expression, a declaration or a closing "
-                        "parenthesis",
+                t->end,
+                "expected an expression, a declaration or a closing "
+                "parenthesis",
                 t_start, t_end, "opening parenthesis here");
             return PE_HANDLED;
         }
         if (pe) return pe;
         PEEK(p, t);
         if (t->type == TT_COMMA) {
-            element_list = list_builder_start(&p->lb1);
-            if (list_builder_add(&p->lb1, *ex)) return PE_INSANE;
+            element_list = list_builder_start(&p->list_builder);
+            if (list_builder_add(&p->list_builder, *ex)) return PE_INSANE;
         }
         else {
             return build_expr_parentheses(p, t_start, t_end, ex);
@@ -838,8 +838,8 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             if (pe) return pe;
             t = t2;
         }
-        element_list = list_builder_start(&p->lb1);
-        if (list_builder_add(&p->lb1, *ex)) return PE_INSANE;
+        element_list = list_builder_start(&p->list_builder);
+        if (list_builder_add(&p->list_builder, *ex)) return PE_INSANE;
     }
     while (true) {
         if (t->type == TT_COMMA) {
@@ -856,7 +856,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         if (t->type == TT_PAREN_CLOSE) {
             tk_void(&p->tk);
             expr** res_elem_list = (expr**)list_builder_pop_list_zt(
-                &p->lb1, element_list, &p->tk.tc->permmem);
+                &p->list_builder, element_list, &p->tk.tc->permmem);
             if (!res_elem_list) return PE_INSANE;
             if (elem_list) {
                 *elem_list = res_elem_list;
@@ -908,7 +908,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             }
             if (pe) return pe;
         }
-        if (list_builder_add(&p->lb1, *ex)) return PE_INSANE;
+        if (list_builder_add(&p->list_builder, *ex)) return PE_INSANE;
         PEEK(p, t);
     }
 }
@@ -1139,12 +1139,12 @@ parse_error parse_match(parser* p, expr** tgt, ureg start, char* label)
             "expected match expression", start, e_end, "in this match");
     }
     tk_void(&p->tk);
-    void** list = list_builder_start(&p->lb1);
+    void** list = list_builder_start(&p->list_builder);
     while (true) {
         PEEK(p, t);
         if (t->type == TT_BRACE_CLOSE) {
             em->match_arms = (match_arm**)list_builder_pop_list_zt(
-                &p->lb1, list, &p->tk.tc->permmem);
+                &p->list_builder, list, &p->tk.tc->permmem);
             if (!em->match_arms) return PE_INSANE;
             *tgt = (expr*)em;
             tk_void(&p->tk);
@@ -1189,7 +1189,7 @@ parse_error parse_match(parser* p, expr** tgt, ureg start, char* label)
                     "after this match arm statement");
                 return PE_HANDLED;
             }
-            list_builder_add(&p->lb1, ma);
+            list_builder_add(&p->list_builder, ma);
         }
     }
 }
@@ -2247,12 +2247,13 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
 parse_error parse_symbol_imports(parser* p, module_import* mi)
 {
     mi->selected_symbols =
-        (symbol_import*)list_builder_start_blocklist(&p->lb2);
+        (symbol_import*)list_builder_start_blocklist(&p->list_builder);
     token *t, *t2;
     tk_void(&p->tk);
     PEEK(p, t);
     if (t->type == TT_PAREN_CLOSE) {
         // TODO error
+        return PE_HANDLED;
     }
     while (true) {
         t2 = tk_peek_2nd(&p->tk);
@@ -2269,14 +2270,17 @@ parse_error parse_symbol_imports(parser* p, module_import* mi)
         }
         if (t->type != TT_STRING) {
             // TODO: error
+            return PE_HANDLED;
         }
         si.symbol_name = alloc_string_perm(p, t->str);
         if (!si.symbol_name) return PE_INSANE;
-        list_builder_add_block(&p->lb1, &si, sizeof(mi));
+        list_builder_add_block(&p->list_builder, &si, sizeof(si));
+        tk_void(&p->tk);
         PEEK(p, t);
         if (t->type == TT_PAREN_CLOSE) break;
         if (t->type != TT_COMMA) {
             // TODO error
+            return PE_HANDLED;
         }
         tk_void(&p->tk);
         PEEK(p, t);
@@ -2288,34 +2292,41 @@ parse_error parse_symbol_imports(parser* p, module_import* mi)
             }
             else {
                 // TODO error
+                return PE_HANDLED;
             }
         }
     }
     tk_void(&p->tk);
     mi->selected_symbols = (symbol_import*)list_builder_pop_block_list_zt(
-        &p->lb2, mi->selected_symbols, &p->tk.tc->permmem);
+        &p->list_builder, mi->selected_symbols, &p->tk.tc->permmem);
     if (!mi->selected_symbols) return PE_INSANE;
     return PE_OK;
 }
 parse_error parse_single_import(
-    parser* p, mdg_node* parent, ureg flags, ureg start, ureg end);
-parse_error parse_braced_imports(
-    parser* p, mdg_node* parent, ureg flags, ureg start, ureg end)
+    parser* p, mdg_node* parent, stmt_import* stmt, module_import* mi);
+parse_error
+parse_braced_imports(parser* p, stmt_import* stmt, module_import* mi)
 {
+    mi->nested_imports =
+        (module_import*)list_builder_start_blocklist(&p->list_builder);
     parse_error pe;
     token* t;
     tk_void(&p->tk);
     PEEK(p, t);
     if (t->type == TT_BRACE_CLOSE) {
         // TODO error
+        return PE_HANDLED;
     }
     while (true) {
-        pe = parse_single_import(p, parent, flags, start, end);
+        module_import m;
+        pe = parse_single_import(p, mi->tgt, stmt, &m);
         if (pe) return pe;
+        list_builder_add_block(&p->list_builder, &m, sizeof(m));
         PEEK(p, t);
         if (t->type == TT_BRACE_CLOSE) break;
         if (t->type != TT_COMMA) {
             // TODO error
+            return PE_HANDLED;
         }
         tk_void(&p->tk);
         PEEK(p, t);
@@ -2327,22 +2338,27 @@ parse_error parse_braced_imports(
             }
             else {
                 // TODO error
+                return PE_HANDLED;
             }
         }
     }
+    mi->nested_imports = (module_import*)list_builder_pop_block_list_zt(
+        &p->list_builder, mi->nested_imports, &p->tk.tc->permmem);
+    if (!mi->nested_imports) return PE_INSANE;
+
     tk_void(&p->tk);
     return PE_OK;
 }
 parse_error parse_single_import(
-    parser* p, mdg_node* parent, ureg flags, ureg start, ureg end)
+    parser* p, mdg_node* parent, stmt_import* stmt, module_import* mi)
 {
-    parse_error pe;
     token *t, *t2;
-    module_import mi;
-    mi.flags = flags;
-    mi.eflags = ERR_FLAGS_DEFAULT;
-    mi.selected_symbols = NULL;
+    mi->statement = stmt;
+    mi->selected_symbols = NULL;
+    mi->nested_imports = NULL;
     PEEK(p, t);
+    ureg start = t->start;
+    ureg end = t->end;
     t2 = tk_peek_2nd(&p->tk);
     if (!t2) return PE_TK_ERROR;
     if (t2->type == TT_EQUALS) {
@@ -2352,74 +2368,70 @@ parse_error parse_single_import(
                 "expected identifier", start, end, "in this import statement");
             return PE_HANDLED;
         }
-        mi.name = alloc_string_perm(p, t->str);
-        if (!mi.name) return PE_INSANE;
+        mi->name = alloc_string_perm(p, t->str);
+        if (!mi->name) return PE_INSANE;
         tk_void_n(&p->tk, 2);
         PEEK(p, t);
     }
     else {
-        mi.name = NULL;
+        mi->name = NULL;
     }
-    if (t->type != TT_STRING) {
-        parser_error_2a(
-            p, "invalid import syntax", t->start, t->end,
-            "expected module identifier", start, end,
-            "in this import statement");
-        return PE_HANDLED;
-    }
-    mi.tgt = parent;
+    mi->tgt = parent;
     while (true) {
-        mi.tgt = mdg_get_node(&TAUC.mdg, mi.tgt, t->str);
-        if (!mi.tgt) return PE_INSANE;
-        end = t->end;
-        tk_void(&p->tk);
-        PEEK(p, t);
-        if (t->type == TT_DOT) {
+        if (t->type == TT_BRACE_OPEN) {
+            if (mi->name != NULL) {
+                // TODO: error
+                return PE_HANDLED;
+            }
+            return parse_braced_imports(p, stmt, mi);
+        }
+        else if (t->type == TT_PAREN_OPEN) {
+            return parse_symbol_imports(p, mi);
+        }
+        else if (t->type == TT_STAR) {
+            mi->selected_symbols = (symbol_import*)NULL_PTR_PTR;
+            end = t->end;
+            tk_void(&p->tk);
+            break;
+        }
+        else if (t->type == TT_STRING) {
+            mi->tgt = mdg_get_node(&TAUC.mdg, mi->tgt, t->str);
+            if (!mi->tgt) return PE_INSANE;
             end = t->end;
             tk_void(&p->tk);
             PEEK(p, t);
-            if (t->type == TT_BRACE_OPEN) {
-                pe = parse_braced_imports(p, mi.tgt, flags, start, end);
-                if (pe) return pe;
-                break;
-            }
-            else if (t->type == TT_PAREN_OPEN) {
-                pe = parse_symbol_imports(p, &mi);
-                if (pe) return pe;
-                break;
-            }
-            else if (t->type == TT_STRING) {
-                continue;
-            }
-            else {
-                parser_error_2a(
-                    p, "invalid import syntax", t->start, t->end,
-                    "expected module identifier or '{' or '(' or '*'", start,
-                    end, "in this import statement");
-                return PE_HANDLED;
-            }
+            if (t->type != TT_DOT) break;
+            tk_void(&p->tk);
+            PEEK(p, t);
         }
         else {
-            break;
+            char* expected =
+                mi->name ? "expected module identifier"
+                         : " expected module identifier or '{' or '(' or '*' ";
+            parser_error_2a(
+                p, "invalid import syntax", t->start, t->end, expected, start,
+                end, "in this import statement");
+            return PE_HANDLED;
         }
     }
-    mi.srange = src_range_pack_lines(p->tk.tc, start, end);
-    if (mi.srange == SRC_RANGE_INVALID) return PE_INSANE;
-    list_builder_add_block(&p->lb2, &mi, sizeof(mi));
-    PEEK(p, t);
-    if (t->type != TT_SEMICOLON) {
-        report_missing_semicolon(p, start, end);
-        return PE_HANDLED;
-    }
-    tk_void(&p->tk);
+    mi->srange = src_range_pack_lines(p->tk.tc, start, end);
+    if (mi->srange == SRC_RANGE_INVALID) return PE_INSANE;
     return PE_OK;
 }
-parse_error
-parse_import(parser* p, stmt_flags flags, ureg start, ureg flags_end)
+parse_error parse_import(
+    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
 {
-    token* t = tk_aquire(&p->tk);
     tk_void(&p->tk);
-    return parse_single_import(p, NULL, flags, start, t->end);
+    stmt_import* si = alloc_perm(p, sizeof(stmt_import));
+    if (!si) return PE_INSANE;
+    stmt_init((stmt*)si, STMT_IMPORT);
+    parse_error pe = parse_single_import(p, NULL, si, &si->module_import);
+    if (pe) return pe;
+    ureg end = src_range_get_end(si->module_import.srange);
+    pe = stmt_fill_srange(p, (stmt*)si, start, end);
+    if (pe) return PE_INSANE;
+    *tgt = (stmt*)si;
+    return PE_OK;
 }
 parse_error parse_require(parser* p)
 {
@@ -2458,7 +2470,8 @@ parse_error parse_require(parser* p)
         return PE_HANDLED;
     }
     tk_void(&p->tk);
-    if (list_builder_add_block(&p->lb1, &rq, sizeof(rq))) return PE_INSANE;
+    if (list_builder_add_block(&p->list_builder, &rq, sizeof(rq)))
+        return PE_INSANE;
     return PE_OK;
 }
 parse_error
@@ -2581,9 +2594,7 @@ parse_error parse_statement(parser* p, stmt** tgt)
                 if (pe) return pe;
                 return parse_statement(p, tgt);
             case TT_KW_IMPORT:
-                pe = parse_import(p, flags, start, flags_end);
-                if (pe) return pe;
-                return parse_statement(p, tgt);
+                return parse_import(p, flags, start, flags_end, tgt);
             case TT_KW_LABEL:
                 return parse_label(p, flags, start, flags_end, tgt);
             case TT_KW_GIVE:
@@ -2688,13 +2699,10 @@ parse_error parse_scope_body(parser* p, scope* s)
 }
 parse_error parse_open_scope_body(parser* p, open_scope* s)
 {
-    s->requires = (file_require*)list_builder_start_blocklist(&p->lb1);
-    s->scope.imports = (module_import*)list_builder_start_blocklist(&p->lb2);
+    s->requires = (file_require*)list_builder_start_blocklist(&p->list_builder);
     parse_error pe = parse_scope_body(p, (scope*)s);
     s->requires = (file_require*)list_builder_pop_block_list_zt(
-        &p->lb1, s->requires, &p->tk.tc->permmem);
-    s->scope.imports = (module_import*)list_builder_pop_block_list_zt(
-        &p->lb2, s->scope.imports, &p->tk.tc->permmem);
+        &p->list_builder, s->requires, &p->tk.tc->permmem);
     return pe;
 }
 parse_error parse_body(parser* p, body* b)

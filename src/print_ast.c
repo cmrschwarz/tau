@@ -1,6 +1,7 @@
 #include "print_ast.h"
 #include "error_log.h"
 #include "file_map.h"
+#include "mdg.h"
 #include "parser.h"
 #include "stdio.h"
 #include "utils/math_utils.h"
@@ -146,12 +147,65 @@ void print_astn_nl(stmt* astn, ureg indent)
     print_astn(astn, indent);
     pc('\n');
 }
+void print_mdg_node_until(mdg_node* m, mdg_node* stop)
+{
+    if (m->parent != stop) {
+        print_mdg_node_until(m->parent, stop);
+        pc('.');
+    }
+    p(m->name);
+}
+void print_module_import(module_import* mi, mdg_node* parent, ureg indent)
+{
+    if (mi->name != NULL) {
+        p(mi->name);
+        p(" = ");
+    }
+    if (mi->tgt != parent) {
+        print_mdg_node_until(mi->tgt, parent);
+        if (mi->selected_symbols || mi->nested_imports) pc('.');
+    }
+    if (mi->selected_symbols && *(void**)mi->selected_symbols == NULL) {
+        pc('*');
+    }
+    else if (mi->selected_symbols) {
+        p("(");
+        symbol_import* si = mi->selected_symbols;
+        while (true) {
+            if (si->alias) {
+                p(si->alias);
+                p(" = ");
+            }
+            p(si->symbol_name);
+            si++;
+            if (!*(void**)si) break;
+            p(", ");
+        }
+        pc(')');
+    }
+    else if (mi->nested_imports) {
+        p("{");
+        module_import* si = mi->nested_imports;
+        while (true) {
+            print_module_import(si, mi->tgt, indent);
+            si++;
+            if (!*(void**)si) break;
+            p(", ");
+        }
+        pc('}');
+    }
+}
 void print_astn(stmt* astn, ureg indent)
 {
     switch (astn->type) {
         case STMT_EXPRESSION: {
             stmt_expr* e = (stmt_expr*)astn;
             print_expr(e->expr, indent);
+        } break;
+        case STMT_IMPORT: {
+            stmt_import* si = (stmt_import*)astn;
+            p("import ");
+            print_module_import(&si->module_import, NULL, indent);
         } break;
         case STMT_COMPOUND_ASSIGN: {
             stmt_compound_assignment* ca = (stmt_compound_assignment*)astn;
