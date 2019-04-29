@@ -1,5 +1,6 @@
 require "foo/bar.tau";
 func main(args: String[]){
+    import foo.bar;
     if (x) give 3 else give 5;
     func test_compound_assignment(){
         //x:= 3;

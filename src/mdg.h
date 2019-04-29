@@ -78,7 +78,8 @@ mdght* mdg_start_write(mdg* m);
 void mdg_end_write(mdg* m);
 
 mdg_node*
-mdg_add_module(mdg* m, mdg_node* parent, osc_module* mod, string ident);
+mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident);
+mdg_node* mdg_get_node(mdg* m, mdg_node* parent, string ident);
 
 int mdg_add_dependency(mdg* m, mdg_node* n, mdg_node* dependency);
 int mdg_node_file_parsed(mdg* m, mdg_node* n);

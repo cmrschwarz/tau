@@ -69,7 +69,7 @@ void mdg_end_write(mdg* m)
 }
 // since this is called while inside mdg_write, there is no race
 // on the memory pools
-mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent, scope* tgt)
+mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
 {
     mdg_node* n = pool_alloc(&m->node_pool, sizeof(mdg_node));
     if (!n) return NULL;
@@ -79,7 +79,7 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent, scope* tgt)
     memcpy(n->name, ident.start, identlen);
     n->name[identlen] = '\0';
     n->parent = parent;
-    int r = atomic_ptr_init(&n->targets, tgt);
+    int r = atomic_ptr_init(&n->targets, NULL);
     if (r) return NULL;
     r = rwslock_init(&n->lock);
     if (r) {
@@ -116,27 +116,22 @@ void mdg_node_add_target(mdg_node* n, scope* target)
         &n->targets, (void**)&target->symbol.stmt.next, (void*)target)) {
     }
 }
-mdg_node*
-mdg_add_module(mdg* m, mdg_node* parent, osc_module* mod, string ident)
+
+mdg_node* mdg_get_node(mdg* m, mdg_node* parent, string ident)
 {
     ureg hash = mdght_get_hash_str(parent, ident);
     mdght* h = mdg_start_read(m);
     mdg_node* n = mdght_get_str_ph(h, hash, parent, ident);
     mdg_end_read(m, h);
-    if (n != NULL) {
-        mdg_node_add_target(n, (scope*)mod);
-    }
-    else {
+    if (n == NULL) {
         h = mdg_start_write(m);
         mdg_node** np = mdght_get_str_raw_ph(h, hash, parent, ident);
-        mdg_node* n = *np;
+        n = *np;
         if (n != NULL) {
             mdg_end_write(m);
-            mdg_node_add_target(n, &mod->oscope.scope);
         }
         else {
-            mod->oscope.scope.symbol.stmt.next = NULL;
-            n = mdg_node_create(m, ident, parent, (scope*)mod);
+            n = mdg_node_create(m, ident, parent);
             if (n == NULL) {
                 mdg_end_write(m);
                 return NULL;
@@ -145,9 +140,18 @@ mdg_add_module(mdg* m, mdg_node* parent, osc_module* mod, string ident)
             mdg_end_write(m);
         }
     }
-    mod->oscope.scope.symbol.name = n->name;
+    return n;
+}
+
+mdg_node*
+mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident)
+{
+    mdg_node* n = mdg_get_node(m, parent, ident);
+    if (!n) return n;
+    mdg_node_add_target(n, (scope*)osc);
+    osc->scope.symbol.name = n->name;
     if (atomic_ureg_load(&n->stage) != MS_UNNEEDED) {
-        stmt_flags_set_osc_required(&mod->oscope.scope.symbol.stmt.flags);
+        stmt_flags_set_osc_required(&osc->scope.symbol.stmt.flags);
     }
     return n;
 }
