@@ -131,3 +131,8 @@ list_builder_pop_list_zt(list_builder* b, void** list_start, pool* memtgt)
     tgt[count] = NULL;
     return tgt;
 }
+
+void list_builder_drop_list(list_builder* b, void* list_start)
+{
+    b->head = list_start;
+}

@@ -32,3 +32,5 @@ void* list_builder_pop_block_list(
 
 void* list_builder_pop_block_list_zt(
     list_builder* b, void* list_start, pool* tgtmem);
+
+void list_builder_drop_list(list_builder* b, void* list_start);

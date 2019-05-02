@@ -25,69 +25,69 @@ parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
 parse_error parse_brace_delimited_body(parser* p, body* b);
 
 static const unsigned char op_precedence[] = {
-    [OP_POST_INCREMENT] = 15,
-    [OP_POST_DECREMENT] = 15,
-    [OP_CALL] = 15,
-    [OP_ACCESS] = 15,
-    [OP_MEMBER_ACCESS] = 15,
+        [OP_POST_INCREMENT] = 15,
+        [OP_POST_DECREMENT] = 15,
+        [OP_CALL] = 15,
+        [OP_ACCESS] = 15,
+        [OP_MEMBER_ACCESS] = 15,
 
-    [OP_PRE_INCREMENT] = 14,
-    [OP_PRE_DECREMENT] = 14,
-    [OP_UNARY_PLUS] = 14,
-    [OP_UNARY_MINUS] = 14,
-    [OP_NOT] = 14,
-    [OP_BITWISE_NOT] = 14,
-    [OP_DEREF] = 14,
-    [OP_POINTER_OF] = 14,
-    [OP_REF_OF] = 14,
-    [OP_RREF_OF] = 14,
-    [OP_CLOSURE_BY_VALUE] = 14,
-    [OP_CONST] = 14,
+        [OP_PRE_INCREMENT] = 14,
+        [OP_PRE_DECREMENT] = 14,
+        [OP_UNARY_PLUS] = 14,
+        [OP_UNARY_MINUS] = 14,
+        [OP_NOT] = 14,
+        [OP_BITWISE_NOT] = 14,
+        [OP_DEREF] = 14,
+        [OP_POINTER_OF] = 14,
+        [OP_REF_OF] = 14,
+        [OP_RREF_OF] = 14,
+        [OP_CLOSURE_BY_VALUE] = 14,
+        [OP_CONST] = 14,
 
-    [OP_BITWISE_AND] = 13,
+        [OP_BITWISE_AND] = 13,
 
-    [OP_BITWISE_XOR] = 12,
+        [OP_BITWISE_XOR] = 12,
 
-    [OP_BITWISE_OR] = 11,
+        [OP_BITWISE_OR] = 11,
 
-    [OP_MUL] = 10,
-    [OP_DIV] = 10,
-    [OP_MOD] = 10,
+        [OP_MUL] = 10,
+        [OP_DIV] = 10,
+        [OP_MOD] = 10,
 
-    [OP_ADD] = 9,
-    [OP_SUB] = 9,
+        [OP_ADD] = 9,
+        [OP_SUB] = 9,
 
-    [OP_LSHIFT] = 8,
-    [OP_RSHIFT] = 8,
+        [OP_LSHIFT] = 8,
+        [OP_RSHIFT] = 8,
 
-    [OP_CAST] = 7,
+        [OP_CAST] = 7,
 
-    [OP_LESS_THAN] = 6,
-    [OP_LESS_THAN_OR_EQUAL] = 6,
-    [OP_GREATER_THAN] = 6,
-    [OP_GREATER_THAN_OR_EQUAL] = 6,
+        [OP_LESS_THAN] = 6,
+        [OP_LESS_THAN_OR_EQUAL] = 6,
+        [OP_GREATER_THAN] = 6,
+        [OP_GREATER_THAN_OR_EQUAL] = 6,
 
-    [OP_EQUAL] = 5,
-    [OP_UNEQAL] = 5,
+        [OP_EQUAL] = 5,
+        [OP_UNEQAL] = 5,
 
-    [OP_AND] = 4,
+        [OP_AND] = 4,
 
-    [OP_XOR] = 3,
+        [OP_XOR] = 3,
 
-    [OP_OR] = 2,
+        [OP_OR] = 2,
 
-    [OP_ASSIGN] = 1,
-    [OP_ADD_ASSIGN] = 1,
-    [OP_SUB_ASSIGN] = 1,
-    [OP_MUL_ASSIGN] = 1,
-    [OP_DIV_ASSIGN] = 1,
-    [OP_MOD_ASSIGN] = 1,
-    [OP_LSHIFT_ASSIGN] = 1,
-    [OP_RSHIFT_ASSIGN] = 1,
-    [OP_BITWISE_AND_ASSIGN] = 1,
-    [OP_BITWISE_XOR_ASSIGN] = 1,
-    [OP_BITWISE_OR_ASSIGN] = 1,
-    [OP_BITWISE_NOT_ASSIGN] = 1,
+        [OP_ASSIGN] = 1,
+        [OP_ADD_ASSIGN] = 1,
+        [OP_SUB_ASSIGN] = 1,
+        [OP_MUL_ASSIGN] = 1,
+        [OP_DIV_ASSIGN] = 1,
+        [OP_MOD_ASSIGN] = 1,
+        [OP_LSHIFT_ASSIGN] = 1,
+        [OP_RSHIFT_ASSIGN] = 1,
+        [OP_BITWISE_AND_ASSIGN] = 1,
+        [OP_BITWISE_XOR_ASSIGN] = 1,
+        [OP_BITWISE_OR_ASSIGN] = 1,
+        [OP_BITWISE_NOT_ASSIGN] = 1,
 };
 
 #define PREC_BASELINE 0
@@ -798,9 +798,8 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             PEEK(p, t);
             parser_error_2a(
                 p, "unexpected token after opening parenthesis", t->start,
-                t->end,
-                "expected an expression, a declaration or a closing "
-                "parenthesis",
+                t->end, "expected an expression, a declaration or a closing "
+                        "parenthesis",
                 t_start, t_end, "opening parenthesis here");
             return PE_HANDLED;
         }
@@ -2249,10 +2248,20 @@ parse_error parse_symbol_imports(parser* p, module_import* mi)
     mi->selected_symbols =
         (symbol_import*)list_builder_start_blocklist(&p->list_builder);
     token *t, *t2;
+    t = tk_aquire(&p->tk);
+    ureg start = t->start;
+    ureg end;
     tk_void(&p->tk);
-    PEEK(p, t);
+    t = tk_peek(&p->tk);
+    if (!t) {
+        list_builder_drop_list(&p->list_builder, mi->selected_symbols);
+        return PE_TK_ERROR;
+    }
     if (t->type == TT_PAREN_CLOSE) {
-        // TODO error
+        parser_error_1a(
+            p, "empty parenthesized import list not allowed", start, t->end,
+            "at least one item required");
+        list_builder_drop_list(&p->list_builder, mi->selected_symbols);
         return PE_HANDLED;
     }
     while (true) {
@@ -2261,40 +2270,54 @@ parse_error parse_symbol_imports(parser* p, module_import* mi)
         symbol_import si;
         if (t2->type == TT_EQUALS) {
             si.alias = alloc_string_perm(p, t->str);
-            if (!si.alias) return PE_INSANE;
+            if (!si.alias) {
+                list_builder_drop_list(&p->list_builder, mi->selected_symbols);
+                return PE_INSANE;
+            }
             tk_void_n(&p->tk, 2);
-            PEEK(p, t);
+            t = tk_peek(&p->tk);
+            if (!t) {
+                list_builder_drop_list(&p->list_builder, mi->selected_symbols);
+                return PE_TK_ERROR;
+            }
         }
         else {
             si.alias = NULL;
         }
         if (t->type != TT_STRING) {
-            // TODO: error
+            parser_error_2a(
+                p, "invalid identifier for named import", t->start, t->end,
+                "identifier must be a string", t2->start, t2->end,
+                "named import begins here");
+            list_builder_drop_list(&p->list_builder, mi->selected_symbols);
             return PE_HANDLED;
         }
         si.symbol_name = alloc_string_perm(p, t->str);
         if (!si.symbol_name) return PE_INSANE;
         list_builder_add_block(&p->list_builder, &si, sizeof(si));
+        end = t->end;
         tk_void(&p->tk);
-        PEEK(p, t);
+        t = tk_peek(&p->tk);
+        if (!t) {
+            list_builder_drop_list(&p->list_builder, mi->selected_symbols);
+            return PE_TK_ERROR;
+        }
         if (t->type == TT_PAREN_CLOSE) break;
         if (t->type != TT_COMMA) {
-            // TODO error
+            parser_error_2a(
+                p, "unexpected token in parenthesized import list", t->start,
+                t->end, "expected ',' or ')'", start, end,
+                "in this parenthesized import list");
+            list_builder_drop_list(&p->list_builder, mi->selected_symbols);
             return PE_HANDLED;
         }
         tk_void(&p->tk);
-        PEEK(p, t);
-        if (t->type == TT_COMMA) {
-            token* t2 = tk_peek_2nd(&p->tk);
-            if (!t2) return PE_TK_ERROR;
-            if (t2->type == TT_PAREN_CLOSE) {
-                tk_void_n(&p->tk, 2);
-            }
-            else {
-                // TODO error
-                return PE_HANDLED;
-            }
+        t = tk_peek(&p->tk);
+        if (!t) {
+            list_builder_drop_list(&p->list_builder, mi->selected_symbols);
+            return PE_TK_ERROR;
         }
+        if (t->type == TT_PAREN_CLOSE) break;
     }
     tk_void(&p->tk);
     mi->selected_symbols = (symbol_import*)list_builder_pop_block_list_zt(
@@ -2310,11 +2333,20 @@ parse_braced_imports(parser* p, stmt_import* stmt, module_import* mi)
     mi->nested_imports =
         (module_import*)list_builder_start_blocklist(&p->list_builder);
     parse_error pe;
-    token* t;
+    token* t = tk_aquire(&p->tk);
+    if (!t) return PE_TK_ERROR;
+    ureg start = t->start;
     tk_void(&p->tk);
-    PEEK(p, t);
+    t = tk_peek(&p->tk);
+    if (!t) {
+        list_builder_drop_list(&p->list_builder, mi->nested_imports);
+        return PE_TK_ERROR;
+    }
     if (t->type == TT_BRACE_CLOSE) {
-        // TODO error
+        parser_error_1a(
+            p, "empty braced import list not allowed", start, t->end,
+            "at least one item required");
+        list_builder_drop_list(&p->list_builder, mi->nested_imports);
         return PE_HANDLED;
     }
     while (true) {
@@ -2322,25 +2354,26 @@ parse_braced_imports(parser* p, stmt_import* stmt, module_import* mi)
         pe = parse_single_import(p, mi->tgt, stmt, &m);
         if (pe) return pe;
         list_builder_add_block(&p->list_builder, &m, sizeof(m));
-        PEEK(p, t);
+        t = tk_peek(&p->tk);
+        if (!t) {
+            list_builder_drop_list(&p->list_builder, mi->nested_imports);
+            return PE_TK_ERROR;
+        }
         if (t->type == TT_BRACE_CLOSE) break;
         if (t->type != TT_COMMA) {
-            // TODO error
+            parser_error_1a(
+                p, "unexpected token in braced import list", start, t->end,
+                "expected ',' or '}'");
+            list_builder_drop_list(&p->list_builder, mi->nested_imports);
             return PE_HANDLED;
         }
         tk_void(&p->tk);
-        PEEK(p, t);
-        if (t->type == TT_COMMA) {
-            token* t2 = tk_peek_2nd(&p->tk);
-            if (!t2) return PE_TK_ERROR;
-            if (t2->type == TT_BRACE_CLOSE) {
-                tk_void_n(&p->tk, 2);
-            }
-            else {
-                // TODO error
-                return PE_HANDLED;
-            }
+        t = tk_peek(&p->tk);
+        if (!t) {
+            list_builder_drop_list(&p->list_builder, mi->nested_imports);
+            return PE_TK_ERROR;
         }
+        if (t->type == TT_BRACE_CLOSE) break;
     }
     mi->nested_imports = (module_import*)list_builder_pop_block_list_zt(
         &p->list_builder, mi->nested_imports, &p->tk.tc->permmem);
@@ -2380,7 +2413,9 @@ parse_error parse_single_import(
     while (true) {
         if (t->type == TT_BRACE_OPEN) {
             if (mi->name != NULL) {
-                // TODO: error
+                parser_error_1a(
+                    p, "invalid import syntax", start, t->end,
+                    "named import can't be braced import");
                 return PE_HANDLED;
             }
             return parse_braced_imports(p, stmt, mi);
