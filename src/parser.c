@@ -25,70 +25,70 @@ parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
 parse_error parse_brace_delimited_body(parser* p, body* b);
 
 static const unsigned char op_precedence[] = {
-        [OP_POST_INCREMENT] = 15,
-        [OP_POST_DECREMENT] = 15,
-        [OP_CALL] = 15,
-        [OP_ACCESS] = 15,
-        [OP_MEMBER_ACCESS] = 15,
+    [OP_POST_INCREMENT] = 15,
+    [OP_POST_DECREMENT] = 15,
+    [OP_CALL] = 15,
+    [OP_ACCESS] = 15,
+    [OP_MEMBER_ACCESS] = 15,
 
-        [OP_PRE_INCREMENT] = 14,
-        [OP_PRE_DECREMENT] = 14,
-        [OP_UNARY_PLUS] = 14,
-        [OP_UNARY_MINUS] = 14,
-        [OP_NOT] = 14,
-        [OP_BITWISE_NOT] = 14,
-        [OP_DEREF] = 14,
-        [OP_POINTER_OF] = 14,
-        [OP_REF_OF] = 14,
-        [OP_RREF_OF] = 14,
-        [OP_CLOSURE_BY_VALUE] = 14,
-        [OP_CONST] = 14,
-        [OP_PP] = 14,
+    [OP_PRE_INCREMENT] = 14,
+    [OP_PRE_DECREMENT] = 14,
+    [OP_UNARY_PLUS] = 14,
+    [OP_UNARY_MINUS] = 14,
+    [OP_NOT] = 14,
+    [OP_BITWISE_NOT] = 14,
+    [OP_DEREF] = 14,
+    [OP_POINTER_OF] = 14,
+    [OP_REF_OF] = 14,
+    [OP_RREF_OF] = 14,
+    [OP_CLOSURE_BY_VALUE] = 14,
+    [OP_CONST] = 14,
+    [OP_PP] = 14,
 
-        [OP_BITWISE_AND] = 13,
+    [OP_BITWISE_AND] = 13,
 
-        [OP_BITWISE_XOR] = 12,
+    [OP_BITWISE_XOR] = 12,
 
-        [OP_BITWISE_OR] = 11,
+    [OP_BITWISE_OR] = 11,
 
-        [OP_MUL] = 10,
-        [OP_DIV] = 10,
-        [OP_MOD] = 10,
+    [OP_MUL] = 10,
+    [OP_DIV] = 10,
+    [OP_MOD] = 10,
 
-        [OP_ADD] = 9,
-        [OP_SUB] = 9,
+    [OP_ADD] = 9,
+    [OP_SUB] = 9,
 
-        [OP_LSHIFT] = 8,
-        [OP_RSHIFT] = 8,
+    [OP_LSHIFT] = 8,
+    [OP_RSHIFT] = 8,
 
-        [OP_CAST] = 7,
+    [OP_CAST] = 7,
 
-        [OP_LESS_THAN] = 6,
-        [OP_LESS_THAN_OR_EQUAL] = 6,
-        [OP_GREATER_THAN] = 6,
-        [OP_GREATER_THAN_OR_EQUAL] = 6,
+    [OP_LESS_THAN] = 6,
+    [OP_LESS_THAN_OR_EQUAL] = 6,
+    [OP_GREATER_THAN] = 6,
+    [OP_GREATER_THAN_OR_EQUAL] = 6,
 
-        [OP_EQUAL] = 5,
-        [OP_UNEQAL] = 5,
+    [OP_EQUAL] = 5,
+    [OP_UNEQAL] = 5,
 
-        [OP_AND] = 4,
+    [OP_AND] = 4,
 
-        [OP_XOR] = 3,
+    [OP_XOR] = 3,
 
-        [OP_OR] = 2,
+    [OP_OR] = 2,
 
-        [OP_ASSIGN] = 1,
-        [OP_ADD_ASSIGN] = 1,
-        [OP_SUB_ASSIGN] = 1,
-        [OP_MUL_ASSIGN] = 1,
-        [OP_DIV_ASSIGN] = 1,
-        [OP_MOD_ASSIGN] = 1,
-        [OP_LSHIFT_ASSIGN] = 1,
-        [OP_RSHIFT_ASSIGN] = 1,
-        [OP_BITWISE_AND_ASSIGN] = 1,
-        [OP_BITWISE_XOR_ASSIGN] = 1,
-        [OP_BITWISE_OR_ASSIGN] = 1,
-        [OP_BITWISE_NOT_ASSIGN] = 1,
+    [OP_ASSIGN] = 1,
+    [OP_ADD_ASSIGN] = 1,
+    [OP_SUB_ASSIGN] = 1,
+    [OP_MUL_ASSIGN] = 1,
+    [OP_DIV_ASSIGN] = 1,
+    [OP_MOD_ASSIGN] = 1,
+    [OP_LSHIFT_ASSIGN] = 1,
+    [OP_RSHIFT_ASSIGN] = 1,
+    [OP_BITWISE_AND_ASSIGN] = 1,
+    [OP_BITWISE_XOR_ASSIGN] = 1,
+    [OP_BITWISE_OR_ASSIGN] = 1,
+    [OP_BITWISE_NOT_ASSIGN] = 1,
 };
 
 #define PREC_BASELINE 0
@@ -397,7 +397,7 @@ static inline parse_error
 expr_fill_srange(parser* p, expr* ex, ureg start, ureg end)
 {
     ex->srange = src_range_pack_lines(p->tk.tc, start, end);
-    if (ex->srange == SRC_RANGE_INVALID) return PE_INSANE;
+    if (ex->srange == SRC_RANGE_INVALID) return PE_FATAL;
     return PE_OK;
 }
 
@@ -405,7 +405,7 @@ static inline parse_error
 stmt_fill_srange(parser* p, stmt* s, ureg start, ureg end)
 {
     s->srange = src_range_pack_lines(p->tk.tc, start, end);
-    if (s->srange == SRC_RANGE_INVALID) return PE_INSANE;
+    if (s->srange == SRC_RANGE_INVALID) return PE_FATAL;
     return PE_OK;
 }
 static inline expr* parse_str_value(parser* p, token* t)
@@ -429,10 +429,10 @@ static inline expr* parse_str_value(parser* p, token* t)
 parse_error expr_to_stmt(parser* p, stmt** tgt, expr* e, ureg start, ureg end)
 {
     stmt_expr* s = alloc_perm(p, sizeof(stmt_expr));
-    if (!s) return PE_INSANE;
+    if (!s) return PE_FATAL;
     s->stmt.type = STMT_EXPRESSION;
     s->expr = e;
-    if (stmt_fill_srange(p, (stmt*)s, start, end)) return PE_INSANE;
+    if (stmt_fill_srange(p, (stmt*)s, start, end)) return PE_FATAL;
     *tgt = &s->stmt;
     return PE_OK;
 }
@@ -449,9 +449,9 @@ parse_error parse_param_decl(
         return PE_UNEXPECTED_TOKEN;
     }
     sym_param* d = alloc_perm(p, sizeof(sym_param));
-    if (!d) return PE_INSANE;
+    if (!d) return PE_FATAL;
     d->symbol.name = alloc_string_perm(p, t->str);
-    if (!d->symbol.name) return PE_INSANE;
+    if (!d->symbol.name) return PE_FATAL;
     d->symbol.stmt.type = SYM_PARAM;
     // TODO: flags parsing
     d->symbol.stmt.flags = STMT_FLAGS_DEFAULT;
@@ -524,7 +524,7 @@ parse_error parse_expr_node_list(
         }
         else {
             *tgt = alloc_perm(p, sizeof(expr*) * 2);
-            if (!*tgt) return PE_INSANE;
+            if (!*tgt) return PE_FATAL;
             **tgt = prefetch;
             *(*tgt + 1) = NULL;
             return PE_OK;
@@ -539,14 +539,14 @@ parse_error parse_expr_node_list(
             PEEK(p, t);
             char* msg = error_log_cat_strings_3(
                 &p->tk.tc->error_log, "invalid ", type, " syntax");
-            if (!msg) return PE_INSANE;
+            if (!msg) return PE_FATAL;
             parser_error_1a(
                 p, msg, t->start, t->end, "expected expression after ','");
             return PE_HANDLED;
         }
         if (pe != PE_OK) return pe;
         int r = list_builder_add(&p->list_builder, (void*)ex);
-        if (r) return PE_INSANE;
+        if (r) return PE_FATAL;
         PEEK(p, t);
         if (t->type == TT_COMMA) {
             tk_void(&p->tk);
@@ -560,7 +560,7 @@ parse_error parse_expr_node_list(
     }
     *tgt = (expr**)list_builder_pop_list_zt(
         &p->list_builder, list_start, &p->tk.tc->permmem);
-    if (!*tgt) return PE_INSANE;
+    if (!*tgt) return PE_FATAL;
     return PE_OK;
 }
 static inline parse_error parse_array(parser* p, token* t, expr** ex)
@@ -569,7 +569,7 @@ static inline parse_error parse_array(parser* p, token* t, expr** ex)
     ureg t_end = t->end;
     tk_void(&p->tk);
     expr_array* arr = alloc_perm(p, sizeof(expr_array));
-    if (!arr) return PE_INSANE;
+    if (!arr) return PE_FATAL;
     arr->expr.type = EXPR_ARRAY;
     parse_error pe = parse_expr_node_list(
         p, NULL, &arr->elements, "array", TT_BRACKET_CLOSE);
@@ -584,7 +584,7 @@ static inline parse_error parse_array(parser* p, token* t, expr** ex)
     }
     if (pe != PE_OK) return pe;
     PEEK(p, t);
-    if (expr_fill_srange(p, &arr->expr, t_start, t->end)) return PE_INSANE;
+    if (expr_fill_srange(p, &arr->expr, t_start, t->end)) return PE_FATAL;
     tk_void(&p->tk);
     *ex = (expr*)arr;
     return PE_OK;
@@ -629,8 +629,8 @@ parse_tuple_after_first_comma(parser* p, ureg t_start, ureg t_end, expr** ex)
     }
     tp->elements = (expr**)list_builder_pop_list_zt(
         &p->list_builder, list, &p->tk.tc->permmem);
-    if (!tp->elements) return PE_INSANE;
-    if (expr_fill_srange(p, (expr*)tp, t_start, t->end)) return PE_INSANE;
+    if (!tp->elements) return PE_FATAL;
+    if (expr_fill_srange(p, (expr*)tp, t_start, t->end)) return PE_FATAL;
     tk_void(&p->tk);
     *ex = (expr*)tp;
     return PE_OK;
@@ -650,10 +650,10 @@ build_expr_parentheses(parser* p, ureg t_start, ureg t_end, expr** ex)
     tk_void(&p->tk);
     expr_parentheses* pr =
         (expr_parentheses*)alloc_perm(p, sizeof(expr_parentheses));
-    if (!pr) return PE_INSANE;
+    if (!pr) return PE_FATAL;
     pr->expr.type = EXPR_OP_PARENTHESES;
     pr->child = *ex;
-    if (expr_fill_srange(p, &pr->expr, t_start, t->end)) return PE_INSANE;
+    if (expr_fill_srange(p, &pr->expr, t_start, t->end)) return PE_FATAL;
     *ex = (expr*)pr;
     return PE_OK;
 }
@@ -661,9 +661,9 @@ static inline parse_error
 build_empty_tuple(parser* p, ureg t_start, ureg t_end, expr** ex)
 {
     expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
-    if (!tp) return PE_INSANE;
+    if (!tp) return PE_FATAL;
     tp->expr.type = EXPR_TUPLE;
-    if (expr_fill_srange(p, (expr*)tp, t_start, t_end)) return PE_INSANE;
+    if (expr_fill_srange(p, (expr*)tp, t_start, t_end)) return PE_FATAL;
     tp->elements = NULL;
     *ex = (expr*)tp;
     return PE_OK;
@@ -675,7 +675,7 @@ static inline parse_error require_default_flags(
     char* loc_msg = error_log_cat_strings_2(
         &p->tk.tc->error_log, token_strings[t->type],
         " does not accept any modifiers");
-    if (!loc_msg) return PE_INSANE;
+    if (!loc_msg) return PE_FATAL;
     parser_error_2a(
         p, loc_msg, start, end, "invalid modifier(s)", t->start, t->end,
         "before this statement");
@@ -724,8 +724,8 @@ parse_uninitialized_var_in_tuple(parser* p, token* t, expr** ex)
     v->symbol.stmt.flags = STMT_FLAGS_DEFAULT;
     stmt_flags_set_compound_decl(&v->symbol.stmt.flags);
     v->symbol.name = alloc_string_perm(p, t->str);
-    if (!v->symbol.name) return PE_INSANE;
-    if (stmt_fill_srange(p, (stmt*)v, t->start, t->end)) return PE_INSANE;
+    if (!v->symbol.name) return PE_FATAL;
+    if (stmt_fill_srange(p, (stmt*)v, t->start, t->end)) return PE_FATAL;
     tk_void_n(&p->tk, 2);
     PEEK(p, t);
     if (t->type == TT_COMMA || t->type == TT_PAREN_CLOSE) {
@@ -760,8 +760,8 @@ build_ident_node_in_tuple(parser* p, token* t, expr** ex)
     v->symbol.stmt.eflags = ERR_FLAGS_DEFAULT;
     v->symbol.stmt.flags = STMT_FLAGS_DEFAULT;
     v->symbol.name = alloc_string_perm(p, t->str);
-    if (!v->symbol.name) return PE_INSANE;
-    if (stmt_fill_srange(p, (stmt*)v, t->start, t->end)) return PE_INSANE;
+    if (!v->symbol.name) return PE_FATAL;
+    if (stmt_fill_srange(p, (stmt*)v, t->start, t->end)) return PE_FATAL;
     v->type = NULL;
     *ex = (expr*)tin;
     tk_void(&p->tk);
@@ -807,8 +807,9 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             PEEK(p, t);
             parser_error_2a(
                 p, "unexpected token after opening parenthesis", t->start,
-                t->end, "expected an expression, a declaration or a closing "
-                        "parenthesis",
+                t->end,
+                "expected an expression, a declaration or a closing "
+                "parenthesis",
                 t_start, t_end, "opening parenthesis here");
             return PE_HANDLED;
         }
@@ -816,7 +817,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         PEEK(p, t);
         if (t->type == TT_COMMA) {
             element_list = list_builder_start(&p->list_builder);
-            if (list_builder_add(&p->list_builder, *ex)) return PE_INSANE;
+            if (list_builder_add(&p->list_builder, *ex)) return PE_FATAL;
         }
         else {
             return build_expr_parentheses(p, t_start, t_end, ex);
@@ -847,7 +848,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             t = t2;
         }
         element_list = list_builder_start(&p->list_builder);
-        if (list_builder_add(&p->list_builder, *ex)) return PE_INSANE;
+        if (list_builder_add(&p->list_builder, *ex)) return PE_FATAL;
     }
     while (true) {
         if (t->type == TT_COMMA) {
@@ -865,17 +866,17 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             tk_void(&p->tk);
             expr** res_elem_list = (expr**)list_builder_pop_list_zt(
                 &p->list_builder, element_list, &p->tk.tc->permmem);
-            if (!res_elem_list) return PE_INSANE;
+            if (!res_elem_list) return PE_FATAL;
             if (elem_list) {
                 *elem_list = res_elem_list;
                 *list_end = t->end;
             }
             else {
                 expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
-                if (!tp) return PE_INSANE;
+                if (!tp) return PE_FATAL;
                 tp->expr.type = EXPR_TUPLE;
                 if (expr_fill_srange(p, (expr*)tp, t_start, t->end))
-                    return PE_INSANE;
+                    return PE_FATAL;
                 tp->elements = res_elem_list;
                 *ex = (expr*)tp;
             }
@@ -916,7 +917,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             }
             if (pe) return pe;
         }
-        if (list_builder_add(&p->list_builder, *ex)) return PE_INSANE;
+        if (list_builder_add(&p->list_builder, *ex)) return PE_FATAL;
         PEEK(p, t);
     }
 }
@@ -925,8 +926,8 @@ parse_prefix_unary_op(parser* p, ast_node_type op, expr** ex)
 {
     token* t = tk_aquire(&p->tk);
     expr_op_unary* ou = (expr_op_unary*)alloc_perm(p, sizeof(expr_op_unary));
-    if (!ou) return PE_INSANE;
-    if (expr_fill_srange(p, &ou->expr, t->start, t->end)) return PE_INSANE;
+    if (!ou) return PE_FATAL;
+    if (expr_fill_srange(p, &ou->expr, t->start, t->end)) return PE_FATAL;
     tk_void(&p->tk);
     ou->expr.type = EXPR_OP_UNARY;
     ou->expr.op_type = op;
@@ -959,7 +960,7 @@ parse_error parse_continue_stmt(
     const char* target;
     if (t->type == TT_STRING) {
         target = alloc_string_perm(p, t->str);
-        if (!target) return PE_INSANE;
+        if (!target) return PE_FATAL;
     }
     else if (is_kw_valid_label(t->type)) {
         target = token_strings[t->type];
@@ -972,10 +973,10 @@ parse_error parse_continue_stmt(
         tk_void(&p->tk);
     }
     stmt_continue* c = alloc_perm(p, sizeof(stmt_continue));
-    if (!c) return PE_INSANE;
+    if (!c) return PE_FATAL;
     stmt_init((stmt*)c, STMT_BREAK);
     c->target.name = target;
-    if (stmt_fill_srange(p, (stmt*)c, start, end)) return PE_INSANE;
+    if (stmt_fill_srange(p, (stmt*)c, start, end)) return PE_FATAL;
     *tgt = (stmt*)c;
     return PE_OK;
 }
@@ -988,12 +989,12 @@ parse_error parse_return_stmt(
     ureg end = t->end;
     tk_void(&p->tk);
     stmt_return* r = alloc_perm(p, sizeof(stmt_return));
-    if (!r) return PE_INSANE;
+    if (!r) return PE_FATAL;
     r->stmt.type = STMT_RETURN;
     PEEK(p, t);
     if (t->type == TT_SEMICOLON) {
         r->value = NULL;
-        if (stmt_fill_srange(p, (stmt*)r, start, t->end)) return PE_INSANE;
+        if (stmt_fill_srange(p, (stmt*)r, start, t->end)) return PE_FATAL;
     }
     else {
         parse_error pe = parse_expression(p, &r->value);
@@ -1008,9 +1009,9 @@ parse_error parse_return_stmt(
         if (pe) return pe;
         if (stmt_fill_srange(
                 p, (stmt*)r, start, src_range_get_end(r->value->srange)))
-            return PE_INSANE;
+            return PE_FATAL;
     }
-    if (r->stmt.srange == SRC_RANGE_INVALID) return PE_INSANE;
+    if (r->stmt.srange == SRC_RANGE_INVALID) return PE_FATAL;
     *tgt = (stmt*)r;
     return PE_OK;
 }
@@ -1031,9 +1032,9 @@ parse_error parse_goto_stmt(
     stmt_goto* g = alloc_perm(p, sizeof(stmt_goto));
     g->stmt.type = STMT_GOTO;
     g->target.name = alloc_string_temp(p, t->str);
-    if (!g->target.name) return PE_INSANE;
+    if (!g->target.name) return PE_FATAL;
     tk_void(&p->tk);
-    if (stmt_fill_srange(p, (stmt*)g, start, t->end)) return PE_INSANE;
+    if (stmt_fill_srange(p, (stmt*)g, start, t->end)) return PE_FATAL;
     *tgt = (stmt*)g;
     return PE_OK;
 }
@@ -1046,7 +1047,7 @@ parse_error parse_give_stmt(
     ureg end = t1->end;
     tk_void(&p->tk);
     stmt_give* g = alloc_perm(p, sizeof(stmt_give));
-    if (!g) return PE_INSANE;
+    if (!g) return PE_FATAL;
     g->stmt.type = STMT_GIVE;
     g->target.name = NULL;
     pe = parse_expression(p, &g->value);
@@ -1059,7 +1060,7 @@ parse_error parse_give_stmt(
     if (pe) return pe;
     if (stmt_fill_srange(
             p, (stmt*)g, start, src_range_get_end(g->value->srange)))
-        return PE_INSANE;
+        return PE_FATAL;
     *tgt = (stmt*)g;
     return PE_OK;
 }
@@ -1075,7 +1076,7 @@ parse_error parse_break_stmt(
     const char* target;
     if (t->type == TT_STRING) {
         target = alloc_string_perm(p, t->str);
-        if (!target) return PE_INSANE;
+        if (!target) return PE_FATAL;
     }
     else if (is_kw_valid_label(t->type)) {
         target = token_strings[t->type];
@@ -1096,10 +1097,10 @@ parse_error parse_break_stmt(
         }
     }
     stmt_break* g = alloc_perm(p, sizeof(stmt_give));
-    if (!g) return PE_INSANE;
+    if (!g) return PE_FATAL;
     g->stmt.type = STMT_BREAK;
     g->target.name = target;
-    if (stmt_fill_srange(p, (stmt*)g, start, end)) return PE_INSANE;
+    if (stmt_fill_srange(p, (stmt*)g, start, end)) return PE_FATAL;
     *tgt = (stmt*)g;
     return PE_OK;
 }
@@ -1115,8 +1116,8 @@ parse_error parse_loop(parser* p, expr** tgt, ureg start, char* label)
     token* t = tk_aquire(&p->tk);
     tk_void(&p->tk);
     expr_loop* l = alloc_perm(p, sizeof(expr_loop));
-    if (!l) return PE_INSANE;
-    if (expr_fill_srange(p, (expr*)l, start, t->end)) return PE_INSANE;
+    if (!l) return PE_FATAL;
+    if (expr_fill_srange(p, (expr*)l, start, t->end)) return PE_FATAL;
     l->expr_named.name = label;
     l->expr_named.expr.type = EXPR_LOOP;
     *tgt = (expr*)l;
@@ -1153,7 +1154,7 @@ parse_error parse_match(parser* p, expr** tgt, ureg start, char* label)
         if (t->type == TT_BRACE_CLOSE) {
             em->match_arms = (match_arm**)list_builder_pop_list_zt(
                 &p->list_builder, list, &p->tk.tc->permmem);
-            if (!em->match_arms) return PE_INSANE;
+            if (!em->match_arms) return PE_FATAL;
             *tgt = (expr*)em;
             tk_void(&p->tk);
             em->body_end = t->end;
@@ -1161,7 +1162,7 @@ parse_error parse_match(parser* p, expr** tgt, ureg start, char* label)
         }
         else {
             match_arm* ma = alloc_perm(p, sizeof(match_arm));
-            if (!ma) return PE_INSANE;
+            if (!ma) return PE_FATAL;
             pe = parse_expression(p, &ma->condition);
             if (pe == PE_EOEX) {
                 parser_error_1a(
@@ -1235,7 +1236,7 @@ parse_error parse_do(parser* p, expr** tgt, ureg start, char* label)
         expr_do_while* edw = alloc_perm(p, sizeof(expr_do_while));
         edw->expr_named.name = label;
         edw->expr_named.expr.type = EXPR_DO_WHILE;
-        if (expr_fill_srange(p, (expr*)edw, start, end)) return PE_INSANE;
+        if (expr_fill_srange(p, (expr*)edw, start, end)) return PE_FATAL;
         *tgt = (expr*)edw;
         edw->do_body = b;
         pe = parse_expression(p, &edw->condition);
@@ -1297,7 +1298,7 @@ parse_error parse_while(parser* p, expr** tgt, ureg start, char* label)
     ureg end = t->end;
     tk_void(&p->tk);
     expr_while* w = alloc_perm(p, sizeof(expr_while));
-    if (!w) return PE_INSANE;
+    if (!w) return PE_FATAL;
     parse_error pe = parse_expression(p, &w->condition);
     if (pe == PE_EOEX) {
         PEEK(p, t);
@@ -1308,7 +1309,7 @@ parse_error parse_while(parser* p, expr** tgt, ureg start, char* label)
         return PE_HANDLED;
     }
     if (pe) return pe;
-    if (expr_fill_srange(p, (expr*)w, start, end)) return PE_INSANE;
+    if (expr_fill_srange(p, (expr*)w, start, end)) return PE_FATAL;
     w->expr_named.name = label;
     w->expr_named.expr.type = EXPR_WHILE;
     *tgt = (expr*)w;
@@ -1331,7 +1332,7 @@ parse_error parse_if(parser* p, expr** tgt)
     ureg end = t->end;
     tk_void(&p->tk);
     expr_if* i = alloc_perm(p, sizeof(expr_if));
-    if (!i) return PE_INSANE;
+    if (!i) return PE_FATAL;
     parse_error pe = parse_expression(p, &i->condition);
     if (pe == PE_EOEX) {
         PEEK(p, t);
@@ -1342,7 +1343,7 @@ parse_error parse_if(parser* p, expr** tgt)
         return PE_HANDLED;
     }
     if (pe) return pe;
-    if (expr_fill_srange(p, (expr*)i, start, end)) return PE_INSANE;
+    if (expr_fill_srange(p, (expr*)i, start, end)) return PE_FATAL;
     i->expr.type = EXPR_IF;
     *tgt = (expr*)i;
     pe = parse_body(p, &i->if_body);
@@ -1400,7 +1401,7 @@ static inline parse_error parse_labeled_value_expr(
             }
             tk_void_n(&p->tk, 2);
             char* label = alloc_string_perm(p, t2->str);
-            if (!label) return PE_INSANE;
+            if (!label) return PE_FATAL;
             return parse_labeled_value_expr(p, ex, t->start, t2->end, label);
         }
         case TT_KW_FOR: {
@@ -1424,7 +1425,7 @@ static inline parse_error parse_labeled_value_expr(
         case TT_LITERAL:
         case TT_BINARY_LITERAL: {
             *ex = parse_str_value(p, t);
-            if (!*ex) return PE_INSANE;
+            if (!*ex) return PE_FATAL;
             tk_void(&p->tk);
             return PE_OK;
         } break;
@@ -1443,7 +1444,7 @@ static inline parse_error parse_call(parser* p, expr** ex, expr* lhs)
     ureg t_start = t->start;
     tk_void(&p->tk);
     expr_call* call = alloc_perm(p, sizeof(expr_call));
-    if (!call) return PE_INSANE;
+    if (!call) return PE_FATAL;
     parse_error pe =
         parse_expr_node_list(p, NULL, &call->args, "call", TT_PAREN_CLOSE);
     // EMSG: suboptimal e.g. for case {,,}
@@ -1457,7 +1458,7 @@ static inline parse_error parse_call(parser* p, expr** ex, expr* lhs)
     }
     if (pe != PE_OK) return pe;
     PEEK(p, t);
-    if (expr_fill_srange(p, &call->expr, t_start, t->end)) return PE_INSANE;
+    if (expr_fill_srange(p, &call->expr, t_start, t->end)) return PE_FATAL;
     tk_void(&p->tk);
     call->expr.type = EXPR_OP_CALL;
     call->expr.op_type = OP_CALL;
@@ -1471,7 +1472,7 @@ static inline parse_error parse_access(parser* p, expr** ex, expr* lhs)
     ureg t_start = t->start;
     tk_void(&p->tk);
     expr_access* acc = alloc_perm(p, sizeof(expr_access));
-    if (!acc) return PE_INSANE;
+    if (!acc) return PE_FATAL;
     parse_error pe = parse_expr_node_list(
         p, NULL, &acc->args, "access operator", TT_BRACKET_CLOSE);
     // EMSG: suboptimal e.g. for case {,,}
@@ -1485,7 +1486,7 @@ static inline parse_error parse_access(parser* p, expr** ex, expr* lhs)
     }
     if (pe != PE_OK) return pe;
     PEEK(p, t);
-    if (expr_fill_srange(p, &acc->expr, t_start, t->end)) return PE_INSANE;
+    if (expr_fill_srange(p, &acc->expr, t_start, t->end)) return PE_FATAL;
     tk_void(&p->tk);
     acc->expr.type = EXPR_OP_ACCESS;
     acc->expr.op_type = OP_ACCESS;
@@ -1507,11 +1508,11 @@ parse_postfix_unary_op(parser* p, op_type op, expr** ex, expr* lhs)
         tk_void(&p->tk);
         expr_op_unary* ou =
             (expr_op_unary*)alloc_perm(p, sizeof(expr_op_unary));
-        if (!ou) return PE_INSANE;
+        if (!ou) return PE_FATAL;
         ou->expr.type = EXPR_OP_UNARY;
         ou->expr.op_type = op;
         ou->child = lhs;
-        if (expr_fill_srange(p, &ou->expr, t->start, t->end)) return PE_INSANE;
+        if (expr_fill_srange(p, &ou->expr, t->start, t->end)) return PE_FATAL;
         *ex = (expr*)ou;
         return PE_OK;
     }
@@ -1522,8 +1523,8 @@ parse_binary_op(parser* p, op_type op, expr** ex, expr* lhs)
     token* t = tk_aquire(&p->tk);
     tk_void(&p->tk);
     expr_op_binary* ob = (expr_op_binary*)alloc_perm(p, sizeof(expr_op_binary));
-    if (!ob) return PE_INSANE;
-    if (expr_fill_srange(p, &ob->expr, t->start, t->end)) return PE_INSANE;
+    if (!ob) return PE_FATAL;
+    if (expr_fill_srange(p, &ob->expr, t->start, t->end)) return PE_FATAL;
     ob->expr.type = EXPR_OP_BINARY;
     ob->expr.op_type = op;
     parse_error pe = parse_expression_of_prec(
@@ -1614,7 +1615,7 @@ parse_error handle_semicolon_after_statement(parser* p, stmt* s)
     }
     else {
         src_range_set_end(p->tk.tc, &s->srange, t->end);
-        if (s->srange == SRC_RANGE_INVALID) return PE_INSANE;
+        if (s->srange == SRC_RANGE_INVALID) return PE_FATAL;
         tk_void(&p->tk);
     }
     return PE_OK;
@@ -1692,7 +1693,7 @@ static inline parse_error stmt_flags_from_kw_set_access_mod(
             msgstrs[3] = access_modifier_string(old_am);
             msgstrs[4] = "'";
             char* msg = error_log_cat_strings(&p->tk.tc->error_log, 4, msgstrs);
-            if (!msg) return PE_INSANE;
+            if (!msg) return PE_FATAL;
             error_log_report_annotated(
                 &p->tk.tc->error_log, ES_PARSER, false,
                 "conflicting access modifiers specified", p->tk.file, start,
@@ -1713,9 +1714,9 @@ parse_error parse_var_decl(
     tk_void(&p->tk);
     parse_error pe;
     sym_var* vd = alloc_perm(p, sizeof(sym_var));
-    if (!vd) return PE_INSANE;
+    if (!vd) return PE_FATAL;
     vd->symbol.name = alloc_string_perm(p, ident);
-    if (!vd->symbol.name) return PE_INSANE;
+    if (!vd->symbol.name) return PE_FATAL;
     vd->symbol.stmt.type = SYM_VAR;
     vd->symbol.stmt.flags = flags;
     PEEK(p, t);
@@ -1822,7 +1823,7 @@ parse_error parse_func_decl(
     }
     ureg decl_end = t->end;
     char* name = alloc_string_perm(p, t->str);
-    if (!name) return PE_INSANE;
+    if (!name) return PE_FATAL;
     tk_void(&p->tk);
     PEEK(p, t);
     scope* sc;
@@ -1830,7 +1831,7 @@ parse_error parse_func_decl(
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
         sc = alloc_perm(p, sizeof(sc_func_generic));
-        if (!sc) return PE_INSANE;
+        if (!sc) return PE_FATAL;
         tk_void(&p->tk);
         pe = parse_param_list(
             p, &((sc_func_generic*)sc)->generic_params, true, start, decl_end,
@@ -1841,7 +1842,7 @@ parse_error parse_func_decl(
     else {
         generic = false;
         sc = alloc_perm(p, sizeof(sc_func));
-        if (!sc) return PE_INSANE;
+        if (!sc) return PE_FATAL;
     }
     sc->symbol.name = name;
     sc->parent = p->curr_scope;
@@ -1881,7 +1882,7 @@ parse_error parse_struct_decl(
     }
     ureg decl_end = t->end;
     char* name = alloc_string_perm(p, t->str);
-    if (!name) return PE_INSANE;
+    if (!name) return PE_FATAL;
     tk_void(&p->tk);
     PEEK(p, t);
     scope* st;
@@ -1889,7 +1890,7 @@ parse_error parse_struct_decl(
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
         st = alloc_perm(p, sizeof(sc_struct_generic));
-        if (!st) return PE_INSANE;
+        if (!st) return PE_FATAL;
         tk_void(&p->tk);
         pe = parse_param_list(
             p, &((sc_struct_generic*)st)->generic_params, true, start, decl_end,
@@ -1900,7 +1901,7 @@ parse_error parse_struct_decl(
     else {
         generic = false;
         st = alloc_perm(p, sizeof(sc_struct));
-        if (!st) return PE_INSANE;
+        if (!st) return PE_FATAL;
     }
     st->symbol.name = name;
     pe = stmt_fill_srange(p, (stmt*)st, start, decl_end);
@@ -1926,7 +1927,7 @@ parse_error parse_module_decl(
     }
     ureg decl_end = t->end;
     char* name = alloc_string_perm(p, t->str);
-    if (!name) return PE_INSANE;
+    if (!name) return PE_FATAL;
     tk_void(&p->tk);
     PEEK(p, t);
     open_scope* md;
@@ -1934,7 +1935,7 @@ parse_error parse_module_decl(
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
         md = alloc_perm(p, sizeof(osc_module_generic));
-        if (!md) return PE_INSANE;
+        if (!md) return PE_FATAL;
         tk_void(&p->tk);
         pe = parse_param_list(
             p, &((osc_module_generic*)md)->generic_params, true, start,
@@ -1945,7 +1946,7 @@ parse_error parse_module_decl(
     else {
         generic = false;
         md = alloc_perm(p, sizeof(osc_module));
-        if (!md) return PE_INSANE;
+        if (!md) return PE_FATAL;
     }
     md->scope.symbol.name = name;
     pe = stmt_fill_srange(p, (stmt*)md, start, decl_end);
@@ -1971,7 +1972,7 @@ parse_error parse_extend_decl(
     }
     ureg decl_end = t->end;
     char* name = alloc_string_perm(p, t->str);
-    if (!name) return PE_INSANE;
+    if (!name) return PE_FATAL;
     tk_void(&p->tk);
     PEEK(p, t);
     scope* sc;
@@ -1979,7 +1980,7 @@ parse_error parse_extend_decl(
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
         sc = alloc_perm(p, sizeof(osc_extend_generic));
-        if (!sc) return PE_INSANE;
+        if (!sc) return PE_FATAL;
         tk_void(&p->tk);
         pe = parse_param_list(
             p, &((osc_extend_generic*)sc)->generic_params, true, start,
@@ -1990,7 +1991,7 @@ parse_error parse_extend_decl(
     else {
         generic = false;
         sc = alloc_perm(p, sizeof(osc_extend));
-        if (!sc) return PE_INSANE;
+        if (!sc) return PE_FATAL;
     }
     sc->symbol.name = name;
     pe = stmt_fill_srange(p, (stmt*)sc, start, decl_end);
@@ -2038,7 +2039,7 @@ parse_error parse_trait_decl(
     }
     ureg decl_end = t->end;
     char* name = alloc_string_perm(p, t->str);
-    if (!name) return PE_INSANE;
+    if (!name) return PE_FATAL;
     tk_void(&p->tk);
     PEEK(p, t);
     scope* tr;
@@ -2046,7 +2047,7 @@ parse_error parse_trait_decl(
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
         tr = alloc_perm(p, sizeof(sc_trait_generic));
-        if (!tr) return PE_INSANE;
+        if (!tr) return PE_FATAL;
         tk_void(&p->tk);
         pe = parse_param_list(
             p, &((sc_trait_generic*)tr)->generic_params, true, start, decl_end,
@@ -2057,7 +2058,7 @@ parse_error parse_trait_decl(
     else {
         generic = false;
         tr = alloc_perm(p, sizeof(sc_trait));
-        if (!tr) return PE_INSANE;
+        if (!tr) return PE_FATAL;
     }
     tr->symbol.name = name;
     pe = stmt_fill_srange(p, (stmt*)tr, start, decl_end);
@@ -2100,7 +2101,7 @@ static inline parse_error parse_compound_assignment_after_equals(
 {
     stmt_compound_assignment* ca =
         alloc_perm(p, sizeof(stmt_compound_assignment));
-    if (!ca) return PE_INSANE;
+    if (!ca) return PE_FATAL;
     ca->elements = elements;
     ca->stmt.type = STMT_COMPOUND_ASSIGN;
     ca->stmt.flags = STMT_FLAGS_DEFAULT;
@@ -2161,10 +2162,10 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
                 else {
                     turn_ident_nodes_to_exprs(elems);
                     expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
-                    if (!tp) return PE_INSANE;
+                    if (!tp) return PE_FATAL;
                     tp->expr.type = EXPR_TUPLE;
                     if (expr_fill_srange(p, (expr*)tp, t_start, t->end))
-                        return PE_INSANE;
+                        return PE_FATAL;
                     tp->elements = elems;
                     ex = (expr*)tp;
                 }
@@ -2213,11 +2214,11 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
         if (!t2) return PE_TK_ERROR;
         if (t2->type == TT_EQUALS) {
             sym_named_using* nu = alloc_perm(p, sizeof(sym_named_using));
-            if (!nu) return PE_INSANE;
+            if (!nu) return PE_FATAL;
             nu->symbol.stmt.type = SYM_NAMED_USING;
             nu->symbol.stmt.flags = flags;
             nu->symbol.name = alloc_string_perm(p, t->str);
-            if (!nu->symbol.name) return PE_INSANE;
+            if (!nu->symbol.name) return PE_FATAL;
             tk_void_n(&p->tk, 2);
             parse_error pe = parse_expression(p, &nu->target);
             if (pe == PE_EOEX) {
@@ -2230,13 +2231,13 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
             if (pe) return pe;
             if (stmt_fill_srange(
                     p, (stmt*)nu, start, src_range_get_end(nu->target->srange)))
-                return PE_INSANE;
+                return PE_FATAL;
             *tgt = (stmt*)nu;
             return PE_OK;
         }
     }
     stmt_using* u = alloc_perm(p, sizeof(stmt_using));
-    if (!u) return PE_INSANE;
+    if (!u) return PE_FATAL;
     u->stmt.type = STMT_USING;
     u->stmt.flags = flags;
     parse_error pe = parse_expression(p, &u->target);
@@ -2248,7 +2249,7 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
     }
     if (stmt_fill_srange(
             p, (stmt*)u, start, src_range_get_end(u->target->srange)))
-        return PE_INSANE;
+        return PE_FATAL;
     *tgt = (stmt*)u;
     return pe;
 }
@@ -2281,7 +2282,7 @@ parse_error parse_symbol_imports(parser* p, module_import* mi)
             si.alias = alloc_string_perm(p, t->str);
             if (!si.alias) {
                 list_builder_drop_list(&p->list_builder, mi->selected_symbols);
-                return PE_INSANE;
+                return PE_FATAL;
             }
             tk_void_n(&p->tk, 2);
             t = tk_peek(&p->tk);
@@ -2302,7 +2303,7 @@ parse_error parse_symbol_imports(parser* p, module_import* mi)
             return PE_HANDLED;
         }
         si.symbol_name = alloc_string_perm(p, t->str);
-        if (!si.symbol_name) return PE_INSANE;
+        if (!si.symbol_name) return PE_FATAL;
         list_builder_add_block(&p->list_builder, &si, sizeof(si));
         end = t->end;
         tk_void(&p->tk);
@@ -2331,7 +2332,7 @@ parse_error parse_symbol_imports(parser* p, module_import* mi)
     tk_void(&p->tk);
     mi->selected_symbols = (symbol_import*)list_builder_pop_block_list_zt(
         &p->list_builder, mi->selected_symbols, &p->tk.tc->permmem);
-    if (!mi->selected_symbols) return PE_INSANE;
+    if (!mi->selected_symbols) return PE_FATAL;
     return PE_OK;
 }
 parse_error parse_single_import(
@@ -2386,7 +2387,7 @@ parse_braced_imports(parser* p, stmt_import* stmt, module_import* mi)
     }
     mi->nested_imports = (module_import*)list_builder_pop_block_list_zt(
         &p->list_builder, mi->nested_imports, &p->tk.tc->permmem);
-    if (!mi->nested_imports) return PE_INSANE;
+    if (!mi->nested_imports) return PE_FATAL;
 
     tk_void(&p->tk);
     return PE_OK;
@@ -2411,7 +2412,7 @@ parse_error parse_single_import(
             return PE_HANDLED;
         }
         mi->name = alloc_string_perm(p, t->str);
-        if (!mi->name) return PE_INSANE;
+        if (!mi->name) return PE_FATAL;
         tk_void_n(&p->tk, 2);
         PEEK(p, t);
     }
@@ -2440,7 +2441,7 @@ parse_error parse_single_import(
         }
         else if (t->type == TT_STRING) {
             mi->tgt = mdg_get_node(&TAUC.mdg, mi->tgt, t->str);
-            if (!mi->tgt) return PE_INSANE;
+            if (!mi->tgt) return PE_FATAL;
             end = t->end;
             tk_void(&p->tk);
             PEEK(p, t);
@@ -2459,7 +2460,7 @@ parse_error parse_single_import(
         }
     }
     mi->srange = src_range_pack_lines(p->tk.tc, start, end);
-    if (mi->srange == SRC_RANGE_INVALID) return PE_INSANE;
+    if (mi->srange == SRC_RANGE_INVALID) return PE_FATAL;
     return PE_OK;
 }
 parse_error parse_import(
@@ -2467,13 +2468,13 @@ parse_error parse_import(
 {
     tk_void(&p->tk);
     stmt_import* si = alloc_perm(p, sizeof(stmt_import));
-    if (!si) return PE_INSANE;
+    if (!si) return PE_FATAL;
     stmt_init((stmt*)si, STMT_IMPORT);
     parse_error pe = parse_single_import(p, NULL, si, &si->module_import);
     if (pe) return pe;
     ureg end = src_range_get_end(si->module_import.srange);
     pe = stmt_fill_srange(p, (stmt*)si, start, end);
-    if (pe) return PE_INSANE;
+    if (pe) return PE_FATAL;
     *tgt = (stmt*)si;
     return PE_OK;
 }
@@ -2501,10 +2502,10 @@ parse_error parse_require(parser* p)
     src_file* f = file_map_get_file_from_path(&TAUC.file_map, t->str);
     rq.file = f;
     rq.srange = src_range_pack_lines(p->tk.tc, start, t->end);
-    if (rq.srange == SRC_RANGE_INVALID) return PE_INSANE;
+    if (rq.srange == SRC_RANGE_INVALID) return PE_FATAL;
     bool req = stmt_flags_get_osc_required(p->curr_scope->symbol.stmt.flags);
     if (req) {
-        if (src_file_require(f)) return PE_INSANE;
+        if (src_file_require(f)) return PE_FATAL;
     }
     end = t->end;
     tk_void(&p->tk);
@@ -2515,7 +2516,7 @@ parse_error parse_require(parser* p)
     }
     tk_void(&p->tk);
     if (list_builder_add_block(&p->list_builder, &rq, sizeof(rq)))
-        return PE_INSANE;
+        return PE_FATAL;
     return PE_OK;
 }
 parse_error
@@ -2535,12 +2536,12 @@ parse_label(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
             return PE_HANDLED;
         }
         char* label_name = alloc_string_temp(p, t2->str);
-        if (!label_name) return PE_INSANE;
+        if (!label_name) return PE_FATAL;
         tk_void_n(&p->tk, 2);
         sym_label* g = alloc_perm(p, sizeof(sym_label));
         g->symbol.stmt.type = SYM_LABEL;
         g->symbol.name = label_name;
-        if (stmt_fill_srange(p, (stmt*)g, start, t2->end)) return PE_INSANE;
+        if (stmt_fill_srange(p, (stmt*)g, start, t2->end)) return PE_FATAL;
         *tgt = (stmt*)g;
         return PE_OK;
     }
@@ -2727,7 +2728,7 @@ parse_error parse_brace_delimited_body(parser* p, body* b)
     if (!pe) {
         tk_consume(&p->tk);
         b->srange = src_range_pack_lines(p->tk.tc, bstart, t->end);
-        if (b->srange == SRC_RANGE_INVALID) return PE_INSANE;
+        if (b->srange == SRC_RANGE_INVALID) return PE_FATAL;
     }
     *head = NULL;
     return pe;

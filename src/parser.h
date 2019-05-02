@@ -5,7 +5,7 @@
 
 typedef enum parse_error {
     PE_OK = 0,
-    PE_INSANE,
+    PE_FATAL,
     PE_EOEX,
     PE_UNEXPECTED_TOKEN,
     PE_HANDLED,
