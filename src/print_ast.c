@@ -613,6 +613,7 @@ char* op_to_str(op_type t)
         case OP_POST_DECREMENT: return "--";
         case OP_CONST: return "const ";
         case OP_MEMBER_ACCESS: return ".";
+        case OP_PP: return "#";
         default: return NULL;
     }
     return 0;

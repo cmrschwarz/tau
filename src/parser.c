@@ -43,6 +43,7 @@ static const unsigned char op_precedence[] = {
         [OP_RREF_OF] = 14,
         [OP_CLOSURE_BY_VALUE] = 14,
         [OP_CONST] = 14,
+        [OP_PP] = 14,
 
         [OP_BITWISE_AND] = 13,
 
@@ -172,6 +173,13 @@ bool expr_allowed_to_drop_semicolon(expr* e)
         case EXPR_MATCH:
         case EXPR_IF:
         case EXPR_BLOCK: return true;
+        case EXPR_OP_UNARY: {
+            switch (e->op_type) {
+                case OP_PP:
+                    return expr_allowed_to_drop_semicolon(((expr_pp*)e)->child);
+                default: return false;
+            }
+        }
         default: return false;
     }
 }
@@ -207,6 +215,7 @@ static inline op_type token_to_prefix_unary_op(token* t)
         case TT_DOUBLE_PLUS: return OP_PRE_INCREMENT;
         case TT_DOUBLE_MINUS: return OP_PRE_DECREMENT;
         case TT_KW_CONST: return OP_CONST;
+        case TT_HASH: return OP_PP;
         default: return OP_NOOP;
     }
 }

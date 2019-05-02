@@ -8,7 +8,7 @@ func main(args: String[]){
         (x, y, (a,b,c), d) := foo();
         (x, y:, (a,b: int,c), d) = foo();
         (a, b) += 3;
-        x * label x match foo{
+        x * #label x match foo{
             while true {*x = 3;} => bar;
             x || Foo(x) => {
                 return x;

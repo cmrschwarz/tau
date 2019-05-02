@@ -118,6 +118,7 @@ typedef enum PACK_ENUM op_type {
     OP_BITWISE_NOT_ASSIGN,
 
     // unary ops
+    OP_PP,
     OP_CONST,
     OP_DEREF,
     OP_POINTER_OF,
@@ -311,6 +312,11 @@ typedef struct expr_for {
     body for_body;
     body finally_body;
 } expr_for;
+
+typedef struct expr_pp {
+    expr expr;
+    expr* child;
+} expr_pp;
 
 typedef struct match_arm {
     struct match_arm* next;
