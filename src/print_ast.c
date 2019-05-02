@@ -615,7 +615,7 @@ char* op_to_str(op_type t)
         case OP_CONST: return "const ";
         case OP_MEMBER_ACCESS: return ".";
         case OP_PP: return "#";
-        default: return NULL;
+        default: return "<Unknown Operator>";
     }
     return 0;
 }
