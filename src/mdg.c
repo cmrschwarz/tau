@@ -6,27 +6,34 @@
 int mdg_fin_partial(mdg* m, int i, int r)
 {
     switch (i) {
-        case 0: mdght_fin(&m->mdghts[1]);
-        case 1: mdght_fin(&m->mdghts[0]);
-        case 2: evmap2_fin(&m->evm);
-        case 3: pool_fin(&m->node_pool);
-        case 4: pool_fin(&m->ident_pool);
+        case 0:;
+        case 1: mdght_fin(&m->mdghts[1]);
+        case 2: mdght_fin(&m->mdghts[0]);
+        case 3: evmap2_fin(&m->evm);
+        case 4: pool_fin(&m->node_pool);
+        case 5: pool_fin(&m->ident_pool);
+        case 6: atomic_ureg_fin(&m->node_ids);
     }
     return r;
 }
-
+mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent);
 int mdg_init(mdg* m)
 {
-    int r = pool_init(&m->ident_pool);
+
+    int r = atomic_ureg_init(&m->node_ids, 0);
     if (r) return r;
+    r = pool_init(&m->ident_pool);
+    if (r) return mdg_fin_partial(m, 6, r);
     r = pool_init(&m->node_pool);
-    if (r) return mdg_fin_partial(m, 4, r);
+    if (r) return mdg_fin_partial(m, 5, r);
     r = evmap2_init(&m->evm, MDG_MAX_CHANGES - MDG_MAX_CHANGES_PER_WRITE);
-    if (r) return mdg_fin_partial(m, 3, r);
+    if (r) return mdg_fin_partial(m, 4, r);
     r = mdght_init(&m->mdghts[0]);
-    if (r) return mdg_fin_partial(m, 2, r);
+    if (r) return mdg_fin_partial(m, 3, r);
     r = mdght_init(&m->mdghts[1]);
-    if (r) return mdg_fin_partial(m, 1, r);
+    if (r) return mdg_fin_partial(m, 2, r);
+    m->root_node = mdg_node_create(m, string_from_cstr(""), NULL);
+    if (!m->root_node) return mdg_fin_partial(m, 1, ERR);
     m->change_count = 0;
     return 0;
 }
@@ -75,43 +82,45 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
     if (!n) return NULL;
     ureg identlen = string_len(ident);
     n->name = pool_alloc(&m->ident_pool, identlen + 1);
+    n->id = atomic_ureg_inc(&m->node_ids);
     if (!n->name) return NULL;
     memcpy(n->name, ident.start, identlen);
     n->name[identlen] = '\0';
     n->parent = parent;
     int r = atomic_ptr_init(&n->targets, NULL);
     if (r) return NULL;
-    r = rwslock_init(&n->lock);
+    r = rwslock_init(&n->stage_lock);
     if (r) {
         atomic_ptr_fin(&n->targets);
         return NULL;
     }
     r = aseglist_init(&n->dependencies);
     if (r) {
-        rwslock_fin(&n->lock);
+        rwslock_fin(&n->stage_lock);
         atomic_ptr_fin(&n->targets);
         return NULL;
     }
     r = atomic_ureg_init(&n->unparsed_files, 1);
     if (r) {
         aseglist_fin(&n->dependencies);
-        rwslock_fin(&n->lock);
+        rwslock_fin(&n->stage_lock);
         atomic_ptr_fin(&n->targets);
         return NULL;
     }
-    r = atomic_ureg_init(&n->stage, MS_GENERATING);
+    r = aseglist_init(&n->notifiy_when_parsed);
     if (r) {
         atomic_ureg_fin(&n->unparsed_files);
         aseglist_fin(&n->dependencies);
-        rwslock_fin(&n->lock);
+        rwslock_fin(&n->stage_lock);
         atomic_ptr_fin(&n->targets);
         return NULL;
     }
+    n->stage = MS_UNNEEDED;
     return n;
 }
 void mdg_node_add_target(mdg_node* n, scope* target)
 {
-    target->symbol.stmt.next = atomic_ptr_load(n->targets);
+    target->symbol.stmt.next = atomic_ptr_load(&n->targets);
     while (!atomic_ptr_cas(
         &n->targets, (void**)&target->symbol.stmt.next, (void*)target)) {
     }
@@ -150,191 +159,254 @@ mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident)
     if (!n) return n;
     mdg_node_add_target(n, (scope*)osc);
     osc->scope.symbol.name = n->name;
-    if (atomic_ureg_load(&n->stage) != MS_UNNEEDED) {
-        stmt_flags_set_osc_required(&osc->scope.symbol.stmt.flags);
-    }
     return n;
 }
+void mdg_node_require(mdg* m, mdg_node* n)
+{
+    rwslock_read(&n->stage_lock);
+    bool unneded = (n->stage == MS_UNNEEDED);
+    rwslock_end_read(&n->stage_lock);
+    if (unneded) {
+        rwslock_write(&n->stage_lock);
+        if (n->stage == MS_UNNEEDED) n->stage = MS_PARSING;
+        rwslock_end_write(&n->stage_lock);
+    }
+}
+
 int mdg_add_dependency(mdg* m, mdg_node* n, mdg_node* dependency)
 {
-    rwslock_read(&n->lock);
+    rwslock_read(&n->stage_lock);
     int r = aseglist_add(&n->dependencies, dependency);
-    rwslock_end_read(&n->lock);
+    bool needed = (n->stage != MS_UNNEEDED);
+    rwslock_end_read(&n->stage_lock);
+    if (!r && needed) mdg_node_require(m, dependency);
     return r;
 }
-mdg_group* mdg_group_new()
-{
-    mdg_group* g = tmalloc(sizeof(mdg_group));
-    if (!g) return g;
-    if (aseglist_init(&g->members)) {
-        tfree(g);
-        return NULL;
-    }
-    g->tarjan_node.index = 0;
-    return g;
-}
-void mdg_group_fin(mdg_group* g)
-{
-    aseglist_fin(&g->members);
-    tfree(g);
-    tfree(g);
-}
-static int replace_group(mdg_group* old, mdg_group* new)
-{
-    int r = 0;
-    aseglist_iterator it;
-    aseglist_iterator_begin(&it, &old->members);
-    while (true) {
-        mdg_node* next = aseglist_iterator_next(&it);
-        if (!next) break;
-        r = aseglist_add(&new->members, next);
-        if (r) break;
-        next->group = new;
-    }
-    aseglist_iterator_fin(&it);
-    mdg_group_fin(old);
-    return r;
-}
-typedef enum tarjan_res {
-    TARJ_RES_SUCCESS = 0,
-    TARJ_RES_UNMET_DEPENDENCY,
-    TARJ_RES_ERROR,
-} tarjan_res;
 
-static inline void reset_tarjan(mdg_node* n)
+int mdg_node_file_parsed(mdg* m, mdg_node* n, scc_detector* d)
 {
-    n->tarjan_node.index = 0;
+    ureg up = atomic_ureg_dec(&n->unparsed_files);
+    if (up == 1) {
+        scc_detector_run(d, n);
+    }
+    return OK;
 }
 
-// UGLY: avoid reset by decrementing not on stack value instead
-static void reset_tarjan_rec(mdg_node* n)
+#define SCCD_BUCKET_CAP 16
+#define SCCD_BUCKET_SIZE (SCCD_BUCKET_CAP * sizeof(sccd_node))
+static inline int scc_detector_expand(scc_detector* d, ureg node_count)
 {
-    if (n->tarjan_node.index == 0) return;
-    reset_tarjan(n);
-    rwslock_read(&n->lock);
+    if (d->allocated_node_count >= node_count) return OK;
+    ureg bucket_count = d->allocated_node_count / SCCD_BUCKET_CAP;
+    if (node_count > d->bucketable_node_capacity) {
+        // figure out new size
+        ureg bucketable_cap_new = d->bucketable_node_capacity;
+        do {
+            bucketable_cap_new *= 2;
+        } while (node_count > bucketable_cap_new);
+        // allocate new buffers buffer
+        sccd_node** buckets_bucket_new = (sccd_node**)pool_alloc(
+            d->mem_src,
+            bucketable_cap_new / SCCD_BUCKET_CAP * sizeof(sccd_node*));
+        if (!buckets_bucket_new) return ERR;
+        memcpy(
+            buckets_bucket_new, d->sccd_node_buckets,
+            bucket_count * sizeof(sccd_node*));
+        // allocate new stack
+        mdg_node** stack_new = (mdg_node**)pool_alloc(
+            d->mem_src, bucketable_cap_new * sizeof(mdg_node*));
+        if (!stack_new) return ERR;
+        ureg stack_size = ptrdiff(d->stack_head, d->stack);
+        memcpy(stack_new, d->stack, stack_size);
+        d->stack_head = ptradd(stack_new, stack_size);
+        // reuse old buffers buffer for buffers
+        ureg recyclable_bucket_cap =
+            d->bucketable_node_capacity / SCCD_BUCKET_CAP;
+        ureg recyclable_bucket_size =
+            recyclable_bucket_cap * sizeof(sccd_node*);
+        memset(d->sccd_node_buckets, 0, recyclable_bucket_size);
+        for (ureg i = 0; i < recyclable_bucket_size; i += SCCD_BUCKET_SIZE) {
+            buckets_bucket_new[bucket_count] = ptradd(d->sccd_node_buckets, i);
+            bucket_count++;
+        }
+        d->allocated_node_count += recyclable_bucket_cap;
+        // reuse old stack for buffers
+        recyclable_bucket_cap = d->bucketable_node_capacity;
+        recyclable_bucket_size = recyclable_bucket_cap * sizeof(mdg_node*);
+        memset(d->stack, 0, recyclable_bucket_size);
+        for (ureg i = 0; i < recyclable_bucket_size; i += SCCD_BUCKET_SIZE) {
+            buckets_bucket_new[bucket_count] = ptradd(d->stack, i);
+            bucket_count++;
+        }
+        d->allocated_node_count += recyclable_bucket_cap;
+        // apply new buffers
+        d->stack = stack_new;
+        d->bucketable_node_capacity = bucketable_cap_new;
+        d->sccd_node_buckets = buckets_bucket_new;
+    }
+    while (node_count > d->allocated_node_count) {
+        sccd_node* b = pool_alloc(d->mem_src, SCCD_BUCKET_SIZE);
+        if (!b) return ERR;
+        memset(b, 0, SCCD_BUCKET_SIZE);
+        d->sccd_node_buckets[bucket_count] = b;
+        bucket_count++;
+        d->allocated_node_count += SCCD_BUCKET_CAP;
+    }
+    return OK;
+}
+static inline sccd_node* scc_detector_get(scc_detector* d, ureg id)
+{
+    if (scc_detector_expand(d, id)) return NULL;
+    return &d->sccd_node_buckets[id / SCCD_BUCKET_CAP][id % SCCD_BUCKET_CAP];
+}
+int scc_detector_init(scc_detector* d, pool* mem_src)
+{
+    d->sccd_node_buckets = (sccd_node**)pool_alloc(mem_src, SCCD_BUCKET_SIZE);
+    d->bucketable_node_capacity =
+        SCCD_BUCKET_SIZE / sizeof(sccd_node*) * SCCD_BUCKET_CAP;
+    if (!d->sccd_node_buckets) return ERR;
+    d->stack = (mdg_node**)pool_alloc(
+        mem_src, d->bucketable_node_capacity * sizeof(mdg_node*));
+
+    if (!d->stack) return ERR;
+    d->stack_head = d->stack;
+    d->dfs_index = 1; // 0 means index remained from previous run
+    d->allocated_node_count = 0;
+
+    d->mem_src = mem_src;
+    return OK;
+}
+int compare_mdg_nodes(const mdg_node* fst, const mdg_node* snd)
+{
+    return snd->id - fst->id;
+}
+#define SORT_NAME mdg_nodes
+#define SORT_TYPE mdg_node*
+#define SORT_CMP(x, y) compare_mdg_nodes(x, y)
+#include "sort.h"
+
+#define SCCD_ADDED_NOTIFICATION STATUS_1
+int scc_detector_strongconnect(
+    scc_detector* d, mdg_node* n, sccd_node* sn, mdg_node* caller)
+{
+    rwslock_read(&n->stage_lock);
+    if (n->stage == MS_PARSING) {
+        int r = aseglist_add(&n->notifiy_when_parsed, caller);
+        rwslock_end_read(&n->stage_lock);
+        if (r) return ERR;
+        return SCCD_ADDED_NOTIFICATION;
+    }
+    // can't be in a circle with caller if it's already resolving or further
+    if (n->stage > MS_AWAITING_DEPENDENCIES) {
+        sn->index = d->dfs_start_index;
+        sn->lowlink = d->dfs_index;
+        rwslock_end_read(&n->stage_lock);
+        return OK;
+    }
+    sn->lowlink = d->dfs_index;
+    sn->index = d->dfs_index;
+    d->dfs_index++;
+    *d->stack_head = n;
+    d->stack_head++;
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &n->dependencies);
     while (true) {
-        mdg_node* next = aseglist_iterator_next(&it);
-        if (!next) break;
-        reset_tarjan_rec(next);
+        mdg_node* m = aseglist_iterator_next(&it);
+        if (!m) break;
+        sccd_node* mn = scc_detector_get(d, m->id);
+        if (!mn) return ERR;
+        if (mn->index < d->dfs_start_index) {
+            int r = scc_detector_strongconnect(d, m, mn, caller);
+            if (r) return r;
+            if (mn->lowlink < sn->index) sn->lowlink = mn->lowlink;
+        }
+        else if (mn->index != d->dfs_start_index) {
+            if (mn->index < sn->lowlink) sn->lowlink = mn->index;
+        }
     }
-    rwslock_end_read(&n->lock);
+    if (sn->lowlink == sn->index) {
+        d->stack_head--;
+        rwslock_end_read(&n->stage_lock);
+        bool success = false;
+        if (*d->stack_head == n) {
+            rwslock_write(&n->stage_lock);
+            if (n->stage == MS_AWAITING_DEPENDENCIES) {
+                n->stage = MS_RESOLVING;
+                success = true;
+            }
+            rwslock_end_write(&n->stage_lock);
+            sn->index = d->dfs_start_index;
+            if (success) {
+                printf("Isolated: %s\n", n->name);
+            }
+            return OK;
+        }
+        else {
+            mdg_node** end = d->stack_head + 1;
+            do {
+                d->stack_head--;
+            } while (*d->stack_head != n);
+            mdg_node** start = d->stack_head;
+            mdg_nodes_quick_sort(start, end - start);
+            for (mdg_node** i = start; i != end; i++) {
+                rwslock_write(&(**i).stage_lock);
+                if ((**i).stage == MS_AWAITING_DEPENDENCIES) {
+                    (**i).stage = MS_RESOLVING;
+                    success = true;
+                }
+                rwslock_end_write(&(**i).stage_lock);
+                sccd_node* in = scc_detector_get(d, (**i).id);
+                if (!in) return ERR;
+                in->index = d->dfs_start_index;
+                if (!success) break;
+            }
+            if (success) {
+                printf("Group: {");
+                for (mdg_node** i = start; i < end - 1; i++) {
+                    printf("%s, ", (**i).name);
+                }
+                printf("%s}\n", (**(end - 1)).name);
+                // TODO: call resolve
+            }
+            return OK;
+        }
+    }
+    rwslock_end_read(&n->stage_lock);
+    return OK;
 }
-static tarjan_res
-tarjan_step(ureg* index, mdg_node* node, mdg_group** group, ureg* group_size);
-
-static tarjan_res tarjan_iterate(
-    aseglist_iterator* it, ureg* index, mdg_node* node, mdg_group** group,
-    ureg* group_size)
+int scc_detector_run(scc_detector* d, mdg_node* n)
 {
-    mdg_node* next = aseglist_iterator_next(it);
-    if (!next) {
-        if (*group_size > 1 && !*group) {
-            *group = mdg_group_new();
-            if (!*group) return TARJ_RES_ERROR;
+    // reset the dfs_index sometimes to avoid running out of ids
+    if (UREG_MAX - d->dfs_index < UREG_MAX / sizeof(mdg_node)) {
+        d->dfs_index = 1;
+        for (sccd_node** b = d->sccd_node_buckets;
+             b < d->sccd_node_buckets +
+                     d->bucketable_node_capacity / SCCD_BUCKET_CAP;
+             n++) {
+            for (sccd_node* n = *b; n < *b + SCCD_BUCKET_CAP; n++) {
+                n->lowlink = 0;
+            }
         }
-        return TARJ_RES_SUCCESS;
     }
-    else {
-        rwslock_read(&next->lock);
-        module_stage stage = atomic_ureg_load(&next->stage);
-        if (stage <= MS_PARSING) {
-            int r = aseglist_add(&next->notifiy, node);
-            rwslock_end_read(&next->lock);
-            if (r) return TARJ_RES_ERROR;
-            return TARJ_RES_UNMET_DEPENDENCY;
-        }
-        ureg next_index = next->tarjan_node.index;
-        if (next_index == 0) {
-            tarjan_res r = tarjan_step(index, next, group, group_size);
-            if (r) {
-                reset_tarjan_rec(next);
-                rwslock_end_read(&next->lock);
-                return r;
-            }
-            if (next->tarjan_node.lowlink < node->tarjan_node.lowlink) {
-                node->tarjan_node.lowlink = next->tarjan_node.lowlink;
-            }
-        }
-        else if (next_index != UREG_MAX) {
-            if (next_index < node->tarjan_node.lowlink) {
-                node->tarjan_node.lowlink = next_index;
-            }
-        }
-        tarjan_res r = tarjan_iterate(it, index, node, group, group_size);
-        if (r) {
-            reset_tarjan(next);
-            rwslock_end_read(&next->lock);
-            return r;
-        }
-        if (*group_size > 1 && next_index != UREG_MAX) {
-            int r = 0;
-            if (next->group == NULL) {
-                next->group = *group;
-                r = (aseglist_add(&(**group).members, next));
-            }
-            else if (next->group != *group) {
-                r = (replace_group(next->group, *group));
-            }
-            if (r) {
-                reset_tarjan_rec(next);
-                rwslock_end_read(&next->lock);
-                return TARJ_RES_ERROR;
-            }
-        }
-        rwslock_end_read(&next->lock);
-        return TARJ_RES_SUCCESS;
-    }
-}
-static tarjan_res
-tarjan_step(ureg* index, mdg_node* node, mdg_group** group, ureg* group_size)
-{
-    node->tarjan_node.index = *index;
-    node->tarjan_node.lowlink = *index;
-    (*index)++;
+    d->dfs_start_index = d->dfs_index;
+    // the start index is used to indicate the node is off the stack
+    d->dfs_index++;
+    sccd_node* sn = scc_detector_get(d, n->id);
+    if (!sn) return ERR;
+    int r = scc_detector_strongconnect(d, n, sn, n);
+    if (r == ERR) return ERR;
+    if (r == SCCD_ADDED_NOTIFICATION) return OK;
     aseglist_iterator it;
-    aseglist_iterator_begin(&it, &node->dependencies);
-    mdg_group* gprev = *group;
-    ureg group_size_old = *group_size;
-    tarjan_res r = tarjan_iterate(&it, index, node, group, group_size);
-    aseglist_iterator_fin(&it);
-    if (r || node->tarjan_node.lowlink == node->tarjan_node.index) {
-        node->tarjan_node.index = UREG_MAX;
-        if (*group) {
-            node->group = *group;
-            aseglist_iterator it;
-            aseglist_iterator_begin(&it, &(**group).members);
-            while (true) {
-                mdg_node* i = aseglist_iterator_next(&it);
-                if (!i) break;
-                i->tarjan_node.index = UREG_MAX;
-            }
-            aseglist_iterator_fin(&it);
-            if (aseglist_add(&(**group).members, node)) return TARJ_RES_ERROR;
-            *group_size = group_size_old;
-            *group = gprev;
+    aseglist_iterator_begin(&it, &n->notifiy_when_parsed);
+    while (true) {
+        n = aseglist_iterator_next(&it);
+        if (!n) break;
+        sn = scc_detector_get(d, n->id);
+        if (!sn) return ERR;
+        if (sn->index < d->dfs_start_index) {
+            r = scc_detector_strongconnect(d, n, sn, n);
+            if (r == ERR) return ERR;
         }
-    }
-    else {
-        *group_size += 1;
-    }
-    return r;
-}
-
-int mdg_node_file_parsed(mdg* m, mdg_node* n)
-{
-    rwslock_read(&n->lock);
-    ureg up = atomic_ureg_dec(&n->unparsed_files) == 1;
-    if (up == 1) {
-        ureg idx = 1;
-        ureg group_size = 1;
-        tarjan_res r = tarjan_step(&idx, n, &n->group, &group_size);
-        rwslock_end_read(&n->lock);
-        if (!r) reset_tarjan_rec(n);
-    }
-    else {
-        rwslock_end_read(&n->lock);
     }
     return OK;
 }

@@ -37,14 +37,18 @@ int mdg_test()
     int res = OK;
     mdg m;
     mdg_init(&m);
+    pool p;
+    pool_init(&p);
+    scc_detector sccd;
+    scc_detector_init(&sccd, &p);
     mdg_node* a = mdg_node_create(&m, string_from_cstr("a"), NULL, NULL);
     mdg_node* b = mdg_node_create(&m, string_from_cstr("b"), NULL, NULL);
     mdg_node* c = mdg_node_create(&m, string_from_cstr("c"), NULL, NULL);
-
     mdg_node* d = mdg_node_create(&m, string_from_cstr("d"), NULL, NULL);
     mdg_node* e = mdg_node_create(&m, string_from_cstr("e"), NULL, NULL);
     mdg_node* f = mdg_node_create(&m, string_from_cstr("f"), NULL, NULL);
     mdg_node* g = mdg_node_create(&m, string_from_cstr("g"), NULL, NULL);
+
     mdg_add_dependency(&m, a, b);
     mdg_add_dependency(&m, b, c);
     mdg_add_dependency(&m, c, a);
@@ -54,15 +58,25 @@ int mdg_test()
     mdg_add_dependency(&m, f, d);
     mdg_add_dependency(&m, g, a);
     mdg_add_dependency(&m, g, e);
-    mdg_node_file_parsed(&m, g);
-    mdg_group* group = a->group;
-    if (!group) res = ERR;
-    if (b->group != group) res = ERR;
-    if (c->group != group) res = ERR;
-    group = d->group;
-    if (!g) res = ERR;
-    if (e->group != group) res = ERR;
-    if (f->group != group) res = ERR;
+    for (int i = 0; i < 2; i++) {
+        a->stage = MS_AWAITING_DEPENDENCIES;
+        b->stage = MS_AWAITING_DEPENDENCIES;
+        c->stage = MS_AWAITING_DEPENDENCIES;
+        d->stage = MS_AWAITING_DEPENDENCIES;
+        e->stage = MS_AWAITING_DEPENDENCIES;
+        f->stage = MS_AWAITING_DEPENDENCIES;
+        g->stage = MS_AWAITING_DEPENDENCIES;
+        atomic_ureg_store(&g->unparsed_files, 1);
+        res |= mdg_node_file_parsed(&m, g, &sccd);
+    }
+
+    /*
+        B > C > D > F
+         ^ v     ^ v
+          A < G > E
+              ^
+    */
+    pool_fin(&p);
     mdg_fin(&m);
     return pe(res, "mdg_test");
 }

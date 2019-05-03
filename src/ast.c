@@ -68,7 +68,6 @@ void get_expr_bounds(expr* n, ureg* start, ureg* end)
 #define VIRTUAL_OFFSET 2
 #define STATIC_OFFSET 1
 #define COMPUND_DECL_OFFSET 0
-#define OSC_REQUIRED_OFFSET 0
 
 static inline void bitmask_set_bit(u8* data, ureg offs)
 {
@@ -147,15 +146,6 @@ void stmt_flags_set_compound_decl(stmt_flags* f)
 bool stmt_flags_get_compound_decl(stmt_flags f)
 {
     return bitmask_get_bit(f, COMPUND_DECL_OFFSET);
-}
-
-void stmt_flags_set_osc_required(stmt_flags* f)
-{
-    bitmask_set_bit(f, OSC_REQUIRED_OFFSET);
-}
-bool stmt_flags_get_osc_required(stmt_flags f)
-{
-    return bitmask_get_bit(f, OSC_REQUIRED_OFFSET);
 }
 
 #define REDECL_OFFSET 7

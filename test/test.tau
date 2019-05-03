@@ -1,5 +1,7 @@
 require "foo/bar.tau";
+x:=3;
 func main(args: String[]){
+    extend bar;
     import doo.{foo = (a, b), foo.bar, baz.doo};
     if (x) give 3 else give 5;
     func test_compound_assignment(){

@@ -18,7 +18,7 @@
 bool body_supports_exprs(ast_node_type pt);
 parse_error parse_statement(parser* p, stmt** tgt);
 parse_error parse_scope_body(parser* p, scope* s);
-parse_error parse_open_scope_body(parser* p, open_scope* s);
+parse_error parse_open_scope_body(parser* p, open_scope* s, mdg_node* n);
 parse_error parse_body(parser* p, body* b);
 parse_error parse_expression(parser* p, expr** ex);
 parse_error parse_expression_of_prec(parser* p, expr** ex, ureg prec);
@@ -1620,14 +1620,17 @@ parse_error handle_semicolon_after_statement(parser* p, stmt* s)
     }
     return PE_OK;
 }
-parse_error parse_eof_delimited_body(parser* p, body* b, ast_node_type pt)
+static inline parse_error parse_delimited_open_scope(
+    parser* p, open_scope* osc, token_type delimiter_1, token_type delimiter_2)
 {
-    stmt** head = &b->children;
-    *head = NULL; // fist element must be zero for extend to check
+    osc->requires =
+        (file_require*)list_builder_start_blocklist(&p->list_builder);
+    stmt** head = &osc->scope.body.children;
+    *head = NULL; // so extend can check if it comes first
     token* t;
     PEEK(p, t);
-    parse_error pe = PE_OK;
-    while (t->type != TT_EOF) {
+    parse_error pe;
+    while (t->type != delimiter_1 && t->type != delimiter_2) {
         pe = parse_statement(p, head);
         if (pe) break;
         pe = handle_semicolon_after_statement(p, *head);
@@ -1640,21 +1643,25 @@ parse_error parse_eof_delimited_body(parser* p, body* b, ast_node_type pt)
         }
     }
     *head = NULL;
+    osc->requires = list_builder_pop_block_list_zt(
+        &p->list_builder, osc->requires, &p->tk.tc->permmem);
+    if (!osc->requires) return PE_FATAL;
     return pe;
+}
+parse_error parse_eof_delimited_open_scope(parser* p, open_scope* osc)
+{
+    return parse_delimited_open_scope(p, osc, TT_EOF, TT_EOF);
 }
 parse_error parser_parse_file(parser* p, src_file* f)
 {
     // This is test code. it sucks
     int r = tk_open_file(&p->tk, f);
     if (r) return PE_TK_ERROR;
-    stmt* old_children = p->root.oscope.scope.body.children;
-    parse_error pe = parse_open_scope_body(p, &p->root.oscope);
+    p->curr_scope = &p->root.oscope.scope;
+    p->current_module = TAUC.mdg.root_node;
+    parse_error pe = parse_eof_delimited_open_scope(p, &p->root.oscope);
     // DBUG:
     print_astn_nl((stmt*)&p->root, 0);
-    stmt** old_head = &old_children;
-    while (*old_head) old_head = &(*old_head)->next;
-    *old_head = p->root.oscope.scope.body.children;
-    p->root.oscope.scope.body.children = old_children;
     tk_close_file(&p->tk);
     return pe;
 }
@@ -1915,7 +1922,7 @@ parse_error parse_module_decl(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
 {
     tk_void(&p->tk);
-    token* t;
+    token *t, *t2;
     parse_error pe;
     PEEK(p, t);
     if (t->type != TT_STRING) {
@@ -1926,17 +1933,16 @@ parse_error parse_module_decl(
         return PE_HANDLED;
     }
     ureg decl_end = t->end;
-    char* name = alloc_string_perm(p, t->str);
-    if (!name) return PE_FATAL;
-    tk_void(&p->tk);
-    PEEK(p, t);
+
+    t2 = tk_peek_2nd(&p->tk);
+    if (!t2) return PE_FATAL;
     open_scope* md;
     bool generic;
-    if (t->type == TT_BRACKET_OPEN) {
+    if (t2->type == TT_BRACKET_OPEN) {
         generic = true;
         md = alloc_perm(p, sizeof(osc_module_generic));
         if (!md) return PE_FATAL;
-        tk_void(&p->tk);
+        tk_void_n(&p->tk, 2);
         pe = parse_param_list(
             p, &((osc_module_generic*)md)->generic_params, true, start,
             decl_end, "in this module declaration");
@@ -1947,20 +1953,23 @@ parse_error parse_module_decl(
         generic = false;
         md = alloc_perm(p, sizeof(osc_module));
         if (!md) return PE_FATAL;
+        tk_void(&p->tk);
     }
-    md->scope.symbol.name = name;
+    mdg_node* mdgn =
+        mdg_add_open_scope(&TAUC.mdg, p->current_module, md, t->str);
+    if (mdgn == NULL) return PE_FATAL;
     pe = stmt_fill_srange(p, (stmt*)md, start, decl_end);
     if (pe) return pe;
     md->scope.symbol.stmt.type = generic ? OSC_MODULE_GENERIC : OSC_MODULE;
     md->scope.symbol.stmt.flags = flags;
     *n = (stmt*)md;
-    return parse_open_scope_body(p, md);
+    return parse_open_scope_body(p, md, mdgn);
 }
 parse_error parse_extend_decl(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
 {
     tk_void(&p->tk);
-    token* t;
+    token *t, *t2;
     parse_error pe;
     PEEK(p, t);
     if (t->type != TT_STRING) {
@@ -1971,41 +1980,40 @@ parse_error parse_extend_decl(
         return PE_HANDLED;
     }
     ureg decl_end = t->end;
-    char* name = alloc_string_perm(p, t->str);
-    if (!name) return PE_FATAL;
-    tk_void(&p->tk);
-    PEEK(p, t);
-    scope* sc;
+    t2 = tk_peek_2nd(&p->tk);
+    if (!t2) return PE_TK_ERROR;
+    open_scope* ex;
     bool generic;
-    if (t->type == TT_BRACKET_OPEN) {
+    if (t2->type == TT_BRACKET_OPEN) {
         generic = true;
-        sc = alloc_perm(p, sizeof(osc_extend_generic));
-        if (!sc) return PE_FATAL;
-        tk_void(&p->tk);
+        ex = alloc_perm(p, sizeof(osc_extend_generic));
+        if (!ex) return PE_FATAL;
+        tk_void_n(&p->tk, 2);
         pe = parse_param_list(
-            p, &((osc_extend_generic*)sc)->generic_params, true, start,
+            p, &((osc_extend_generic*)ex)->generic_params, true, start,
             decl_end, "in this extend declaration");
         if (pe) return pe;
-        PEEK(p, t);
     }
     else {
         generic = false;
-        sc = alloc_perm(p, sizeof(osc_extend));
-        if (!sc) return PE_FATAL;
+        ex = alloc_perm(p, sizeof(osc_extend));
+        if (!ex) return PE_FATAL;
+        tk_void(&p->tk);
     }
-    sc->symbol.name = name;
-    pe = stmt_fill_srange(p, (stmt*)sc, start, decl_end);
+    mdg_node* mdgn =
+        mdg_add_open_scope(&TAUC.mdg, p->current_module, ex, t->str);
+    if (mdgn == NULL) return PE_FATAL;
+    pe = stmt_fill_srange(p, (stmt*)ex, start, decl_end);
     if (pe) return pe;
-    sc->symbol.stmt.type = generic ? OSC_EXTEND_GENERIC : OSC_EXTEND;
-    sc->symbol.stmt.flags = flags;
-    sc->parent = p->curr_scope;
+    ex->scope.symbol.stmt.type = generic ? OSC_EXTEND_GENERIC : OSC_EXTEND;
+    ex->scope.symbol.stmt.flags = flags;
+    ex->scope.parent = p->curr_scope;
     PEEK(p, t);
     if (t->type == TT_SEMICOLON) {
         if (p->curr_scope->body.children == NULL) {
             tk_consume(&p->tk);
-            pe = parse_eof_delimited_body(
-                p, &sc->body, generic ? OSC_EXTEND_GENERIC : OSC_EXTEND);
-            *n = (stmt*)sc;
+            pe = parse_delimited_open_scope(p, ex, TT_EOF, TT_BRACE_CLOSE);
+            *n = (stmt*)ex;
             return pe;
         }
         else {
@@ -2020,8 +2028,8 @@ parse_error parse_extend_decl(
             return PE_HANDLED;
         }
     }
-    *n = (stmt*)sc;
-    return parse_body(p, &sc->body);
+    *n = (stmt*)ex;
+    return parse_open_scope_body(p, ex, mdgn);
 }
 parse_error parse_trait_decl(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
@@ -2388,8 +2396,10 @@ parse_braced_imports(parser* p, stmt_import* stmt, module_import* mi)
     mi->nested_imports = (module_import*)list_builder_pop_block_list_zt(
         &p->list_builder, mi->nested_imports, &p->tk.tc->permmem);
     if (!mi->nested_imports) return PE_FATAL;
-
     tk_void(&p->tk);
+    if (mdg_add_dependency(&TAUC.mdg, p->current_module, mi->tgt)) {
+        return PE_FATAL;
+    }
     return PE_OK;
 }
 parse_error parse_single_import(
@@ -2461,6 +2471,9 @@ parse_error parse_single_import(
     }
     mi->srange = src_range_pack_lines(p->tk.tc, start, end);
     if (mi->srange == SRC_RANGE_INVALID) return PE_FATAL;
+    if (mdg_add_dependency(&TAUC.mdg, p->current_module, mi->tgt)) {
+        return PE_FATAL;
+    }
     return PE_OK;
 }
 parse_error parse_import(
@@ -2470,7 +2483,8 @@ parse_error parse_import(
     stmt_import* si = alloc_perm(p, sizeof(stmt_import));
     if (!si) return PE_FATAL;
     stmt_init((stmt*)si, STMT_IMPORT);
-    parse_error pe = parse_single_import(p, NULL, si, &si->module_import);
+    parse_error pe =
+        parse_single_import(p, TAUC.mdg.root_node, si, &si->module_import);
     if (pe) return pe;
     ureg end = src_range_get_end(si->module_import.srange);
     pe = stmt_fill_srange(p, (stmt*)si, start, end);
@@ -2503,10 +2517,7 @@ parse_error parse_require(parser* p)
     rq.file = f;
     rq.srange = src_range_pack_lines(p->tk.tc, start, t->end);
     if (rq.srange == SRC_RANGE_INVALID) return PE_FATAL;
-    bool req = stmt_flags_get_osc_required(p->curr_scope->symbol.stmt.flags);
-    if (req) {
-        if (src_file_require(f)) return PE_FATAL;
-    }
+    //TODO: inform mdg that file is now required
     end = t->end;
     tk_void(&p->tk);
     PEEK(p, t);
@@ -2742,12 +2753,15 @@ parse_error parse_scope_body(parser* p, scope* s)
     p->curr_scope = old_scope;
     return pe;
 }
-parse_error parse_open_scope_body(parser* p, open_scope* s)
+parse_error parse_open_scope_body(parser* p, open_scope* s, mdg_node* m)
 {
+    mdg_node* parent = p->current_module;
+    p->current_module = m;
     s->requires = (file_require*)list_builder_start_blocklist(&p->list_builder);
     parse_error pe = parse_scope_body(p, (scope*)s);
     s->requires = (file_require*)list_builder_pop_block_list_zt(
         &p->list_builder, s->requires, &p->tk.tc->permmem);
+    p->current_module = parent;
     return pe;
 }
 parse_error parse_body(parser* p, body* b)
@@ -2756,11 +2770,9 @@ parse_error parse_body(parser* p, body* b)
     token* t;
     PEEK(p, t);
     if (t->type != TT_BRACE_OPEN) {
+        b->children = NULL; // so extend can check if it comes first
         pe = parse_statement(p, &b->children);
-        if (pe) {
-            b->children = NULL;
-        }
-        else {
+        if (!pe) {
             b->children->next = NULL;
             b->srange = b->children->srange;
         }

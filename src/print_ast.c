@@ -4,6 +4,7 @@
 #include "mdg.h"
 #include "parser.h"
 #include "stdio.h"
+#include "tauc.h"
 #include "utils/math_utils.h"
 
 void pc(char c)
@@ -205,7 +206,7 @@ void print_astn(stmt* astn, ureg indent)
         case STMT_IMPORT: {
             stmt_import* si = (stmt_import*)astn;
             p("import ");
-            print_module_import(&si->module_import, NULL, indent);
+            print_module_import(&si->module_import, TAUC.mdg.root_node, indent);
         } break;
         case STMT_COMPOUND_ASSIGN: {
             stmt_compound_assignment* ca = (stmt_compound_assignment*)astn;

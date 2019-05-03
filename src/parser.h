@@ -17,6 +17,7 @@ typedef struct parser {
     list_builder list_builder;
     osc_module root;
     scope* curr_scope;
+    mdg_node* current_module;
 } parser;
 
 int parser_init(parser* p, thread_context* tc);

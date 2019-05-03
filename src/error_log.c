@@ -205,7 +205,7 @@ int pe(const char* msg)
 }
 ureg get_line_nr_offset(ureg max_line)
 {
-    max_line++;           // because lines are displayed starting from 1, not 0
+    max_line++; // because lines are displayed starting from 1, not 0
     if (max_line >= 10) { // this is to avoid line zero
         return (ureg)floor(log10(max_line)) +
                1; //+1 because log(10, 10) is 1, not 2
@@ -491,14 +491,14 @@ int print_src_line(
     }
     return OK;
 }
-int cmp_err_point(err_point l, err_point r)
+int cmp_err_point(const err_point* l, const err_point* r)
 {
-    if (l.line != r.line) return (l.line > r.line) ? 1 : -1;
-    return (l.col_start > r.col_start) ? 1 : -1;
+    if (l->line != r->line) return (l->line > r->line) ? 1 : -1;
+    return (l->col_start > r->col_start) ? 1 : -1;
 }
 #define SORT_NAME err_points
 #define SORT_TYPE err_point
-#define SORT_CMP(x, y) cmp_err_point(x, y)
+#define SORT_CMP(x, y) cmp_err_point(&(x), &(y))
 #include "sort.h"
 ureg extend_em(
     error* e, err_point* err_points, const char* annot, src_pos pos,
