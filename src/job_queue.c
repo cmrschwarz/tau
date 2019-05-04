@@ -20,8 +20,7 @@ int job_queue_init(job_queue* jq)
     jq->buffer_end = ptradd(jq->buffer, size);
     jq->head = jq->buffer;
     jq->tail = jq->buffer;
-    jq->idle_threads_count = 0;
-    jq->threads_count = 1;
+    jq->waiters = 0;
     return OK;
 }
 void job_queue_fin(job_queue* jq)
@@ -34,35 +33,48 @@ static inline void job_queue_inc_ptr(job_queue* jq, job** ptr)
     (*ptr)++;
     if (*ptr == jq->buffer_end) *ptr = jq->buffer;
 }
-job_queue_result job_queue_pop(job_queue* jq, job* j)
+int job_queue_pop(job_queue* jq, job* j)
 {
     mutex_lock(&jq->lock);
     if (jq->head == jq->tail) {
-        jq->idle_threads_count++;
+        jq->waiters++;
         do {
-            if (jq->idle_threads_count >= jq->threads_count) {
+            if (jq->jobs == UREG_MAX) {
                 mutex_unlock(&jq->lock);
-                return JQR_DONE;
+                return JQ_DONE;
             }
             cond_var_wait(&jq->has_jobs, &jq->lock);
         } while (jq->head == jq->tail);
-        jq->idle_threads_count--;
+        jq->waiters--;
+    }
+    if (jq->jobs == UREG_MAX) {
+        mutex_unlock(&jq->lock);
+        return JQ_DONE;
     }
     *j = *jq->tail;
     job_queue_inc_ptr(jq, &jq->tail);
+    jq->jobs--;
     mutex_unlock(&jq->lock);
-    return JQR_SUCCESS;
+    return OK;
 }
 
-static inline job* job_queue_push_raw(job_queue* jq)
+int job_queue_push(job_queue* jq, const job* jb, ureg* waiters, ureg* jobs)
 {
-    job* res = jq->head;
+    mutex_lock(&jq->lock);
+    if (jq->jobs == UREG_MAX) {
+        mutex_unlock(&jq->lock);
+        return JQ_DONE;
+    }
+    job* j = jq->head;
     job_queue_inc_ptr(jq, &jq->head);
     if (jq->head == jq->tail) {
         ureg size_old = ptrdiff(jq->buffer_end, jq->buffer);
         ureg size_new = size_old * 2;
         job* buffer_new = tmalloc(size_new);
-        if (!buffer_new) return NULL;
+        if (!buffer_new) {
+            mutex_unlock(&jq->lock);
+            return ERR;
+        }
         ureg tail_size = ptrdiff(jq->buffer_end, jq->tail);
         memcpy(buffer_new, jq->tail, tail_size);
         memcpy(ptradd(buffer_new, tail_size), jq->buffer, size_old - tail_size);
@@ -71,59 +83,20 @@ static inline job* job_queue_push_raw(job_queue* jq)
         jq->buffer_end = ptradd(buffer_new, size_new);
         jq->tail = jq->buffer;
         jq->head = ptradd(jq->buffer, size_old);
-        res = jq->head - 1;
+        j = jq->head - 1;
     }
-    return res;
-}
-
-static inline job_queue_result job_queue_push(job_queue* jq, job jb)
-{
-    bool reinforcements = false;
-    mutex_lock(&jq->lock);
-    job* j = job_queue_push_raw(jq);
-    if (!j) {
-        mutex_unlock(&jq->lock);
-        return ERR;
-    }
-    *j = jb;
-    if (jq->idle_threads_count == 0) {
-        if (jq->threads_count < plattform_get_virt_core_count()) {
-            reinforcements = true;
-        }
-        mutex_unlock(&jq->lock);
-    }
-    else {
-        mutex_unlock(&jq->lock);
-        cond_var_notify_one(&jq->has_jobs);
-    }
-    if (reinforcements) return JQR_SUCCESS_WITH_REINFORCEMENTS_REQUEST;
-    return JQR_SUCCESS;
-}
-
-job_queue_result job_queue_request_parse(job_queue* jq, src_file* f)
-{
-    job j;
-    j.type = JOB_PARSE;
-    j.concrete.parse.file = f;
-    return job_queue_push(jq, j);
-}
-job_queue_result job_queue_request_resolve(job_queue* jq, mdg_node* node)
-{
-    job j;
-    j.type = JOB_RESOLVE;
-    j.concrete.resolve.node = node;
-    return job_queue_push(jq, j);
-}
-void job_queue_inform_thread_added(job_queue* jq)
-{
-    mutex_lock(&jq->lock);
-    jq->threads_count++;
+    *j = *jb;
+    *waiters = jq->waiters;
+    *jobs = jq->jobs++;
     mutex_unlock(&jq->lock);
+    if (*waiters > 0) cond_var_notify_one(&jq->has_jobs);
+    return OK;
 }
-void job_queue_force_done(job_queue* jq)
+
+void job_queue_stop(job_queue* jq)
 {
     mutex_lock(&jq->lock);
-    jq->idle_threads_count = UREGH_MAX;
+    jq->jobs = UREG_MAX;
     mutex_unlock(&jq->lock);
     cond_var_notify_all(&jq->has_jobs);
 }

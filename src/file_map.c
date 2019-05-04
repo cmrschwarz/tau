@@ -45,14 +45,7 @@ int src_file_require(src_file* f)
     do {
         res = atomic_ureg_cas(&f->stage, &stage, SFS_UNPARSED);
     } while (stage == SFS_UNNEDED);
-    if (res) {
-        job_queue_result r = job_queue_request_parse(&TAUC.job_queue, f);
-        if (r == JQR_ERROR) return ERR;
-        if (r == JQR_SUCCESS_WITH_REINFORCEMENTS_REQUEST) {
-            return tauc_add_worker_thread();
-        }
-        return OK;
-    }
+    if (res) return tauc_request_parse(f);
     return OK;
 }
 

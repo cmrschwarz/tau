@@ -34,30 +34,25 @@ static int pe(int res, char* msg)
 mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent, scope* tgt);
 int mdg_test()
 {
-    int res = OK;
-    mdg m;
-    mdg_init(&m);
-    pool p;
-    pool_init(&p);
-    scc_detector sccd;
-    scc_detector_init(&sccd, &p);
-    mdg_node* a = mdg_node_create(&m, string_from_cstr("a"), NULL, NULL);
-    mdg_node* b = mdg_node_create(&m, string_from_cstr("b"), NULL, NULL);
-    mdg_node* c = mdg_node_create(&m, string_from_cstr("c"), NULL, NULL);
-    mdg_node* d = mdg_node_create(&m, string_from_cstr("d"), NULL, NULL);
-    mdg_node* e = mdg_node_create(&m, string_from_cstr("e"), NULL, NULL);
-    mdg_node* f = mdg_node_create(&m, string_from_cstr("f"), NULL, NULL);
-    mdg_node* g = mdg_node_create(&m, string_from_cstr("g"), NULL, NULL);
+    int res = tauc_init();
+    mdg* m = &TAUC.mdg;
+    mdg_node* a = mdg_node_create(m, string_from_cstr("a"), NULL, NULL);
+    mdg_node* b = mdg_node_create(m, string_from_cstr("b"), NULL, NULL);
+    mdg_node* c = mdg_node_create(m, string_from_cstr("c"), NULL, NULL);
+    mdg_node* d = mdg_node_create(m, string_from_cstr("d"), NULL, NULL);
+    mdg_node* e = mdg_node_create(m, string_from_cstr("e"), NULL, NULL);
+    mdg_node* f = mdg_node_create(m, string_from_cstr("f"), NULL, NULL);
+    mdg_node* g = mdg_node_create(m, string_from_cstr("g"), NULL, NULL);
 
-    mdg_add_dependency(&m, a, b);
-    mdg_add_dependency(&m, b, c);
-    mdg_add_dependency(&m, c, a);
-    mdg_add_dependency(&m, c, d);
-    mdg_add_dependency(&m, d, e);
-    mdg_add_dependency(&m, e, f);
-    mdg_add_dependency(&m, f, d);
-    mdg_add_dependency(&m, g, a);
-    mdg_add_dependency(&m, g, e);
+    mdg_add_dependency(m, a, b);
+    mdg_add_dependency(m, b, c);
+    mdg_add_dependency(m, c, a);
+    mdg_add_dependency(m, c, d);
+    mdg_add_dependency(m, d, e);
+    mdg_add_dependency(m, e, f);
+    mdg_add_dependency(m, f, d);
+    mdg_add_dependency(m, g, a);
+    mdg_add_dependency(m, g, e);
     for (int i = 0; i < 2; i++) {
         a->stage = MS_AWAITING_DEPENDENCIES;
         b->stage = MS_AWAITING_DEPENDENCIES;
@@ -67,7 +62,7 @@ int mdg_test()
         f->stage = MS_AWAITING_DEPENDENCIES;
         g->stage = MS_AWAITING_DEPENDENCIES;
         atomic_ureg_store(&g->unparsed_files, 1);
-        res |= mdg_node_file_parsed(&m, g, &sccd);
+        res |= mdg_node_file_parsed(m, g, &TAUC.main_thread_context.sccd);
     }
 
     /*
@@ -76,8 +71,7 @@ int mdg_test()
           A < G > E
               ^
     */
-    pool_fin(&p);
-    mdg_fin(&m);
+    tauc_fin();
     return pe(res, "mdg_test");
 }
 
@@ -110,16 +104,14 @@ int job_queue_test()
     job_queue jq;
     job_queue_init(&jq);
     job jb;
+    ureg _1, _2;
     for (int k = 0; k < 50; k++) {
         ureg p = 0;
         ureg q = 0;
         for (int i = 0; i < 20 * k; i++) {
-            job_queue_result r = job_queue_request_parse(&jq, (void*)p);
-            if (r != JQR_SUCCESS &&
-                r != JQR_SUCCESS_WITH_REINFORCEMENTS_REQUEST) {
-                res = ERR;
-                goto fail;
-            }
+            jb.concrete.parse.file = (void*)p;
+            res = job_queue_push(&jq, &jb, &_1, &_2);
+            if (res) goto fail;
             p++;
             if (i % 5 == 0) {
                 job_queue_pop(&jq, &jb);

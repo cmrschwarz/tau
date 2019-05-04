@@ -1,0 +1,20 @@
+#pragma once
+#include "mdg.h"
+typedef enum resolve_error {
+    RE_FATAL = -1,
+    RE_OK = 0,
+    RE_TYPE_MISSMATCH,
+    RE_UNKNOWN_SYMBOL,
+} resolve_error;
+
+typedef struct resolver {
+    thread_context* tc;
+    mdg_node** start;
+    mdg_node** end;
+} resolver;
+
+int resolver_init(resolver* r, thread_context* tc);
+void resolver_fin(resolver* r);
+resolve_error resolver_resolve_single(resolver* r, mdg_node* node);
+resolve_error
+resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end);

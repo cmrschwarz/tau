@@ -1,10 +1,10 @@
 #include "tauc.h"
 #include "error_log.h"
 #include "print_ast.h"
+#include "thread_context.h"
 #include "utils/allocator.h"
 
 struct tauc TAUC;
-static inline int thread_context_run(thread_context* tc);
 
 static inline int tauc_partial_fin(int r, int i)
 {
@@ -16,9 +16,7 @@ static inline int tauc_partial_fin(int r, int i)
         case 1: thread_context_fin(&TAUC.main_thread_context);
         case 0: break;
     }
-    if (r)
-        master_error_log_report(
-            "fatal initialization error: memory allocation failed");
+    if (r) master_error_log_report("memory allocation failed");
     return r;
 }
 int tauc_init()
@@ -41,10 +39,11 @@ void tauc_fin()
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &TAUC.worker_threads);
     worker_thread* wt;
+    job_queue_stop(&TAUC.job_queue);
     while (true) {
         wt = aseglist_iterator_next(&it);
         if (!wt) break;
-        worker_thread_stage wts = atomic_ureg_load(&wt->stage);
+        worker_thread_status wts = atomic_ureg_load(&wt->status);
         if (wts != WTS_FAILED) {
             thread_join(&wt->thread);
             thread_context_fin(&wt->tc);
@@ -62,7 +61,7 @@ int tauc_run(int argc, char** argv)
         src_file* f = file_map_get_file_from_path(
             &TAUC.file_map, string_from_cstr(argv[i]));
         if (!f) return ERR;
-        if (job_queue_request_parse(&TAUC.job_queue, f)) return ERR;
+        if (tauc_request_parse(f)) return ERR;
     }
     src_file* f =
         file_map_get_file_from_path(&TAUC.file_map, string_from_cstr(argv[1]));
@@ -73,9 +72,8 @@ int tauc_run(int argc, char** argv)
 void worker_thread_fn(void* ctx)
 {
     worker_thread* wt = (worker_thread*)ctx;
-    job_queue_inform_thread_added(&TAUC.job_queue);
     thread_context_run(&wt->tc);
-    atomic_ureg_store(&wt->stage, WTS_TERMINATED);
+    atomic_ureg_store(&wt->status, WTS_TERMINATED);
 }
 int tauc_add_worker_thread()
 {
@@ -86,7 +84,7 @@ int tauc_add_worker_thread()
         tfree(wt);
         return r;
     }
-    r = atomic_ureg_init(&wt->stage, WTS_RUNNING);
+    r = atomic_ureg_init(&wt->status, WTS_RUNNING);
     if (r) {
         thread_context_fin(&wt->tc);
         tfree(wt);
@@ -108,72 +106,50 @@ int tauc_add_worker_thread()
         thread_context_fin(&wt->tc);
         error_log_report_critical_failiure(
             &wt->tc.error_log, "failed to spawn additional worker thread");
-        atomic_ureg_store(&wt->stage, WTS_FAILED);
+        atomic_ureg_store(&wt->status, WTS_FAILED);
         return OK; // this is intentional, see above
     }
     return OK;
 }
 
-static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
+int tauc_add_job(job* j)
 {
-    switch (i) {
-        case 4: parser_fin(&tc->parser);
-        case 3: error_log_fin(&tc->error_log);
-        case 2: pool_fin(&tc->tempmem);
-        case 1: pool_fin(&tc->permmem);
-        case 0: break;
+    ureg waiters, jobs;
+    int r = job_queue_push(&TAUC.job_queue, j, &waiters, &jobs);
+    if (r) return r;
+    // TODO: tweak spawn condition
+    if (jobs > 2 * waiters) {
+        ureg max_tc = plattform_get_virt_core_count();
+        ureg tc = atomic_ureg_load(&TAUC.thread_count);
+        if (tc < max_tc) {
+            tc = atomic_ureg_inc(&TAUC.thread_count);
+            if (tc < max_tc) {
+                return tauc_add_worker_thread();
+            }
+        }
     }
-    if (r)
-        master_error_log_report("thread setup error: memory allocation failed");
-    return r;
-}
-void thread_context_fin(thread_context* tc)
-{
-    thread_context_partial_fin(tc, 0, 4);
-}
-int thread_context_init(thread_context* tc)
-{
-    int r = pool_init(&tc->permmem);
-    if (r) return thread_context_partial_fin(tc, r, 0);
-    r = pool_init(&tc->tempmem);
-    if (r) return thread_context_partial_fin(tc, r, 1);
-    error_log_init(&tc->error_log, &tc->permmem);
-    if (r) return thread_context_partial_fin(tc, r, 2);
-    r = parser_init(&tc->parser, tc);
-    if (r) return thread_context_partial_fin(tc, r, 3);
     return OK;
 }
-static inline int thread_context_run(thread_context* tc)
+
+int tauc_request_parse(src_file* f)
 {
-    int r = OK;
-    job_queue_result jqr;
     job j;
-    while (true) {
-        jqr = job_queue_pop(&TAUC.job_queue, &j);
-        if (jqr == JQR_DONE) {
-            break;
-        }
-        else if (jqr == JQR_SUCCESS_WITH_REINFORCEMENTS_REQUEST) {
-            r = tauc_add_worker_thread();
-            if (r) break;
-        }
-        else if (jqr == JQR_ERROR) {
-            r = ERR;
-            break;
-        }
-        if (j.type == JOB_PARSE) {
-            r = parser_parse_file(&tc->parser, j.concrete.parse.file);
-        }
-        else if (j.type == JOB_RESOLVE) {
-            r = ERR; // TODO: implement resolving
-        }
-        else {
-            error_log_report_critical_failiure(
-                &tc->error_log, "unknown job type");
-            r = ERR;
-            break;
-        }
-        if (r) break;
-    }
-    return r;
+    j.type = JOB_PARSE;
+    j.concrete.parse.file = f;
+    return tauc_add_job(&j);
+}
+int tauc_request_resolve_multiple(mdg_node** begin, mdg_node** end)
+{
+    job j;
+    j.type = JOB_RESOLVE_MULTIPLE;
+    j.concrete.resolve_multiple.begin = begin;
+    j.concrete.resolve_multiple.end = end;
+    return tauc_add_job(&j);
+}
+int tauc_request_resolve_single(mdg_node* node)
+{
+    job j;
+    j.type = JOB_RESOLVE_SINGLE;
+    j.concrete.resolve_single.node = node;
+    return tauc_add_job(&j);
 }

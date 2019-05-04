@@ -1,8 +1,11 @@
 #include "mdg.h"
 #include "error_log.h"
 #include "mdght.h"
+#include "tauc.h"
+#include "utils/allocator.h"
 #include "utils/threading.h"
 #include "utils/zero.h"
+
 int mdg_fin_partial(mdg* m, int i, int r)
 {
     switch (i) {
@@ -337,7 +340,7 @@ int scc_detector_strongconnect(
             rwslock_end_write(&n->stage_lock);
             sn->index = d->dfs_start_index;
             if (success) {
-                printf("Isolated: %s\n", n->name);
+                tauc_request_resolve_single(n);
             }
             return OK;
         }
@@ -361,12 +364,11 @@ int scc_detector_strongconnect(
                 if (!success) break;
             }
             if (success) {
-                printf("Group: {");
-                for (mdg_node** i = start; i < end - 1; i++) {
-                    printf("%s, ", (**i).name);
-                }
-                printf("%s}\n", (**(end - 1)).name);
-                // TODO: call resolve
+                ureg list_size = ptrdiff(end, start);
+                mdg_node** node_list = tmalloc(list_size);
+                if (!node_list) return ERR;
+                tauc_request_resolve_multiple(
+                    node_list, ptradd(node_list, list_size));
             }
             return OK;
         }
@@ -409,4 +411,8 @@ int scc_detector_run(scc_detector* d, mdg_node* n)
         }
     }
     return OK;
+}
+
+void scc_detector_fin(scc_detector* d)
+{
 }

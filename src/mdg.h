@@ -95,3 +95,4 @@ int mdg_node_file_parsed(mdg* m, mdg_node* n, scc_detector* d);
 
 int scc_detector_init(scc_detector* d, pool* mem_src);
 int scc_detector_run(scc_detector* d, mdg_node* n);
+void scc_detector_fin(scc_detector* d);
