@@ -39,7 +39,11 @@ void tauc_fin()
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &TAUC.worker_threads);
     worker_thread* wt;
-    job_queue_stop(&TAUC.job_queue);
+    job jb;
+    jb.type = JOB_FINALIZE;
+    ureg w, j;
+    job_queue_push(&TAUC.job_queue, &jb, &w, &j);
+    // job_queue_stop(&TAUC.job_queue);
     while (true) {
         wt = aseglist_iterator_next(&it);
         if (!wt) break;

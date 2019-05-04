@@ -9,6 +9,7 @@ typedef enum PACK_ENUM job_type {
     JOB_PARSE,
     JOB_RESOLVE_SINGLE,
     JOB_RESOLVE_MULTIPLE,
+    JOB_FINALIZE,
 } job_type;
 
 typedef struct job_parse {

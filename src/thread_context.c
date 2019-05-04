@@ -43,7 +43,7 @@ int thread_context_run(thread_context* tc)
     while (true) {
         r = job_queue_pop(&TAUC.job_queue, &j);
         if (r == JQ_DONE) return OK;
-        if (r == OK) return r;
+        if (r != OK) return r;
         if (j.type == JOB_PARSE) {
             r = parser_parse_file(&tc->parser, j.concrete.parse.file);
         }
@@ -56,6 +56,9 @@ int thread_context_run(thread_context* tc)
         else if (j.type == JOB_RESOLVE_SINGLE) {
             r = resolver_resolve_single(
                 &tc->resolver, j.concrete.resolve_single.node);
+        }
+        else if (j.type == JOB_FINALIZE) {
+            job_queue_stop(&TAUC.job_queue);
         }
         else {
             error_log_report_critical_failiure(
