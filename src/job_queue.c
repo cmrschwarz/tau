@@ -33,6 +33,25 @@ static inline void job_queue_inc_ptr(job_queue* jq, job** ptr)
     (*ptr)++;
     if (*ptr == jq->buffer_end) *ptr = jq->buffer;
 }
+
+int job_queue_try_pop(job_queue* jq, job* j)
+{
+    mutex_lock(&jq->lock);
+    int r = OK;
+    if (jq->jobs == UREG_MAX) {
+        r = JQ_DONE;
+    }
+    else if (jq->head == jq->tail) {
+        r = JQ_NONE;
+    }
+    else {
+        *j = *jq->tail;
+        job_queue_inc_ptr(jq, &jq->tail);
+        jq->jobs--;
+    }
+    mutex_unlock(&jq->lock);
+    return r;
+}
 int job_queue_pop(job_queue* jq, job* j)
 {
     mutex_lock(&jq->lock);
@@ -40,6 +59,7 @@ int job_queue_pop(job_queue* jq, job* j)
         jq->waiters++;
         do {
             if (jq->jobs == UREG_MAX) {
+                jq->waiters--;
                 mutex_unlock(&jq->lock);
                 return JQ_DONE;
             }
@@ -87,7 +107,7 @@ int job_queue_push(job_queue* jq, const job* jb, ureg* waiters, ureg* jobs)
     }
     *j = *jb;
     *waiters = jq->waiters;
-    *jobs = jq->jobs++;
+    *jobs = ++jq->jobs;
     mutex_unlock(&jq->lock);
     if (*waiters > 0) cond_var_notify_one(&jq->has_jobs);
     return OK;

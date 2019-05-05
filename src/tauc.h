@@ -32,5 +32,6 @@ int tauc_init();
 int tauc_run(int argc, char** argv);
 int tauc_request_parse(src_file* f);
 int tauc_request_resolve_single(mdg_node* node);
-int tauc_request_resolve_multiple(mdg_node** begin, mdg_node** end);
+int tauc_request_resolve_multiple(mdg_node** start, mdg_node** end);
+int tauc_request_end();
 void tauc_fin();

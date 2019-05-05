@@ -53,7 +53,7 @@ int mdg_test()
     mdg_add_dependency(m, f, d);
     mdg_add_dependency(m, g, a);
     mdg_add_dependency(m, g, e);
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < 1; i++) {
         a->stage = MS_AWAITING_DEPENDENCIES;
         b->stage = MS_AWAITING_DEPENDENCIES;
         c->stage = MS_AWAITING_DEPENDENCIES;
@@ -61,10 +61,22 @@ int mdg_test()
         e->stage = MS_AWAITING_DEPENDENCIES;
         f->stage = MS_AWAITING_DEPENDENCIES;
         g->stage = MS_AWAITING_DEPENDENCIES;
-        atomic_ureg_store(&g->unparsed_files, 1);
-        res |= mdg_node_file_parsed(m, g, &TAUC.main_thread_context.sccd);
+        res |= scc_detector_run(&TAUC.main_thread_context.sccd, g);
+        res |= scc_detector_run(&TAUC.main_thread_context.sccd, e);
+        res |= scc_detector_run(&TAUC.main_thread_context.sccd, a);
     }
-
+    job j;
+    while (true) {
+        int r = job_queue_try_pop(&TAUC.job_queue, &j);
+        if (r == JQ_NONE) break;
+        if (r == OK) {
+            r = thread_context_do_job(&TAUC.main_thread_context, &j);
+        }
+        else {
+            res = ERR;
+            break;
+        }
+    }
     /*
         B > C > D > F
          ^ v     ^ v

@@ -34,16 +34,22 @@ int tauc_init()
     if (r) return tauc_partial_fin(r, 4);
     return OK;
 }
+int tauc_request_end()
+{
+    job jb;
+    jb.type = JOB_FINALIZE;
+    ureg w, j;
+    int r = job_queue_push(&TAUC.job_queue, &jb, &w, &j);
+    if (r != ERR) return OK;
+    return ERR;
+}
 void tauc_fin()
 {
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &TAUC.worker_threads);
     worker_thread* wt;
-    job jb;
-    jb.type = JOB_FINALIZE;
-    ureg w, j;
-    job_queue_push(&TAUC.job_queue, &jb, &w, &j);
-    // job_queue_stop(&TAUC.job_queue);
+    tauc_request_end();
+    thread_context_run(&TAUC.main_thread_context);
     while (true) {
         wt = aseglist_iterator_next(&it);
         if (!wt) break;
@@ -75,6 +81,7 @@ int tauc_run(int argc, char** argv)
 
 void worker_thread_fn(void* ctx)
 {
+    puts("added worker thread!");
     worker_thread* wt = (worker_thread*)ctx;
     thread_context_run(&wt->tc);
     atomic_ureg_store(&wt->status, WTS_TERMINATED);
@@ -122,7 +129,7 @@ int tauc_add_job(job* j)
     int r = job_queue_push(&TAUC.job_queue, j, &waiters, &jobs);
     if (r) return r;
     // TODO: tweak spawn condition
-    if (jobs > 2 * waiters) {
+    if (jobs > waiters + 1) {
         ureg max_tc = plattform_get_virt_core_count();
         ureg tc = atomic_ureg_load(&TAUC.thread_count);
         if (tc < max_tc) {
@@ -142,11 +149,11 @@ int tauc_request_parse(src_file* f)
     j.concrete.parse.file = f;
     return tauc_add_job(&j);
 }
-int tauc_request_resolve_multiple(mdg_node** begin, mdg_node** end)
+int tauc_request_resolve_multiple(mdg_node** start, mdg_node** end)
 {
     job j;
     j.type = JOB_RESOLVE_MULTIPLE;
-    j.concrete.resolve_multiple.begin = begin;
+    j.concrete.resolve_multiple.start = start;
     j.concrete.resolve_multiple.end = end;
     return tauc_add_job(&j);
 }

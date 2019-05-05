@@ -110,7 +110,7 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
         atomic_ptr_fin(&n->targets);
         return NULL;
     }
-    r = aseglist_init(&n->notifiy_when_parsed);
+    r = aseglist_init(&n->notify);
     if (r) {
         atomic_ureg_fin(&n->unparsed_files);
         aseglist_fin(&n->dependencies);
@@ -292,17 +292,16 @@ int compare_mdg_nodes(const mdg_node* fst, const mdg_node* snd)
 int scc_detector_strongconnect(
     scc_detector* d, mdg_node* n, sccd_node* sn, mdg_node* caller)
 {
-    rwslock_read(&n->stage_lock);
-    if (n->stage == MS_PARSING) {
-        int r = aseglist_add(&n->notifiy_when_parsed, caller);
+    if (n->stage == MS_PARSING || n->stage == MS_RESOLVING) {
+        int r = aseglist_add(&n->notify, caller);
         rwslock_end_read(&n->stage_lock);
         if (r) return ERR;
         return SCCD_ADDED_NOTIFICATION;
     }
-    // can't be in a circle with caller if it's already resolving or further
-    if (n->stage > MS_AWAITING_DEPENDENCIES) {
+    // can't be in a circle with caller if it's not pending
+    if (n->stage != MS_AWAITING_DEPENDENCIES) {
         sn->index = d->dfs_start_index;
-        sn->lowlink = d->dfs_index;
+        sn->lowlink = UREG_MAX;
         rwslock_end_read(&n->stage_lock);
         return OK;
     }
@@ -319,8 +318,12 @@ int scc_detector_strongconnect(
         sccd_node* mn = scc_detector_get(d, m->id);
         if (!mn) return ERR;
         if (mn->index < d->dfs_start_index) {
+            rwslock_read(&m->stage_lock);
             int r = scc_detector_strongconnect(d, m, mn, caller);
-            if (r) return r;
+            if (r) {
+                rwslock_end_read(&n->stage_lock);
+                return r;
+            }
             if (mn->lowlink < sn->index) sn->lowlink = mn->lowlink;
         }
         else if (mn->index != d->dfs_start_index) {
@@ -328,6 +331,15 @@ int scc_detector_strongconnect(
         }
     }
     if (sn->lowlink == sn->index) {
+        // the caller isn't part of the cycle so it depends on it
+        // and somebody else is already dealing with it
+        // we must wait for the cycle to be resolved
+        if (sn->lowlink != d->dfs_start_index + 1) {
+            int r = aseglist_add(&n->notify, caller);
+            rwslock_end_read(&n->stage_lock);
+            if (r) return ERR;
+            return SCCD_ADDED_NOTIFICATION;
+        }
         d->stack_head--;
         rwslock_end_read(&n->stage_lock);
         bool success = false;
@@ -367,6 +379,7 @@ int scc_detector_strongconnect(
                 ureg list_size = ptrdiff(end, start);
                 mdg_node** node_list = tmalloc(list_size);
                 if (!node_list) return ERR;
+                memcpy(node_list, start, list_size);
                 tauc_request_resolve_multiple(
                     node_list, ptradd(node_list, list_size));
             }
@@ -376,7 +389,7 @@ int scc_detector_strongconnect(
     rwslock_end_read(&n->stage_lock);
     return OK;
 }
-int scc_detector_run(scc_detector* d, mdg_node* n)
+void scc_detector_housekeep_ids(scc_detector* d)
 {
     // reset the dfs_index sometimes to avoid running out of ids
     if (UREG_MAX - d->dfs_index < UREG_MAX / sizeof(mdg_node)) {
@@ -384,11 +397,20 @@ int scc_detector_run(scc_detector* d, mdg_node* n)
         for (sccd_node** b = d->sccd_node_buckets;
              b < d->sccd_node_buckets +
                      d->bucketable_node_capacity / SCCD_BUCKET_CAP;
-             n++) {
+             b++) {
             for (sccd_node* n = *b; n < *b + SCCD_BUCKET_CAP; n++) {
                 n->lowlink = 0;
             }
         }
+    }
+}
+int scc_detector_run(scc_detector* d, mdg_node* n)
+{
+    scc_detector_housekeep_ids(d);
+    rwslock_read(&n->stage_lock);
+    if (n->stage != MS_AWAITING_DEPENDENCIES) {
+        rwslock_end_read(&n->stage_lock);
+        return OK;
     }
     d->dfs_start_index = d->dfs_index;
     // the start index is used to indicate the node is off the stack
@@ -398,21 +420,43 @@ int scc_detector_run(scc_detector* d, mdg_node* n)
     int r = scc_detector_strongconnect(d, n, sn, n);
     if (r == ERR) return ERR;
     if (r == SCCD_ADDED_NOTIFICATION) return OK;
-    aseglist_iterator it;
-    aseglist_iterator_begin(&it, &n->notifiy_when_parsed);
-    while (true) {
-        n = aseglist_iterator_next(&it);
-        if (!n) break;
-        sn = scc_detector_get(d, n->id);
-        if (!sn) return ERR;
-        if (sn->index < d->dfs_start_index) {
-            r = scc_detector_strongconnect(d, n, sn, n);
-            if (r == ERR) return ERR;
-        }
-    }
+
     return OK;
 }
 
 void scc_detector_fin(scc_detector* d)
 {
+}
+
+int mdg_node_resolved(mdg_node* n, scc_detector* d)
+{
+    rwslock_write(&n->stage_lock);
+    n->stage = MS_GENERATING;
+    rwslock_end_write(&n->stage_lock);
+    aseglist_iterator it;
+    aseglist_iterator_begin(&it, &n->notify);
+    while (true) {
+        mdg_node* dep = aseglist_iterator_next(&it);
+        if (!dep) break;
+        if (scc_detector_run(d, dep)) return ERR;
+    }
+    return OK;
+}
+int mdg_nodes_resolved(mdg_node** start, mdg_node** end, scc_detector* d)
+{
+    for (mdg_node** i = start; i != end; i++) {
+        rwslock_write(&(**i).stage_lock);
+        (**i).stage = MS_GENERATING;
+        rwslock_end_write(&(**i).stage_lock);
+    }
+    for (mdg_node** i = start; i != end; i++) {
+        aseglist_iterator it;
+        aseglist_iterator_begin(&it, &(**i).notify);
+        while (true) {
+            mdg_node* dep = aseglist_iterator_next(&it);
+            if (!dep) break;
+            if (scc_detector_run(d, dep)) return ERR;
+        }
+    }
+    return OK;
 }

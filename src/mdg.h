@@ -39,7 +39,7 @@ typedef struct mdg_node {
     atomic_ureg unparsed_files;
     aseglist dependencies;
     atomic_ptr targets;
-    aseglist notifiy_when_parsed;
+    aseglist notify;
     ureg id;
     rwslock stage_lock;
     module_stage stage;

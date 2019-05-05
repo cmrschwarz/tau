@@ -36,6 +36,31 @@ int thread_context_init(thread_context* tc)
     if (r) return thread_context_partial_fin(tc, r, 5);
     return OK;
 }
+int thread_context_do_job(thread_context* tc, job* j)
+{
+    if (j->type == JOB_PARSE) {
+        return parser_parse_file(&tc->parser, j->concrete.parse.file);
+    }
+    else if (j->type == JOB_RESOLVE_MULTIPLE) {
+        int r = resolver_resolve_multiple(
+            &tc->resolver, j->concrete.resolve_multiple.start,
+            j->concrete.resolve_multiple.end);
+        tfree(j->concrete.resolve_multiple.start);
+        return r;
+    }
+    else if (j->type == JOB_RESOLVE_SINGLE) {
+        return resolver_resolve_single(
+            &tc->resolver, j->concrete.resolve_single.node);
+    }
+    else if (j->type == JOB_FINALIZE) {
+        job_queue_stop(&TAUC.job_queue);
+        return OK;
+    }
+    else {
+        error_log_report_critical_failiure(&tc->error_log, "unknown job type");
+        return ERR;
+    }
+}
 int thread_context_run(thread_context* tc)
 {
     int r = OK;
@@ -44,27 +69,7 @@ int thread_context_run(thread_context* tc)
         r = job_queue_pop(&TAUC.job_queue, &j);
         if (r == JQ_DONE) return OK;
         if (r != OK) return r;
-        if (j.type == JOB_PARSE) {
-            r = parser_parse_file(&tc->parser, j.concrete.parse.file);
-        }
-        else if (j.type == JOB_RESOLVE_MULTIPLE) {
-            r = resolver_resolve_multiple(
-                &tc->resolver, j.concrete.resolve_multiple.begin,
-                j.concrete.resolve_multiple.end);
-            tfree(j.concrete.resolve_multiple.begin);
-        }
-        else if (j.type == JOB_RESOLVE_SINGLE) {
-            r = resolver_resolve_single(
-                &tc->resolver, j.concrete.resolve_single.node);
-        }
-        else if (j.type == JOB_FINALIZE) {
-            job_queue_stop(&TAUC.job_queue);
-        }
-        else {
-            error_log_report_critical_failiure(
-                &tc->error_log, "unknown job type");
-            return ERR;
-        }
+        r = thread_context_do_job(tc, &j);
         if (r) return r;
     }
 }
