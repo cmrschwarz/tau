@@ -22,7 +22,8 @@ typedef struct parser {
 
 int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
-parse_error parser_parse_file(parser* p, src_file* f);
+typedef struct job_parse job_parse;
+parse_error parser_parse_file(parser* p, job_parse* j);
 module_import* imports;
 
 bool stmt_allowed_to_drop_semicolon(stmt* s);

@@ -67,18 +67,19 @@ void mdg_end_read(mdg* m, mdght* h);
 mdght* mdg_start_write(mdg* m);
 void mdg_end_write(mdg* m);
 
-void mdg_node_require(mdg* m, mdg_node* n);
-
 mdg_node*
 mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident);
 mdg_node* mdg_get_node(mdg* m, mdg_node* parent, string ident);
-
-int mdg_add_dependency(mdg* m, mdg_node* n, mdg_node* dependency);
 
 typedef struct sccd_node {
     ureg index;
     ureg lowlink;
 } sccd_node;
+
+typedef union scc_stack_entry {
+    mdg_node* mdgn;
+    open_scope* osc;
+} scc_stack_entry;
 
 typedef struct scc_detector {
     ureg allocated_node_count;
@@ -86,12 +87,17 @@ typedef struct scc_detector {
     ureg dfs_start_index;
     ureg bucketable_node_capacity;
     sccd_node** sccd_node_buckets;
-    mdg_node** stack;
-    mdg_node** stack_head;
+    scc_stack_entry* stack;
+    scc_stack_entry* stack_head;
     pool* mem_src;
 } scc_detector;
 
 int mdg_node_file_parsed(mdg* m, mdg_node* n, scc_detector* d);
+int mdg_node_resolved(mdg_node* n, scc_detector* d);
+int mdg_nodes_resolved(mdg_node** start, mdg_node** end, scc_detector* d);
+int mdg_node_add_dependency(mdg_node* n, mdg_node* dependency, scc_detector* d);
+
+int mdg_node_require(mdg_node* n, scc_detector* d);
 
 int scc_detector_init(scc_detector* d, pool* mem_src);
 int scc_detector_run(scc_detector* d, mdg_node* n);

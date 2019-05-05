@@ -9,6 +9,7 @@ struct tauc TAUC;
 static inline int tauc_partial_fin(int r, int i)
 {
     switch (i) {
+        case 6: atomic_ureg_fin(&TAUC.thread_count);
         case 5: aseglist_fin(&TAUC.worker_threads);
         case 4: job_queue_fin(&TAUC.job_queue);
         case 3: file_map_fin(&TAUC.file_map);
@@ -32,6 +33,8 @@ int tauc_init()
     if (r) return tauc_partial_fin(r, 3);
     r = aseglist_init(&TAUC.worker_threads);
     if (r) return tauc_partial_fin(r, 4);
+    r = atomic_ureg_init(&TAUC.thread_count, 1);
+    if (r) return tauc_partial_fin(r, 5);
     return OK;
 }
 int tauc_request_end()
@@ -60,22 +63,18 @@ void tauc_fin()
         }
         tfree(wt);
     }
-    aseglist_iterator_fin(&it);
-    tauc_partial_fin(0, 5);
+    tauc_partial_fin(0, 6);
 }
 
 int tauc_run(int argc, char** argv)
 {
     if (argc < 2) return 0;
-    for (int i = 2; i < argc; i++) {
+    for (int i = 1; i < argc; i++) {
         src_file* f = file_map_get_file_from_path(
             &TAUC.file_map, string_from_cstr(argv[i]));
         if (!f) return ERR;
-        if (tauc_request_parse(f)) return ERR;
+        src_file_require(f, NULL, SRC_RANGE_INVALID, TAUC.mdg.root_node);
     }
-    src_file* f =
-        file_map_get_file_from_path(&TAUC.file_map, string_from_cstr(argv[1]));
-    if (parser_parse_file(&TAUC.main_thread_context.parser, f)) return ERR;
     return thread_context_run(&TAUC.main_thread_context);
 }
 
@@ -142,11 +141,14 @@ int tauc_add_job(job* j)
     return OK;
 }
 
-int tauc_request_parse(src_file* f)
+int tauc_request_parse(
+    src_file* f, src_file* requiring_file, src_range requiring_srange)
 {
     job j;
     j.type = JOB_PARSE;
     j.concrete.parse.file = f;
+    j.concrete.parse.requiring_file = requiring_file;
+    j.concrete.parse.requiring_srange = requiring_srange;
     return tauc_add_job(&j);
 }
 int tauc_request_resolve_multiple(mdg_node** start, mdg_node** end)

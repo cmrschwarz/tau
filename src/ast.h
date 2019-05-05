@@ -491,6 +491,7 @@ typedef struct expr_lambda {
 } expr_lambda;
 
 bool scope_is_open(scope* s);
+src_file* scope_get_file(scope* s);
 
 bool body_is_braced(body* b);
 

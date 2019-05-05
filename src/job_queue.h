@@ -14,6 +14,8 @@ typedef enum PACK_ENUM job_type {
 
 typedef struct job_parse {
     src_file* file;
+    src_file* requiring_file;
+    src_range requiring_srange;
 } job_parse;
 
 typedef struct job_resolve_single {

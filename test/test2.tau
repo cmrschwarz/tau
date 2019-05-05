@@ -1,0 +1,3 @@
+func baz(){
+    print("hello from the second file!");
+}

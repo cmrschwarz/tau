@@ -32,6 +32,7 @@ void cond_var_notify_all(cond_var* cv);
 void cond_var_fin(cond_var* cv);
 
 // Atomics
+// cas oldval gets updated only if the cas was not successful
 // add,sub,inc and dec return the previously stored value
 
 int atomic_ptr_init(atomic_ptr* a, void* value);

@@ -1,4 +1,4 @@
-require "foo/bar.tau";
+require "test2.tau";
 x:=3;
 func main(args: String[]){
     extend bar;

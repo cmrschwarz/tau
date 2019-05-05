@@ -1623,6 +1623,8 @@ parse_error handle_semicolon_after_statement(parser* p, stmt* s)
 static inline parse_error parse_delimited_open_scope(
     parser* p, open_scope* osc, token_type delimiter_1, token_type delimiter_2)
 {
+    scope* parent = p->curr_scope;
+    p->curr_scope = (scope*)osc;
     osc->requires =
         (file_require*)list_builder_start_blocklist(&p->list_builder);
     stmt** head = &osc->scope.body.children;
@@ -1645,6 +1647,7 @@ static inline parse_error parse_delimited_open_scope(
     *head = NULL;
     osc->requires = list_builder_pop_block_list_zt(
         &p->list_builder, osc->requires, &p->tk.tc->permmem);
+    p->curr_scope = parent;
     if (!osc->requires) return PE_FATAL;
     return pe;
 }
@@ -1652,17 +1655,36 @@ parse_error parse_eof_delimited_open_scope(parser* p, open_scope* osc)
 {
     return parse_delimited_open_scope(p, osc, TT_EOF, TT_EOF);
 }
-parse_error parser_parse_file(parser* p, src_file* f)
+parse_error parser_parse_file(parser* p, job_parse* j)
 {
     // This is test code. it sucks
-    int r = tk_open_file(&p->tk, f);
-    if (r) return PE_TK_ERROR;
-    p->curr_scope = &p->root.oscope.scope;
-    p->current_module = TAUC.mdg.root_node;
+    int r = tk_open_file(&p->tk, j->file);
+    if (r) {
+        src_range_large srl;
+        src_range_unpack(j->requiring_srange, &srl);
+        if (j->requiring_file != NULL) {
+            error_log_report_annotated(
+                &p->tk.tc->error_log, ES_TOKENIZER, false,
+                "required file doesn't exist", j->requiring_file, srl.start,
+                srl.end, "required here");
+        }
+        else {
+            char* file_path = tmalloc(src_file_get_path_len(j->file) + 1);
+            if (!file_path) return PE_FATAL;
+            src_file_write_path(j->file, file_path);
+            char* msg = error_log_cat_strings_3(
+                &p->tk.tc->error_log, "command line requirested file \"",
+                file_path, "\" which doesn't exist");
+            error_log_report_critical_failiure(&p->tk.tc->error_log, msg);
+        }
+        return PE_TK_ERROR;
+    }
+    p->current_module = &TAUC.mdg.root_node;
     parse_error pe = parse_eof_delimited_open_scope(p, &p->root.oscope);
     // DBUG:
     print_astn_nl((stmt*)&p->root, 0);
     tk_close_file(&p->tk);
+    if (src_file_done_parsing(j->file, p->tk.tc)) pe = PE_FATAL;
     return pe;
 }
 static inline const char* access_modifier_string(access_modifier am)
@@ -1963,7 +1985,11 @@ parse_error parse_module_decl(
     md->scope.symbol.stmt.type = generic ? OSC_MODULE_GENERIC : OSC_MODULE;
     md->scope.symbol.stmt.flags = flags;
     *n = (stmt*)md;
-    return parse_open_scope_body(p, md, mdgn);
+    mdg_node* parent = p->current_module;
+    p->current_module = mdgn;
+    pe = parse_open_scope_body(p, md, mdgn);
+    p->current_module = parent;
+    return pe;
 }
 parse_error parse_extend_decl(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
@@ -2012,7 +2038,10 @@ parse_error parse_extend_decl(
     if (t->type == TT_SEMICOLON) {
         if (p->curr_scope->body.children == NULL) {
             tk_consume(&p->tk);
+            mdg_node* parent = p->current_module;
+            p->current_module = mdgn;
             pe = parse_delimited_open_scope(p, ex, TT_EOF, TT_BRACE_CLOSE);
+            p->current_module = parent;
             *n = (stmt*)ex;
             return pe;
         }
@@ -2029,7 +2058,11 @@ parse_error parse_extend_decl(
         }
     }
     *n = (stmt*)ex;
-    return parse_open_scope_body(p, ex, mdgn);
+    mdg_node* parent = p->current_module;
+    p->current_module = mdgn;
+    pe = parse_open_scope_body(p, ex, mdgn);
+    p->current_module = parent;
+    return pe;
 }
 parse_error parse_trait_decl(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
@@ -2397,7 +2430,7 @@ parse_braced_imports(parser* p, stmt_import* stmt, module_import* mi)
         &p->list_builder, mi->nested_imports, &p->tk.tc->permmem);
     if (!mi->nested_imports) return PE_FATAL;
     tk_void(&p->tk);
-    if (mdg_add_dependency(&TAUC.mdg, p->current_module, mi->tgt)) {
+    if (mdg_node_add_dependency(p->current_module, mi->tgt, &p->tk.tc->sccd)) {
         return PE_FATAL;
     }
     return PE_OK;
@@ -2471,7 +2504,7 @@ parse_error parse_single_import(
     }
     mi->srange = src_range_pack_lines(p->tk.tc, start, end);
     if (mi->srange == SRC_RANGE_INVALID) return PE_FATAL;
-    if (mdg_add_dependency(&TAUC.mdg, p->current_module, mi->tgt)) {
+    if (mdg_node_add_dependency(p->current_module, mi->tgt, &p->tk.tc->sccd)) {
         return PE_FATAL;
     }
     return PE_OK;
@@ -2512,22 +2545,32 @@ parse_error parse_require(parser* p)
             "in this require statement");
         return PE_HANDLED;
     }
-    file_require rq;
-    src_file* f = file_map_get_file_from_path(&TAUC.file_map, t->str);
-    rq.file = f;
-    rq.srange = src_range_pack_lines(p->tk.tc, start, t->end);
-    if (rq.srange == SRC_RANGE_INVALID) return PE_FATAL;
-    //TODO: inform mdg that file is now required
-    end = t->end;
+    src_file* f = file_map_get_file_from_relative_path(
+        &TAUC.file_map, p->tk.file->head.parent, t->str);
     tk_void(&p->tk);
     PEEK(p, t);
     if (t->type != TT_SEMICOLON) {
         report_missing_semicolon(p, start, end);
         return PE_HANDLED;
     }
+    file_require rq;
+    rq.file = f;
+    rq.srange = src_range_pack_lines(p->tk.tc, start, t->end);
+    if (rq.srange == SRC_RANGE_INVALID) return PE_FATAL;
+    end = t->end;
     tk_void(&p->tk);
-    if (list_builder_add_block(&p->list_builder, &rq, sizeof(rq)))
-        return PE_FATAL;
+    rwslock_read(&p->current_module->stage_lock);
+    bool needed = (p->current_module->stage != MS_UNNEEDED);
+    int r = list_builder_add_block(&p->list_builder, &rq, sizeof(rq));
+    rwslock_end_read(&p->current_module->stage_lock);
+    if (r) return PE_FATAL;
+    if (needed) {
+        int r = src_file_require(f, p->tk.file, rq.srange, p->current_module);
+        if (r == ERR) return PE_FATAL;
+        if (r != SF_ALREADY_PARSED) {
+            atomic_ureg_inc(&p->current_module->unparsed_files);
+        }
+    }
     return PE_OK;
 }
 parse_error
@@ -2695,10 +2738,8 @@ parse_error parse_statement(parser* p, stmt** tgt)
                     return pe;
                 }
                 parser_error_1a_pc(
-                    p, "unexpected token in statement", t->start, t->end,
-                    stmt_flags_get_const(flags)
-                        ? "expected keyword"
-                        : "expected identifier or keyword");
+                    p, "unexpected token", t->start, t->end,
+                    "expected a declaration");
                 return PE_HANDLED;
             }
         }

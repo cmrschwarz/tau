@@ -58,10 +58,6 @@ static inline void* aseglist_iterator_next(aseglist_iterator* it)
     };
     return *it->pos++;
 }
-static inline void aseglist_iterator_fin(aseglist_iterator* it)
-{
-}
-
 static inline aseglist_node* aseglist_node_new(ureg size)
 {
     aseglist_node* n = tmalloc(size);

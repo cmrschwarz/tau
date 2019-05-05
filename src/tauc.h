@@ -30,7 +30,8 @@ extern struct tauc TAUC;
 // MAIN THREAD ONLY
 int tauc_init();
 int tauc_run(int argc, char** argv);
-int tauc_request_parse(src_file* f);
+int tauc_request_parse(
+    src_file* f, src_file* requiring_file, src_range requiring_stmt);
 int tauc_request_resolve_single(mdg_node* node);
 int tauc_request_resolve_multiple(mdg_node** start, mdg_node** end);
 int tauc_request_end();

@@ -36,6 +36,8 @@ int mdg_init(mdg* m)
     r = mdght_init(&m->mdghts[1]);
     if (r) return mdg_fin_partial(m, 2, r);
     m->root_node = mdg_node_create(m, string_from_cstr(""), NULL);
+    m->root_node->stage = MS_PARSING;
+    atomic_ureg_store(&m->root_node->unparsed_files, 1);
     if (!m->root_node) return mdg_fin_partial(m, 1, ERR);
     m->change_count = 0;
     return 0;
@@ -103,7 +105,7 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
         atomic_ptr_fin(&n->targets);
         return NULL;
     }
-    r = atomic_ureg_init(&n->unparsed_files, 1);
+    r = atomic_ureg_init(&n->unparsed_files, 0);
     if (r) {
         aseglist_fin(&n->dependencies);
         rwslock_fin(&n->stage_lock);
@@ -164,25 +166,14 @@ mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident)
     osc->scope.symbol.name = n->name;
     return n;
 }
-void mdg_node_require(mdg* m, mdg_node* n)
-{
-    rwslock_read(&n->stage_lock);
-    bool unneded = (n->stage == MS_UNNEEDED);
-    rwslock_end_read(&n->stage_lock);
-    if (unneded) {
-        rwslock_write(&n->stage_lock);
-        if (n->stage == MS_UNNEEDED) n->stage = MS_PARSING;
-        rwslock_end_write(&n->stage_lock);
-    }
-}
 
-int mdg_add_dependency(mdg* m, mdg_node* n, mdg_node* dependency)
+int mdg_node_add_dependency(mdg_node* n, mdg_node* dependency, scc_detector* d)
 {
     rwslock_read(&n->stage_lock);
     int r = aseglist_add(&n->dependencies, dependency);
     bool needed = (n->stage != MS_UNNEEDED);
     rwslock_end_read(&n->stage_lock);
-    if (!r && needed) mdg_node_require(m, dependency);
+    if (!r && needed) mdg_node_require(dependency, d);
     return r;
 }
 
@@ -190,6 +181,9 @@ int mdg_node_file_parsed(mdg* m, mdg_node* n, scc_detector* d)
 {
     ureg up = atomic_ureg_dec(&n->unparsed_files);
     if (up == 1) {
+        rwslock_write(&n->stage_lock);
+        n->stage = MS_AWAITING_DEPENDENCIES;
+        rwslock_end_write(&n->stage_lock);
         scc_detector_run(d, n);
     }
     return OK;
@@ -216,8 +210,8 @@ static inline int scc_detector_expand(scc_detector* d, ureg node_count)
             buckets_bucket_new, d->sccd_node_buckets,
             bucket_count * sizeof(sccd_node*));
         // allocate new stack
-        mdg_node** stack_new = (mdg_node**)pool_alloc(
-            d->mem_src, bucketable_cap_new * sizeof(mdg_node*));
+        scc_stack_entry* stack_new = (scc_stack_entry*)pool_alloc(
+            d->mem_src, bucketable_cap_new * sizeof(scc_stack_entry));
         if (!stack_new) return ERR;
         ureg stack_size = ptrdiff(d->stack_head, d->stack);
         memcpy(stack_new, d->stack, stack_size);
@@ -268,8 +262,8 @@ int scc_detector_init(scc_detector* d, pool* mem_src)
     d->bucketable_node_capacity =
         SCCD_BUCKET_SIZE / sizeof(sccd_node*) * SCCD_BUCKET_CAP;
     if (!d->sccd_node_buckets) return ERR;
-    d->stack = (mdg_node**)pool_alloc(
-        mem_src, d->bucketable_node_capacity * sizeof(mdg_node*));
+    d->stack = (scc_stack_entry*)pool_alloc(
+        mem_src, d->bucketable_node_capacity * sizeof(scc_stack_entry));
 
     if (!d->stack) return ERR;
     d->stack_head = d->stack;
@@ -279,12 +273,12 @@ int scc_detector_init(scc_detector* d, pool* mem_src)
     d->mem_src = mem_src;
     return OK;
 }
-int compare_mdg_nodes(const mdg_node* fst, const mdg_node* snd)
+int compare_mdg_nodes(const scc_stack_entry fst, const scc_stack_entry snd)
 {
-    return snd->id - fst->id;
+    return snd.mdgn->id - fst.mdgn->id;
 }
 #define SORT_NAME mdg_nodes
-#define SORT_TYPE mdg_node*
+#define SORT_TYPE scc_stack_entry
 #define SORT_CMP(x, y) compare_mdg_nodes(x, y)
 #include "sort.h"
 
@@ -308,7 +302,7 @@ int scc_detector_strongconnect(
     sn->lowlink = d->dfs_index;
     sn->index = d->dfs_index;
     d->dfs_index++;
-    *d->stack_head = n;
+    d->stack_head->mdgn = n;
     d->stack_head++;
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &n->dependencies);
@@ -343,7 +337,7 @@ int scc_detector_strongconnect(
         d->stack_head--;
         rwslock_end_read(&n->stage_lock);
         bool success = false;
-        if (*d->stack_head == n) {
+        if (d->stack_head->mdgn == n) {
             rwslock_write(&n->stage_lock);
             if (n->stage == MS_AWAITING_DEPENDENCIES) {
                 n->stage = MS_RESOLVING;
@@ -357,20 +351,20 @@ int scc_detector_strongconnect(
             return OK;
         }
         else {
-            mdg_node** end = d->stack_head + 1;
+            scc_stack_entry* end = d->stack_head + 1;
             do {
                 d->stack_head--;
-            } while (*d->stack_head != n);
-            mdg_node** start = d->stack_head;
+            } while (d->stack_head->mdgn != n);
+            scc_stack_entry* start = d->stack_head;
             mdg_nodes_quick_sort(start, end - start);
-            for (mdg_node** i = start; i != end; i++) {
-                rwslock_write(&(**i).stage_lock);
-                if ((**i).stage == MS_AWAITING_DEPENDENCIES) {
-                    (**i).stage = MS_RESOLVING;
+            for (scc_stack_entry* i = start; i != end; i++) {
+                rwslock_write(&i->mdgn->stage_lock);
+                if (i->mdgn->stage == MS_AWAITING_DEPENDENCIES) {
+                    i->mdgn->stage = MS_RESOLVING;
                     success = true;
                 }
-                rwslock_end_write(&(**i).stage_lock);
-                sccd_node* in = scc_detector_get(d, (**i).id);
+                rwslock_end_write(&i->mdgn->stage_lock);
+                sccd_node* in = scc_detector_get(d, i->mdgn->id);
                 if (!in) return ERR;
                 in->index = d->dfs_start_index;
                 if (!success) break;
@@ -389,7 +383,7 @@ int scc_detector_strongconnect(
     rwslock_end_read(&n->stage_lock);
     return OK;
 }
-void scc_detector_housekeep_ids(scc_detector* d)
+static inline void scc_detector_housekeep_ids(scc_detector* d)
 {
     // reset the dfs_index sometimes to avoid running out of ids
     if (UREG_MAX - d->dfs_index < UREG_MAX / sizeof(mdg_node)) {
@@ -456,6 +450,65 @@ int mdg_nodes_resolved(mdg_node** start, mdg_node** end, scc_detector* d)
             mdg_node* dep = aseglist_iterator_next(&it);
             if (!dep) break;
             if (scc_detector_run(d, dep)) return ERR;
+        }
+    }
+    return OK;
+}
+
+int mdg_node_require(mdg_node* n, scc_detector* d)
+{
+    rwslock_read(&n->stage_lock);
+    bool unneded = (n->stage == MS_UNNEEDED);
+    rwslock_end_read(&n->stage_lock);
+    if (!unneded) return OK;
+    scc_detector_housekeep_ids(d);
+    d->dfs_start_index = d->dfs_index;
+    d->dfs_index++;
+    open_scope* tgts;
+    while (true) {
+        rwslock_write(&n->stage_lock);
+        if (n->stage == MS_UNNEEDED) {
+            n->stage = MS_PARSING;
+            tgts = atomic_ptr_load(&n->targets);
+            aseglist_iterator it;
+            aseglist_iterator_begin(&it, &n->dependencies);
+            while (true) {
+                mdg_node* i = aseglist_iterator_next(&it);
+                if (!i) break;
+                sccd_node* sn = scc_detector_get(d, i->id);
+                if (!sn) {
+                    rwslock_end_write(&n->stage_lock);
+                    d->stack_head = d->stack;
+                    return ERR;
+                }
+                if (sn->index != d->dfs_start_index) {
+                    d->stack_head->mdgn = i;
+                    d->stack_head++;
+                    sn->index = d->dfs_start_index;
+                }
+            }
+        }
+        else {
+            tgts = NULL;
+        }
+        rwslock_end_write(&n->stage_lock);
+        while (tgts) {
+            file_require* r = tgts->requires;
+            while (*(void**)r) {
+                src_file_require(
+                    r->file, scope_get_file((scope*)tgts), r->srange, n);
+                r++;
+            }
+            tgts++;
+        }
+        while (true) {
+            if ((d->stack_head != d->stack)) return OK;
+            d->stack_head--;
+            n = d->stack_head->mdgn;
+            rwslock_read(&n->stage_lock);
+            bool unneded = (n->stage == MS_UNNEEDED);
+            rwslock_end_read(&n->stage_lock);
+            if (unneded) break;
         }
     }
     return OK;

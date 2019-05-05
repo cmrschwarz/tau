@@ -3,6 +3,7 @@
 #include "utils/error.h"
 #include "utils/fnv_hash.h"
 #include "utils/math_utils.h"
+#include "utils/panic.h"
 static inline int file_map_head_init(
     file_map_head* h, file_map* fm, src_dir* parent, string name, bool is_dir)
 {
@@ -24,40 +25,60 @@ static inline void file_map_head_fin(file_map_head* h)
 static inline int
 src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
 {
-    int r = rwslock_init(&f->lock);
+    int r = rwslock_init(&f->stage_lock);
     if (r) return ERR;
-    r = atomic_ureg_init(&f->stage, SFS_UNPARSED);
+
+    r = aseglist_init(&f->requiring_modules);
     if (r) {
-        rwslock_fin(&f->lock);
+        rwslock_fin(&f->stage_lock);
         return ERR;
     }
     r = file_map_head_init(&f->head, fm, parent, name, false);
     if (r) {
-        atomic_ureg_fin(&f->stage);
-        rwslock_fin(&f->lock);
+        aseglist_fin(&f->requiring_modules);
+        rwslock_fin(&f->stage_lock);
+        return ERR;
     }
+    f->stage = SFS_UNNEDED;
     return OK;
 }
-int src_file_require(src_file* f)
+int src_file_require(
+    src_file* f, src_file* requiring_file, src_range requiring_srange,
+    mdg_node* n)
 {
-    ureg stage = SFS_UNNEDED;
-    bool res = false;
-    do {
-        res = atomic_ureg_cas(&f->stage, &stage, SFS_UNPARSED);
-    } while (stage == SFS_UNNEDED);
-    if (res) return tauc_request_parse(f);
-    return OK;
+    src_file_stage prev_stage;
+    rwslock_write(&f->stage_lock);
+    prev_stage = f->stage;
+    if (f->stage == SFS_UNPARSED || f->stage == SFS_PARSING) {
+        aseglist_add(&f->requiring_modules, n);
+    }
+    if (f->stage == SFS_UNNEDED) {
+        f->stage = SFS_UNPARSED;
+    }
+    rwslock_end_write(&f->stage_lock);
+    switch (prev_stage) {
+        case SFS_PARSED: return SF_ALREADY_PARSED;
+        case SFS_PARSING:
+        case SFS_UNPARSED: return OK;
+        case SFS_UNNEDED: {
+            aseglist_add(&f->requiring_modules, n);
+            return tauc_request_parse(f, requiring_file, requiring_srange);
+        }
+        default: {
+            panic("unkown file stage");
+            return ERR;
+        }
+    }
 }
 
 static inline void src_file_fin(src_file* f)
 {
-    src_file_stage s = atomic_ureg_load(&f->stage);
-    if (s >= SFS_PARSING) {
+    if (f->stage >= SFS_PARSING) {
         src_map_fin(&f->src_map);
     }
-    atomic_ureg_fin(&f->stage);
-    rwslock_fin(&f->lock);
     file_map_head_fin(&f->head);
+    aseglist_fin(&f->requiring_modules);
+    rwslock_fin(&f->stage_lock);
 }
 
 static inline int
@@ -110,8 +131,27 @@ void src_file_print_path(src_file* f, bool to_stderr)
 }
 int src_file_start_parse(src_file* f, thread_context* tc)
 {
-    atomic_ureg_store(&f->stage, SFS_PARSING);
+    // this is called from the parser, so no need to recheck whether the file is
+    // actually unparsed
+    rwslock_write(&f->stage_lock);
+    f->stage = SFS_PARSING;
+    rwslock_end_write(&f->stage_lock);
     return src_map_init(&f->src_map, tc);
+}
+int src_file_done_parsing(src_file* f, thread_context* tc)
+{
+    rwslock_write(&f->stage_lock);
+    f->stage = SFS_PARSED;
+    aseglist_iterator it;
+    aseglist_iterator_begin(&it, &f->requiring_modules);
+    rwslock_end_write(&f->stage_lock);
+    while (true) {
+        mdg_node* m = aseglist_iterator_next(&it);
+        if (!m) break;
+        int r = mdg_node_file_parsed(&TAUC.mdg, m, &tc->sccd);
+        if (r) return r;
+    }
+    return OK;
 }
 
 // FILE MAP
@@ -260,11 +300,10 @@ src_dir* file_map_get_dir(file_map* fm, src_dir* parent, string name)
     mutex_unlock(&fm->lock);
     return d;
 }
-
-src_file* file_map_get_file_from_path(file_map* fm, string path)
+src_file* file_map_get_file_from_relative_path(
+    file_map* fm, src_dir* parent_dir, string path)
 {
     mutex_lock(&fm->lock);
-    src_dir* parent = NULL;
     char* curr_start = path.start;
     char* curr_end = path.start;
     while (true) {
@@ -276,14 +315,14 @@ src_file* file_map_get_file_from_path(file_map* fm, string path)
             x.start = curr_start;
             x.end = curr_end;
             mutex_unlock(&fm->lock);
-            return file_map_get_file_unlocked(fm, parent, x);
+            return file_map_get_file_unlocked(fm, parent_dir, x);
         }
         else {
             string x;
             x.start = curr_start;
             x.end = curr_end;
-            parent = file_map_get_dir_unlocked(fm, parent, x);
-            if (!parent) {
+            parent_dir = file_map_get_dir_unlocked(fm, parent_dir, x);
+            if (!parent_dir) {
                 mutex_unlock(&fm->lock);
                 return NULL;
             }
@@ -291,4 +330,8 @@ src_file* file_map_get_file_from_path(file_map* fm, string path)
             curr_start = curr_end;
         }
     }
+}
+src_file* file_map_get_file_from_path(file_map* fm, string path)
+{
+    return file_map_get_file_from_relative_path(fm, NULL, path);
 }

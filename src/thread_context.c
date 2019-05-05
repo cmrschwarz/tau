@@ -18,7 +18,7 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
 }
 void thread_context_fin(thread_context* tc)
 {
-    thread_context_partial_fin(tc, 0, 5);
+    thread_context_partial_fin(tc, 0, 6);
 }
 int thread_context_init(thread_context* tc)
 {
@@ -39,7 +39,7 @@ int thread_context_init(thread_context* tc)
 int thread_context_do_job(thread_context* tc, job* j)
 {
     if (j->type == JOB_PARSE) {
-        return parser_parse_file(&tc->parser, j->concrete.parse.file);
+        return parser_parse_file(&tc->parser, &j->concrete.parse);
     }
     else if (j->type == JOB_RESOLVE_MULTIPLE) {
         int r = resolver_resolve_multiple(
@@ -49,8 +49,13 @@ int thread_context_do_job(thread_context* tc, job* j)
         return r;
     }
     else if (j->type == JOB_RESOLVE_SINGLE) {
-        return resolver_resolve_single(
+        int r = resolver_resolve_single(
             &tc->resolver, j->concrete.resolve_single.node);
+        if (r) return r;
+        if (j->concrete.resolve_single.node == TAUC.mdg.root_node) {
+            tauc_request_end();
+        }
+        return OK;
     }
     else if (j->type == JOB_FINALIZE) {
         job_queue_stop(&TAUC.job_queue);

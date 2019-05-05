@@ -21,6 +21,7 @@ int job_queue_init(job_queue* jq)
     jq->head = jq->buffer;
     jq->tail = jq->buffer;
     jq->waiters = 0;
+    jq->jobs = 0;
     return OK;
 }
 void job_queue_fin(job_queue* jq)
