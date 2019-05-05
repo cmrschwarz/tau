@@ -23,6 +23,7 @@ ureg mdght_get_hash(mdg_node* parent, const char* str);
 int mdght_init(mdght* h);
 int mdght_init_with_capacity(mdght* h, ureg capacity);
 void mdght_fin(mdght* h);
+void mdght_fin_contained_nodes(mdght* h);
 
 mdg_node** mdght_insert(mdght* h, mdg_node* n);
 mdg_node** mdght_insert_ph(mdght* h, ureg hash, mdg_node* n);

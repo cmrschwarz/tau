@@ -3,9 +3,9 @@ x:=3;
 func main(args: String[]){
     extend bar;
     import doo.{foo = (a, b), foo.bar, baz.doo};
-    if (x) give 3 else give 5;
     func test_compound_assignment(){
-        //x:= 3;
+        if (x) give 3 else give 5;
+        x:= 3;
         using ((), a, ((),),) = 17;
         (x, y, (a,b,c), d) := foo();
         (x, y:, (a,b: int,c), d) = foo();

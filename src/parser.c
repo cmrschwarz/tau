@@ -1679,7 +1679,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
         }
         return PE_TK_ERROR;
     }
-    p->current_module = &TAUC.mdg.root_node;
+    p->current_module = TAUC.mdg.root_node;
     parse_error pe = parse_eof_delimited_open_scope(p, &p->root.oscope);
     // DBUG:
     print_astn_nl((stmt*)&p->root, 0);

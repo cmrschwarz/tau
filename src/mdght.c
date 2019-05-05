@@ -48,6 +48,14 @@ void mdght_fin(mdght* h)
 {
     tfree(h->table_start);
 }
+void mdght_fin_contained_nodes(mdght* h)
+{
+    for (mdg_node** i = h->table_start; i != h->table_end; i++) {
+        if (*i != NULL && *i != &tombstone_node) {
+            mdg_node_fin(*i);
+        }
+    }
+}
 mdg_node** mdght_insert_ph(mdght* h, ureg phash, mdg_node* n)
 {
     if (h->elem_count == h->grow_on_elem_count) {

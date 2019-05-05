@@ -9,7 +9,10 @@
 int mdg_fin_partial(mdg* m, int i, int r)
 {
     switch (i) {
-        case 0:;
+        case 0:
+            mdg_node_fin(m->root_node);
+            mdght_fin_contained_nodes(mdg_start_write(m));
+            mdg_end_write(m);
         case 1: mdght_fin(&m->mdghts[1]);
         case 2: mdght_fin(&m->mdghts[0]);
         case 3: evmap2_fin(&m->evm);
@@ -36,9 +39,9 @@ int mdg_init(mdg* m)
     r = mdght_init(&m->mdghts[1]);
     if (r) return mdg_fin_partial(m, 2, r);
     m->root_node = mdg_node_create(m, string_from_cstr(""), NULL);
+    if (!m->root_node) return mdg_fin_partial(m, 1, ERR);
     m->root_node->stage = MS_PARSING;
     atomic_ureg_store(&m->root_node->unparsed_files, 1);
-    if (!m->root_node) return mdg_fin_partial(m, 1, ERR);
     m->change_count = 0;
     return 0;
 }
@@ -123,6 +126,14 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
     n->stage = MS_UNNEEDED;
     return n;
 }
+void mdg_node_fin(mdg_node* n)
+{
+    aseglist_fin(&n->notify);
+    atomic_ureg_fin(&n->unparsed_files);
+    aseglist_fin(&n->dependencies);
+    rwslock_fin(&n->stage_lock);
+    atomic_ptr_fin(&n->targets);
+}
 void mdg_node_add_target(mdg_node* n, scope* target)
 {
     target->symbol.stmt.next = atomic_ptr_load(&n->targets);
@@ -191,9 +202,10 @@ int mdg_node_file_parsed(mdg* m, mdg_node* n, scc_detector* d)
 
 #define SCCD_BUCKET_CAP 16
 #define SCCD_BUCKET_SIZE (SCCD_BUCKET_CAP * sizeof(sccd_node))
-static inline int scc_detector_expand(scc_detector* d, ureg node_count)
+static inline int scc_detector_expand(scc_detector* d, ureg node_id)
 {
-    if (d->allocated_node_count >= node_count) return OK;
+    ureg node_count = node_id + 1;
+    if (d->allocated_node_count > node_count) return OK;
     ureg bucket_count = d->allocated_node_count / SCCD_BUCKET_CAP;
     if (node_count > d->bucketable_node_capacity) {
         // figure out new size

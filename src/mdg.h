@@ -60,6 +60,7 @@ typedef struct mdg {
 
 int mdg_init(mdg* m);
 void mdg_fin(mdg* m);
+void mdg_node_fin(mdg_node* n);
 
 mdght* mdg_start_read(mdg* m);
 void mdg_end_read(mdg* m, mdght* h);

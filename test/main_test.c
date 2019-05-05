@@ -44,7 +44,6 @@ int mdg_test()
     mdg_node* e = mdg_node_create(m, string_from_cstr("e"), NULL, NULL);
     mdg_node* f = mdg_node_create(m, string_from_cstr("f"), NULL, NULL);
     mdg_node* g = mdg_node_create(m, string_from_cstr("g"), NULL, NULL);
-
     mdg_node_add_dependency(a, b, sccd);
     mdg_node_add_dependency(b, c, sccd);
     mdg_node_add_dependency(c, a, sccd);
@@ -84,6 +83,15 @@ int mdg_test()
           A < G > E
               ^
     */
+
+    mdg_node_fin(a);
+    mdg_node_fin(b);
+    mdg_node_fin(c);
+    mdg_node_fin(d);
+    mdg_node_fin(e);
+    mdg_node_fin(f);
+    mdg_node_fin(g);
+
     tauc_fin();
     return pe(res, "mdg_test");
 }
@@ -179,10 +187,10 @@ int main_test(int argc, char** argv)
     int res = OK;
 
     res |= mdg_test();
-    res |= file_map_test();
-    res |= job_queue_test();
+    // res |= file_map_test();
+    // res |= job_queue_test();
     res |= release_test();
-    res |= list_builder_test();
+    // res |= list_builder_test();
 
     if (res) {
         print_dash_padded("FAILED", false);
