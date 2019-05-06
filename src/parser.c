@@ -1984,11 +1984,35 @@ parse_error parse_module_decl(
     if (pe) return pe;
     md->scope.symbol.stmt.type = generic ? OSC_MODULE_GENERIC : OSC_MODULE;
     md->scope.symbol.stmt.flags = flags;
-    *n = (stmt*)md;
+    PEEK(p, t);
     mdg_node* parent = p->current_module;
     p->current_module = mdgn;
-    pe = parse_open_scope_body(p, md, mdgn);
+    if (t->type == TT_SEMICOLON) {
+        *n = NULL;
+        if (p->curr_scope->body.children == NULL) {
+            tk_consume(&p->tk);
+            pe = parse_delimited_open_scope(p, md, TT_EOF, TT_BRACE_CLOSE);
+        }
+        else {
+            stmt* head = p->curr_scope->body.children;
+            while (head->next != NULL) head = head->next;
+            ureg hs = src_range_get_start(head->srange);
+            ureg he = src_range_get_end(head->srange);
+            parser_error_2a_pc(
+                p, "non leading module statement", start, t->end, "", hs, he,
+                "preceeded by this statement");
+            p->current_module = parent;
+            return PE_HANDLED;
+        }
+    }
+    else {
+        pe = parse_open_scope_body(p, md, mdgn);
+    }
     p->current_module = parent;
+    if (md->requires == NULL) {
+        if (mdg_node_parsed(&TAUC.mdg, mdgn, &p->tk.tc->sccd)) return PE_FATAL;
+    }
+    *n = (stmt*)md;
     return pe;
 }
 parse_error parse_extend_decl(
@@ -2035,18 +2059,15 @@ parse_error parse_extend_decl(
     ex->scope.symbol.stmt.flags = flags;
     ex->scope.parent = p->curr_scope;
     PEEK(p, t);
+    mdg_node* parent = p->current_module;
+    p->current_module = mdgn;
     if (t->type == TT_SEMICOLON) {
+        *n = NULL;
         if (p->curr_scope->body.children == NULL) {
             tk_consume(&p->tk);
-            mdg_node* parent = p->current_module;
-            p->current_module = mdgn;
             pe = parse_delimited_open_scope(p, ex, TT_EOF, TT_BRACE_CLOSE);
-            p->current_module = parent;
-            *n = (stmt*)ex;
-            return pe;
         }
         else {
-            *n = NULL;
             stmt* head = p->curr_scope->body.children;
             while (head->next != NULL) head = head->next;
             ureg hs = src_range_get_start(head->srange);
@@ -2054,14 +2075,15 @@ parse_error parse_extend_decl(
             parser_error_2a_pc(
                 p, "non leading extend statement", start, t->end, "", hs, he,
                 "preceeded by this statement");
+            p->current_module = parent;
             return PE_HANDLED;
         }
     }
-    *n = (stmt*)ex;
-    mdg_node* parent = p->current_module;
-    p->current_module = mdgn;
-    pe = parse_open_scope_body(p, ex, mdgn);
+    else {
+        pe = parse_open_scope_body(p, ex, mdgn);
+    }
     p->current_module = parent;
+    *n = (stmt*)ex;
     return pe;
 }
 parse_error parse_trait_decl(
@@ -2754,7 +2776,6 @@ parse_error parse_brace_delimited_body(parser* p, body* b)
     parse_error pe = PE_OK;
     PEEK(p, t);
     stmt** head = &b->children;
-    *head = NULL; // fist element must be zero for extend to check
     if (pe) return pe;
     while (t->type != TT_BRACE_CLOSE) {
         if (t->type != TT_EOF) {
@@ -2811,7 +2832,6 @@ parse_error parse_body(parser* p, body* b)
     token* t;
     PEEK(p, t);
     if (t->type != TT_BRACE_OPEN) {
-        b->children = NULL; // so extend can check if it comes first
         pe = parse_statement(p, &b->children);
         if (!pe) {
             b->children->next = NULL;

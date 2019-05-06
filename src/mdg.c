@@ -193,15 +193,17 @@ int mdg_node_add_dependency(mdg_node* n, mdg_node* dependency, scc_detector* d)
     return r;
 }
 
+int mdg_node_parsed(mdg* m, mdg_node* n, scc_detector* d)
+{
+    rwslock_write(&n->stage_lock);
+    n->stage = MS_AWAITING_DEPENDENCIES;
+    rwslock_end_write(&n->stage_lock);
+    scc_detector_run(d, n);
+}
 int mdg_node_file_parsed(mdg* m, mdg_node* n, scc_detector* d)
 {
     ureg up = atomic_ureg_dec(&n->unparsed_files);
-    if (up == 1) {
-        rwslock_write(&n->stage_lock);
-        n->stage = MS_AWAITING_DEPENDENCIES;
-        rwslock_end_write(&n->stage_lock);
-        scc_detector_run(d, n);
-    }
+    if (up == 1) return mdg_node_parsed(m, n, d);
     return OK;
 }
 
