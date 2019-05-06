@@ -19,8 +19,12 @@ build:
             - ./build
             - ./build/tauc
         expire_in: 20 minutes
+    only:
+        - master
 
 test:
     stage: test
     script:
         - ./build/tauc
+    only:
+        - master
