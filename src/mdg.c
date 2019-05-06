@@ -60,12 +60,13 @@ void mdg_end_read(mdg* m, mdght* h)
     evmap2_end_read(&m->evm, (h == &m->mdghts[0]) ? 0 : 1);
 }
 
-static int mdg_apply_changes(mdg* m, mdght* tgt, ureg change_count)
+static int mdg_apply_changes(mdg* m, mdght* tgt)
 {
-    for (ureg i = 0; i < change_count; i++) {
+    for (ureg i = 0; i < m->change_count; i++) {
         void* p = mdght_insert_at(tgt, m->changes[i].pos, m->changes[i].node);
         if (!p) return ERR;
     }
+    m->change_count = 0;
     return OK;
 }
 
@@ -74,8 +75,9 @@ mdght* mdg_start_write(mdg* m)
     ureg id;
     ureg changes = evmap2_start_write(&m->evm, &id);
     if (changes) {
-        if (mdg_apply_changes(m, &m->mdghts[id], changes)) return NULL;
+        if (mdg_apply_changes(m, &m->mdghts[id])) return NULL;
     }
+    m->change_count = 0;
     return &m->mdghts[id];
 }
 void mdg_end_write(mdg* m)
@@ -162,6 +164,9 @@ mdg_node* mdg_get_node(mdg* m, mdg_node* parent, string ident)
                 return NULL;
             }
             *np = n;
+            m->changes[m->change_count].pos = np - h->table_start;
+            m->changes[m->change_count].node = n;
+            m->change_count++;
             mdg_end_write(m);
         }
     }

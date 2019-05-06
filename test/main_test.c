@@ -31,19 +31,18 @@ static int pe(int res, char* msg)
 }
 
 // MDG TESTS
-mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent, scope* tgt);
 int mdg_test()
 {
     int res = tauc_init();
     mdg* m = &TAUC.mdg;
     scc_detector* sccd = &TAUC.main_thread_context.sccd;
-    mdg_node* a = mdg_node_create(m, string_from_cstr("a"), NULL, NULL);
-    mdg_node* b = mdg_node_create(m, string_from_cstr("b"), NULL, NULL);
-    mdg_node* c = mdg_node_create(m, string_from_cstr("c"), NULL, NULL);
-    mdg_node* d = mdg_node_create(m, string_from_cstr("d"), NULL, NULL);
-    mdg_node* e = mdg_node_create(m, string_from_cstr("e"), NULL, NULL);
-    mdg_node* f = mdg_node_create(m, string_from_cstr("f"), NULL, NULL);
-    mdg_node* g = mdg_node_create(m, string_from_cstr("g"), NULL, NULL);
+    mdg_node* a = mdg_get_node(m, m->root_node, string_from_cstr("a"));
+    mdg_node* b = mdg_get_node(m, m->root_node, string_from_cstr("b"));
+    mdg_node* c = mdg_get_node(m, m->root_node, string_from_cstr("c"));
+    mdg_node* d = mdg_get_node(m, m->root_node, string_from_cstr("d"));
+    mdg_node* e = mdg_get_node(m, m->root_node, string_from_cstr("e"));
+    mdg_node* f = mdg_get_node(m, m->root_node, string_from_cstr("f"));
+    mdg_node* g = mdg_get_node(m, m->root_node, string_from_cstr("g"));
     mdg_node_add_dependency(a, b, sccd);
     mdg_node_add_dependency(b, c, sccd);
     mdg_node_add_dependency(c, a, sccd);
@@ -53,18 +52,16 @@ int mdg_test()
     mdg_node_add_dependency(f, d, sccd);
     mdg_node_add_dependency(g, a, sccd);
     mdg_node_add_dependency(g, e, sccd);
-    for (int i = 0; i < 1; i++) {
-        a->stage = MS_AWAITING_DEPENDENCIES;
-        b->stage = MS_AWAITING_DEPENDENCIES;
-        c->stage = MS_AWAITING_DEPENDENCIES;
-        d->stage = MS_AWAITING_DEPENDENCIES;
-        e->stage = MS_AWAITING_DEPENDENCIES;
-        f->stage = MS_AWAITING_DEPENDENCIES;
-        g->stage = MS_AWAITING_DEPENDENCIES;
-        res |= scc_detector_run(sccd, g);
-        res |= scc_detector_run(sccd, e);
-        res |= scc_detector_run(sccd, a);
-    }
+    a->stage = MS_AWAITING_DEPENDENCIES;
+    b->stage = MS_AWAITING_DEPENDENCIES;
+    c->stage = MS_AWAITING_DEPENDENCIES;
+    d->stage = MS_AWAITING_DEPENDENCIES;
+    e->stage = MS_AWAITING_DEPENDENCIES;
+    f->stage = MS_AWAITING_DEPENDENCIES;
+    g->stage = MS_AWAITING_DEPENDENCIES;
+    res |= scc_detector_run(sccd, g);
+    res |= scc_detector_run(sccd, e);
+    res |= scc_detector_run(sccd, a);
     job j;
     while (true) {
         int r = job_queue_try_pop(&TAUC.job_queue, &j);
@@ -83,15 +80,6 @@ int mdg_test()
           A < G > E
               ^
     */
-
-    mdg_node_fin(a);
-    mdg_node_fin(b);
-    mdg_node_fin(c);
-    mdg_node_fin(d);
-    mdg_node_fin(e);
-    mdg_node_fin(f);
-    mdg_node_fin(g);
-
     tauc_fin();
     return pe(res, "mdg_test");
 }
@@ -186,11 +174,11 @@ int main_test(int argc, char** argv)
     talloc_init();
     int res = OK;
 
+    res |= list_builder_test();
+    res |= file_map_test();
+    res |= job_queue_test();
     res |= mdg_test();
-    // res |= file_map_test();
-    // res |= job_queue_test();
     res |= release_test();
-    // res |= list_builder_test();
 
     if (res) {
         print_dash_padded("FAILED", false);
