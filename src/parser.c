@@ -2009,8 +2009,8 @@ parse_error parse_module_decl(
         pe = parse_open_scope_body(p, md, mdgn);
     }
     p->current_module = parent;
-    if (md->requires == NULL) {
-        if (mdg_node_parsed(&TAUC.mdg, mdgn, &p->tk.tc->sccd)) return PE_FATAL;
+    if (*(void**)md->requires == NULL) {
+        if (mdg_node_parsed(&TAUC.mdg, mdgn, p->tk.tc)) return PE_FATAL;
     }
     src_range_large srl;
     src_range_unpack(md->scope.symbol.stmt.srange, &srl);
@@ -2406,21 +2406,21 @@ parse_error parse_symbol_imports(parser* p, module_import* mi)
     mi->selected_symbols = (symbol_import*)list_builder_pop_block_list_zt(
         &p->list_builder, mi->selected_symbols, &p->tk.tc->permmem);
     if (!mi->selected_symbols) return PE_FATAL;
+    if (mdg_node_add_dependency(p->current_module, mi->tgt, p->tk.tc)) {
+        return PE_FATAL;
+    }
     return PE_OK;
 }
 parse_error parse_single_import(
     parser* p, mdg_node* parent, stmt_import* stmt, module_import* mi);
-parse_error
-parse_braced_imports(parser* p, stmt_import* stmt, module_import* mi)
+parse_error parse_braced_imports(
+    parser* p, stmt_import* stmt, module_import* mi, ureg start)
 {
     mi->nested_imports =
         (module_import*)list_builder_start_blocklist(&p->list_builder);
     parse_error pe;
-    token* t = tk_aquire(&p->tk);
-    if (!t) return PE_TK_ERROR;
-    ureg start = t->start;
     tk_void(&p->tk);
-    t = tk_peek(&p->tk);
+    token* t = tk_peek(&p->tk);
     if (!t) {
         list_builder_drop_list(&p->list_builder, mi->nested_imports);
         return PE_TK_ERROR;
@@ -2461,10 +2461,13 @@ parse_braced_imports(parser* p, stmt_import* stmt, module_import* mi)
     mi->nested_imports = (module_import*)list_builder_pop_block_list_zt(
         &p->list_builder, mi->nested_imports, &p->tk.tc->permmem);
     if (!mi->nested_imports) return PE_FATAL;
+    mi->srange = src_range_pack_lines(p->tk.tc, start, t->end);
+    if (mi->srange == SRC_RANGE_INVALID) return PE_FATAL;
     tk_void(&p->tk);
-    if (mdg_node_add_dependency(p->current_module, mi->tgt, &p->tk.tc->sccd)) {
+    /*if (mdg_node_add_dependency(p->current_module, mi->tgt, p->tk.tc)) {
         return PE_FATAL;
     }
+    */
     return PE_OK;
 }
 parse_error parse_single_import(
@@ -2503,7 +2506,7 @@ parse_error parse_single_import(
                     "named import can't be braced import");
                 return PE_HANDLED;
             }
-            return parse_braced_imports(p, stmt, mi);
+            return parse_braced_imports(p, stmt, mi, start);
         }
         else if (t->type == TT_PAREN_OPEN) {
             return parse_symbol_imports(p, mi);
@@ -2534,9 +2537,10 @@ parse_error parse_single_import(
             return PE_HANDLED;
         }
     }
+    t = tk_peek(&p->tk);
     mi->srange = src_range_pack_lines(p->tk.tc, start, end);
     if (mi->srange == SRC_RANGE_INVALID) return PE_FATAL;
-    if (mdg_node_add_dependency(p->current_module, mi->tgt, &p->tk.tc->sccd)) {
+    if (mdg_node_add_dependency(p->current_module, mi->tgt, p->tk.tc)) {
         return PE_FATAL;
     }
     return PE_OK;

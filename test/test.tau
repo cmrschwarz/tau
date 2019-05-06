@@ -1,8 +1,8 @@
 require "test2.tau";
 x:=3;
-func main(args: String[]){
+import bar;
+func main(args: String[]){    
     module bar;
-    import doo.{foo = (a, b), foo.bar, baz.doo};
     func test_compound_assignment(){
         if (x) give 3 else give 5;
         x:= 3;

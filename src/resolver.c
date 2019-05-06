@@ -21,12 +21,12 @@ int resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
         i++;
     }
     printf("%s}\n", (**i).name);
-    return mdg_nodes_resolved(start, end, &r->tc->sccd);
+    return mdg_nodes_resolved(start, end, r->tc);
 }
 
 int resolver_resolve_single(resolver* r, mdg_node* node)
 {
     // TODO: resolve
     printf("resolving %s\n", node->name);
-    return mdg_node_resolved(node, &r->tc->sccd);
+    return mdg_node_resolved(node, r->tc);
 }

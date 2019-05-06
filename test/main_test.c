@@ -35,7 +35,7 @@ int mdg_test()
 {
     int res = tauc_init();
     mdg* m = &TAUC.mdg;
-    scc_detector* sccd = &TAUC.main_thread_context.sccd;
+    thread_context* tc = &TAUC.main_thread_context;
     mdg_node* a = mdg_get_node(m, m->root_node, string_from_cstr("a"));
     mdg_node* b = mdg_get_node(m, m->root_node, string_from_cstr("b"));
     mdg_node* c = mdg_get_node(m, m->root_node, string_from_cstr("c"));
@@ -43,15 +43,15 @@ int mdg_test()
     mdg_node* e = mdg_get_node(m, m->root_node, string_from_cstr("e"));
     mdg_node* f = mdg_get_node(m, m->root_node, string_from_cstr("f"));
     mdg_node* g = mdg_get_node(m, m->root_node, string_from_cstr("g"));
-    mdg_node_add_dependency(a, b, sccd);
-    mdg_node_add_dependency(b, c, sccd);
-    mdg_node_add_dependency(c, a, sccd);
-    mdg_node_add_dependency(c, d, sccd);
-    mdg_node_add_dependency(d, e, sccd);
-    mdg_node_add_dependency(e, f, sccd);
-    mdg_node_add_dependency(f, d, sccd);
-    mdg_node_add_dependency(g, a, sccd);
-    mdg_node_add_dependency(g, e, sccd);
+    mdg_node_add_dependency(a, b, tc);
+    mdg_node_add_dependency(b, c, tc);
+    mdg_node_add_dependency(c, a, tc);
+    mdg_node_add_dependency(c, d, tc);
+    mdg_node_add_dependency(d, e, tc);
+    mdg_node_add_dependency(e, f, tc);
+    mdg_node_add_dependency(f, d, tc);
+    mdg_node_add_dependency(g, a, tc);
+    mdg_node_add_dependency(g, e, tc);
     a->stage = MS_AWAITING_DEPENDENCIES;
     b->stage = MS_AWAITING_DEPENDENCIES;
     c->stage = MS_AWAITING_DEPENDENCIES;
@@ -59,9 +59,9 @@ int mdg_test()
     e->stage = MS_AWAITING_DEPENDENCIES;
     f->stage = MS_AWAITING_DEPENDENCIES;
     g->stage = MS_AWAITING_DEPENDENCIES;
-    res |= scc_detector_run(sccd, g);
-    res |= scc_detector_run(sccd, e);
-    res |= scc_detector_run(sccd, a);
+    res |= scc_detector_run(tc, g);
+    res |= scc_detector_run(tc, e);
+    res |= scc_detector_run(tc, a);
     job j;
     while (true) {
         int r = job_queue_try_pop(&TAUC.job_queue, &j);

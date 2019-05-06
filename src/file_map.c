@@ -148,7 +148,7 @@ int src_file_done_parsing(src_file* f, thread_context* tc)
     while (true) {
         mdg_node* m = aseglist_iterator_next(&it);
         if (!m) break;
-        int r = mdg_node_file_parsed(&TAUC.mdg, m, &tc->sccd);
+        int r = mdg_node_file_parsed(&TAUC.mdg, m, tc);
         if (r) return r;
     }
     return OK;

@@ -3,6 +3,7 @@
 #include "mdght.h"
 #include "tauc.h"
 #include "utils/allocator.h"
+#include "utils/panic.h"
 #include "utils/threading.h"
 #include "utils/zero.h"
 
@@ -178,32 +179,42 @@ mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident)
 {
     mdg_node* n = mdg_get_node(m, parent, ident);
     if (!n) return n;
+    rwslock_read(&n->stage_lock);
+    bool unfound = (n->stage == MS_NOT_FOUND);
+    rwslock_end_read(&n->stage_lock);
+    if (unfound) {
+        rwslock_write(&n->stage_lock);
+        if (n->stage == MS_NOT_FOUND) n->stage = MS_PARSING;
+        rwslock_end_write(&n->stage_lock);
+    }
+
     mdg_node_add_target(n, (scope*)osc);
     osc->scope.symbol.name = n->name;
     return n;
 }
 
-int mdg_node_add_dependency(mdg_node* n, mdg_node* dependency, scc_detector* d)
+int mdg_node_add_dependency(
+    mdg_node* n, mdg_node* dependency, thread_context* tc)
 {
     rwslock_read(&n->stage_lock);
     int r = aseglist_add(&n->dependencies, dependency);
     bool needed = (n->stage != MS_UNNEEDED);
     rwslock_end_read(&n->stage_lock);
-    if (!r && needed) mdg_node_require(dependency, d);
+    if (!r && needed) mdg_node_require(dependency, tc);
     return r;
 }
 
-int mdg_node_parsed(mdg* m, mdg_node* n, scc_detector* d)
+int mdg_node_parsed(mdg* m, mdg_node* n, thread_context* tc)
 {
     rwslock_write(&n->stage_lock);
     n->stage = MS_AWAITING_DEPENDENCIES;
     rwslock_end_write(&n->stage_lock);
-    return scc_detector_run(d, n);
+    return scc_detector_run(tc, n);
 }
-int mdg_node_file_parsed(mdg* m, mdg_node* n, scc_detector* d)
+int mdg_node_file_parsed(mdg* m, mdg_node* n, thread_context* tc)
 {
     ureg up = atomic_ureg_dec(&n->unparsed_files);
-    if (up == 1) return mdg_node_parsed(m, n, d);
+    if (up == 1) return mdg_node_parsed(m, n, tc);
     return OK;
 }
 
@@ -302,10 +313,100 @@ int compare_mdg_nodes(const scc_stack_entry fst, const scc_stack_entry snd)
 #include "sort.h"
 
 #define SCCD_ADDED_NOTIFICATION STATUS_1
-int scc_detector_strongconnect(
-    scc_detector* d, mdg_node* n, sccd_node* sn, mdg_node* caller)
+#define SCCD_MISSING_IMPORT STATUS_2
+#define SCCD_HANDLED STATUS_3
+
+bool module_import_find_import(
+    module_import* mi, mdg_node* import, module_import** tgt)
 {
-    if (n->stage == MS_PARSING || n->stage == MS_RESOLVING) {
+    if (mi->tgt == import) {
+        *tgt = mi;
+        return true;
+    }
+    module_import* ni = mi->nested_imports;
+    while (*(void**)ni) {
+        if (module_import_find_import(ni, import, tgt)) return true;
+        ni++;
+    }
+    return false;
+}
+bool scope_find_import(
+    scope* s, mdg_node* import, stmt_import** tgt, module_import** tgt_sym)
+{
+    stmt* st = s->body.children;
+    while (st) {
+        switch (st->type) {
+            case STMT_IMPORT: {
+                stmt_import* i = (stmt_import*)st;
+                if (module_import_find_import(
+                        &i->module_import, import, tgt_sym)) {
+                    *tgt = i;
+                    return true;
+                }
+            } break;
+            case SC_FUNC:
+            case SC_FUNC_GENERIC:
+            case SC_STRUCT:
+            case SC_STRUCT_GENERIC:
+            case SC_TRAIT:
+            case SC_TRAIT_GENERIC:
+            case OSC_EXTEND:
+            case OSC_EXTEND_GENERIC:
+            case OSC_MODULE:
+            case OSC_MODULE_GENERIC: {
+                if (scope_find_import((scope*)st, import, tgt, tgt_sym))
+                    return true;
+            } break;
+            default: break;
+        }
+        st = st->next;
+    }
+    return false;
+}
+void mdg_node_find_import(
+    mdg_node* m, mdg_node* import, stmt_import** tgt, module_import** tgt_sym,
+    src_file** file)
+{
+    open_scope* osc = atomic_ptr_load(&m->targets);
+    while (osc) {
+        if (scope_find_import(&osc->scope, import, tgt, tgt_sym)) {
+            *file = scope_get_file((scope*)osc);
+            return;
+        }
+        osc = (open_scope*)osc->scope.symbol.stmt.next;
+    }
+    panic("failed to find import!");
+}
+void mdg_node_report_missing_import(
+    thread_context* tc, mdg_node* m, mdg_node* import)
+{
+    stmt_import* tgt;
+    module_import* tgt_sym;
+    src_file* f;
+    mdg_node_find_import(m, import, &tgt, &tgt_sym, &f);
+    src_range_large tgt_srl, tgt_sym_srl;
+    src_range_unpack(tgt->stmt.srange, &tgt_srl);
+    src_range_unpack(tgt_sym->srange, &tgt_sym_srl);
+    error_log_report_annotated_twice(
+        &tc->error_log, ES_RESOLVER, false,
+        "missing definition for imported module", f, tgt_sym_srl.start,
+        tgt_sym_srl.end, "imported here", tgt_srl.start, tgt_srl.end,
+        "in this import statement");
+}
+int scc_detector_strongconnect(
+    thread_context* tc, mdg_node* n, sccd_node* sn, mdg_node* caller)
+{
+    if (n->stage == MS_PARSING || n->stage == MS_RESOLVING ||
+        n->stage == MS_NOT_FOUND) {
+        if (n->stage == MS_NOT_FOUND) {
+            rwslock_read(&n->parent->stage_lock);
+            if (n->parent->stage > MS_PARSING) {
+                rwslock_end_read(&n->parent->stage_lock);
+                rwslock_end_read(&n->stage_lock);
+                return SCCD_MISSING_IMPORT;
+            }
+            rwslock_end_read(&n->parent->stage_lock);
+        }
         int r = aseglist_add(&n->notify, caller);
         rwslock_end_read(&n->stage_lock);
         if (r) return ERR;
@@ -313,33 +414,37 @@ int scc_detector_strongconnect(
     }
     // can't be in a circle with caller if it's not pending
     if (n->stage != MS_AWAITING_DEPENDENCIES) {
-        sn->index = d->dfs_start_index;
+        sn->index = tc->sccd.dfs_start_index;
         sn->lowlink = UREG_MAX;
         rwslock_end_read(&n->stage_lock);
         return OK;
     }
-    sn->lowlink = d->dfs_index;
-    sn->index = d->dfs_index;
-    d->dfs_index++;
-    d->stack_head->mdgn = n;
-    d->stack_head++;
+    sn->lowlink = tc->sccd.dfs_index;
+    sn->index = tc->sccd.dfs_index;
+    tc->sccd.dfs_index++;
+    tc->sccd.stack_head->mdgn = n;
+    tc->sccd.stack_head++;
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &n->dependencies);
     while (true) {
         mdg_node* m = aseglist_iterator_next(&it);
         if (!m) break;
-        sccd_node* mn = scc_detector_get(d, m->id);
+        sccd_node* mn = scc_detector_get(&tc->sccd, m->id);
         if (!mn) return ERR;
-        if (mn->index < d->dfs_start_index) {
+        if (mn->index < tc->sccd.dfs_start_index) {
             rwslock_read(&m->stage_lock);
-            int r = scc_detector_strongconnect(d, m, mn, caller);
+            int r = scc_detector_strongconnect(tc, m, mn, caller);
+            if (r == SCCD_MISSING_IMPORT) {
+                mdg_node_report_missing_import(tc, n, m);
+                return SCCD_HANDLED;
+            }
             if (r) {
                 rwslock_end_read(&n->stage_lock);
                 return r;
             }
             if (mn->lowlink < sn->index) sn->lowlink = mn->lowlink;
         }
-        else if (mn->index != d->dfs_start_index) {
+        else if (mn->index != tc->sccd.dfs_start_index) {
             if (mn->index < sn->lowlink) sn->lowlink = mn->index;
         }
     }
@@ -347,34 +452,34 @@ int scc_detector_strongconnect(
         // the caller isn't part of the cycle so it depends on it
         // and somebody else is already dealing with it
         // we must wait for the cycle to be resolved
-        if (sn->lowlink != d->dfs_start_index + 1) {
+        if (sn->lowlink != tc->sccd.dfs_start_index + 1) {
             int r = aseglist_add(&n->notify, caller);
             rwslock_end_read(&n->stage_lock);
             if (r) return ERR;
             return SCCD_ADDED_NOTIFICATION;
         }
-        d->stack_head--;
+        tc->sccd.stack_head--;
         rwslock_end_read(&n->stage_lock);
         bool success = false;
-        if (d->stack_head->mdgn == n) {
+        if (tc->sccd.stack_head->mdgn == n) {
             rwslock_write(&n->stage_lock);
             if (n->stage == MS_AWAITING_DEPENDENCIES) {
                 n->stage = MS_RESOLVING;
                 success = true;
             }
             rwslock_end_write(&n->stage_lock);
-            sn->index = d->dfs_start_index;
+            sn->index = tc->sccd.dfs_start_index;
             if (success) {
                 tauc_request_resolve_single(n);
             }
             return OK;
         }
         else {
-            scc_stack_entry* end = d->stack_head + 1;
+            scc_stack_entry* end = tc->sccd.stack_head + 1;
             do {
-                d->stack_head--;
-            } while (d->stack_head->mdgn != n);
-            scc_stack_entry* start = d->stack_head;
+                tc->sccd.stack_head--;
+            } while (tc->sccd.stack_head->mdgn != n);
+            scc_stack_entry* start = tc->sccd.stack_head;
             mdg_nodes_quick_sort(start, end - start);
             for (scc_stack_entry* i = start; i != end; i++) {
                 rwslock_write(&i->mdgn->stage_lock);
@@ -383,9 +488,9 @@ int scc_detector_strongconnect(
                     success = true;
                 }
                 rwslock_end_write(&i->mdgn->stage_lock);
-                sccd_node* in = scc_detector_get(d, i->mdgn->id);
+                sccd_node* in = scc_detector_get(&tc->sccd, i->mdgn->id);
                 if (!in) return ERR;
-                in->index = d->dfs_start_index;
+                in->index = tc->sccd.dfs_start_index;
                 if (!success) break;
             }
             if (success) {
@@ -417,31 +522,29 @@ static inline void scc_detector_housekeep_ids(scc_detector* d)
         }
     }
 }
-int scc_detector_run(scc_detector* d, mdg_node* n)
+int scc_detector_run(thread_context* tc, mdg_node* n)
 {
-    scc_detector_housekeep_ids(d);
+    scc_detector_housekeep_ids(&tc->sccd);
     rwslock_read(&n->stage_lock);
     if (n->stage != MS_AWAITING_DEPENDENCIES) {
         rwslock_end_read(&n->stage_lock);
         return OK;
     }
-    d->dfs_start_index = d->dfs_index;
+    tc->sccd.dfs_start_index = tc->sccd.dfs_index;
     // the start index is used to indicate the node is off the stack
-    d->dfs_index++;
-    sccd_node* sn = scc_detector_get(d, n->id);
+    tc->sccd.dfs_index++;
+    sccd_node* sn = scc_detector_get(&tc->sccd, n->id);
     if (!sn) return ERR;
-    int r = scc_detector_strongconnect(d, n, sn, n);
-    if (r == ERR) return ERR;
+    int r = scc_detector_strongconnect(tc, n, sn, n);
     if (r == SCCD_ADDED_NOTIFICATION) return OK;
-
-    return OK;
+    return r;
 }
 
 void scc_detector_fin(scc_detector* d)
 {
 }
 
-int mdg_node_resolved(mdg_node* n, scc_detector* d)
+int mdg_node_resolved(mdg_node* n, thread_context* tc)
 {
     rwslock_write(&n->stage_lock);
     n->stage = MS_GENERATING;
@@ -451,11 +554,11 @@ int mdg_node_resolved(mdg_node* n, scc_detector* d)
     while (true) {
         mdg_node* dep = aseglist_iterator_next(&it);
         if (!dep) break;
-        if (scc_detector_run(d, dep)) return ERR;
+        if (scc_detector_run(tc, dep)) return ERR;
     }
     return OK;
 }
-int mdg_nodes_resolved(mdg_node** start, mdg_node** end, scc_detector* d)
+int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc)
 {
     for (mdg_node** i = start; i != end; i++) {
         rwslock_write(&(**i).stage_lock);
@@ -468,42 +571,48 @@ int mdg_nodes_resolved(mdg_node** start, mdg_node** end, scc_detector* d)
         while (true) {
             mdg_node* dep = aseglist_iterator_next(&it);
             if (!dep) break;
-            if (scc_detector_run(d, dep)) return ERR;
+            if (scc_detector_run(tc, dep)) return ERR;
         }
     }
     return OK;
 }
 
-int mdg_node_require(mdg_node* n, scc_detector* d)
+int mdg_node_require(mdg_node* n, thread_context* tc)
 {
     rwslock_read(&n->stage_lock);
     bool unneded = (n->stage == MS_UNNEEDED);
     rwslock_end_read(&n->stage_lock);
     if (!unneded) return OK;
-    scc_detector_housekeep_ids(d);
-    d->dfs_start_index = d->dfs_index;
-    d->dfs_index++;
+    scc_detector_housekeep_ids(&tc->sccd);
+    tc->sccd.dfs_start_index = tc->sccd.dfs_index;
+    tc->sccd.dfs_index++;
     open_scope* tgts;
     while (true) {
         rwslock_write(&n->stage_lock);
         if (n->stage == MS_UNNEEDED) {
-            n->stage = MS_PARSING;
+            ureg up = atomic_ureg_load(&n->unparsed_files);
+            if (up == 0) {
+                n->stage = MS_NOT_FOUND;
+            }
+            else {
+                n->stage = MS_PARSING;
+            }
             tgts = atomic_ptr_load(&n->targets);
             aseglist_iterator it;
             aseglist_iterator_begin(&it, &n->dependencies);
             while (true) {
                 mdg_node* i = aseglist_iterator_next(&it);
                 if (!i) break;
-                sccd_node* sn = scc_detector_get(d, i->id);
+                sccd_node* sn = scc_detector_get(&tc->sccd, i->id);
                 if (!sn) {
                     rwslock_end_write(&n->stage_lock);
-                    d->stack_head = d->stack;
+                    tc->sccd.stack_head = tc->sccd.stack;
                     return ERR;
                 }
-                if (sn->index != d->dfs_start_index) {
-                    d->stack_head->mdgn = i;
-                    d->stack_head++;
-                    sn->index = d->dfs_start_index;
+                if (sn->index != tc->sccd.dfs_start_index) {
+                    tc->sccd.stack_head->mdgn = i;
+                    tc->sccd.stack_head++;
+                    sn->index = tc->sccd.dfs_start_index;
                 }
             }
         }
@@ -521,9 +630,9 @@ int mdg_node_require(mdg_node* n, scc_detector* d)
             tgts++;
         }
         while (true) {
-            if ((d->stack_head != d->stack)) return OK;
-            d->stack_head--;
-            n = d->stack_head->mdgn;
+            if ((tc->sccd.stack_head != tc->sccd.stack)) return OK;
+            tc->sccd.stack_head--;
+            n = tc->sccd.stack_head->mdgn;
             rwslock_read(&n->stage_lock);
             bool unneded = (n->stage == MS_UNNEEDED);
             rwslock_end_read(&n->stage_lock);

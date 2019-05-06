@@ -12,6 +12,7 @@ typedef struct mdg_node mdg_node;
 
 typedef enum module_stage {
     MS_UNNEEDED,
+    MS_NOT_FOUND,
     MS_PARSING,
     MS_AWAITING_DEPENDENCIES,
     MS_RESOLVING,
@@ -93,16 +94,17 @@ typedef struct scc_detector {
     pool* mem_src;
 } scc_detector;
 
-int mdg_node_parsed(mdg* m, mdg_node* n, scc_detector* d);
-int mdg_node_file_parsed(mdg* m, mdg_node* n, scc_detector* d);
-int mdg_node_resolved(mdg_node* n, scc_detector* d);
-int mdg_nodes_resolved(mdg_node** start, mdg_node** end, scc_detector* d);
-int mdg_node_add_dependency(mdg_node* n, mdg_node* dependency, scc_detector* d);
+int mdg_node_parsed(mdg* m, mdg_node* n, thread_context* tc);
+int mdg_node_file_parsed(mdg* m, mdg_node* n, thread_context* tc);
+int mdg_node_resolved(mdg_node* n, thread_context* tc);
+int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc);
+int mdg_node_add_dependency(
+    mdg_node* n, mdg_node* dependency, thread_context* tc);
 
-int mdg_node_require(mdg_node* n, scc_detector* d);
+int mdg_node_require(mdg_node* n, thread_context* d);
 
 int scc_detector_init(scc_detector* d, pool* mem_src);
-int scc_detector_run(scc_detector* d, mdg_node* n);
+int scc_detector_run(thread_context* tc, mdg_node* n);
 void scc_detector_fin(scc_detector* d);
 
 int mdg_final_sanity_check(mdg* m, thread_context* tc);
