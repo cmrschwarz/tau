@@ -193,17 +193,6 @@ mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident)
     return n;
 }
 
-int mdg_node_add_dependency(
-    mdg_node* n, mdg_node* dependency, thread_context* tc)
-{
-    rwslock_read(&n->stage_lock);
-    int r = aseglist_add(&n->dependencies, dependency);
-    bool needed = (n->stage != MS_UNNEEDED);
-    rwslock_end_read(&n->stage_lock);
-    if (!r && needed) mdg_node_require(dependency, tc);
-    return r;
-}
-
 int mdg_node_parsed(mdg* m, mdg_node* n, thread_context* tc)
 {
     rwslock_write(&n->stage_lock);
@@ -324,6 +313,7 @@ bool module_import_find_import(
         return true;
     }
     module_import* ni = mi->nested_imports;
+    if (!ni) return false;
     while (*(void**)ni) {
         if (module_import_find_import(ni, import, tgt)) return true;
         ni++;
@@ -390,8 +380,7 @@ void mdg_node_report_missing_import(
     error_log_report_annotated_twice(
         &tc->error_log, ES_RESOLVER, false,
         "missing definition for imported module", f, tgt_sym_srl.start,
-        tgt_sym_srl.end, "imported here", tgt_srl.start, tgt_srl.end,
-        "in this import statement");
+        tgt_sym_srl.end, "imported here", tgt_srl.start, tgt_srl.end, NULL);
 }
 int scc_detector_strongconnect(
     thread_context* tc, mdg_node* n, sccd_node* sn, mdg_node* caller)
@@ -579,10 +568,18 @@ int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc)
 
 int mdg_node_require(mdg_node* n, thread_context* tc)
 {
-    rwslock_read(&n->stage_lock);
-    bool unneded = (n->stage == MS_UNNEEDED);
-    rwslock_end_read(&n->stage_lock);
-    if (!unneded) return OK;
+    mdg_node* parent = n->parent;
+    // TODO: evaluate this. we don't really want all the parents
+    while (true) {
+        rwslock_read(&n->stage_lock);
+        bool unneded = (parent->stage == MS_UNNEEDED);
+        rwslock_end_read(&n->stage_lock);
+        if (!unneded) break;
+        int r = mdg_node_require(parent, tc);
+        if (r) return r;
+        parent = parent->parent;
+        if (parent == NULL) break;
+    }
     scc_detector_housekeep_ids(&tc->sccd);
     tc->sccd.dfs_start_index = tc->sccd.dfs_index;
     tc->sccd.dfs_index++;
@@ -641,7 +638,16 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
     }
     return OK;
 }
-
+int mdg_node_add_dependency(
+    mdg_node* n, mdg_node* dependency, thread_context* tc)
+{
+    rwslock_read(&n->stage_lock);
+    int r = aseglist_add(&n->dependencies, dependency);
+    bool needed = (n->stage != MS_UNNEEDED);
+    rwslock_end_read(&n->stage_lock);
+    if (!r && needed) mdg_node_require(dependency, tc);
+    return r;
+}
 int mdg_final_sanity_check(mdg* m, thread_context* tc)
 {
     // write is necessary since we aren't satisfied with eventual consistency

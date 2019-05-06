@@ -282,6 +282,14 @@ int print_src_line(
     FILE* fh, src_file* file, ureg line, ureg max_line_length,
     err_point* ep_start, err_point* ep_end)
 {
+    while (ep_end - 1 > ep_start) {
+        if ((ep_end - 1)->message == NULL) {
+            ep_end--;
+        }
+        else {
+            break;
+        }
+    }
     pec(ANSICOLOR_BOLD ANSICOLOR_BLUE);
     fprintf(stderr, "%llu", line + 1);
     ureg space = max_line_length - get_line_nr_offset(line);
@@ -384,8 +392,7 @@ int print_src_line(
             ureg after_tab = bpos;
             print_until(&bpos, &next, buffer, &after_tab, &length_diff);
             switch (mode) {
-                case 3:
-                    (ep_pos + 1)->length_diff_start = length_diff;
+                case 3: (ep_pos + 1)->length_diff_start = length_diff;
                 // fallthrough
                 case 0:
                     ep_pos->length_diff_start = length_diff;
@@ -495,6 +502,8 @@ int print_src_line(
 int cmp_err_point(const err_point* l, const err_point* r)
 {
     if (l->line != r->line) return (l->line > r->line) ? 1 : -1;
+    if (r->message == NULL) return -1;
+    if (l->message == NULL) return 1;
     return (l->col_start > r->col_start) ? 1 : -1;
 }
 #define SORT_NAME err_points
@@ -693,8 +702,8 @@ int compare_errs(const error* a, const error* b)
 int printCriticalThreadError(const char* msg)
 {
     pectc(
-        ANSICOLOR_RED ANSICOLOR_BOLD, "critical error in worker thread: ",
-        ANSICOLOR_CLEAR);
+        ANSICOLOR_RED ANSICOLOR_BOLD,
+        "critical error in worker thread: ", ANSICOLOR_CLEAR);
     pe(msg);
     pe("\n");
     return OK;

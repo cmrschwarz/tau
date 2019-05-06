@@ -101,8 +101,6 @@ int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc);
 int mdg_node_add_dependency(
     mdg_node* n, mdg_node* dependency, thread_context* tc);
 
-int mdg_node_require(mdg_node* n, thread_context* d);
-
 int scc_detector_init(scc_detector* d, pool* mem_src);
 int scc_detector_run(thread_context* tc, mdg_node* n);
 void scc_detector_fin(scc_detector* d);
