@@ -1,4 +1,4 @@
-image: alpine
+#image: alpine
 
 stages:
     - build
@@ -6,9 +6,9 @@ stages:
 
 build:
     stage: build
-    before_script:
-        - apk update
-        - apk add gcc make cmake build-base
+#    before_script:
+#        - apk update
+#        - apk add gcc make cmake build-base
     script:
         - mkdir build
         - cd build
