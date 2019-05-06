@@ -38,7 +38,7 @@ int mdg_init(mdg* m)
     if (r) return mdg_fin_partial(m, 3, r);
     r = mdght_init(&m->mdghts[1]);
     if (r) return mdg_fin_partial(m, 2, r);
-    m->root_node = mdg_node_create(m, string_from_cstr(""), NULL);
+    m->root_node = mdg_node_create(m, string_from_cstr("_"), NULL);
     if (!m->root_node) return mdg_fin_partial(m, 1, ERR);
     m->root_node->stage = MS_PARSING;
     atomic_ureg_store(&m->root_node->unparsed_files, 1);
