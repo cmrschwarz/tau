@@ -59,7 +59,7 @@ int thread_context_do_job(thread_context* tc, job* j)
     }
     else if (j->type == JOB_FINALIZE) {
         job_queue_stop(&TAUC.job_queue);
-        return OK;
+        return mdg_final_sanity_check(&TAUC.mdg, tc);
     }
     else {
         error_log_report_critical_failiure(&tc->error_log, "unknown job type");

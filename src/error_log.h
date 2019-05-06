@@ -10,7 +10,7 @@
 typedef enum PACK_ENUM error_stage {
     ES_TOKENIZER,
     ES_PARSER,
-    ES_TYPESETTER,
+    ES_RESOLVER,
     ES_SIZER,
     //...
 } error_stage;

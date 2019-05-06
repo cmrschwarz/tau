@@ -567,7 +567,7 @@ int report_error(error* e, FILE* fh, src_file* file)
     switch (e->stage) {
         case ES_TOKENIZER: pect(ANSICOLOR_GREEN, "tokenizer "); break;
         case ES_PARSER: pect(ANSICOLOR_CYAN, "parser "); break;
-        case ES_TYPESETTER: pect(ANSICOLOR_MAGENTA, "typededucing "); break;
+        case ES_RESOLVER: pect(ANSICOLOR_MAGENTA, "resolver "); break;
         default: break;
     }
     if (e->warn) {

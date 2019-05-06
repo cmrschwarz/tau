@@ -198,7 +198,7 @@ int mdg_node_parsed(mdg* m, mdg_node* n, scc_detector* d)
     rwslock_write(&n->stage_lock);
     n->stage = MS_AWAITING_DEPENDENCIES;
     rwslock_end_write(&n->stage_lock);
-    scc_detector_run(d, n);
+    return scc_detector_run(d, n);
 }
 int mdg_node_file_parsed(mdg* m, mdg_node* n, scc_detector* d)
 {
@@ -531,4 +531,57 @@ int mdg_node_require(mdg_node* n, scc_detector* d)
         }
     }
     return OK;
+}
+
+int mdg_final_sanity_check(mdg* m, thread_context* tc)
+{
+    // write is necessary since we aren't satisfied with eventual consistency
+    mdght* h = mdg_start_write(m);
+    mdght_iterator it;
+    mdght_iterator_begin(&it, h);
+    int res = OK;
+    while (true) {
+        mdg_node* n = mdght_iterator_next(&it);
+        if (!n) break;
+        // we still need to lock the stages since some final resolving might
+        // still be going on
+        rwslock_read(&n->stage_lock);
+        if (n->stage == MS_UNNEEDED) {
+            open_scope* mod = NULL;
+            open_scope* tgt = (open_scope*)atomic_ptr_load(&n->targets);
+            open_scope* i = tgt;
+            while (i) {
+                if (i->scope.symbol.stmt.type == OSC_MODULE ||
+                    i->scope.symbol.stmt.type == OSC_MODULE_GENERIC) {
+                    if (mod != NULL) {
+                        src_range_large srl;
+                        src_range_unpack(i->scope.symbol.stmt.srange, &srl);
+                        // TODO: implement errors with annotations in multiple
+                        // files so we can annotate the first declaration
+                        error_log_report_annotated(
+                            &tc->error_log, ES_RESOLVER, false,
+                            "module redeclared", scope_get_file(&i->scope),
+                            srl.start, srl.end, "second declaration here");
+                        res = ERR;
+                        break;
+                    }
+                    mod = i;
+                }
+                i = (open_scope*)tgt->scope.symbol.stmt.next;
+            }
+            if (mod == NULL && tgt != NULL) {
+                src_range_large srl;
+                src_range_unpack(tgt->scope.symbol.stmt.srange, &srl);
+                error_log_report_annotated(
+                    &tc->error_log, ES_RESOLVER, false,
+                    "extend without module declaration",
+                    scope_get_file(&tgt->scope), srl.start, srl.end,
+                    "extend here");
+                res = ERR;
+            }
+        }
+        rwslock_end_read(&n->stage_lock);
+    }
+    mdg_end_write(m);
+    return res;
 }

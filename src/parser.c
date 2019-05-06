@@ -2012,6 +2012,11 @@ parse_error parse_module_decl(
     if (md->requires == NULL) {
         if (mdg_node_parsed(&TAUC.mdg, mdgn, &p->tk.tc->sccd)) return PE_FATAL;
     }
+    src_range_large srl;
+    src_range_unpack(md->scope.symbol.stmt.srange, &srl);
+    srl.file = p->tk.file;
+    md->scope.symbol.stmt.srange = src_range_pack(p->tk.tc, &srl);
+    if (md->scope.symbol.stmt.srange == SRC_RANGE_INVALID) return PE_FATAL;
     *n = (stmt*)md;
     return pe;
 }
@@ -2082,6 +2087,11 @@ parse_error parse_extend_decl(
     else {
         pe = parse_open_scope_body(p, ex, mdgn);
     }
+    src_range_large srl;
+    src_range_unpack(ex->scope.symbol.stmt.srange, &srl);
+    srl.file = p->tk.file;
+    ex->scope.symbol.stmt.srange = src_range_pack(p->tk.tc, &srl);
+    if (ex->scope.symbol.stmt.srange == SRC_RANGE_INVALID) return PE_FATAL;
     p->current_module = parent;
     *n = (stmt*)ex;
     return pe;

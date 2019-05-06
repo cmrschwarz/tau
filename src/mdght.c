@@ -77,6 +77,24 @@ mdg_node** mdght_insert(mdght* h, mdg_node* n)
 {
     return mdght_insert_ph(h, mdght_get_hash(n->parent, n->name), n);
 }
+void mdght_iterator_begin(mdght_iterator* it, mdght* h)
+{
+    it->head = h->table_start;
+    it->end = h->table_end;
+}
+mdg_node* mdght_iterator_next(mdght_iterator* it)
+{
+    while (true) {
+        if (it->head == it->end) return NULL;
+        if (*it->head == NULL) {
+            it->head++;
+            continue;
+        }
+        mdg_node* res = *it->head;
+        it->head++;
+        return res;
+    }
+}
 mdg_node** mdght_insert_at(mdght* h, ureg pos, mdg_node* n)
 {
     if (h->elem_count == h->grow_on_elem_count) {

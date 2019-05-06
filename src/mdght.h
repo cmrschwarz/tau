@@ -20,6 +20,13 @@ typedef struct mdght {
 ureg mdght_get_hash_str(mdg_node* parent, string str);
 ureg mdght_get_hash(mdg_node* parent, const char* str);
 
+typedef struct mdght_iterator {
+    mdg_node** head;
+    mdg_node** end;
+} mdght_iterator;
+void mdght_iterator_begin(mdght_iterator* it, mdght* h);
+mdg_node* mdght_iterator_next(mdght_iterator* it);
+
 int mdght_init(mdght* h);
 int mdght_init_with_capacity(mdght* h, ureg capacity);
 void mdght_fin(mdght* h);
