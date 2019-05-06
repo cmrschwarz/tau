@@ -183,11 +183,11 @@ void error_log_report_critical_failiure(error_log* el, const char* msg)
     if (el->critical_failiure_point != FAILURE_NONE) return;
     if (el->errors != NULL) {
         el->critical_failiure_point = el->errors;
-        el->critical_failiure_msg = msg;
     }
     else {
         el->critical_failiure_point = FAILURE_FIRST;
     }
+    el->critical_failiure_msg = msg;
 }
 void error_log_report_allocation_failiure(error_log* el)
 {
@@ -384,7 +384,8 @@ int print_src_line(
             ureg after_tab = bpos;
             print_until(&bpos, &next, buffer, &after_tab, &length_diff);
             switch (mode) {
-                case 3: (ep_pos + 1)->length_diff_start = length_diff;
+                case 3:
+                    (ep_pos + 1)->length_diff_start = length_diff;
                 // fallthrough
                 case 0:
                     ep_pos->length_diff_start = length_diff;
@@ -692,8 +693,8 @@ int compare_errs(const error* a, const error* b)
 int printCriticalThreadError(const char* msg)
 {
     pectc(
-        ANSICOLOR_RED ANSICOLOR_BOLD,
-        "critical error in worker thread: ", ANSICOLOR_CLEAR);
+        ANSICOLOR_RED ANSICOLOR_BOLD, "critical error in worker thread: ",
+        ANSICOLOR_CLEAR);
     pe(msg);
     pe("\n");
     return OK;
