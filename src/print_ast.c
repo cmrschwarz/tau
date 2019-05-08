@@ -542,20 +542,15 @@ void print_expr(expr* ex, ureg indent)
         } break;
         case EXPR_IF: {
             expr_if* i = (expr_if*)ex;
-            p("if ");
+            p("if(");
             print_expr(i->condition, indent);
-            pc(' ');
-            print_body(&i->if_body, indent);
-            if (i->else_body.children) {
-                if (body_is_braced(&i->if_body)) {
-                    pc('\n');
-                    print_indent(indent);
-                }
-                else {
-                    pc(' ');
-                }
+            p(")");
+            print_expr(i->if_body, indent);
+            if (i->else_body) {
+                p("\n");
+                print_indent(indent);
                 p("else ");
-                print_body(&i->else_body, indent);
+                print_expr(i->else_body, indent);
             }
         } break;
         default: {

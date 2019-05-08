@@ -267,8 +267,8 @@ typedef struct expr_block {
 typedef struct expr_if {
     expr expr;
     expr* condition;
-    body if_body;
-    body else_body;
+    expr* if_body;
+    expr* else_body;
 } expr_if;
 
 typedef struct expr_loop {

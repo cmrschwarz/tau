@@ -4,8 +4,8 @@ import bar;
 func main(args: String[]){    
     module bar;
     func test_compound_assignment(){
-        if (x) give 3 else give 5;
-        x:= 3;
+        if (x) 3 else 5;
+        x := 3;
         using ((), a, ((),),) = 17;
         (x, y, (a,b,c), d) := foo();
         (x, y:, (a,b: int,c), d) = foo();
@@ -30,11 +30,14 @@ func main(args: String[]){
             } 
             * 3;
            
-        using x = if x > 3{
+        using x = if (x > 3){
             return 3 * {
             break foo give 12;
             return 12;
             };
+        }
+        else{
+            give 27;
         };
         label foo;
     }

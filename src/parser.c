@@ -1332,28 +1332,40 @@ parse_error parse_if(parser* p, expr** tgt)
     tk_void(&p->tk);
     expr_if* i = alloc_perm(p, sizeof(expr_if));
     if (!i) return PE_FATAL;
+    PEEK(p, t);
+    if (t->type != TT_PAREN_OPEN) {
+        parser_error_1a(
+            p, "invalid if expression syntax", t->start, t->end,
+            "expected opening parenthesis");
+    }
+    tk_void(&p->tk);
     parse_error pe = parse_expression(p, &i->condition);
+    if (pe) return pe;
     if (pe == PE_EOEX) {
         PEEK(p, t);
         parser_error_2a(
             p, "invalid if expression syntax", t->start, t->end,
             "expected if condition expression", start, end,
-            "in this while loop");
+            "in this if condition");
         return PE_HANDLED;
     }
-    if (pe) return pe;
+    PEEK(p, t);
+    if (t->type != TT_PAREN_CLOSE) {
+        panic("TODO: error");
+    }
+    tk_void(&p->tk);
     if (expr_fill_srange(p, (expr*)i, start, end)) return PE_FATAL;
     i->expr.type = EXPR_IF;
     *tgt = (expr*)i;
-    pe = parse_body(p, &i->if_body);
+    pe = parse_expression(p, &i->if_body);
     if (pe) return pe;
     PEEK(p, t);
     if (t->type == TT_KW_ELSE) {
         tk_void(&p->tk);
-        pe = parse_body(p, &i->else_body);
+        pe = parse_expression(p, &i->else_body);
     }
     else {
-        i->else_body.children = NULL;
+        i->else_body = NULL;
     }
     return pe;
 }
