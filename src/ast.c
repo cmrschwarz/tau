@@ -159,7 +159,15 @@ bool stmt_flags_get_compound_decl(stmt_flags f)
 }
 
 #define REDECL_OFFSET 7
-
+#define PE_OFFSET 6
+void err_flags_set_parse_error(err_flags* f)
+{
+    bitmask_set_bit(f, PE_OFFSET);
+}
+bool err_flags_get_parse_error(err_flags f)
+{
+    return bitmask_get_bit(f, PE_OFFSET);
+}
 void err_flags_set_redeclared(err_flags* f)
 {
     bitmask_set_bit(f, REDECL_OFFSET);

@@ -88,6 +88,14 @@ void print_body(body* body, ureg indent)
         print_body_braced(body, indent);
     }
 }
+void print_namable_braced_body(body* body, char* name, ureg indent)
+{
+    if (name) {
+        p(name);
+        pc('@');
+    }
+    print_body_braced(body, indent);
+}
 void print_sym_params(sym_param* d, ureg indent)
 {
     while (d != NULL) {
@@ -338,11 +346,6 @@ void print_astn(stmt* astn, ureg indent)
             p("using ");
             print_expr(u->target, indent);
         } break;
-        case SYM_LABEL: {
-            sym_label* l = (sym_label*)astn;
-            p("label ");
-            p(l->symbol.name);
-        } break;
         case STMT_GIVE: {
             stmt_give* g = (stmt_give*)astn;
             if (g->target.name != NULL) {
@@ -372,15 +375,16 @@ void print_astn(stmt* astn, ureg indent)
                 print_expr(r->value, indent);
             }
         } break;
-        case STMT_GOTO: {
-            stmt_goto* g = (stmt_goto*)astn;
-            p("goto ");
-            p(g->target.name);
-        } break;
         default: {
             p("<Unkown Statement>;");
         }
     }
+}
+void print_expr_in_parens(expr* ex, ureg indent)
+{
+    pc('(');
+    print_expr(ex, indent);
+    pc(')');
 }
 void print_expr(expr* ex, ureg indent)
 {
@@ -389,6 +393,10 @@ void print_expr(expr* ex, ureg indent)
         case EXPR_NUMBER: pu(((expr_str_value*)ex)->value); break;
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)ex;
+            if (b->expr_named.name) {
+                p(b->expr_named.name);
+                pc('@');
+            }
             print_body_braced(&b->body, indent);
         } break;
         case SYM_VAR_UNINITIALIZED: {
@@ -462,29 +470,20 @@ void print_expr(expr* ex, ureg indent)
         } break;
         case EXPR_OP_PARENTHESES: {
             expr_parentheses* pr = (expr_parentheses*)ex;
-            pc('(');
-            print_expr(pr->child, indent);
-            pc(')');
+            print_expr_in_parens(pr->child, indent);
         } break;
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)ex;
-            if (l->expr_named.name != NULL) {
-                p("label ");
-                ps(l->expr_named.name);
-            }
             p("loop ");
-            print_body(&l->body, indent);
+            print_namable_braced_body(&l->body, l->expr_named.name, indent);
         } break;
         case EXPR_WHILE: {
             expr_while* w = (expr_while*)ex;
-            if (w->expr_named.name != NULL) {
-                p("label ");
-                ps(w->expr_named.name);
-            }
             p("while ");
-            print_expr(w->condition, indent);
+            print_expr_in_parens(w->condition, indent);
             pc(' ');
-            print_body(&w->while_body, indent);
+            print_namable_braced_body(
+                &w->while_body, w->expr_named.name, indent);
             if (w->finally_body.children) {
                 pc('\n');
                 print_indent(indent);
@@ -496,20 +495,14 @@ void print_expr(expr* ex, ureg indent)
             expr_do* ed = (expr_do*)ex;
             p("do ");
             print_expr(ed->expr_body, indent);
-            if (ed->tail_stmt) {
-                print_astn(ed->tail_stmt, indent);
-            }
         } break;
         case EXPR_DO_WHILE: {
             expr_do_while* dw = (expr_do_while*)ex;
-            if (dw->expr_named.name != NULL) {
-                p("label ");
-                ps(dw->expr_named.name);
-            }
             p("do ");
-            print_body(&dw->do_body, indent);
+            print_namable_braced_body(
+                &dw->do_body, dw->expr_named.name, indent);
             p(" while ");
-            print_expr(dw->condition, indent);
+            print_expr_in_parens(dw->condition, indent);
             if (dw->finally_body.children) {
                 pc('\n');
                 print_indent(indent);
@@ -519,13 +512,14 @@ void print_expr(expr* ex, ureg indent)
         } break;
         case EXPR_MATCH: {
             expr_match* m = (expr_match*)ex;
-            if (m->expr_named.name != NULL) {
-                p("label ");
-                ps(m->expr_named.name);
-            }
             p("match ");
-            print_expr(m->match_expr, indent);
-            p(" {\n");
+            print_expr_in_parens(m->match_expr, indent);
+            pc(' ');
+            if (m->expr_named.name != NULL) {
+                p(m->expr_named.name);
+                pc('@');
+            }
+            p("{\n");
             match_arm** ma = m->match_arms;
             indent++;
             while (*ma) {
@@ -542,9 +536,8 @@ void print_expr(expr* ex, ureg indent)
         } break;
         case EXPR_IF: {
             expr_if* i = (expr_if*)ex;
-            p("if(");
-            print_expr(i->condition, indent);
-            p(")");
+            p("if");
+            print_expr_in_parens(i->condition, indent);
             print_expr(i->if_body, indent);
             if (i->else_body) {
                 p("\n");

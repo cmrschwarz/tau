@@ -295,6 +295,7 @@ static token* tk_load(tokenizer* tk)
             case '}': tok->type = TT_BRACE_CLOSE; return tk_return_head(tk, 1);
             case '[': tok->type = TT_BRACKET_OPEN; return tk_return_head(tk, 1);
             case ':': tok->type = TT_COLON; return tk_return_head(tk, 1);
+            case '@': tok->type = TT_AT; return tk_return_head(tk, 1);
             case ']':
                 tok->type = TT_BRACKET_CLOSE;
                 return tk_return_head(tk, 1);

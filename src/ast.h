@@ -164,6 +164,7 @@ typedef struct symbol {
 
 typedef struct body {
     stmt* children;
+    char* name;
     src_range srange;
 } body;
 
@@ -177,15 +178,6 @@ typedef struct open_scope {
     scope scope;
     file_require* requires;
 } open_scope;
-
-typedef struct expr_named {
-    expr expr;
-    char* name;
-} expr_named;
-
-typedef struct sym_label {
-    symbol symbol;
-} sym_label;
 
 typedef struct sym_named_using {
     symbol symbol;
@@ -216,6 +208,10 @@ typedef struct module_import {
     src_range srange;
 } module_import;
 
+typedef struct expr_named {
+    expr expr;
+    char* name;
+} expr_named;
 typedef struct stmt_import {
     stmt stmt;
     module_import module_import;
@@ -251,16 +247,8 @@ typedef struct stmt_continue {
     } target;
 } stmt_continue;
 
-typedef struct stmt_goto {
-    stmt stmt;
-    union {
-        sym_label* label;
-        const char* name;
-    } target;
-} stmt_goto;
-
 typedef struct expr_block {
-    expr expr;
+    expr_named expr_named;
     body body;
 } expr_block;
 
@@ -277,9 +265,8 @@ typedef struct expr_loop {
 } expr_loop;
 
 typedef struct expr_do {
-    expr expr;
+    expr_named expr_named;
     expr* expr_body;
-    stmt* tail_stmt;
 } expr_do;
 
 typedef struct expr_do_while {
@@ -294,6 +281,7 @@ typedef struct expr_while {
     expr* condition;
     body while_body;
     body finally_body;
+    char* finally_name;
 } expr_while;
 
 typedef struct expr_for_in {
@@ -518,5 +506,7 @@ bool stmt_flags_get_static(stmt_flags f);
 void stmt_flags_set_compound_decl(stmt_flags* f);
 bool stmt_flags_get_compound_decl(stmt_flags f);
 
+void err_flags_set_parse_error(err_flags* f);
+bool err_flags_get_parse_error(err_flags f);
 void err_flags_set_redeclared(err_flags* f);
 bool err_flags_get_redeclared(err_flags f);

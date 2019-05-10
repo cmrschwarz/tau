@@ -627,7 +627,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
             tgts++;
         }
         while (true) {
-            if ((tc->sccd.stack_head != tc->sccd.stack)) return OK;
+            if ((tc->sccd.stack_head == tc->sccd.stack)) return OK;
             tc->sccd.stack_head--;
             n = tc->sccd.stack_head->mdgn;
             rwslock_read(&n->stage_lock);

@@ -4,26 +4,30 @@ import bar;
 func main(args: String[]){    
     module bar;
     func test_compound_assignment(){
+        do label@{
+            bar();
+        };
         if (x) 3 else 5;
         x := 3;
         using ((), a, ((),),) = 17;
         (x, y, (a,b,c), d) := foo();
         (x, y:, (a,b: int,c), d) = foo();
         (a, b) += 3;
-        x * #label x match foo{
+        x * #match(foo) blk@{
             while true {*x = 3;} => bar;
             x || Foo(x) => {
                 return x;
             }
         };
         
-        while true label y loop{
+        while true foo@{
             continue for;
             return 12;
         }
         (x: int) := foo;
         
-        x:= do label y while true{
+        x:= do while true {
+                foo();
             }
             finally {
                 x++;
@@ -39,7 +43,6 @@ func main(args: String[]){
         else{
             give 27;
         };
-        label foo;
     }
     return 0;
 }

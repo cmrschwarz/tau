@@ -27,7 +27,6 @@ const char* token_strings[255] = {
     [TT_KW_BREAK] = "break",
     [TT_KW_RETURN] = "return",
     [TT_KW_GIVE] = "give",
-    [TT_KW_LABEL] = "label",
     [TT_KW_GOTO] = "goto",
     [TT_KW_USING] = "using",
     [TT_KW_IF] = "if",
@@ -98,6 +97,7 @@ const char* token_strings[255] = {
     [TT_BINARY_LITERAL] = "expression",
     [TT_STRING] = "expression",
     [TT_EOF] = "EOF",
+    [TT_AT] = "@",
 };
 // clang-format on
 
