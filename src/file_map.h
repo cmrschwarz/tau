@@ -1,4 +1,5 @@
 #pragma once
+#include "ast.h"
 #include "src_map.h"
 #include "utils/aseglist.h"
 #include "utils/pool.h"
@@ -30,10 +31,11 @@ typedef enum src_file_stage {
 
 typedef struct src_file {
     file_map_head head;
-    src_map src_map;
     aseglist requiring_modules;
     rwslock stage_lock;
     src_file_stage stage;
+    src_map src_map;
+    osc_extend root;
 } source_file;
 
 void src_file_print_path(src_file* f, bool to_stderr);

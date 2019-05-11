@@ -94,6 +94,7 @@ typedef struct scc_detector {
     pool* mem_src;
 } scc_detector;
 
+void mdg_node_add_target(mdg_node* n, scope* target);
 int mdg_node_parsed(mdg* m, mdg_node* n, thread_context* tc);
 int mdg_node_file_parsed(mdg* m, mdg_node* n, thread_context* tc);
 int mdg_node_resolved(mdg_node* n, thread_context* tc);

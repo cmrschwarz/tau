@@ -324,6 +324,13 @@ char* get_context_msg(parser* p, ast_node* node)
         case EXPR_IF: return "in this if expression";
         case OSC_EXTEND_GENERIC: return "in this generic extend statement";
         case EXPR_LAMBDA: return "in this lambda";
+        case SYM_VAR: return "in this variable declaration";
+        case STMT_IMPORT: return "in this import statement";
+        case STMT_EXPRESSION: return "in this expression";
+        case SYM_NAMED_USING:
+        case STMT_USING: return "in this using statement";
+        case STMT_COMPOUND_ASSIGN:
+            return "in this compound assignment statement";
         default: panic("unexpected parent context");
     }
     return NULL;
@@ -390,11 +397,6 @@ int parser_init(parser* p, thread_context* tc)
         tk_fin(&p->tk);
         return r;
     }
-    p->root.oscope.scope.symbol.name = NULL;
-    p->root.oscope.scope.symbol.stmt.type = OSC_MODULE;
-    p->root.oscope.scope.body.children = NULL;
-    p->root.oscope.scope.symbol.stmt.next = NULL;
-    p->curr_scope = (scope*)&p->root;
     return OK;
 }
 void parser_fin(parser* p)
@@ -1632,6 +1634,7 @@ static inline parse_error parse_delimited_open_scope(
     *head = NULL; // so extend can check if it comes first
     token* t;
     PEEK(p, t);
+    ureg start = t->start;
     parse_error pe;
     while (t->type != delimiter_1 && t->type != delimiter_2) {
         pe = parse_statement(p, head);
@@ -1649,6 +1652,12 @@ static inline parse_error parse_delimited_open_scope(
     osc->requires = list_builder_pop_block_list_zt(
         &p->list_builder, osc->requires, &p->tk.tc->permmem);
     p->curr_scope = parent;
+    src_range_large srl;
+    srl.start = start;
+    srl.end = t->end;
+    srl.file = p->tk.file;
+    osc->scope.symbol.stmt.srange = src_range_pack(p->tk.tc, &srl);
+    if (osc->scope.symbol.stmt.srange == SRC_RANGE_INVALID) return PE_FATAL;
     if (!osc->requires) return PE_FATAL;
     return pe;
 }
@@ -1682,9 +1691,14 @@ parse_error parser_parse_file(parser* p, job_parse* j)
         return PE_TK_ERROR;
     }
     p->current_module = TAUC.mdg.root_node;
-    parse_error pe = parse_eof_delimited_open_scope(p, &p->root.oscope);
+    j->file->root.oscope.scope.symbol.name = NULL;
+    j->file->root.oscope.scope.symbol.stmt.type = OSC_MODULE;
+    j->file->root.oscope.scope.body.children = NULL;
+    j->file->root.oscope.scope.symbol.stmt.next = NULL;
+    p->curr_scope = (scope*)&j->file->root;
+    parse_error pe = parse_eof_delimited_open_scope(p, &j->file->root.oscope);
     // DBUG:
-    print_astn_nl((stmt*)&p->root, 0);
+    print_astn_nl((stmt*)&j->file->root, 0);
     tk_close_file(&p->tk);
     if (src_file_done_parsing(j->file, p->tk.tc)) pe = PE_FATAL;
     return pe;
@@ -1982,8 +1996,6 @@ parse_error parse_module_decl(
     mdg_node* mdgn =
         mdg_add_open_scope(&TAUC.mdg, p->current_module, md, t->str);
     if (mdgn == NULL) return PE_FATAL;
-    pe = stmt_fill_srange(p, (stmt*)md, start, decl_end);
-    if (pe) return pe;
     md->scope.symbol.stmt.type = generic ? OSC_MODULE_GENERIC : OSC_MODULE;
     md->scope.symbol.stmt.flags = flags;
     PEEK(p, t);
@@ -1992,6 +2004,8 @@ parse_error parse_module_decl(
     if (t->type == TT_SEMICOLON) {
         *n = NULL;
         if (p->curr_scope->body.children == NULL) {
+            pe = stmt_fill_srange(p, (stmt*)md, start, t->end);
+            if (pe) return pe;
             tk_consume(&p->tk);
             pe = parse_delimited_open_scope(p, md, TT_EOF, TT_BRACE_CLOSE);
         }
@@ -2008,6 +2022,8 @@ parse_error parse_module_decl(
         }
     }
     else {
+        pe = stmt_fill_srange(p, (stmt*)md, start, decl_end);
+        if (pe) return pe;
         pe = parse_open_scope_body(p, md, mdgn);
     }
     p->current_module = parent;
@@ -2189,6 +2205,8 @@ static inline parse_error parse_compound_assignment_after_equals(
             t_start, t_end, "in this compound assignment statement");
     }
     if (pe) return pe;
+    stmt_fill_srange(
+        p, (stmt*)ca, t_start, src_range_get_end(ca->value->srange));
     *tgt = (stmt*)ca;
     return PE_OK;
 }
