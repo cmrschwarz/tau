@@ -54,7 +54,7 @@ int master_error_log_init()
     MASTER_ERROR_LOG.tab_size = 4; // TODO: make configurable
     MASTER_ERROR_LOG.tab_spaces = "    ";
     MASTER_ERROR_LOG.err_tty = isatty(fileno(stderr));
-    MASTER_ERROR_LOG.max_err_line_length = 120;
+    MASTER_ERROR_LOG.max_err_line_length = 80;
     MASTER_ERROR_LOG.sane_err_line_length = 80;
     return OK;
 }
@@ -277,6 +277,19 @@ void print_until(
         buffer[*next] = temp;
     }
 }
+void print_msg(const char* msg, ureg msg_len)
+{
+    if (msg_len > MASTER_ERROR_LOG.max_err_line_length) {
+        for (ureg i = 0; i < MASTER_ERROR_LOG.max_err_line_length - 4 - 3;
+             i++) {
+            fputc(msg[i], stderr);
+        }
+        pe("...");
+    }
+    else {
+        pe(msg);
+    }
+}
 // TODO: allow putting annotation above with  vvv/,,, error here or
 int print_src_line(
     FILE* fh, src_file* file, ureg line, ureg max_line_length,
@@ -305,8 +318,9 @@ int print_src_line(
     ureg pos = 0;
     err_point* ep_pos = ep_start;
     sreg length_diff = 0;
+    bool past_whitespace = false;
     while (!end_of_line) {
-        ureg r;
+        ureg buff_len;
         if (length != 0) {
             ureg tgt = length - 1;
             if (tgt > LINE_BUFFER_SIZE - 1) {
@@ -315,8 +329,8 @@ int print_src_line(
             else {
                 end_of_line = true;
             }
-            r = fread(buffer, 1, tgt, fh);
-            if (r != tgt) {
+            buff_len = fread(buffer, 1, tgt, fh);
+            if (buff_len != tgt) {
                 pe("\n");
                 return ERR;
             };
@@ -324,36 +338,57 @@ int print_src_line(
         else {
             has_newline = false;
             ureg tgt = LINE_BUFFER_SIZE - 1;
-            r = fread(buffer, 1, tgt, fh);
-            if (r == 0) {
+            buff_len = fread(buffer, 1, tgt, fh);
+            if (buff_len == 0) {
                 length = pos;
                 break;
             }
             else {
-                for (ureg i = 0; i < r; i++) {
+                for (ureg i = 0; i < buff_len; i++) {
                     if (buffer[i] == '\n') {
-                        r = i;
-                        length = pos + r;
+                        buff_len = i;
+                        length = pos + buff_len;
                         end_of_line = true;
                         break;
                     }
                 }
-                if (!end_of_line && r != tgt) {
+                if (!end_of_line && buff_len != tgt) {
                     end_of_line = true;
-                    length = pos + r;
+                    length = pos + buff_len;
                 }
             }
         }
-        if (pos + r > MASTER_ERROR_LOG.max_err_line_length) {
-            r = MASTER_ERROR_LOG.max_err_line_length - pos;
-            length = pos + r;
+        if (pos + buff_len - ((!end_of_line) * 3) >
+            MASTER_ERROR_LOG.max_err_line_length) {
+            buff_len = MASTER_ERROR_LOG.max_err_line_length - pos;
+            length = pos + buff_len;
             end_of_line = true;
-            buffer[r - 3] = '.';
-            buffer[r - 2] = '.';
-            buffer[r - 1] = '.';
+            buffer[buff_len - 3] = '.';
+            buffer[buff_len - 2] = '.';
+            buffer[buff_len - 1] = '.';
+            ep_pos->col_end = length;
+        }
+        if (!past_whitespace) {
+            while (pos < length && buffer[pos] == ' ') {
+                pos++;
+            }
+            if (pos != length) {
+                for (err_point* ep = ep_pos; ep != ep_end; ep++) {
+                    if (ep->col_start < pos) {
+                        ep->col_start = pos;
+                    }
+                    else {
+                        break;
+                    }
+                }
+                past_whitespace = true;
+            }
+            else {
+                continue;
+            }
         }
         ureg bpos = 0;
-        ureg end = pos + r;
+        ureg end = pos + buff_len;
         while (pos < end && ep_pos != ep_end) {
             int mode;
             ureg next;
@@ -388,7 +423,7 @@ int print_src_line(
                 }
             }
             ureg d = next - pos;
-            if (d > r - bpos) break;
+            if (d > buff_len - bpos) break;
             ureg after_tab = bpos;
             print_until(&bpos, &next, buffer, &after_tab, &length_diff);
             switch (mode) {
@@ -413,8 +448,8 @@ int print_src_line(
         }
         if (end == pos) continue;
         ureg after_tab = bpos;
-        print_until(&bpos, &r, buffer, &after_tab, &length_diff);
-        pos += r;
+        print_until(&bpos, &buff_len, buffer, &after_tab, &length_diff);
+        pos += buff_len;
     }
     if (ep_end == ep_start) {
         pe("\n");
@@ -447,37 +482,26 @@ int print_src_line(
         pectc(ANSICOLOR_BOLD ANSICOLOR_BLUE, " |", ANSICOLOR_CLEAR);
         ureg space_before = ep_pos->col_start + ep_pos->length_diff_start;
         msg_len = strlen(ep_pos->message);
-        bool msg_before = space_before > msg_len + 2 ||
-                          space_before > MASTER_ERROR_LOG.max_err_line_length;
-        if (msg_before) {
-            if (space_before > MASTER_ERROR_LOG.max_err_line_length) {
-                if (msg_len < MASTER_ERROR_LOG.max_err_line_length) {
-                    for (ureg i = 0;
-                         i < MASTER_ERROR_LOG.max_err_line_length - msg_len - 5;
-                         i++)
-                        pe(" ");
-                }
-            }
-            else {
-                for (ureg i = 0; i < space_before - msg_len - 1; i++) pe(" ");
+        if (space_before > MASTER_ERROR_LOG.max_err_line_length) {
+            if (msg_len < MASTER_ERROR_LOG.max_err_line_length) {
+                for (ureg i = 0;
+                     i < MASTER_ERROR_LOG.max_err_line_length - msg_len - 5;
+                     i++)
+                    pe(" ");
             }
             pec(ep_pos->message_color);
-            if (msg_len > MASTER_ERROR_LOG.max_err_line_length) {
-                for (ureg i = 0;
-                     i < MASTER_ERROR_LOG.max_err_line_length - 4 - 3; i++) {
-                    fputc(ep_pos->message[i], stderr);
-                }
-                pe("...");
-            }
-            else {
-                pe(ep_pos->message);
-            }
-            if (space_before > MASTER_ERROR_LOG.max_err_line_length) {
-                pe("  ...^");
-                pect(ANSICOLOR_CLEAR, "\n");
-                ep_pos++;
-                continue;
-            }
+            print_msg(ep_pos->message, msg_len);
+            pec(ANSICOLOR_CLEAR);
+            pe("  ...^");
+            pect(ANSICOLOR_CLEAR, "\n");
+            ep_pos++;
+            continue;
+        }
+        bool msg_before = space_before > msg_len + 2;
+        if (msg_before) {
+            for (ureg i = 0; i < space_before - msg_len - 1; i++) pe(" ");
+            pec(ep_pos->message_color);
+            print_msg(ep_pos->message, msg_len);
             pec(ANSICOLOR_CLEAR);
             pe(" ");
         }
