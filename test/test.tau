@@ -1,49 +1,5 @@
 require "test2.tau";
-x:=3;
-import bar;
-func main(args: String[]){    
-    module bar;
-    func test_compound_assignment(){
-        do label@{
-            bar();
-        };
-        if (x) 3 else 5;
-        x := 3;
-        using ((), a, ((),),) = 17;
-        (x, y, (a,b,c), d) := foo();
-        (x, y:, (a,b: int,c), d) = foo();
-        (a, b) += 3;
-        x * #match(foo) blk@{
-            while true {*x = 3;} => bar;
-            x || Foo(x) => {
-                return x;
-            }
-        };
-        
-        while true foo@{
-            continue @for;
-            continue;
-            return 12;
-        }
-        (x: int) := foo;
-        
-        x:= do while true {
-                foo();
-            }
-            finally {
-                x++;
-            } 
-            * 3;
-        using x = if (x > 3) foo@{
-            return 3 * {
-            break @foo 12;
-            break;
-            return 12;
-            };
-        }
-        else{
-            break 27;
-        };
-    }
-    return 0;
+require "test2.tau";
+func foo(){
+    x: int = 32;
 }
