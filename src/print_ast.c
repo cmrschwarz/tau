@@ -346,25 +346,26 @@ void print_astn(stmt* astn, ureg indent)
             p("using ");
             print_expr(u->target, indent);
         } break;
-        case STMT_GIVE: {
-            stmt_give* g = (stmt_give*)astn;
-            if (g->target.name != NULL) {
-                ps("break");
-                ps(g->target.name);
-                ps("give");
-                print_expr(g->value, indent);
-            }
-            else {
-                p("give ");
-                print_expr(g->value, indent);
-            }
-        } break;
         case STMT_BREAK: {
             stmt_break* b = (stmt_break*)astn;
             p("break");
             if (b->target.name) {
                 pc(' ');
+                pc('@');
                 p(b->target.name);
+            }
+            if (b->value) {
+                pc(' ');
+                print_expr(b->value, indent);
+            }
+        } break;
+        case STMT_CONTINUE: {
+            stmt_continue* c = (stmt_continue*)astn;
+            p("continue");
+            if (c->target.name) {
+                pc(' ');
+                pc('@');
+                p(c->target.name);
             }
         } break;
         case STMT_RETURN: {

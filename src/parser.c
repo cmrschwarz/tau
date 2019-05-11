@@ -15,6 +15,12 @@
         if (!t) return PE_TK_ERROR;                                            \
     } while (false)
 
+#define PEEK2(p, t)                                                            \
+    do {                                                                       \
+        t = tk_peek_2nd(&(p)->tk);                                             \
+        if (!t) return PE_TK_ERROR;                                            \
+    } while (false)
+
 bool body_supports_exprs(ast_node_type pt);
 parse_error parse_statement(parser* p, stmt** tgt);
 parse_error parse_scope_body(parser* p, scope* s);
@@ -169,8 +175,6 @@ static inline op_type token_to_binary_op(token* t)
 bool expr_allowed_to_drop_semicolon(expr* e)
 {
     switch (e->type) {
-        case EXPR_FOR:
-        case EXPR_FOR_EACH:
         case EXPR_WHILE:
         case EXPR_LOOP:
         case EXPR_MATCH:
@@ -235,7 +239,6 @@ static inline op_type token_to_postfix_unary_op(token* t)
 static inline bool is_kw_valid_label(token_type t)
 {
     switch (t) {
-        case TT_KW_FOR:
         case TT_KW_LOOP:
         case TT_KW_WHILE:
         case TT_KW_MATCH:
@@ -312,11 +315,11 @@ char* get_context_msg(parser* p, ast_node* node)
         case OSC_MODULE_GENERIC: return "in this generic module";
         case OSC_EXTEND: return "in this extend statement";
         case EXPR_BLOCK: return "in this block expression";
-        case EXPR_DO_WHILE:
-        case EXPR_WHILE:
-        case EXPR_FOR:
-        case EXPR_FOR_EACH:
-        case EXPR_LOOP: return "in this loop";
+        case EXPR_DO_WHILE: return "in this do while expression";
+        case EXPR_WHILE: return "in this while expression";
+        case EXPR_LOOP: return "in this loop expression";
+        case STMT_CONTINUE: return "in this continue statement";
+        case STMT_BREAK: return "in this break statement";
         case EXPR_MATCH: return "in this match expression";
         case EXPR_IF: return "in this if expression";
         case OSC_EXTEND_GENERIC: return "in this generic extend statement";
@@ -953,6 +956,38 @@ parse_prefix_unary_op(parser* p, ast_node_type op, expr** ex)
     *ex = (expr*)ou;
     return PE_OK;
 }
+parse_error parse_label_target(
+    parser* p, expr* parent, ureg pstart, ureg pend, const char** target,
+    ureg* end)
+{
+    token* t;
+    PEEK(p, t);
+    if (t->type == TT_AT) {
+        token* t2;
+        PEEK2(p, t2);
+        if (t2->type == TT_STRING) {
+            *target = alloc_string_perm(p, t2->str);
+            if (!*target) return PE_FATAL;
+        }
+        else if (is_kw_valid_label(t->type)) {
+            *target = token_strings[t->type];
+        }
+        else {
+            parser_error_3a(
+                p, "expected label identifier", t2->start, t2->end,
+                "expected label identifier", t->start, t->end,
+                "after this label indicator", pstart, pend,
+                get_context_msg(p, (ast_node*)parent));
+            return PE_ERROR;
+        }
+        tk_void_n(&p->tk, 2);
+        *end = t2->end;
+    }
+    else {
+        *target = NULL;
+    }
+    return PE_OK;
+}
 parse_error parse_continue_stmt(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
 {
@@ -961,26 +996,11 @@ parse_error parse_continue_stmt(
     parse_error pe = require_default_flags(p, t, flags, start, flags_end);
     if (pe) return pe;
     tk_void(&p->tk);
-    PEEK(p, t);
-    const char* target;
-    if (t->type == TT_STRING) {
-        target = alloc_string_perm(p, t->str);
-        if (!target) return PE_FATAL;
-    }
-    else if (is_kw_valid_label(t->type)) {
-        target = token_strings[t->type];
-    }
-    else {
-        target = NULL;
-    }
-    if (target) {
-        end = t->end;
-        tk_void(&p->tk);
-    }
     stmt_continue* c = alloc_perm(p, sizeof(stmt_continue));
     if (!c) return PE_FATAL;
-    stmt_init((stmt*)c, STMT_BREAK);
-    c->target.name = target;
+    stmt_init((stmt*)c, STMT_CONTINUE);
+    pe = parse_label_target(p, (expr*)c, start, end, &c->target.name, &end);
+    if (pe) return pe;
     if (stmt_fill_srange(p, (stmt*)c, start, end)) return PE_FATAL;
     *tgt = (stmt*)c;
     return PE_OK;
@@ -1020,32 +1040,6 @@ parse_error parse_return_stmt(
     *tgt = (stmt*)r;
     return PE_OK;
 }
-parse_error parse_give_stmt(
-    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
-{
-    token* t1 = tk_aquire(&p->tk);
-    parse_error pe = require_default_flags(p, t1, flags, start, flags_end);
-    if (pe) return pe;
-    ureg end = t1->end;
-    tk_void(&p->tk);
-    stmt_give* g = alloc_perm(p, sizeof(stmt_give));
-    if (!g) return PE_FATAL;
-    g->stmt.type = STMT_GIVE;
-    g->target.name = NULL;
-    pe = parse_expression(p, &g->value);
-    if (pe == PE_EOEX) {
-        PEEK(p, t1);
-        parser_error_2a(
-            p, "unexpected token in give statement", t1->start, t1->end,
-            "expected expression", start, end, "in this give statement");
-    }
-    if (pe) return pe;
-    if (stmt_fill_srange(
-            p, (stmt*)g, start, src_range_get_end(g->value->srange)))
-        return PE_FATAL;
-    *tgt = (stmt*)g;
-    return PE_OK;
-}
 parse_error parse_break_stmt(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
 {
@@ -1056,32 +1050,18 @@ parse_error parse_break_stmt(
     tk_void(&p->tk);
     PEEK(p, t);
     const char* target;
-    if (t->type == TT_STRING) {
-        target = alloc_string_perm(p, t->str);
-        if (!target) return PE_FATAL;
-    }
-    else if (is_kw_valid_label(t->type)) {
-        target = token_strings[t->type];
-    }
-    else {
-        target = NULL;
-    }
-    if (target) {
-        end = t->end;
-        tk_void(&p->tk);
-        PEEK(p, t);
-        if (t->type == TT_KW_GIVE) {
-            pe =
-                parse_give_stmt(p, STMT_FLAGS_DEFAULT, t->start, t->start, tgt);
-            if (pe) return pe;
-            ((stmt_give*)*tgt)->target.name = target;
-            return PE_OK;
-        }
-    }
     stmt_break* g = alloc_perm(p, sizeof(stmt_give));
     if (!g) return PE_FATAL;
     g->stmt.type = STMT_BREAK;
-    g->target.name = target;
+    pe = parse_label_target(p, (expr*)g, start, end, &g->target.name, &end);
+    if (pe) return pe;
+    pe = parse_expression(p, &g->value);
+    if (pe == PE_EOEX) {
+        g->value = NULL;
+    }
+    else {
+        if (pe) return pe;
+    }
     if (stmt_fill_srange(p, (stmt*)g, start, end)) return PE_FATAL;
     *tgt = (stmt*)g;
     return PE_OK;
@@ -2170,8 +2150,6 @@ bool body_supports_exprs(ast_node_type pt)
         case SC_FUNC_GENERIC:
         case EXPR_LOOP:
         case EXPR_WHILE:
-        case EXPR_FOR:
-        case EXPR_FOR_EACH:
         case EXPR_IF:
         case EXPR_BLOCK:
         case EXPR_LAMBDA: {
@@ -2722,8 +2700,6 @@ parse_error parse_statement(parser* p, stmt** tgt)
                 return parse_statement(p, tgt);
             case TT_KW_IMPORT:
                 return parse_import(p, flags, start, flags_end, tgt);
-            case TT_KW_GIVE:
-                return parse_give_stmt(p, flags, start, flags_end, tgt);
             case TT_KW_BREAK:
                 return parse_break_stmt(p, flags, start, flags_end, tgt);
             case TT_KW_CONTINUE:

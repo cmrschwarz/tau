@@ -42,15 +42,12 @@ typedef enum PACK_ENUM ast_node_type {
     EXPR_BLOCK,
 
     STMT_GOTO,
-    STMT_GIVE,
     STMT_RETURN,
     STMT_CONTINUE,
     STMT_BREAK,
 
     EXPR_MATCH,
     EXPR_IF,
-    EXPR_FOR,
-    EXPR_FOR_EACH,
     EXPR_WHILE,
     EXPR_DO_WHILE,
     EXPR_DO,
@@ -237,6 +234,7 @@ typedef struct stmt_break {
         expr_named* expr;
         const char* name;
     } target;
+    expr* value;
 } stmt_break;
 
 typedef struct stmt_continue {

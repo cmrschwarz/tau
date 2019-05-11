@@ -21,7 +21,8 @@ func main(args: String[]){
         };
         
         while true foo@{
-            continue for;
+            continue @for;
+            continue;
             return 12;
         }
         (x: int) := foo;
@@ -35,12 +36,13 @@ func main(args: String[]){
             * 3;
         using x = if (x > 3) foo@{
             return 3 * {
-            break foo give 12;
+            break @foo 12;
+            break;
             return 12;
             };
         }
         else{
-            give 27;
+            break 27;
         };
     }
     return 0;

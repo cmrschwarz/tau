@@ -605,11 +605,14 @@ int report_error(error* e, FILE* fh, src_file* file)
                     extend_em(e, err_points, ea->annotation, pos, end);
             } break;
             case ET_MULTI_ANNOT: {
+                static char* msg_colors[] = {ANSICOLOR_BOLD ANSICOLOR_RED,
+                                             ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
+                                             ANSICOLOR_BOLD ANSICOLOR_CYAN};
                 error_multi_annotated* ema = (error_multi_annotated*)e;
                 err_points[0].line = pos.line;
                 err_points[0].col_start = pos.column;
-                err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
-                err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
+                err_points[0].message_color = msg_colors[0];
+                err_points[0].squigly_color = msg_colors[0];
                 src_pos end =
                     src_map_get_pos(&e->file->src_map, ema->err_annot.end);
                 err_point_count = extend_em(
@@ -624,9 +627,9 @@ int report_error(error* e, FILE* fh, src_file* file)
                         (posi.column + (ea->end - ea->start));
                     err_points[err_point_count].message = ea->annotation;
                     err_points[err_point_count].message_color =
-                        (ANSICOLOR_BOLD ANSICOLOR_MAGENTA);
+                        (msg_colors[i + 1]);
                     err_points[err_point_count].squigly_color =
-                        (ANSICOLOR_BOLD ANSICOLOR_MAGENTA);
+                        (msg_colors[i + 1]);
                     end = src_map_get_pos(&e->file->src_map, ea->end);
                     err_point_count += extend_em(
                         e, &err_points[err_point_count], ea->annotation, posi,
