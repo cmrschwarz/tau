@@ -33,8 +33,7 @@ func main(args: String[]){
                 x++;
             } 
             * 3;
-           
-        using x = if (x > 3){
+        using x = if (x > 3) foo@{
             return 3 * {
             break foo give 12;
             return 12;

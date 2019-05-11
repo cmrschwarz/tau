@@ -394,6 +394,7 @@ void print_expr(expr* ex, ureg indent)
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)ex;
             if (b->expr_named.name) {
+                pc(' ');
                 p(b->expr_named.name);
                 pc('@');
             }

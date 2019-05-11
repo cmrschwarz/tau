@@ -311,6 +311,7 @@ char* get_context_msg(parser* p, ast_node* node)
         case OSC_MODULE: return "in this module";
         case OSC_MODULE_GENERIC: return "in this generic module";
         case OSC_EXTEND: return "in this extend statement";
+        case EXPR_BLOCK: return "in this block expression";
         case EXPR_DO_WHILE:
         case EXPR_WHILE:
         case EXPR_FOR:
@@ -1085,13 +1086,18 @@ parse_error parse_break_stmt(
     *tgt = (stmt*)g;
     return PE_OK;
 }
-static inline parse_error parse_expr_block(parser* p, expr** ex)
+static inline parse_error
+parse_expr_block(parser* p, char* label, ureg start, expr** ex)
 {
     expr_block* b = alloc_perm(p, sizeof(expr_block));
     b->expr_named.expr.type = EXPR_BLOCK;
+    b->expr_named.name = label;
     *ex = (expr*)b;
-    return parse_braced_namable_body(
-        p, (expr*)b, &b->body, &b->expr_named.name);
+    parse_error pe = parse_brace_delimited_body(p, &b->body);
+    if (pe) return pe;
+    pe =
+        expr_fill_srange(p, (expr*)b, start, src_range_get_end(b->body.srange));
+    return pe;
 }
 parse_error parse_loop(parser* p, expr** tgt)
 {
@@ -1365,7 +1371,7 @@ static inline parse_error parse_value_expr(parser* p, expr** ex)
             return parse_array(p, t, ex);
         }
         case TT_BRACE_OPEN: {
-            return parse_expr_block(p, ex);
+            return parse_expr_block(p, NULL, t->start, ex);
         }
         case TT_KW_LOOP: {
             return parse_loop(p, ex);
@@ -1386,9 +1392,21 @@ static inline parse_error parse_value_expr(parser* p, expr** ex)
             token* t2 = tk_peek_2nd(&p->tk);
             if (!t2) return PE_TK_ERROR;
             if (t2->type == TT_AT) {
-                tk_void_n(&p->tk, 2);
-                char* label = alloc_string_perm(p, t2->str);
+                char* label = alloc_string_perm(p, t->str);
                 if (!label) return PE_FATAL;
+                ureg start = t->start;
+                tk_void(&p->tk);
+                t2 = tk_peek_2nd(&p->tk);
+                if (!t2) return PE_TK_ERROR;
+                if (t2->type != TT_BRACE_OPEN) {
+                    parser_error_2a(
+                        p, "expected block after label", t2->start, t2->end,
+                        "expected open brace to begin block", start, t->end,
+                        "after this block label");
+                    return PE_ERROR;
+                }
+                tk_void(&p->tk);
+                return parse_expr_block(p, label, start, ex);
             }
         } // fallthrough;
         case TT_NUMBER:
