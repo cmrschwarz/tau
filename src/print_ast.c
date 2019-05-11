@@ -395,7 +395,6 @@ void print_expr(expr* ex, ureg indent)
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)ex;
             if (b->expr_named.name) {
-                pc(' ');
                 p(b->expr_named.name);
                 pc('@');
             }
@@ -538,12 +537,18 @@ void print_expr(expr* ex, ureg indent)
         } break;
         case EXPR_IF: {
             expr_if* i = (expr_if*)ex;
-            p("if");
+            p("if ");
             print_expr_in_parens(i->condition, indent);
+            pc(' ');
             print_expr(i->if_body, indent);
             if (i->else_body) {
-                p("\n");
-                print_indent(indent);
+                if (expr_allowed_to_drop_semicolon(i->if_body)) {
+                    p("\n");
+                    print_indent(indent);
+                }
+                else {
+                    pc(' ');
+                }
                 p("else ");
                 print_expr(i->else_body, indent);
             }

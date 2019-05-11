@@ -178,13 +178,21 @@ bool expr_allowed_to_drop_semicolon(expr* e)
         case EXPR_WHILE:
         case EXPR_LOOP:
         case EXPR_MATCH:
-        case EXPR_IF:
         case EXPR_BLOCK: return true;
         case EXPR_OP_UNARY: {
             switch (e->op_type) {
                 case OP_PP:
                     return expr_allowed_to_drop_semicolon(((expr_pp*)e)->child);
                 default: return false;
+            }
+        }
+        case EXPR_IF: {
+            expr_if* i = (expr_if*)e;
+            if (i->else_body) {
+                return (i->else_body->type == EXPR_BLOCK);
+            }
+            else {
+                return (i->if_body->type == EXPR_BLOCK);
             }
         }
         default: return false;
@@ -1051,7 +1059,6 @@ parse_error parse_break_stmt(
     if (pe) return pe;
     tk_void(&p->tk);
     PEEK(p, t);
-    const char* target;
     stmt_break* g = alloc_perm(p, sizeof(stmt_give));
     if (!g) return PE_FATAL;
     g->stmt.type = STMT_BREAK;
