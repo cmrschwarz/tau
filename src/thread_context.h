@@ -6,6 +6,7 @@
 #include "parser.h"
 #include "resolver.h"
 #include "utils/pool.h"
+#include "utils/stack.h"
 
 typedef struct thread_context {
     error_log error_log;
@@ -14,6 +15,7 @@ typedef struct thread_context {
     parser parser;
     resolver resolver;
     scc_detector sccd;
+    stack stack;
 } thread_context;
 
 int thread_context_init(thread_context* tc);

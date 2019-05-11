@@ -228,13 +228,6 @@ static inline int scc_detector_expand(scc_detector* d, ureg node_id)
         memcpy(
             buckets_bucket_new, d->sccd_node_buckets,
             bucket_count * sizeof(sccd_node*));
-        // allocate new stack
-        scc_stack_entry* stack_new = (scc_stack_entry*)pool_alloc(
-            d->mem_src, bucketable_cap_new * sizeof(scc_stack_entry));
-        if (!stack_new) return ERR;
-        ureg stack_size = ptrdiff(d->stack_head, d->stack);
-        memcpy(stack_new, d->stack, stack_size);
-        d->stack_head = ptradd(stack_new, stack_size);
         // reuse old buffers buffer for buffers
         ureg recyclable_bucket_cap =
             d->bucketable_node_capacity / SCCD_BUCKET_CAP;
@@ -246,17 +239,7 @@ static inline int scc_detector_expand(scc_detector* d, ureg node_id)
             bucket_count++;
         }
         d->allocated_node_count += recyclable_bucket_cap;
-        // reuse old stack for buffers
-        recyclable_bucket_cap = d->bucketable_node_capacity;
-        recyclable_bucket_size = recyclable_bucket_cap * sizeof(mdg_node*);
-        memset(d->stack, 0, recyclable_bucket_size);
-        for (ureg i = 0; i < recyclable_bucket_size; i += SCCD_BUCKET_SIZE) {
-            buckets_bucket_new[bucket_count] = ptradd(d->stack, i);
-            bucket_count++;
-        }
-        d->allocated_node_count += recyclable_bucket_cap;
         // apply new buffers
-        d->stack = stack_new;
         d->bucketable_node_capacity = bucketable_cap_new;
         d->sccd_node_buckets = buckets_bucket_new;
     }
@@ -281,23 +264,18 @@ int scc_detector_init(scc_detector* d, pool* mem_src)
     d->bucketable_node_capacity =
         SCCD_BUCKET_SIZE / sizeof(sccd_node*) * SCCD_BUCKET_CAP;
     if (!d->sccd_node_buckets) return ERR;
-    d->stack = (scc_stack_entry*)pool_alloc(
-        mem_src, d->bucketable_node_capacity * sizeof(scc_stack_entry));
-
-    if (!d->stack) return ERR;
-    d->stack_head = d->stack;
     d->dfs_index = 1; // 0 means index remained from previous run
     d->allocated_node_count = 0;
 
     d->mem_src = mem_src;
     return OK;
 }
-int compare_mdg_nodes(const scc_stack_entry fst, const scc_stack_entry snd)
+int compare_mdg_nodes(const mdg_node* fst, const mdg_node* snd)
 {
-    return snd.mdgn->id - fst.mdgn->id;
+    return snd->id - fst->id;
 }
 #define SORT_NAME mdg_nodes
-#define SORT_TYPE scc_stack_entry
+#define SORT_TYPE mdg_node*
 #define SORT_CMP(x, y) compare_mdg_nodes(x, y)
 #include "sort.h"
 
@@ -411,8 +389,7 @@ int scc_detector_strongconnect(
     sn->lowlink = tc->sccd.dfs_index;
     sn->index = tc->sccd.dfs_index;
     tc->sccd.dfs_index++;
-    tc->sccd.stack_head->mdgn = n;
-    tc->sccd.stack_head++;
+    stack_push(&tc->stack, n);
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &n->dependencies);
     while (true) {
@@ -447,10 +424,12 @@ int scc_detector_strongconnect(
             if (r) return ERR;
             return SCCD_ADDED_NOTIFICATION;
         }
-        tc->sccd.stack_head--;
+
         rwslock_end_read(&n->stage_lock);
         bool success = false;
-        if (tc->sccd.stack_head->mdgn == n) {
+
+        if (stack_peek(&tc->stack) == n) {
+            stack_pop(&tc->stack);
             rwslock_write(&n->stage_lock);
             if (n->stage == MS_AWAITING_DEPENDENCIES) {
                 n->stage = MS_RESOLVING;
@@ -464,31 +443,39 @@ int scc_detector_strongconnect(
             return OK;
         }
         else {
-            scc_stack_entry* end = tc->sccd.stack_head + 1;
+            stack_state ss_end, ss_start;
+            stack_state_save(&ss_end, &tc->stack);
+            mdg_node* stack_mdgn = stack_pop(&tc->stack);
+            ureg node_count = 1;
             do {
-                tc->sccd.stack_head--;
-            } while (tc->sccd.stack_head->mdgn != n);
-            scc_stack_entry* start = tc->sccd.stack_head;
-            mdg_nodes_quick_sort(start, end - start);
-            for (scc_stack_entry* i = start; i != end; i++) {
-                rwslock_write(&i->mdgn->stage_lock);
-                if (i->mdgn->stage == MS_AWAITING_DEPENDENCIES) {
-                    i->mdgn->stage = MS_RESOLVING;
+                stack_mdgn = stack_pop(&tc->stack);
+                node_count++;
+            } while (stack_mdgn != n);
+            stack_state_save(&ss_start, &tc->stack);
+            ureg list_size = node_count * sizeof(mdg_node*);
+            mdg_node** node_list = tmalloc(list_size);
+            if (!node_list) return ERR;
+            stack_pop_to_list(
+                &tc->stack, &ss_start, &ss_end, (void**)node_list);
+            mdg_nodes_quick_sort(node_list, node_count);
+            for (mdg_node** i = node_list; i != node_list + node_count; i++) {
+                rwslock_write(&(**i).stage_lock);
+                if ((**i).stage == MS_AWAITING_DEPENDENCIES) {
+                    (**i).stage = MS_RESOLVING;
                     success = true;
                 }
-                rwslock_end_write(&i->mdgn->stage_lock);
-                sccd_node* in = scc_detector_get(&tc->sccd, i->mdgn->id);
+                rwslock_end_write(&(**i).stage_lock);
+                sccd_node* in = scc_detector_get(&tc->sccd, (**i).id);
                 if (!in) return ERR;
                 in->index = tc->sccd.dfs_start_index;
                 if (!success) break;
             }
             if (success) {
-                ureg list_size = ptrdiff(end, start);
-                mdg_node** node_list = tmalloc(list_size);
-                if (!node_list) return ERR;
-                memcpy(node_list, start, list_size);
                 tauc_request_resolve_multiple(
                     node_list, ptradd(node_list, list_size));
+            }
+            else {
+                tfree(node_list);
             }
             return OK;
         }
@@ -524,7 +511,10 @@ int scc_detector_run(thread_context* tc, mdg_node* n)
     tc->sccd.dfs_index++;
     sccd_node* sn = scc_detector_get(&tc->sccd, n->id);
     if (!sn) return ERR;
+    stack_state ss;
+    stack_state_save(&ss, &tc->stack);
     int r = scc_detector_strongconnect(tc, n, sn, n);
+    if (r) stack_state_apply(&ss, &tc->stack);
     if (r == SCCD_ADDED_NOTIFICATION) return OK;
     return r;
 }
@@ -584,6 +574,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
     tc->sccd.dfs_start_index = tc->sccd.dfs_index;
     tc->sccd.dfs_index++;
     open_scope* tgts;
+    void** stack_head = tc->stack.head;
     while (true) {
         rwslock_write(&n->stage_lock);
         if (n->stage == MS_UNNEEDED) {
@@ -603,12 +594,10 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
                 sccd_node* sn = scc_detector_get(&tc->sccd, i->id);
                 if (!sn) {
                     rwslock_end_write(&n->stage_lock);
-                    tc->sccd.stack_head = tc->sccd.stack;
                     return ERR;
                 }
                 if (sn->index != tc->sccd.dfs_start_index) {
-                    tc->sccd.stack_head->mdgn = i;
-                    tc->sccd.stack_head++;
+                    stack_push(&tc->stack, i);
                     sn->index = tc->sccd.dfs_start_index;
                 }
             }
@@ -627,9 +616,8 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
             tgts++;
         }
         while (true) {
-            if ((tc->sccd.stack_head == tc->sccd.stack)) return OK;
-            tc->sccd.stack_head--;
-            n = tc->sccd.stack_head->mdgn;
+            if (tc->stack.head == stack_head) return OK;
+            n = stack_pop(&tc->stack);
             rwslock_read(&n->stage_lock);
             bool unneded = (n->stage == MS_UNNEEDED);
             rwslock_end_read(&n->stage_lock);

@@ -78,19 +78,12 @@ typedef struct sccd_node {
     ureg lowlink;
 } sccd_node;
 
-typedef union scc_stack_entry {
-    mdg_node* mdgn;
-    open_scope* osc;
-} scc_stack_entry;
-
 typedef struct scc_detector {
     ureg allocated_node_count;
     ureg dfs_index;
     ureg dfs_start_index;
     ureg bucketable_node_capacity;
     sccd_node** sccd_node_buckets;
-    scc_stack_entry* stack;
-    scc_stack_entry* stack_head;
     pool* mem_src;
 } scc_detector;
 

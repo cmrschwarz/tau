@@ -5,6 +5,7 @@
 static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
 {
     switch (i) {
+        case -1: stack_fin(&tc->stack);
         case 6: scc_detector_fin(&tc->sccd);
         case 5: resolver_fin(&tc->resolver);
         case 4: parser_fin(&tc->parser);
@@ -18,7 +19,7 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
 }
 void thread_context_fin(thread_context* tc)
 {
-    thread_context_partial_fin(tc, 0, 6);
+    thread_context_partial_fin(tc, 0, -1);
 }
 int thread_context_init(thread_context* tc)
 {
@@ -34,6 +35,8 @@ int thread_context_init(thread_context* tc)
     if (r) return thread_context_partial_fin(tc, r, 4);
     r = scc_detector_init(&tc->sccd, &tc->permmem);
     if (r) return thread_context_partial_fin(tc, r, 5);
+    r = stack_init(&tc->stack, &tc->permmem);
+    if (r) return thread_context_partial_fin(tc, r, 6);
     return OK;
 }
 int thread_context_do_job(thread_context* tc, job* j)

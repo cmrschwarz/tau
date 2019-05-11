@@ -13,7 +13,7 @@ int resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
 {
     r->start = start;
     r->end = end;
-    // TODO: resolve
+    // DEBUG
     printf("resolving {");
     mdg_node** i = start;
     while (i + 1 != end) {
@@ -21,12 +21,14 @@ int resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
         i++;
     }
     printf("%s}\n", (**i).name);
+    // TODO: resolve
     return mdg_nodes_resolved(start, end, r->tc);
 }
 
 int resolver_resolve_single(resolver* r, mdg_node* node)
 {
-    // TODO: resolve
-    printf("resolving %s\n", node->name);
-    return mdg_node_resolved(node, r->tc);
+    mdg_node* node_buff[2];
+    node_buff[0] = node;
+    node_buff[1] = NULL;
+    return resolver_resolve_multiple(r, node_buff, &node_buff[1]);
 }
