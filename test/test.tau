@@ -1,5 +1,4 @@
 require "test2.tau";
-require "test2.tau";
 func foo(){
     x: int = 32;
 }

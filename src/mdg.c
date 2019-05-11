@@ -338,7 +338,7 @@ void mdg_node_find_import(
     open_scope* osc = atomic_ptr_load(&m->targets);
     while (osc) {
         if (scope_find_import(&osc->scope, import, tgt, tgt_sym)) {
-            *file = scope_get_file((scope*)osc);
+            *file = open_scope_get_file(osc);
             return;
         }
         osc = (open_scope*)osc->scope.symbol.stmt.next;
@@ -610,7 +610,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
             file_require* r = tgts->requires;
             while (*(void**)r) {
                 src_file_require(
-                    r->file, scope_get_file((scope*)tgts), r->srange, n);
+                    r->file, open_scope_get_file(tgts), r->srange, n);
                 r++;
             }
             tgts++;
@@ -663,7 +663,7 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
                         // files so we can annotate the first declaration
                         error_log_report_annotated(
                             &tc->error_log, ES_RESOLVER, false,
-                            "module redeclared", scope_get_file(&i->scope),
+                            "module redeclared", open_scope_get_file(i),
                             srl.start, srl.end, "second declaration here");
                         res = ERR;
                         break;
@@ -678,7 +678,7 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
                 error_log_report_annotated(
                     &tc->error_log, ES_RESOLVER, false,
                     "extend without module declaration",
-                    scope_get_file(&tgt->scope), srl.start, srl.end,
+                    open_scope_get_file(tgt), srl.start, srl.end,
                     "extend here");
                 res = ERR;
             }

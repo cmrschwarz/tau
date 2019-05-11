@@ -168,7 +168,6 @@ typedef struct body {
 typedef struct scope {
     symbol symbol;
     body body;
-    struct scope* parent;
 } scope;
 
 typedef struct open_scope {
@@ -477,7 +476,7 @@ typedef struct expr_lambda {
 } expr_lambda;
 
 bool scope_is_open(scope* s);
-src_file* scope_get_file(scope* s);
+src_file* open_scope_get_file(open_scope* s);
 
 bool body_is_braced(body* b);
 

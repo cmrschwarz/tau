@@ -1,15 +1,11 @@
 #include "ast.h"
 #include "utils/panic.h"
 
-src_file* scope_get_file(scope* s)
+src_file* open_scope_get_file(open_scope* s)
 {
     src_range_large srl;
-    do {
-        src_range_unpack(s->symbol.stmt.srange, &srl);
-        if (srl.file != NULL) return srl.file;
-        s = s->parent;
-    } while (s != NULL);
-    return NULL;
+    src_range_unpack(s->scope.symbol.stmt.srange, &srl);
+    return srl.file;
 }
 bool scope_is_open(scope* s)
 {
