@@ -198,7 +198,7 @@ void error_log_report_synchronization_failiure(error_log* el)
     error_log_report_critical_failiure(el, "synchronization failiure");
 }
 
-int pe(const char* msg)
+static int pe(const char* msg)
 {
     fputs(msg, stderr);
     return OK;

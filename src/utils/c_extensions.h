@@ -14,3 +14,5 @@
 #define ANONYMOUS_UNION_START union {
 #define ANONYMOUS_UNION_END };
 // clang-format on
+
+#define STRINGIFY(s) #s

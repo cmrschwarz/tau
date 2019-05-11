@@ -2,6 +2,7 @@
 #include "../src/job_queue.h"
 #include "../src/mdg.h"
 #include "../src/tauc.h"
+#include "../src/utils/stack.h"
 
 static void print_dash_padded(char* msg, bool err)
 {
@@ -17,7 +18,8 @@ static void print_dash_padded(char* msg, bool err)
     }
     fputc('\n', err ? stderr : stdout);
 }
-static int pe(int res, char* msg)
+#define TEST(test_name) print_result(test_name(), STRINGIFY(test_name))
+static int print_result(int res, char* msg)
 {
     if (res) {
         fputs(msg, stderr);
@@ -33,7 +35,8 @@ static int pe(int res, char* msg)
 // MDG TESTS
 int mdg_test()
 {
-    int res = tauc_init();
+    if (tauc_init()) return ERR;
+    int res = ERR;
     mdg* m = &TAUC.mdg;
     thread_context* tc = &TAUC.main_thread_context;
     mdg_node* a = mdg_get_node(m, m->root_node, string_from_cstr("a"));
@@ -59,20 +62,15 @@ int mdg_test()
     e->stage = MS_AWAITING_DEPENDENCIES;
     f->stage = MS_AWAITING_DEPENDENCIES;
     g->stage = MS_AWAITING_DEPENDENCIES;
-    res |= scc_detector_run(tc, g);
-    res |= scc_detector_run(tc, e);
-    res |= scc_detector_run(tc, a);
+    if (scc_detector_run(tc, g)) goto err;
+    if (scc_detector_run(tc, e)) goto err;
+    if (scc_detector_run(tc, a)) goto err;
     job j;
     while (true) {
         int r = job_queue_try_pop(&TAUC.job_queue, &j);
         if (r == JQ_NONE) break;
-        if (r == OK) {
-            r = thread_context_do_job(&TAUC.main_thread_context, &j);
-        }
-        else {
-            res = ERR;
-            break;
-        }
+        if (r != OK) goto err;
+        r = thread_context_do_job(&TAUC.main_thread_context, &j);
     }
     /*
         B > C > D > F
@@ -80,38 +78,72 @@ int mdg_test()
           A < G > E
               ^
     */
+    res = OK;
+err:
     tauc_fin();
-    return pe(res, "mdg_test");
+    return res;
 }
 
 // FILE MAP TESTS
 int file_map_test()
 {
-    int res = OK;
+    int res = ERR;
     file_map fm;
-    file_map_init(&fm);
+    if (file_map_init(&fm)) return ERR;
     src_file* f =
         file_map_get_file_from_path(&fm, string_from_cstr("/foo/bar/baz.tau"));
     src_file* g =
         file_map_get_file_from_path(&fm, string_from_cstr("/foo/bar/baz.tau"));
-    if (f != g) res = ERR;
-    if (string_cmp_cstr(f->head.name, "baz.tau")) res = ERR;
+    if (f != g) goto err;
+    if (string_cmp_cstr(f->head.name, "baz.tau")) goto err;
     src_dir* p = f->head.parent;
-    if (string_cmp_cstr(p->head.name, "bar")) res = ERR;
+    if (string_cmp_cstr(p->head.name, "bar")) goto err;
     src_dir* p2 = p->head.parent;
-    if (string_cmp_cstr(p2->head.name, "foo")) res = ERR;
-    if (file_map_get_dir(&fm, p2, string_from_cstr("bar")) != p) res = ERR;
+    if (string_cmp_cstr(p2->head.name, "foo")) goto err;
+    if (file_map_get_dir(&fm, p2, string_from_cstr("bar")) != p) goto err;
     src_dir* p3 = p2->head.parent;
-    if (string_cmp_cstr(p3->head.name, "")) res = ERR;
+    if (string_cmp_cstr(p3->head.name, "")) goto err;
+    res = OK;
+err:
     file_map_fin(&fm);
-    return pe(res, "file_map_test");
+    return res;
+}
+int stack_test()
+{
+    int res = ERR;
+    ureg stack_test_size = 77;
+    stack st;
+    pool p;
+    if (pool_init(&p)) return ERR;
+    if (stack_init(&st, &p)) {
+        pool_fin(&p);
+        return ERR;
+    }
+    for (ureg i = 0; i < stack_test_size; i++) {
+        if (stack_push(&st, (void*)i)) goto err;
+    }
+    for (ureg i = stack_test_size - 1; i >= stack_test_size / 2; i--) {
+        if ((ureg)stack_pop(&st) != i) goto err;
+    }
+    for (ureg i = stack_test_size / 2; i < stack_test_size; i++) {
+        if (stack_push(&st, (void*)i)) goto err;
+    }
+    for (ureg i = stack_test_size - 1; i > 0; i--) {
+        if ((ureg)stack_pop(&st) != i) goto err;
+    }
+    if ((ureg)stack_pop(&st) != 0) goto err;
+    res = OK;
+err:
+    stack_fin(&st);
+    pool_fin(&p);
+    return res;
 }
 job* job_queue_push_raw(job_queue* jq);
 int job_queue_test()
 {
-    int res = 0;
+    int res = ERR;
     job_queue jq;
-    job_queue_init(&jq);
+    if (job_queue_init(&jq)) return ERR;
     job jb;
     ureg _1, _2;
     for (int k = 0; k < 50; k++) {
@@ -119,30 +151,24 @@ int job_queue_test()
         ureg q = 0;
         for (int i = 0; i < 20 * k; i++) {
             jb.concrete.parse.file = (void*)p;
-            res = job_queue_push(&jq, &jb, &_1, &_2);
-            if (res) goto fail;
+            if (job_queue_push(&jq, &jb, &_1, &_2)) goto err;
             p++;
             if (i % 5 == 0) {
                 job_queue_pop(&jq, &jb);
-                if (*(ureg*)&jb.concrete.parse.file != q) {
-                    res = ERR;
-                    goto fail;
-                }
+                if (*(ureg*)&jb.concrete.parse.file != q) goto err;
                 q++;
             }
         }
         while (q < p) {
             job_queue_pop(&jq, &jb);
-            if (*(ureg*)&jb.concrete.parse.file != q) {
-                res = ERR;
-                goto fail;
-            }
+            if (*(ureg*)&jb.concrete.parse.file != q) goto err;
             q++;
         }
     }
-fail:
+    res = OK;
+err:
     job_queue_fin(&jq);
-    return pe(res, "job_queue_test");
+    return res;
 }
 int list_builder_test()
 {
@@ -165,7 +191,7 @@ int release_test()
         }
         master_error_log_fin();
     }
-    return pe(r, "release_test");
+    return r;
 }
 
 int main_test(int argc, char** argv)
@@ -174,11 +200,12 @@ int main_test(int argc, char** argv)
     talloc_init();
     int res = OK;
 
-    res |= list_builder_test();
-    res |= file_map_test();
-    res |= job_queue_test();
-    res |= mdg_test();
-    res |= release_test();
+    res |= TEST(stack_test);
+    res |= TEST(list_builder_test);
+    res |= TEST(file_map_test);
+    res |= TEST(job_queue_test);
+    res |= TEST(mdg_test);
+    res |= TEST(release_test);
 
     if (res) {
         print_dash_padded("FAILED", false);
