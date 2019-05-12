@@ -11,9 +11,17 @@ void* atomic_ptr_load(atomic_ptr* a)
 {
     return atomic_load(a);
 }
+void* atomic_ptr_load_flat(atomic_ptr* a)
+{
+    return a;
+}
 void atomic_ptr_store(atomic_ptr* a, void* value)
 {
     atomic_store(a, value);
+}
+void atomic_ptr_store_flat(atomic_ptr* a, void* value)
+{
+    a = value;
 }
 bool atomic_ptr_cas(atomic_ptr* a, void** oldval, void* newval)
 {
@@ -33,9 +41,17 @@ bool atomic_bool_load(atomic_bool* a)
 {
     return atomic_load(a);
 }
+bool atomic_bool_load_flat(atomic_bool* a)
+{
+    return *a;
+}
 void atomic_bool_store(atomic_bool* a, bool value)
 {
     atomic_store(a, value);
+}
+void atomic_bool_store_flat(atomic_bool* a, bool value)
+{
+    *a = value;
 }
 bool atomic_bool_cas(atomic_bool* a, bool* oldval, bool newval)
 {
@@ -55,9 +71,17 @@ ureg atomic_ureg_load(atomic_ureg* a)
 {
     return atomic_load(a);
 }
+ureg atomic_ureg_load_flat(atomic_ureg* a)
+{
+    return *a;
+}
 void atomic_ureg_store(atomic_ureg* a, ureg value)
 {
     atomic_store(a, value);
+}
+void atomic_ureg_store_flat(atomic_ureg* a, ureg value)
+{
+    *a = value;
 }
 ureg atomic_ureg_inc(atomic_ureg* a)
 {
@@ -93,9 +117,17 @@ sreg atomic_sreg_load(atomic_sreg* a)
 {
     return atomic_load(a);
 }
+sreg atomic_sreg_load_flat(atomic_sreg* a)
+{
+    return *a;
+}
 void atomic_sreg_store(atomic_sreg* a, sreg value)
 {
     atomic_store(a, value);
+}
+void atomic_sreg_store__flat(atomic_sreg* a, sreg value)
+{
+    *a = value;
 }
 sreg atomic_sreg_inc(atomic_sreg* a)
 {
