@@ -7,9 +7,9 @@ src_file* open_scope_get_file(open_scope* s)
     src_range_unpack(s->scope.symbol.stmt.srange, &srl);
     return srl.file;
 }
-bool scope_is_open(scope* s)
+bool ast_node_is_open_scope(ast_node* s)
 {
-    switch (s->symbol.stmt.type) {
+    switch (*s) {
         case OSC_MODULE:
         case OSC_EXTEND:
         case OSC_EXTEND_GENERIC:
@@ -17,7 +17,15 @@ bool scope_is_open(scope* s)
         default: return false;
     }
 }
-
+bool ast_node_is_expr(ast_node* s)
+{
+    return (*s > STMT_LAST_STMT_ID);
+}
+src_range ast_node_get_src_range(ast_node* s)
+{
+    if (ast_node_is_expr(s)) return ((expr*)s)->srange;
+    return ((stmt*)s)->srange;
+}
 bool body_is_braced(body* b)
 {
     if (b->children && !b->children->next) {

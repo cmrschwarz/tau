@@ -85,12 +85,31 @@ static inline void* stack_pop(stack* s)
 }
 static inline void* stack_peek(stack* s)
 {
-    if (s->head == s->curr_seg_start) {
+    if (s->head != s->curr_seg_start) return *(s->head - 1);
+    if (s->curr_seg->prev == NULL) return NULL;
+    return *(s->curr_seg->prev->end - 1);
+}
+static inline void* stack_peek_prev(stack* s)
+{
+    if (s->head > s->curr_seg_start + 1) return *(s->head - 2);
+    if (s->curr_seg->prev == NULL) return NULL;
+    return *(s->curr_seg->end - 1);
+}
+static inline void* stack_peek_nth(stack* s, int i)
+{
+    if (s->head > s->curr_seg_start + i) return *(s->head - i - 1);
+    stack_state ss;
+    void* res;
+    stack_state_save(&ss, s);
+    while (s->head <= s->curr_seg_start + i) {
         if (s->curr_seg->prev == NULL) return NULL;
         stack_set_curr_seg(s, s->curr_seg->prev);
         s->head = s->curr_seg->end;
+        i -= s->head - s->curr_seg_start;
     }
-    return *(s->head - 1);
+    res = *(s->head - i - 1);
+    stack_state_apply(&ss, s);
+    return res;
 }
 
 static inline void

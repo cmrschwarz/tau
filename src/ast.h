@@ -34,10 +34,10 @@ typedef enum PACK_ENUM ast_node_type {
     SYM_VAR,
     SYM_VAR_UNINITIALIZED,
     SYM_PARAM,
-    SYM_LABEL,
 
     STMT_EXPRESSION,
     STMT_COMPOUND_ASSIGN,
+    STMT_LAST_STMT_ID = STMT_COMPOUND_ASSIGN,
 
     EXPR_BLOCK,
 
@@ -161,7 +161,7 @@ typedef struct symbol {
 
 typedef struct body {
     stmt* children;
-    char* name;
+    ureg decl_count;
     src_range srange;
 } body;
 
@@ -304,7 +304,6 @@ typedef struct expr_pp {
 } expr_pp;
 
 typedef struct match_arm {
-    struct match_arm* next;
     expr* condition; // debatable
     body body;
 } match_arm;
@@ -475,7 +474,9 @@ typedef struct expr_lambda {
     body body;
 } expr_lambda;
 
-bool scope_is_open(scope* s);
+src_range ast_node_get_src_range(ast_node* s);
+bool ast_node_is_open_scope(ast_node* s);
+bool ast_node_is_expr(ast_node* s);
 src_file* open_scope_get_file(open_scope* s);
 
 bool body_is_braced(body* b);
