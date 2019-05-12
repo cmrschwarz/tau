@@ -5,9 +5,10 @@
 
 typedef enum parse_error {
     PE_OK = 0,
-    PE_FATAL,
     PE_EOEX,
+    PE_NO_STMT,
     PE_ERROR,
+    PE_FATAL,
     PE_TK_ERROR,
 } parse_error;
 

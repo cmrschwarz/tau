@@ -1,5 +1,6 @@
 #pragma once
 #include "src_map.h"
+#include "symbol_table.h"
 #include "utils/c_extensions.h"
 
 typedef u8 stmt_flags;
@@ -161,7 +162,7 @@ typedef struct symbol {
 
 typedef struct body {
     stmt* children;
-    ureg decl_count;
+    symbol_table st;
     src_range srange;
 } body;
 
