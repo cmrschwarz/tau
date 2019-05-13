@@ -21,13 +21,13 @@ typedef enum PACK_ENUM ast_node_type {
     OSC_EXTEND,
     OSC_EXTEND_GENERIC,
 
-    SC_FUNC,
-    SC_FUNC_GENERIC,
-
     SC_STRUCT,
     SC_STRUCT_GENERIC,
     SC_TRAIT,
     SC_TRAIT_GENERIC,
+
+    SYM_FUNC,
+    SYM_FUNC_GENERIC,
 
     STMT_IMPORT,
     STMT_USING,
@@ -327,16 +327,18 @@ typedef struct sym_param {
     expr* default_value;
 } sym_param;
 
-typedef struct sc_func {
-    scope scope;
+typedef struct sym_func {
+    symbol symbol;
     sym_param* params;
-} sc_func;
+    body body;
+} sym_func;
 
-typedef struct sc_func_generic {
-    scope scope;
+typedef struct sym_func_generic {
+    symbol symbol;
     sym_param* generic_params;
     sym_param* params;
-} sc_func_generic;
+    body body;
+} sym_func_generic;
 
 typedef struct sc_struct {
     scope scope;

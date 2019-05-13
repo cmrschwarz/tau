@@ -215,7 +215,7 @@ bool expr_allowed_to_drop_semicolon(expr* e)
 bool stmt_allowed_to_drop_semicolon(stmt* s)
 {
     switch (s->type) {
-        case SC_FUNC:
+        case SYM_FUNC:
         case OSC_MODULE:
         case OSC_MODULE_GENERIC:
         case OSC_EXTEND:
@@ -327,8 +327,8 @@ char* get_context_msg(parser* p, ast_node* node)
 {
     if (!node) return NULL;
     switch ((ast_node_type)*node) {
-        case SC_FUNC: return "in this function";
-        case SC_FUNC_GENERIC: return "in this generic function";
+        case SYM_FUNC: return "in this function";
+        case SYM_FUNC_GENERIC: return "in this generic function";
         case SC_STRUCT: return "in this struct";
         case SC_STRUCT_GENERIC: return "in this generic struct";
         case SC_TRAIT: return "in this struct";
@@ -365,32 +365,35 @@ static inline void
 parser_error_1a_pc(parser* p, char* msg, ureg start, ureg end, char* annot)
 {
     ast_node* parent = (ast_node*)stack_peek(&p->tk.tc->stack);
-    char* bpmmsg = get_context_msg(p, parent);
-    if (bpmmsg != NULL) {
-        src_range_large sr;
-        src_range_unpack(ast_node_get_src_range(parent), &sr);
-        parser_error_2a(p, msg, start, end, annot, sr.start, sr.end, bpmmsg);
+    if (parent != (ast_node*)&p->tk.file->root) {
+        char* bpmmsg = get_context_msg(p, parent);
+        if (bpmmsg != NULL) {
+            src_range_large sr;
+            src_range_unpack(ast_node_get_src_range(parent), &sr);
+            parser_error_2a(
+                p, msg, start, end, annot, sr.start, sr.end, bpmmsg);
+        }
+        return;
     }
-    else {
-        parser_error_1a(p, msg, start, end, annot);
-    }
+    parser_error_1a(p, msg, start, end, annot);
 }
 static inline void parser_error_2a_pc(
     parser* p, char* msg, ureg start, ureg end, char* annot, ureg start2,
     ureg end2, char* annot2)
 {
     ast_node* parent = (ast_node*)stack_peek(&p->tk.tc->stack);
-    char* bpmmsg = get_context_msg(p, parent);
-    if (bpmmsg != NULL) {
-        src_range_large sr;
-        src_range_unpack(ast_node_get_src_range(parent), &sr);
-        parser_error_3a(
-            p, msg, start, end, annot, start2, end2, annot2, sr.start, sr.end,
-            bpmmsg);
+    if (parent != (ast_node*)&p->tk.file->root) {
+        char* bpmmsg = get_context_msg(p, parent);
+        if (bpmmsg != NULL) {
+            src_range_large sr;
+            src_range_unpack(ast_node_get_src_range(parent), &sr);
+            parser_error_3a(
+                p, msg, start, end, annot, start2, end2, annot2, sr.start,
+                sr.end, bpmmsg);
+            return;
+        }
     }
-    else {
-        parser_error_2a(p, msg, start, end, annot, start2, end2, annot2);
-    }
+    parser_error_2a(p, msg, start, end, annot, start2, end2, annot2);
 }
 
 static inline void parser_error_unexpected_token(
@@ -1754,9 +1757,9 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     j->file->root.oscope.scope.symbol.stmt.type = OSC_MODULE;
     j->file->root.oscope.scope.body.children = NULL;
     j->file->root.oscope.scope.symbol.stmt.next = NULL;
-    if (stack_push(&p->tk.tc->stack, &j->file->root)) return PE_FATAL;
+    PUSH_PARENT(p, &j->file->root, &j->file->root.oscope.scope.body);
     parse_error pe = parse_eof_delimited_open_scope(p, &j->file->root.oscope);
-    stack_pop(&p->tk.tc->stack);
+    POP_PARENT(p);
     // DBUG:
     print_astn_nl((stmt*)&j->file->root, 0);
     tk_close_file(&p->tk);
@@ -1932,26 +1935,26 @@ parse_error parse_func_decl(
     if (!name) return PE_FATAL;
     tk_void(&p->tk);
     PEEK(p, t);
-    scope* sc;
+    symbol* fn;
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        sc = alloc_perm(p, sizeof(sc_func_generic));
-        if (!sc) return PE_FATAL;
+        fn = alloc_perm(p, sizeof(sym_func_generic));
+        if (!fn) return PE_FATAL;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((sc_func_generic*)sc)->generic_params, true, start, decl_end,
+            p, &((sym_func_generic*)fn)->generic_params, true, start, decl_end,
             "in this function declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        sc = alloc_perm(p, sizeof(sc_func));
-        if (!sc) return PE_FATAL;
+        fn = alloc_perm(p, sizeof(sym_func));
+        if (!fn) return PE_FATAL;
     }
-    sc->symbol.name = name;
-    pe = stmt_fill_srange(p, (stmt*)sc, start, decl_end);
+    fn->name = name;
+    pe = stmt_fill_srange(p, (stmt*)fn, start, decl_end);
     if (pe) return pe;
     if (t->type != TT_PAREN_OPEN) {
         parser_error_2a(
@@ -1962,15 +1965,17 @@ parse_error parse_func_decl(
     }
     tk_void(&p->tk);
     sym_param** pd =
-        generic ? &((sc_func_generic*)sc)->params : &((sc_func*)sc)->params;
+        generic ? &((sym_func_generic*)fn)->params : &((sym_func*)fn)->params;
     pe = parse_param_list(
         p, pd, false, start, decl_end, "in this function declaration");
     if (pe) return pe;
-    sc->symbol.stmt.type = generic ? SC_FUNC_GENERIC : SC_FUNC;
-    sc->symbol.stmt.flags = flags;
-    *n = (stmt*)sc;
+    fn->stmt.type = generic ? SYM_FUNC_GENERIC : SYM_FUNC;
+    fn->stmt.flags = flags;
+    *n = (stmt*)fn;
     get_current_body(p)->st.decl_count++;
-    return parse_scope_body(p, sc);
+    return parse_body(
+        p, generic ? &((sym_func_generic*)fn)->body : &((sym_func*)fn)->body,
+        (ast_node*)fn);
 }
 parse_error parse_struct_decl(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
@@ -2018,6 +2023,38 @@ parse_error parse_struct_decl(
     get_current_body(p)->st.decl_count++;
     return parse_body(p, &st->body, (ast_node*)st);
 }
+parse_error
+check_if_first_stmt(parser* p, stmt** tgt, ureg start, ureg end, bool extend)
+{
+    // TODO: use extend bool to be more precise than "scope" in the err msg
+    scope* curr_scope = stack_peek(&p->tk.tc->stack);
+    if (curr_scope != &p->tk.file->root.oscope.scope) {
+        parser_error_1a_pc(
+            p, "block free scope statement not allowed here", start, end,
+            "the block free scope statement is only allowed at file "
+            "scope");
+        return PE_ERROR;
+    }
+    // set own target to null so the children list will be null terminated
+    *tgt = NULL;
+    stmt* last_culprit = NULL;
+    stmt* head = curr_scope->body.children;
+    while (head != NULL) {
+        if (head->type != STMT_IMPORT) {
+            last_culprit = head;
+        }
+        head = head->next;
+    }
+    if (last_culprit != NULL) {
+        ureg hs = src_range_get_start(last_culprit->srange);
+        ureg he = src_range_get_end(last_culprit->srange);
+        parser_error_2a_pc(
+            p, "non leading scope statement", start, end, "", hs, he,
+            "preceeded by this statement");
+        return PE_ERROR;
+    }
+    return PE_OK;
+}
 parse_error parse_module_decl(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
 {
@@ -2060,35 +2097,26 @@ parse_error parse_module_decl(
     if (mdgn == NULL) return PE_FATAL;
     md->scope.symbol.stmt.type = generic ? OSC_MODULE_GENERIC : OSC_MODULE;
     md->scope.symbol.stmt.flags = flags;
+    pe = stmt_fill_srange(p, (stmt*)md, start, decl_end);
+    if (pe) return pe;
     PEEK(p, t);
     mdg_node* parent = p->current_module;
+    pe = stmt_fill_srange(p, (stmt*)md, start, t->end);
+    if (pe) return pe;
     p->current_module = mdgn;
     if (t->type == TT_SEMICOLON) {
-        *n = NULL;
-        scope* curr_scope = stack_peek(&p->tk.tc->stack);
-        // TODO: make sure we are in a scope
-        if (curr_scope->body.children == NULL) {
-            pe = stmt_fill_srange(p, (stmt*)md, start, t->end);
-            if (pe) return pe;
+        pe = check_if_first_stmt(p, n, start, t->end, false);
+        if (!pe) {
             tk_consume(&p->tk);
             pe = parse_delimited_open_scope(p, md, TT_EOF, TT_BRACE_CLOSE);
         }
-        else {
-            stmt* head = curr_scope->body.children;
-            while (head->next != NULL) head = head->next;
-            ureg hs = src_range_get_start(head->srange);
-            ureg he = src_range_get_end(head->srange);
-            parser_error_2a_pc(
-                p, "non leading module statement", start, t->end, "", hs, he,
-                "preceeded by this statement");
-            p->current_module = parent;
-            return PE_ERROR;
-        }
     }
     else {
-        pe = stmt_fill_srange(p, (stmt*)md, start, decl_end);
-        if (pe) return pe;
         pe = parse_open_scope_body(p, md, mdgn);
+    }
+    if (pe) {
+        p->current_module = parent;
+        return pe;
     }
     src_range_large srl;
     src_range_unpack(md->scope.symbol.stmt.srange, &srl);
@@ -2101,7 +2129,7 @@ parse_error parse_module_decl(
         if (mdg_node_parsed(&TAUC.mdg, mdgn, p->tk.tc)) return PE_FATAL;
     }
     *n = (stmt*)md;
-    return PE_NO_STMT;
+    return PE_OK;
 }
 parse_error parse_extend_decl(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)
@@ -2149,27 +2177,18 @@ parse_error parse_extend_decl(
     mdg_node* parent = p->current_module;
     p->current_module = mdgn;
     if (t->type == TT_SEMICOLON) {
-        *n = NULL;
-        scope* curr_scope = (scope*)stack_peek(&p->tk.tc->stack);
-        // TODO: make sure we are in a scope
-        if (curr_scope->body.children == NULL) {
+        pe = check_if_first_stmt(p, n, start, t->end, false);
+        if (!pe) {
             tk_consume(&p->tk);
             pe = parse_delimited_open_scope(p, ex, TT_EOF, TT_BRACE_CLOSE);
-        }
-        else {
-            stmt* head = curr_scope->body.children;
-            while (head->next != NULL) head = head->next;
-            ureg hs = src_range_get_start(head->srange);
-            ureg he = src_range_get_end(head->srange);
-            parser_error_2a_pc(
-                p, "non leading extend statement", start, t->end, "", hs, he,
-                "preceeded by this statement");
-            p->current_module = parent;
-            return PE_ERROR;
         }
     }
     else {
         pe = parse_open_scope_body(p, ex, mdgn);
+    }
+    if (pe) {
+        p->current_module = parent;
+        return pe;
     }
     src_range_large srl;
     src_range_unpack(ex->scope.symbol.stmt.srange, &srl);
@@ -2179,7 +2198,7 @@ parse_error parse_extend_decl(
     p->current_module = parent;
     *n = (stmt*)ex;
     mdg_node_add_target(mdgn, (scope*)ex);
-    return PE_NO_STMT;
+    return PE_OK;
 }
 parse_error parse_trait_decl(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)

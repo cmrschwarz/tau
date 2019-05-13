@@ -295,7 +295,7 @@ int print_src_line(
     FILE* fh, src_file* file, ureg line, ureg max_line_length,
     err_point* ep_start, err_point* ep_end)
 {
-    while (ep_end - 1 > ep_start) {
+    while (ep_start && ep_end - 1 > ep_start) {
         if ((ep_end - 1)->message == NULL) {
             ep_end--;
         }

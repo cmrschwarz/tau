@@ -312,8 +312,8 @@ bool scope_find_import(
                     return true;
                 }
             } break;
-            case SC_FUNC:
-            case SC_FUNC_GENERIC:
+            case SYM_FUNC:
+            case SYM_FUNC_GENERIC:
             case SC_STRUCT:
             case SC_STRUCT_GENERIC:
             case SC_TRAIT:
