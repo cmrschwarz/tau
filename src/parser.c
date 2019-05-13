@@ -361,6 +361,22 @@ body* get_current_body(parser* p)
 {
     return (body*)stack_peek_prev(&p->tk.tc->stack);
 }
+static inline void add_decls(parser* p, access_modifier am, ureg count)
+{
+    body* b = (body*)stack_peek_prev(&p->tk.tc->stack);
+    if (am == AM_UNSPECIFIED) {
+        b->st.decl_count += count;
+    }
+    else {
+        ast_node* n = stack_peek(&p->tk.tc->stack);
+        if (ast_node_is_open_scope(n)) {
+            b->st.decl_count += count;
+        }
+        else {
+            ((open_scope*)n)->shared_decl_count += count;
+        }
+    }
+}
 static inline void
 parser_error_1a_pc(parser* p, char* msg, ureg start, ureg end, char* annot)
 {
@@ -1875,7 +1891,7 @@ parse_error parse_var_decl(
     }
     stmt_fill_srange(p, (stmt*)vd, start, t->end);
     *n = (stmt*)vd;
-    get_current_body(p)->st.decl_count++;
+    add_decls(p, stmt_flags_get_access_mod(flags), 1);
     return PE_OK;
 }
 parse_error parse_param_list(
@@ -1972,7 +1988,7 @@ parse_error parse_func_decl(
     fn->stmt.type = generic ? SYM_FUNC_GENERIC : SYM_FUNC;
     fn->stmt.flags = flags;
     *n = (stmt*)fn;
-    get_current_body(p)->st.decl_count++;
+    add_decls(p, stmt_flags_get_access_mod(flags), 1);
     return parse_body(
         p, generic ? &((sym_func_generic*)fn)->body : &((sym_func*)fn)->body,
         (ast_node*)fn);
@@ -2020,7 +2036,7 @@ parse_error parse_struct_decl(
     st->symbol.stmt.type = generic ? SC_STRUCT_GENERIC : SC_STRUCT;
     st->symbol.stmt.flags = flags;
     *n = (stmt*)st;
-    get_current_body(p)->st.decl_count++;
+    add_decls(p, stmt_flags_get_access_mod(flags), 1);
     return parse_body(p, &st->body, (ast_node*)st);
 }
 parse_error
@@ -2243,7 +2259,7 @@ parse_error parse_trait_decl(
     tr->symbol.stmt.type = generic ? SC_TRAIT_GENERIC : SC_TRAIT;
     tr->symbol.stmt.flags = flags;
     *n = (stmt*)tr;
-    get_current_body(p)->st.decl_count++;
+    add_decls(p, stmt_flags_get_access_mod(flags), 1);
     return parse_body(p, &tr->body, (ast_node*)tr);
 }
 bool ast_node_supports_exprs(ast_node* n)
@@ -2307,7 +2323,7 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
                 if (!t) return PE_TK_ERROR;
                 if (t->type == TT_EQUALS) {
                     tk_void_n(&p->tk, 2);
-                    get_current_body(p)->st.decl_count += decl_count;
+                    add_decls(p, AM_UNSPECIFIED, decl_count);
                     return parse_compound_assignment_after_equals(
                         p, t_start, t->end, elems, tgt, true);
                 }
@@ -2315,7 +2331,7 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
             if (t->type == TT_EQUALS) {
                 tk_void(&p->tk);
                 turn_ident_nodes_to_exprs(elems);
-                get_current_body(p)->st.decl_count += decl_count;
+                add_decls(p, AM_UNSPECIFIED, decl_count);
                 return parse_compound_assignment_after_equals(
                     p, t_start, t->end, elems, tgt, false);
             }
@@ -2401,7 +2417,7 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
                     p, (stmt*)nu, start, src_range_get_end(nu->target->srange)))
                 return PE_FATAL;
             *tgt = (stmt*)nu;
-            get_current_body(p)->st.decl_count++;
+            add_decls(p, stmt_flags_get_access_mod(flags), 1);
             return PE_OK;
         }
     }
@@ -2474,7 +2490,7 @@ parse_error parse_symbol_imports(parser* p, module_import* mi)
         si.symbol_name = alloc_string_perm(p, t->str);
         if (!si.symbol_name) return PE_FATAL;
         list_builder_add_block(&p->list_builder, &si, sizeof(si));
-        get_current_body(p)->st.decl_count++;
+        add_decls(p, stmt_flags_get_access_mod(mi->statement->stmt.flags), 1);
         end = t->end;
         tk_void(&p->tk);
         t = tk_peek(&p->tk);
@@ -2640,7 +2656,7 @@ parse_error parse_single_import(
     if (mdg_node_add_dependency(p->current_module, mi->tgt, p->tk.tc)) {
         return PE_FATAL;
     }
-    get_current_body(p)->st.decl_count++;
+    add_decls(p, stmt_flags_get_access_mod(mi->statement->stmt.flags), 1);
     return PE_OK;
 }
 parse_error parse_import(

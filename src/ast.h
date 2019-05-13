@@ -174,6 +174,7 @@ typedef struct scope {
 typedef struct open_scope {
     scope scope;
     file_require* requires;
+    ureg shared_decl_count;
 } open_scope;
 
 typedef struct sym_named_using {
