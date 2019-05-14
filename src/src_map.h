@@ -52,7 +52,8 @@ int src_pos_get_line_bounds(
 
 // TODO: find a better name for this
 src_range src_range_pack_lines(thread_context* tc, ureg start, ureg end);
-src_range src_range_pack(thread_context* tc, src_range_large* d);
+src_range src_range_pack(thread_context* tc, ureg start, ureg end, src_file* f);
+src_range src_range_large_pack(thread_context* tc, src_range_large* d);
 void src_range_unpack(src_range r, src_range_large* d);
 ureg src_range_get_start(src_range r);
 ureg src_range_get_end(src_range r);

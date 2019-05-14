@@ -5,6 +5,7 @@ typedef enum resolve_error {
     RE_FATAL = -1,
     RE_OK = 0,
     RE_TYPE_MISSMATCH,
+    RE_SYMBOL_REDECLARATION,
     RE_UNKNOWN_SYMBOL,
 } resolve_error;
 

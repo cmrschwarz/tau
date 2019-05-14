@@ -1,19 +1,12 @@
 #pragma once
 #include "src_map.h"
-#include "symbol_table.h"
+#include "symbol_store.h"
 #include "utils/c_extensions.h"
 
 typedef u8 stmt_flags;
 typedef u8 err_flags;
 #define STMT_FLAGS_DEFAULT 0
 #define ERR_FLAGS_DEFAULT 0
-
-typedef enum PACK_ENUM access_modifier {
-    AM_UNSPECIFIED = 0,
-    AM_PRIVATE = 1,
-    AM_PROTECTED = 2,
-    AM_PUBLIC = 3,
-} access_modifier;
 
 typedef enum PACK_ENUM ast_node_type {
     OSC_MODULE,
@@ -162,7 +155,7 @@ typedef struct symbol {
 
 typedef struct body {
     stmt* children;
-    symbol_table st;
+    symbol_store ss;
     src_range srange;
 } body;
 
@@ -174,7 +167,7 @@ typedef struct scope {
 typedef struct open_scope {
     scope scope;
     file_require* requires;
-    ureg shared_decl_count;
+    symbol_store shared_decl_count;
 } open_scope;
 
 typedef struct sym_named_using {
@@ -482,6 +475,7 @@ src_range ast_node_get_src_range(ast_node* s);
 bool ast_node_is_open_scope(ast_node* s);
 bool ast_node_is_expr(ast_node* s);
 src_file* open_scope_get_file(open_scope* s);
+src_file* stmt_get_file(open_scope* s);
 
 bool body_is_braced(body* b);
 

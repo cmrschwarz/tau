@@ -5,7 +5,7 @@ set(TAUC_SRCS
     ./src/tokenizer.c
     ./src/parser.c
     ./src/resolver.c
-    ./src/symbol_table.c
+    ./src/symbol_store.c
     ./src/utils/dbuffer.c
     ./src/utils/panic.c
     ./src/utils/os/libc/atomics_libc.c

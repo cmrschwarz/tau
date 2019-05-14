@@ -1,7 +1,7 @@
 #pragma once
 #include "ast.h"
 #include "mdght.h"
-#include "symbol_table.h"
+#include "symbol_store.h"
 #include "utils/aseglist.h"
 #include "utils/atomic_pool.h"
 #include "utils/evmap2.h"
@@ -45,7 +45,7 @@ typedef struct mdg_node {
     ureg id;
     rwslock stage_lock;
     module_stage stage;
-    symbol_table st;
+    symbol_store ss;
 } mdg_node;
 
 #define MDG_MAX_CHANGES 16

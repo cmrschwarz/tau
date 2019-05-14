@@ -206,6 +206,7 @@ void print_module_import(module_import* mi, mdg_node* parent, ureg indent)
 }
 void print_astn(stmt* astn, ureg indent)
 {
+    // TODO: print access modifiers
     switch (astn->type) {
         case STMT_EXPRESSION: {
             stmt_expr* e = (stmt_expr*)astn;

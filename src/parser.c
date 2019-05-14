@@ -361,19 +361,38 @@ body* get_current_body(parser* p)
 {
     return (body*)stack_peek_prev(&p->tk.tc->stack);
 }
-static inline void add_decls(parser* p, access_modifier am, ureg count)
+static inline void curr_scope_require_usings(parser* p, access_modifier am)
 {
     body* b = (body*)stack_peek_prev(&p->tk.tc->stack);
     if (am == AM_UNSPECIFIED) {
-        b->st.decl_count += count;
+        symbol_store_require_unnamed_usings(&b->ss);
     }
     else {
         ast_node* n = stack_peek(&p->tk.tc->stack);
         if (ast_node_is_open_scope(n)) {
-            b->st.decl_count += count;
+            open_scope* osc = (open_scope*)n;
+            symbol_store_require_unnamed_usings(&osc->shared_decl_count);
         }
         else {
-            ((open_scope*)n)->shared_decl_count += count;
+            symbol_store_require_unnamed_usings(&b->ss);
+        }
+    }
+}
+static inline void
+curr_scope_add_decls(parser* p, access_modifier am, ureg count)
+{
+    body* b = (body*)stack_peek_prev(&p->tk.tc->stack);
+    if (am == AM_UNSPECIFIED) {
+        symbol_store_inc_decl_count(&b->ss, count);
+    }
+    else {
+        ast_node* n = stack_peek(&p->tk.tc->stack);
+        if (ast_node_is_open_scope(n)) {
+            open_scope* osc = (open_scope*)n;
+            symbol_store_inc_decl_count(&osc->shared_decl_count, count);
+        }
+        else {
+            symbol_store_inc_decl_count(&b->ss, count);
         }
     }
 }
@@ -463,6 +482,26 @@ stmt_fill_srange(parser* p, stmt* s, ureg start, ureg end)
 {
     s->srange = src_range_pack_lines(p->tk.tc, start, end);
     if (s->srange == SRC_RANGE_INVALID) return PE_FATAL;
+    return PE_OK;
+}
+static inline parse_error
+sym_fill_srange(parser* p, stmt* s, ureg start, ureg end)
+{
+    src_range_large srl;
+    srl.start = start;
+    srl.end = end;
+    if (stmt_flags_get_access_mod(s->flags) != AM_UNSPECIFIED) {
+        srl.file = p->tk.file;
+    }
+    s->srange = src_range_large_pack(p->tk.tc, &srl);
+    if (s->srange == SRC_RANGE_INVALID) return PE_FATAL;
+    return PE_OK;
+}
+static inline parse_error
+scope_fill_srange(parser* p, scope* s, ureg start, ureg end)
+{
+    s->symbol.stmt.srange = src_range_pack(p->tk.tc, start, end, p->tk.file);
+    if (s->symbol.stmt.srange == SRC_RANGE_INVALID) return PE_FATAL;
     return PE_OK;
 }
 static inline expr* parse_str_value(parser* p, token* t)
@@ -1734,7 +1773,7 @@ static inline parse_error parse_delimited_open_scope(
     srl.start = start;
     srl.end = t->end;
     srl.file = p->tk.file;
-    osc->scope.symbol.stmt.srange = src_range_pack(p->tk.tc, &srl);
+    osc->scope.symbol.stmt.srange = src_range_large_pack(p->tk.tc, &srl);
     if (osc->scope.symbol.stmt.srange == SRC_RANGE_INVALID) return PE_FATAL;
     if (!osc->requires) return PE_FATAL;
     return pe;
@@ -1889,9 +1928,9 @@ parse_error parse_var_decl(
             vd->value = NULL;
         }
     }
-    stmt_fill_srange(p, (stmt*)vd, start, t->end);
+    if (sym_fill_srange(p, (stmt*)vd, start, t->end)) return PE_FATAL;
     *n = (stmt*)vd;
-    add_decls(p, stmt_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
     return PE_OK;
 }
 parse_error parse_param_list(
@@ -1970,7 +2009,7 @@ parse_error parse_func_decl(
         if (!fn) return PE_FATAL;
     }
     fn->name = name;
-    pe = stmt_fill_srange(p, (stmt*)fn, start, decl_end);
+    pe = sym_fill_srange(p, (stmt*)fn, start, decl_end);
     if (pe) return pe;
     if (t->type != TT_PAREN_OPEN) {
         parser_error_2a(
@@ -1988,7 +2027,7 @@ parse_error parse_func_decl(
     fn->stmt.type = generic ? SYM_FUNC_GENERIC : SYM_FUNC;
     fn->stmt.flags = flags;
     *n = (stmt*)fn;
-    add_decls(p, stmt_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
     return parse_body(
         p, generic ? &((sym_func_generic*)fn)->body : &((sym_func*)fn)->body,
         (ast_node*)fn);
@@ -2031,12 +2070,12 @@ parse_error parse_struct_decl(
         if (!st) return PE_FATAL;
     }
     st->symbol.name = name;
-    pe = stmt_fill_srange(p, (stmt*)st, start, decl_end);
+    pe = scope_fill_srange(p, (scope*)st, start, decl_end);
     if (pe) return pe;
     st->symbol.stmt.type = generic ? SC_STRUCT_GENERIC : SC_STRUCT;
     st->symbol.stmt.flags = flags;
     *n = (stmt*)st;
-    add_decls(p, stmt_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
     return parse_body(p, &st->body, (ast_node*)st);
 }
 parse_error
@@ -2113,12 +2152,9 @@ parse_error parse_module_decl(
     if (mdgn == NULL) return PE_FATAL;
     md->scope.symbol.stmt.type = generic ? OSC_MODULE_GENERIC : OSC_MODULE;
     md->scope.symbol.stmt.flags = flags;
-    pe = stmt_fill_srange(p, (stmt*)md, start, decl_end);
-    if (pe) return pe;
+    if (scope_fill_srange(p, (scope*)md, start, decl_end)) return PE_FATAL;
     PEEK(p, t);
     mdg_node* parent = p->current_module;
-    pe = stmt_fill_srange(p, (stmt*)md, start, t->end);
-    if (pe) return pe;
     p->current_module = mdgn;
     if (t->type == TT_SEMICOLON) {
         pe = check_if_first_stmt(p, n, start, t->end, false);
@@ -2134,11 +2170,6 @@ parse_error parse_module_decl(
         p->current_module = parent;
         return pe;
     }
-    src_range_large srl;
-    src_range_unpack(md->scope.symbol.stmt.srange, &srl);
-    srl.file = p->tk.file;
-    md->scope.symbol.stmt.srange = src_range_pack(p->tk.tc, &srl);
-    if (md->scope.symbol.stmt.srange == SRC_RANGE_INVALID) return PE_FATAL;
     p->current_module = parent;
     mdg_node_add_target(mdgn, (scope*)md);
     if (*(void**)md->requires == NULL) {
@@ -2185,8 +2216,7 @@ parse_error parse_extend_decl(
     mdg_node* mdgn =
         mdg_add_open_scope(&TAUC.mdg, p->current_module, ex, t->str);
     if (mdgn == NULL) return PE_FATAL;
-    pe = stmt_fill_srange(p, (stmt*)ex, start, decl_end);
-    if (pe) return pe;
+    if (scope_fill_srange(p, (scope*)ex, start, decl_end)) return PE_FATAL;
     ex->scope.symbol.stmt.type = generic ? OSC_EXTEND_GENERIC : OSC_EXTEND;
     ex->scope.symbol.stmt.flags = flags;
     PEEK(p, t);
@@ -2206,11 +2236,6 @@ parse_error parse_extend_decl(
         p->current_module = parent;
         return pe;
     }
-    src_range_large srl;
-    src_range_unpack(ex->scope.symbol.stmt.srange, &srl);
-    srl.file = p->tk.file;
-    ex->scope.symbol.stmt.srange = src_range_pack(p->tk.tc, &srl);
-    if (ex->scope.symbol.stmt.srange == SRC_RANGE_INVALID) return PE_FATAL;
     p->current_module = parent;
     *n = (stmt*)ex;
     mdg_node_add_target(mdgn, (scope*)ex);
@@ -2254,12 +2279,12 @@ parse_error parse_trait_decl(
         if (!tr) return PE_FATAL;
     }
     tr->symbol.name = name;
-    pe = stmt_fill_srange(p, (stmt*)tr, start, decl_end);
+    pe = scope_fill_srange(p, (scope*)tr, start, decl_end);
     if (pe) return pe;
     tr->symbol.stmt.type = generic ? SC_TRAIT_GENERIC : SC_TRAIT;
     tr->symbol.stmt.flags = flags;
     *n = (stmt*)tr;
-    add_decls(p, stmt_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
     return parse_body(p, &tr->body, (ast_node*)tr);
 }
 bool ast_node_supports_exprs(ast_node* n)
@@ -2323,7 +2348,7 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
                 if (!t) return PE_TK_ERROR;
                 if (t->type == TT_EQUALS) {
                     tk_void_n(&p->tk, 2);
-                    add_decls(p, AM_UNSPECIFIED, decl_count);
+                    curr_scope_add_decls(p, AM_UNSPECIFIED, decl_count);
                     return parse_compound_assignment_after_equals(
                         p, t_start, t->end, elems, tgt, true);
                 }
@@ -2331,7 +2356,7 @@ parse_error parse_expr_stmt(parser* p, stmt** tgt)
             if (t->type == TT_EQUALS) {
                 tk_void(&p->tk);
                 turn_ident_nodes_to_exprs(elems);
-                add_decls(p, AM_UNSPECIFIED, decl_count);
+                curr_scope_add_decls(p, AM_UNSPECIFIED, decl_count);
                 return parse_compound_assignment_after_equals(
                     p, t_start, t->end, elems, tgt, false);
             }
@@ -2417,7 +2442,7 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
                     p, (stmt*)nu, start, src_range_get_end(nu->target->srange)))
                 return PE_FATAL;
             *tgt = (stmt*)nu;
-            add_decls(p, stmt_flags_get_access_mod(flags), 1);
+            curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
             return PE_OK;
         }
     }
@@ -2436,6 +2461,7 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
             p, (stmt*)u, start, src_range_get_end(u->target->srange)))
         return PE_FATAL;
     *tgt = (stmt*)u;
+    curr_scope_require_usings(p, stmt_flags_get_access_mod(flags));
     return pe;
 }
 parse_error parse_symbol_imports(parser* p, module_import* mi)
@@ -2490,7 +2516,8 @@ parse_error parse_symbol_imports(parser* p, module_import* mi)
         si.symbol_name = alloc_string_perm(p, t->str);
         if (!si.symbol_name) return PE_FATAL;
         list_builder_add_block(&p->list_builder, &si, sizeof(si));
-        add_decls(p, stmt_flags_get_access_mod(mi->statement->stmt.flags), 1);
+        curr_scope_add_decls(
+            p, stmt_flags_get_access_mod(mi->statement->stmt.flags), 1);
         end = t->end;
         tk_void(&p->tk);
         t = tk_peek(&p->tk);
@@ -2656,7 +2683,8 @@ parse_error parse_single_import(
     if (mdg_node_add_dependency(p->current_module, mi->tgt, p->tk.tc)) {
         return PE_FATAL;
     }
-    add_decls(p, stmt_flags_get_access_mod(mi->statement->stmt.flags), 1);
+    curr_scope_add_decls(
+        p, stmt_flags_get_access_mod(mi->statement->stmt.flags), 1);
     return PE_OK;
 }
 parse_error parse_import(
@@ -2866,7 +2894,7 @@ parse_error parse_brace_delimited_body(parser* p, body* b, ast_node* parent)
     parse_error pe = PE_OK;
     PEEK(p, t);
     stmt** head = &b->children;
-    b->st.decl_count = 0;
+    symbol_store_init(&b->ss);
     PUSH_PARENT(p, parent, b);
     while (t->type != TT_BRACE_CLOSE) {
         if (t->type != TT_EOF) {
@@ -2962,7 +2990,7 @@ parse_error parse_body(parser* p, body* b, ast_node* parent)
     parse_error pe;
     token* t;
     PEEK(p, t);
-    b->st.decl_count = 0;
+    symbol_store_init(&b->ss);
     if (t->type != TT_BRACE_OPEN) {
         PUSH_PARENT(p, parent, b);
         do {

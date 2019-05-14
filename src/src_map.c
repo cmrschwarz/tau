@@ -143,7 +143,7 @@ void src_range_set_end(thread_context* tc, src_range* old, ureg end)
         *old = src_range_pack_lines(tc, start, end);
     }
 }
-src_range src_range_pack(thread_context* tc, src_range_large* d)
+src_range src_range_large_pack(thread_context* tc, src_range_large* d)
 {
     // PERF: maybe allocate these somewhere else
     if (!d->file) {
@@ -171,11 +171,15 @@ src_range src_range_pack(thread_context* tc, src_range_large* d)
                (((ureg)tgt) >> 2);
     }
 }
-
+src_range src_range_pack(thread_context* tc, ureg start, ureg end, src_file* f)
+{
+    src_range_large srl = {f, start, end};
+    return src_range_large_pack(tc, &srl);
+}
 src_range src_range_pack_lines(thread_context* tc, ureg start, ureg end)
 {
-    src_range_large rng = {NULL, start, end};
-    return src_range_pack(tc, &rng);
+    src_range_large srl = {NULL, start, end};
+    return src_range_large_pack(tc, &srl);
 }
 
 void src_range_unpack(src_range r, src_range_large* d)
