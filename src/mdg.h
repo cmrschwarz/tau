@@ -13,6 +13,7 @@ typedef struct mdg_node mdg_node;
 
 typedef enum module_stage {
     MS_UNNEEDED,
+    MS_AWAITING_NEED,
     MS_NOT_FOUND,
     MS_PARSING,
     MS_AWAITING_DEPENDENCIES,
@@ -40,7 +41,7 @@ typedef struct mdg_node {
     char* name;
     atomic_ureg unparsed_files;
     aseglist dependencies;
-    atomic_ptr targets;
+    aseglist targets;
     aseglist notify;
     ureg id;
     rwslock stage_lock;
@@ -89,7 +90,6 @@ typedef struct scc_detector {
     pool* mem_src;
 } scc_detector;
 
-void mdg_node_add_target(mdg_node* n, scope* target);
 int mdg_node_parsed(mdg* m, mdg_node* n, thread_context* tc);
 int mdg_node_file_parsed(mdg* m, mdg_node* n, thread_context* tc);
 int mdg_node_resolved(mdg_node* n, thread_context* tc);

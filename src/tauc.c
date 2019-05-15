@@ -59,8 +59,8 @@ void tauc_fin()
         worker_thread_status wts = atomic_ureg_load(&wt->status);
         if (wts != WTS_FAILED) {
             thread_join(&wt->thread);
-            thread_context_fin(&wt->tc);
         }
+        thread_context_fin(&wt->tc);
         tfree(wt);
     }
     tauc_partial_fin(0, 6);

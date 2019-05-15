@@ -475,7 +475,7 @@ src_range ast_node_get_src_range(ast_node* s);
 bool ast_node_is_open_scope(ast_node* s);
 bool ast_node_is_expr(ast_node* s);
 src_file* open_scope_get_file(open_scope* s);
-src_file* stmt_get_file(open_scope* s);
+src_file* stmt_get_file(stmt* s);
 
 bool body_is_braced(body* b);
 

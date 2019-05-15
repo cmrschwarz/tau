@@ -98,24 +98,24 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
     memcpy(n->name, ident.start, identlen);
     n->name[identlen] = '\0';
     n->parent = parent;
-    int r = atomic_ptr_init(&n->targets, NULL);
+    int r = aseglist_init(&n->targets);
     if (r) return NULL;
     r = rwslock_init(&n->stage_lock);
     if (r) {
-        atomic_ptr_fin(&n->targets);
+        aseglist_fin(&n->targets);
         return NULL;
     }
     r = aseglist_init(&n->dependencies);
     if (r) {
         rwslock_fin(&n->stage_lock);
-        atomic_ptr_fin(&n->targets);
+        aseglist_fin(&n->targets);
         return NULL;
     }
     r = atomic_ureg_init(&n->unparsed_files, 0);
     if (r) {
         aseglist_fin(&n->dependencies);
         rwslock_fin(&n->stage_lock);
-        atomic_ptr_fin(&n->targets);
+        aseglist_fin(&n->targets);
         return NULL;
     }
     r = aseglist_init(&n->notify);
@@ -123,7 +123,7 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
         atomic_ureg_fin(&n->unparsed_files);
         aseglist_fin(&n->dependencies);
         rwslock_fin(&n->stage_lock);
-        atomic_ptr_fin(&n->targets);
+        aseglist_fin(&n->targets);
         return NULL;
     }
     n->stage = MS_UNNEEDED;
@@ -131,18 +131,25 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
 }
 void mdg_node_fin(mdg_node* n)
 {
+    if (n->stage >= MS_RESOLVING) {
+        aseglist_iterator it;
+        aseglist_iterator_begin(&it, &n->targets);
+        if (n->ss.table != NULL) {
+            symbol_store_destruct_table(&n->ss);
+            while (true) {
+                open_scope* osc = aseglist_iterator_next(&it);
+                if (!osc) break;
+                if (osc->scope.body.ss.table != NULL) {
+                    symbol_store_destruct_table(&osc->scope.body.ss);
+                }
+            }
+        }
+    }
     aseglist_fin(&n->notify);
     atomic_ureg_fin(&n->unparsed_files);
     aseglist_fin(&n->dependencies);
     rwslock_fin(&n->stage_lock);
-    atomic_ptr_fin(&n->targets);
-}
-void mdg_node_add_target(mdg_node* n, scope* target)
-{
-    target->symbol.stmt.next = atomic_ptr_load(&n->targets);
-    while (!atomic_ptr_cas(
-        &n->targets, (void**)&target->symbol.stmt.next, (void*)target)) {
-    }
+    aseglist_fin(&n->targets);
 }
 
 mdg_node* mdg_get_node(mdg* m, mdg_node* parent, string ident)
@@ -187,18 +194,25 @@ mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident)
         if (n->stage == MS_NOT_FOUND) n->stage = MS_PARSING;
         rwslock_end_write(&n->stage_lock);
     }
-
-    mdg_node_add_target(n, (scope*)osc);
+    aseglist_add(&n->targets, osc);
     osc->scope.symbol.name = n->name;
     return n;
 }
 
 int mdg_node_parsed(mdg* m, mdg_node* n, thread_context* tc)
 {
+    bool run_scc = true;
     rwslock_write(&n->stage_lock);
-    n->stage = MS_AWAITING_DEPENDENCIES;
+    if (n->stage == MS_PARSING) {
+        n->stage = MS_AWAITING_DEPENDENCIES;
+    }
+    else if (n->stage == MS_UNNEEDED) {
+        n->stage = MS_AWAITING_NEED;
+        run_scc = false;
+    }
     rwslock_end_write(&n->stage_lock);
-    return scc_detector_run(tc, n);
+    if (run_scc) return scc_detector_run(tc, n);
+    return OK;
 }
 int mdg_node_file_parsed(mdg* m, mdg_node* n, thread_context* tc)
 {
@@ -335,8 +349,11 @@ void mdg_node_find_import(
     mdg_node* m, mdg_node* import, stmt_import** tgt, module_import** tgt_sym,
     src_file** file)
 {
-    open_scope* osc = atomic_ptr_load(&m->targets);
-    while (osc) {
+    aseglist_iterator it;
+    aseglist_iterator_begin(&it, &m->targets);
+    while (true) {
+        open_scope* osc = aseglist_iterator_next(&it);
+        if (!osc) break;
         if (scope_find_import(&osc->scope, import, tgt, tgt_sym)) {
             *file = open_scope_get_file(osc);
             return;
@@ -358,7 +375,7 @@ void mdg_node_report_missing_import(
     error_log_report_annotated_twice(
         &tc->error_log, ES_RESOLVER, false,
         "missing definition for imported module", f, tgt_sym_srl.start,
-        tgt_sym_srl.end, "imported here", tgt_srl.start, tgt_srl.end, NULL);
+        tgt_sym_srl.end, "imported here", f, tgt_srl.start, tgt_srl.end, NULL);
 }
 int scc_detector_strongconnect(
     thread_context* tc, mdg_node* n, sccd_node* sn, mdg_node* caller)
@@ -573,7 +590,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
     scc_detector_housekeep_ids(&tc->sccd);
     tc->sccd.dfs_start_index = tc->sccd.dfs_index;
     tc->sccd.dfs_index++;
-    open_scope* tgts;
+    aseglist* tgts;
     void** stack_head = tc->stack.head;
     while (true) {
         rwslock_write(&n->stage_lock);
@@ -585,7 +602,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
             else {
                 n->stage = MS_PARSING;
             }
-            tgts = atomic_ptr_load(&n->targets);
+            tgts = &n->targets;
             aseglist_iterator it;
             aseglist_iterator_begin(&it, &n->dependencies);
             while (true) {
@@ -602,18 +619,26 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
                 }
             }
         }
+        else if (n->stage == MS_AWAITING_NEED) {
+            n->stage = MS_AWAITING_DEPENDENCIES;
+        }
         else {
             tgts = NULL;
         }
         rwslock_end_write(&n->stage_lock);
-        while (tgts) {
-            file_require* r = tgts->requires;
-            while (*(void**)r) {
-                src_file_require(
-                    r->file, open_scope_get_file(tgts), r->srange, n);
-                r++;
+        if (tgts) {
+            aseglist_iterator tgt_it;
+            aseglist_iterator_begin(&tgt_it, tgts);
+            while (true) {
+                open_scope* tgt = aseglist_iterator_next(&tgt_it);
+                if (!tgt) break;
+                file_require* r = tgt->requires;
+                while (*(void**)r) {
+                    src_file_require(
+                        r->file, open_scope_get_file(tgt), r->srange, n);
+                    r++;
+                }
             }
-            tgts++;
         }
         while (true) {
             if (tc->stack.head == stack_head) return OK;
@@ -649,37 +674,45 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
         // we still need to lock the stages since some final resolving might
         // still be going on
         rwslock_read(&n->stage_lock);
-        if (n->stage == MS_UNNEEDED) {
+        if (n->stage == MS_UNNEEDED || n->stage == MS_AWAITING_NEED) {
             open_scope* mod = NULL;
-            open_scope* tgt = (open_scope*)atomic_ptr_load(&n->targets);
-            open_scope* i = tgt;
+            aseglist_iterator it;
+            aseglist_iterator_begin(&it, &n->targets);
+            open_scope* first_target = NULL;
+            open_scope* i = aseglist_iterator_next(&it);
+            first_target = i;
             while (i) {
                 if (i->scope.symbol.stmt.type == OSC_MODULE ||
                     i->scope.symbol.stmt.type == OSC_MODULE_GENERIC) {
                     if (mod != NULL) {
                         src_range_large srl;
                         src_range_unpack(i->scope.symbol.stmt.srange, &srl);
-                        // TODO: implement errors with annotations in multiple
-                        // files so we can annotate the first declaration
-                        error_log_report_annotated(
+                        src_range_large srl_mod;
+                        src_range_unpack(
+                            mod->scope.symbol.stmt.srange, &srl_mod);
+                        // since aseglist iterates backwards we reverse, so if
+                        // it's in the same file the redeclaration is always
+                        // below
+                        error_log_report_annotated_twice(
                             &tc->error_log, ES_RESOLVER, false,
-                            "module redeclared", open_scope_get_file(i),
-                            srl.start, srl.end, "second declaration here");
+                            "module redeclared", srl_mod.file, srl_mod.start,
+                            srl_mod.end, "redeclaration here", srl.file,
+                            srl.start, srl.end, "already declared here");
                         res = ERR;
                         break;
                     }
                     mod = i;
                 }
-                i = (open_scope*)tgt->scope.symbol.stmt.next;
+                i = aseglist_iterator_next(&it);
             }
-            if (mod == NULL && tgt != NULL) {
+            if (mod == NULL && first_target != NULL) {
                 src_range_large srl;
-                src_range_unpack(tgt->scope.symbol.stmt.srange, &srl);
+                src_range_unpack(first_target->scope.symbol.stmt.srange, &srl);
+                // THINK: maybe report extend count here or report all
                 error_log_report_annotated(
                     &tc->error_log, ES_RESOLVER, false,
-                    "extend without module declaration",
-                    open_scope_get_file(tgt), srl.start, srl.end,
-                    "extend here");
+                    "extend without module declaration", srl.file, srl.start,
+                    srl.end, "extend here");
                 res = ERR;
             }
         }

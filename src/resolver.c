@@ -16,11 +16,28 @@ resolve_error osc_add_sym(resolver* r, open_scope* osc, symbol* sym)
         src_range_large sr_new, sr_old;
         src_range_unpack(sym->stmt.srange, &sr_new);
         src_range_unpack(res->stmt.srange, &sr_old);
+        src_file* f = open_scope_get_file(osc);
+        error_log_report_annotated_twice(
+            &r->tc->error_log, ES_RESOLVER, false, "symbol redeclaration", f,
+            sr_new.start, sr_new.end,
+            "a symbol with this name is already defined", f, sr_old.start,
+            sr_old.end, "previously defined here");
+        return RE_SYMBOL_REDECLARATION;
+    }
+    return RE_OK;
+}
+resolve_error mdg_node_add_sym(resolver* r, mdg_node* m, symbol* sym)
+{
+    symbol* res = symbol_store_insert(m->ss, sym);
+    if (res) {
+        src_range_large sr_new, sr_old;
+        src_range_unpack(sym->stmt.srange, &sr_new);
+        src_range_unpack(res->stmt.srange, &sr_old);
         error_log_report_annotated_twice(
             &r->tc->error_log, ES_RESOLVER, false, "symbol redeclaration",
-            open_scope_get_file(osc), sr_new.start, sr_new.end,
-            "a symbol with this name is already defined", sr_old.start,
-            sr_old.end, "previously defined here");
+            sr_new.file, sr_new.start, sr_new.end,
+            "a symbol with this name is already defined", sr_old.file,
+            sr_old.start, sr_old.end, "previously defined here");
         return RE_SYMBOL_REDECLARATION;
     }
     return RE_OK;
@@ -28,16 +45,25 @@ resolve_error osc_add_sym(resolver* r, open_scope* osc, symbol* sym)
 resolve_error map_module_declarations(resolver* r, mdg_node* m)
 {
     symbol_store_init(&m->ss);
-    open_scope* osc = atomic_ptr_load_flat(&m->targets);
-    open_scope* osci = osc;
+    aseglist_iterator tgti;
+    aseglist_iterator_begin(&tgti, &m->targets);
+    open_scope* osci = aseglist_iterator_next(&tgti);
     while (osci) {
         symbol_store_merge_decls(&m->ss, osci->shared_decl_count);
-        osci = (open_scope*)osci->scope.symbol.stmt.next;
+        osci = aseglist_iterator_next(&tgti);
     }
     if (symbol_store_setup_table(&m->ss)) return RE_FATAL;
-    osci = osc;
+    aseglist_iterator_begin(&tgti, &m->targets);
+    osci = aseglist_iterator_next(&tgti);
     while (osci) {
-        if (symbol_store_setup_table(&osci->scope.body.ss)) return RE_FATAL;
+        if (symbol_store_setup_table(&osci->scope.body.ss)) {
+            do {
+                // to prevent the uninitialized tables from being freed
+                osci->scope.body.ss.table = NULL;
+                osci = aseglist_iterator_next(&tgti);
+            } while (osci);
+            return RE_FATAL;
+        }
         stmt* si = osci->scope.body.children;
         while (si) {
             switch (si->type) {
@@ -47,35 +73,50 @@ resolve_error map_module_declarations(resolver* r, mdg_node* m)
                 case SYM_VAR:
                 case SYM_VAR_UNINITIALIZED:
                 case SYM_NAMED_USING: {
-                    access_modifier am = stmt_flags_get_access_mod(si->flags);
+                    symbol* sym = (symbol*)si;
+                    si = si->next;
+                    access_modifier am =
+                        stmt_flags_get_access_mod(sym->stmt.flags);
                     if (am == AM_SCOPE_LOCAL) {
-                        osc_add_sym(r, osci, (symbol*)si);
+                        osc_add_sym(r, osci, sym);
                     }
                     else {
                     }
-                }
-                default: break;
+                } break;
+                default: si = si->next;
             }
-            si = si->next;
         }
-        osci = (open_scope*)osci->scope.symbol.stmt.next;
+        osci = aseglist_iterator_next(&tgti);
     }
     return OK;
 }
 resolve_error
 resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
 {
-    r->start = start;
-    r->end = end;
     // DEBUG
     printf("resolving {");
     mdg_node** i = start;
+    i = start;
     while (i + 1 != end) {
         printf("%s, ", (**i).name);
         i++;
     }
     printf("%s}\n", (**i).name);
     // TODO: resolve
+    r->start = start;
+    r->end = end;
+    resolve_error re;
+    for (mdg_node** i = start; i != end; i++) {
+        re = map_module_declarations(r, *i);
+        if (re) {
+            if (re == RE_FATAL) {
+            }
+            for (mdg_node** j = i + 1; j != end; j++) {
+                (**j).ss.table = NULL;
+            }
+            return re;
+        }
+    }
     return mdg_nodes_resolved(start, end, r->tc);
 }
 

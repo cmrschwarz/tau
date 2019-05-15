@@ -22,6 +22,52 @@ static inline void file_map_head_fin(file_map_head* h)
 {
 }
 
+void file_map_iterator_begin(file_map_iterator* it, file_map* fm)
+{
+    it->head = fm->table_start;
+    it->end = fm->table_end;
+}
+src_file* file_map_iterator_next_file(file_map_iterator* it)
+{
+    while (it->head != it->end) {
+        if (*it->head) {
+            if ((**it->head).is_directory == false) {
+                src_file* f = (src_file*)*it->head;
+                it->head++;
+                return f;
+            }
+        }
+        it->head++;
+    }
+    return NULL;
+}
+src_dir* file_map_iterator_next_dir(file_map_iterator* it)
+{
+    while (it->head != it->end) {
+        if (*it->head) {
+            if ((**it->head).is_directory == true) {
+                src_dir* d = (src_dir*)*it->head;
+                it->head++;
+                return d;
+            }
+        }
+        it->head++;
+    }
+    return NULL;
+}
+file_map_head* file_map_iterator_next(file_map_iterator* it)
+{
+    while (it->head != it->end) {
+        if (*it->head) {
+            file_map_head* h = *it->head;
+            it->head++;
+            return h;
+        }
+        it->head++;
+    }
+    return NULL;
+}
+
 static inline int
 src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
 {
@@ -146,7 +192,7 @@ int src_file_done_parsing(src_file* f, thread_context* tc)
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &f->requiring_modules);
     rwslock_end_write(&f->stage_lock);
-    mdg_node_add_target(TAUC.mdg.root_node, (scope*)&f->root);
+    aseglist_add(&TAUC.mdg.root_node->targets, &f->root);
     while (true) {
         mdg_node* m = aseglist_iterator_next(&it);
         if (!m) break;

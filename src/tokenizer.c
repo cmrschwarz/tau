@@ -205,9 +205,6 @@ int tk_init(tokenizer* tk, thread_context* tc)
 void tk_fin(tokenizer* tk)
 {
     tfree(tk->file_buffer_start);
-    if (tk->file) {
-        if (tk->file->file_stream) tk_close_file(tk);
-    }
 }
 
 int tk_open_stream(tokenizer* tk, src_file* f, FILE* stream)
@@ -273,8 +270,8 @@ tk_unterminated_string_error(tokenizer* tk, char* string_start, ureg tok_pos)
     error_log_report_annotated_twice(
         &tk->tc->error_log, ES_TOKENIZER, false, "unterminated string",
         tk->file, start1, start1 + 1,
-        "reached eof before the string was closed", start2, start2 + 1,
-        "string starts here");
+        "reached eof before the string was closed", tk->file, start2,
+        start2 + 1, "string starts here");
     tk->status = TK_STATUS_TOKENIZATION_ERROR;
     return NULL;
 }
@@ -529,7 +526,7 @@ static token* tk_load(tokenizer* tk)
                                     "unterminated block comment", tk->file,
                                     tok->start, tok->start + 1,
                                     "reached eof before the comment was closed",
-                                    comment_start, comment_start + 2,
+                                    tk->file, comment_start, comment_start + 2,
                                     "comment starts here");
                                 tk->status = TK_STATUS_TOKENIZATION_ERROR;
                                 return NULL;

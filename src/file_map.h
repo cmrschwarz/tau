@@ -66,6 +66,16 @@ typedef struct file_map {
     pool string_mem_pool;
 } file_map;
 
+typedef struct file_map_iterator {
+    file_map_head** head;
+    file_map_head** end;
+} file_map_iterator;
+
+void file_map_iterator_begin(file_map_iterator* it, file_map* fm);
+src_file* file_map_iterator_next_file(file_map_iterator* it);
+src_dir* file_map_iterator_next_dir(file_map_iterator* it);
+file_map_head* file_map_iterator_next(file_map_iterator* it);
+
 int file_map_init(file_map* fm);
 void file_map_fin(file_map* fm);
 

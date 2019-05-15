@@ -47,6 +47,7 @@ typedef struct error_annotation {
     ureg start;
     ureg end;
     const char* annotation;
+    src_file* file;
 } error_annotation;
 
 typedef struct master_error_log master_error_log;
@@ -89,13 +90,13 @@ void error_log_report_annotated(
     src_file* file, ureg start, ureg end, const char* annotation);
 void error_log_report_annotated_twice(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start1, ureg end1, const char* annotation1,
-    ureg start2, ureg end2, const char* annotation2);
+    src_file* file, ureg start, ureg end, const char* annotation,
+    src_file* file2, ureg start2, ureg end2, const char* annotation2);
 void error_log_report_annotated_thrice(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start1, ureg end1, const char* annotation1,
-    ureg start2, ureg end2, const char* annotation2, ureg start3, ureg end3,
-    const char* annotation3);
+    src_file* file, ureg start, ureg end, const char* annotation,
+    src_file* file2, ureg start2, ureg end2, const char* annotation2,
+    src_file* file3, ureg start3, ureg end3, const char* annotation3);
 
 char* error_log_cat_strings_2(error_log* e, const char* s1, const char* s2);
 char* error_log_cat_strings_3(

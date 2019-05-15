@@ -4,6 +4,7 @@
 #include "stdio.h"
 #include "tauc.h"
 #include "utils/math_utils.h"
+#include "utils/zero.h"
 #include <assert.h>
 #include <unistd.h>
 
@@ -105,9 +106,10 @@ static inline void error_fill(
     e->position = position;
     e->message = message;
 }
-static inline void
-error_fill_annot(error_annotation* ea, ureg start, ureg end, const char* msg)
+static inline void error_fill_annot(
+    error_annotation* ea, src_file* file, ureg start, ureg end, const char* msg)
 {
+    ea->file = file;
     ea->start = start;
     ea->end = end;
     ea->annotation = msg;
@@ -137,39 +139,38 @@ void error_log_report_annotated(
 }
 void error_log_report_annotated_twice(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start1, ureg end1, const char* annotation1,
-    ureg start2, ureg end2, const char* annotation2)
+    src_file* file, ureg start, ureg end, const char* annotation,
+    src_file* file2, ureg start2, ureg end2, const char* annotation2)
 {
     error_multi_annotated* e = (error_multi_annotated*)error_log_alloc(
         el, sizeof(error_multi_annotated) + sizeof(error_annotated));
     if (!e) return;
     error_fill(
-        &e->err_annot.error, stage, warn, ET_MULTI_ANNOT, message, file,
-        start1);
+        &e->err_annot.error, stage, warn, ET_MULTI_ANNOT, message, file, start);
     e->annot_count = 1;
-    e->err_annot.annotation = annotation1;
-    e->err_annot.end = end1;
-    error_fill_annot((error_annotation*)(e + 1), start2, end2, annotation2);
+    e->err_annot.annotation = annotation;
+    e->err_annot.end = end;
+    error_fill_annot(
+        (error_annotation*)(e + 1), file2, start2, end2, annotation2);
     error_log_report(el, (error*)e);
 }
 void error_log_report_annotated_thrice(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start1, ureg end1, const char* annotation1,
-    ureg start2, ureg end2, const char* annotation2, ureg start3, ureg end3,
-    const char* annotation3)
+    src_file* file, ureg start, ureg end, const char* annotation,
+    src_file* file2, ureg start2, ureg end2, const char* annotation2,
+    src_file* file3, ureg start3, ureg end3, const char* annotation3)
 {
     error_multi_annotated* e = (error_multi_annotated*)error_log_alloc(
         el, sizeof(error_multi_annotated) + 2 * sizeof(error_annotated));
     if (!e) return;
     error_fill(
-        &e->err_annot.error, stage, warn, ET_MULTI_ANNOT, message, file,
-        start1);
+        &e->err_annot.error, stage, warn, ET_MULTI_ANNOT, message, file, start);
     e->annot_count = 2;
-    e->err_annot.annotation = annotation1;
-    e->err_annot.end = end1;
+    e->err_annot.annotation = annotation;
+    e->err_annot.end = end;
     error_annotation* ea = (error_annotation*)(e + 1);
-    error_fill_annot(ea, start2, end2, annotation2);
-    error_fill_annot(ea + 1, start3, end3, annotation3);
+    error_fill_annot(ea, file2, start2, end2, annotation2);
+    error_fill_annot(ea + 1, file3, start3, end3, annotation3);
     error_log_report(el, (error*)e);
 }
 
@@ -230,7 +231,8 @@ int print_filepath(ureg line_nr_offset, src_pos pos, src_file* file)
 #define LINE_BUFFER_SIZE 128
 #define ERR_POINT_BUFFER_SIZE 8
 typedef struct err_point {
-    ureg line; // TODO: handle ranges stretching multiple lines
+    src_file* file;
+    ureg line;
     ureg col_start;
     ureg col_end;
     sreg length_diff_start;
@@ -290,10 +292,61 @@ void print_msg(const char* msg, ureg msg_len)
         pe(msg);
     }
 }
+void printCriticalThreadError(const char* msg)
+{
+    pectc(
+        ANSICOLOR_RED ANSICOLOR_BOLD,
+        "critical error in worker thread: ", ANSICOLOR_CLEAR);
+    pe(msg);
+    pe("\n");
+}
+void printCriticalError(const char* msg)
+{
+    pectc(ANSICOLOR_RED ANSICOLOR_BOLD, "critical error: ", ANSICOLOR_CLEAR);
+    pe(msg);
+    pe("\n");
+}
+void printFileIOError(src_file* f)
+{
+    pectc(ANSICOLOR_RED ANSICOLOR_BOLD, "reporting error: ", ANSICOLOR_CLEAR);
+    pe("file IO error prevents giving error context in '");
+    src_file_print_path(f, true);
+    pe("'\n");
+}
+void printAllocationError()
+{
+    printCriticalError("memory allocation failiure during error reporting");
+}
+#define IO_ERR STATUS_1
+int open_src_file(src_file* file)
+{
+    char pathbuff[256];
+    ureg pathlen = src_file_get_path_len(file);
+    char* path;
+    if (pathlen < 256) {
+        src_file_write_path(file, pathbuff);
+        path = pathbuff;
+    }
+    else {
+        path = tmalloc(pathlen + 1);
+        if (!path) {
+            printAllocationError();
+            return ERR;
+        }
+        src_file_write_path(file, pathbuff);
+    }
+    file->file_stream = fopen(path, "r");
+    if (file->file_stream == NULL) {
+        file->file_stream = (void*)NULL_PTR_PTR;
+        printFileIOError(file);
+        return IO_ERR;
+    }
+    return OK;
+}
 // TODO: allow putting annotation above with  vvv/,,, error here or
 int print_src_line(
-    FILE* fh, src_file* file, ureg line, ureg max_line_length,
-    err_point* ep_start, err_point* ep_end)
+    src_file* file, ureg line, ureg max_line_length, err_point* ep_start,
+    err_point* ep_end)
 {
     while (ep_start && ep_end - 1 > ep_start) {
         if ((ep_end - 1)->message == NULL) {
@@ -313,7 +366,7 @@ int print_src_line(
     ureg start, length;
     src_pos_get_line_bounds(&file->src_map, line, &start, &length);
     bool has_newline = true;
-    if (fseek(fh, start, SEEK_SET)) return ERR;
+    if (fseek(file->file_stream, start, SEEK_SET)) return ERR;
     bool end_of_line = false;
     ureg pos = 0;
     err_point* ep_pos = ep_start;
@@ -329,7 +382,7 @@ int print_src_line(
             else {
                 end_of_line = true;
             }
-            buff_len = fread(buffer, 1, tgt, fh);
+            buff_len = fread(buffer, 1, tgt, file->file_stream);
             if (buff_len != tgt) {
                 pe("\n");
                 return ERR;
@@ -338,7 +391,7 @@ int print_src_line(
         else {
             has_newline = false;
             ureg tgt = LINE_BUFFER_SIZE - 1;
-            buff_len = fread(buffer, 1, tgt, fh);
+            buff_len = fread(buffer, 1, tgt, file->file_stream);
             if (buff_len == 0) {
                 length = pos;
                 break;
@@ -523,8 +576,14 @@ int print_src_line(
     }
     return OK;
 }
+static src_file* error_main_file = NULL;
 int cmp_err_point(const err_point* l, const err_point* r)
 {
+    if (l->file != r->file) {
+        if (l->file == error_main_file) return -1;
+        if (r->file == error_main_file) return 1;
+        return ((ureg)l->file > (ureg)r->file) ? 1 : -1;
+    }
     if (l->line != r->line) return (l->line > r->line) ? 1 : -1;
     if (r->message == NULL) return -1;
     if (l->message == NULL) return 1;
@@ -535,12 +594,12 @@ int cmp_err_point(const err_point* l, const err_point* r)
 #define SORT_CMP(x, y) cmp_err_point(&(x), &(y))
 #include "sort.h"
 ureg extend_em(
-    error* e, err_point* err_points, const char* annot, src_pos pos,
+    src_file* file, err_point* err_points, const char* annot, src_pos pos,
     src_pos end)
 {
     if (end.column == 0 && end.line != pos.line) {
         ureg lstart, llength;
-        src_pos_get_line_bounds(&e->file->src_map, pos.line, &lstart, &llength);
+        src_pos_get_line_bounds(&file->src_map, pos.line, &lstart, &llength);
         end.line--;
         end.column = llength - 1;
     }
@@ -552,11 +611,12 @@ ureg extend_em(
     else {
         err_points[0].message = "";
         ureg lstart, llength;
-        src_pos_get_line_bounds(&e->file->src_map, pos.line, &lstart, &llength);
+        src_pos_get_line_bounds(&file->src_map, pos.line, &lstart, &llength);
         err_points[0].col_end = llength - 1;
+        err_points[1].message_color = err_points[0].message_color;
+        err_points[1].squigly_color = err_points[0].squigly_color;
+        err_points[1].file = err_points[0].file;
         if (pos.line + 1 == end.line) {
-            err_points[1].message_color = err_points[0].message_color;
-            err_points[1].squigly_color = err_points[0].squigly_color;
             err_points[1].line = end.line;
             err_points[1].col_start = 0;
             err_points[1].col_end = end.column;
@@ -565,26 +625,23 @@ ureg extend_em(
         }
         else if (pos.line + 2 == end.line) {
             src_pos_get_line_bounds(
-                &e->file->src_map, pos.line + 1, &lstart, &llength);
+                &file->src_map, pos.line + 1, &lstart, &llength);
             err_points[1].message = "";
-            err_points[1].message_color = err_points[0].message_color;
-            err_points[1].squigly_color = err_points[0].squigly_color;
             err_points[1].col_start = 0;
             err_points[1].col_end = llength - 1;
             err_points[1].line = pos.line + 1;
             src_pos_get_line_bounds(
-                &e->file->src_map, pos.line + 2, &lstart, &llength);
+                &file->src_map, pos.line + 2, &lstart, &llength);
             err_points[2].message_color = err_points[0].message_color;
             err_points[2].squigly_color = err_points[0].squigly_color;
             err_points[2].col_start = 0;
             err_points[2].col_end = end.column;
             err_points[2].message = annot;
             err_points[2].line = end.line;
+            err_points[2].file = err_points[1].file;
             return 3;
         }
         else {
-            err_points[1].message_color = err_points[0].message_color;
-            err_points[1].squigly_color = err_points[0].squigly_color;
             err_points[1].message = annot;
             err_points[1].col_start = 0;
             err_points[1].col_end = end.column;
@@ -593,7 +650,7 @@ ureg extend_em(
         }
     }
 }
-int report_error(error* e, FILE* fh, src_file* file)
+int report_error(error* e)
 {
     static err_point err_points[ERR_POINT_BUFFER_SIZE];
     pec(ANSICOLOR_BOLD);
@@ -611,8 +668,13 @@ int report_error(error* e, FILE* fh, src_file* file)
     }
     pe(e->message);
     pect(ANSICOLOR_CLEAR, "\n");
-
-    if (fh != NULL) {
+    if (!e->file) return OK;
+    if (e->file->file_stream == NULL) {
+        int r = open_src_file(e->file);
+        if (r == IO_ERR) return OK;
+        if (r != OK) return ERR;
+    }
+    if (e->file->file_stream != (void*)NULL_PTR_PTR) {
         ureg err_point_count;
         src_pos pos = src_map_get_pos(&e->file->src_map, e->position);
 
@@ -620,31 +682,41 @@ int report_error(error* e, FILE* fh, src_file* file)
         switch (e->type) {
             case ET_1_ANNOT: {
                 error_annotated* ea = (error_annotated*)e;
+                err_points[0].file = e->file;
                 err_points[0].line = pos.line;
                 err_points[0].col_start = pos.column;
                 err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
                 err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
                 src_pos end = src_map_get_pos(&e->file->src_map, ea->end);
                 err_point_count =
-                    extend_em(e, err_points, ea->annotation, pos, end);
+                    extend_em(e->file, err_points, ea->annotation, pos, end);
             } break;
             case ET_MULTI_ANNOT: {
+                // TODO: cap at index 3
                 static char* msg_colors[] = {ANSICOLOR_BOLD ANSICOLOR_RED,
                                              ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
                                              ANSICOLOR_BOLD ANSICOLOR_CYAN};
                 error_multi_annotated* ema = (error_multi_annotated*)e;
                 err_points[0].line = pos.line;
+                err_points[0].file = e->file;
                 err_points[0].col_start = pos.column;
                 err_points[0].message_color = msg_colors[0];
                 err_points[0].squigly_color = msg_colors[0];
                 src_pos end =
                     src_map_get_pos(&e->file->src_map, ema->err_annot.end);
                 err_point_count = extend_em(
-                    e, err_points, ema->err_annot.annotation, pos, end);
+                    e->file, err_points, ema->err_annot.annotation, pos, end);
                 error_annotation* ea = (error_annotation*)(ema + 1);
                 for (ureg i = 0; i < ema->annot_count; i++) {
+                    if (ea->file->file_stream == (void*)NULL_PTR_PTR) return OK;
+                    if (ea->file->file_stream == NULL) {
+                        int r = open_src_file(ea->file);
+                        if (r == IO_ERR) return OK;
+                        if (r != OK) return ERR;
+                    }
                     src_pos posi =
-                        src_map_get_pos(&e->file->src_map, ea->start);
+                        src_map_get_pos(&ea->file->src_map, ea->start);
+                    err_points[err_point_count].file = ea->file;
                     err_points[err_point_count].line = posi.line;
                     err_points[err_point_count].col_start = posi.column;
                     err_points[err_point_count].col_end =
@@ -654,10 +726,10 @@ int report_error(error* e, FILE* fh, src_file* file)
                         (msg_colors[i + 1]);
                     err_points[err_point_count].squigly_color =
                         (msg_colors[i + 1]);
-                    end = src_map_get_pos(&e->file->src_map, ea->end);
+                    end = src_map_get_pos(&ea->file->src_map, ea->end);
                     err_point_count += extend_em(
-                        e, &err_points[err_point_count], ea->annotation, posi,
-                        end);
+                        ea->file, &err_points[err_point_count], ea->annotation,
+                        posi, end);
                     ea++;
                 }
             } break;
@@ -673,37 +745,49 @@ int report_error(error* e, FILE* fh, src_file* file)
         }
 
         ureg line_nr_offset = get_line_nr_offset(max_line);
-        if (print_filepath(line_nr_offset, pos, file)) return ERR;
-
+        if (print_filepath(line_nr_offset, pos, e->file)) return ERR;
+        error_main_file = e->file;
         err_points_grail_sort(err_points, err_point_count);
 
         ureg start = 0;
         ureg i = 1;
-        while (start < err_point_count) {
+        src_file* file = e->file;
+        while (true) {
             ureg line = err_points[start].line;
-            while (i < err_point_count && err_points[i].line == line) i++;
+            while (i < err_point_count && err_points[i].line == line &&
+                   err_points[i].file == file) {
+                i++;
+            }
             if (print_src_line(
-                    fh, file, line, line_nr_offset, &err_points[start],
+                    file, line, line_nr_offset, &err_points[start],
                     &err_points[i]))
                 return ERR;
-            if (start + 1 < err_point_count) {
-                if (err_points[start + 1].line > line + 2) {
+            start = i;
+            if (start == err_point_count) break;
+            if (err_points[start].file != file) {
+                file = err_points[start].file;
+                src_pos sp;
+                sp.line = err_points[start].line;
+                sp.column = err_points[start].col_start;
+                print_filepath(1, sp, file);
+            }
+            else {
+                if (err_points[start].line > line + 2) {
                     pectct(
                         ANSICOLOR_BOLD ANSICOLOR_BLUE, "...", ANSICOLOR_CLEAR,
                         "\n");
                 }
-                else if (err_points[start + 1].line == line + 2) {
+                else if (err_points[start].line == line + 2) {
                     if (print_src_line(
-                            fh, file, line + 1, line_nr_offset, NULL, NULL))
+                            file, line + 1, line_nr_offset, NULL, NULL))
                         return ERR;
                 }
             }
-            start = i;
         }
     }
-    else if (file != NULL) {
+    else {
         if (print_filepath(
-                1, src_map_get_pos(&e->file->src_map, e->position), file))
+                1, src_map_get_pos(&e->file->src_map, e->position), e->file))
             return ERR;
     }
     return OK;
@@ -726,30 +810,6 @@ int compare_errs(const error* a, const error* b)
 #define SORT_TYPE error*
 #define SORT_CMP(x, y) compare_errs(x, y)
 #include "sort.h"
-int printCriticalThreadError(const char* msg)
-{
-    pectc(
-        ANSICOLOR_RED ANSICOLOR_BOLD,
-        "critical error in worker thread: ", ANSICOLOR_CLEAR);
-    pe(msg);
-    pe("\n");
-    return OK;
-}
-int printCriticalError(const char* msg)
-{
-    pectc(ANSICOLOR_RED ANSICOLOR_BOLD, "critical error: ", ANSICOLOR_CLEAR);
-    pe(msg);
-    pe("\n");
-    return OK;
-}
-int printFileIOError(src_file* f)
-{
-    pectc(ANSICOLOR_RED ANSICOLOR_BOLD, "reporting error: ", ANSICOLOR_CLEAR);
-    pe("file IO error prevents giving error context in '");
-    src_file_print_path(f, true);
-    pe("'\n");
-    return OK;
-}
 void master_error_log_unwind()
 {
     ureg err_count = 0;
@@ -765,7 +825,7 @@ void master_error_log_unwind()
     if (err_count != 0) {
         error** errors = (error**)tmalloc(err_count * sizeof(error*));
         if (errors != NULL) {
-            // insert backwards revert link list order
+            // insert backwards to revert linked list order
             error** pos = errors + err_count - 1;
             el = MASTER_ERROR_LOG.error_logs;
             while (el != NULL) {
@@ -779,51 +839,28 @@ void master_error_log_unwind()
             }
             // stable, in place sorting
             errors_grail_sort(errors, err_count);
-            src_file* file = NULL;
-            FILE* fh = NULL;
             for (error** e = errors; e != errors + err_count; e++) {
-                if (file != (*e)->file) {
-                    if (fh) {
-                        fclose(fh);
-                        fh = NULL;
-                    }
-                    file = (*e)->file;
-                    if (file != NULL) {
-                        char pathbuff[256];
-                        ureg pathlen = src_file_get_path_len(file);
-                        char* path;
-                        if (pathlen < 256) {
-                            src_file_write_path(file, pathbuff);
-                            path = pathbuff;
-                        }
-                        else {
-                            path = tmalloc(pathlen + 1);
-                            src_file_write_path(file, pathbuff);
-                        }
-                        fh = fopen(path, "r");
-                        if (fh == NULL) {
-                            printFileIOError(file);
-                        }
-                    }
-                }
-                if (report_error(*e, fh, file)) {
-                    printFileIOError(file);
-                    if (fh) {
-                        fclose(fh);
-                        fh = NULL;
-                    }
+                if (report_error(*e)) {
+                    break;
                 }
                 if (e != errors + err_count - 1 ||
                     MASTER_ERROR_LOG.global_error_count > 0 || errors == NULL) {
                     pe("\n");
                 }
             }
-            if (fh) fclose(fh);
             tfree(errors);
+            file_map_iterator fmi;
+            file_map_iterator_begin(&fmi, &TAUC.file_map);
+            while (true) {
+                src_file* f = file_map_iterator_next_file(&fmi);
+                if (!f) break;
+                if (f->file_stream && f->file_stream != NULL_PTR_PTR) {
+                    fclose(f->file_stream);
+                }
+            }
         }
         else {
-            printCriticalError(
-                "memory allocation failiure during error reporting");
+            printAllocationError();
         }
     }
     el = MASTER_ERROR_LOG.error_logs;
