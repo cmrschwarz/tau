@@ -491,7 +491,9 @@ sym_fill_srange(parser* p, stmt* s, ureg start, ureg end)
     srl.start = start;
     srl.end = end;
     if (stmt_flags_get_access_mod(s->flags) != AM_UNSPECIFIED) {
-        srl.file = p->tk.file;
+        if (ast_node_is_open_scope(stack_peek(&p->tk.tc->stack))) {
+            srl.file = p->tk.file;
+        }
     }
     s->srange = src_range_large_pack(p->tk.tc, &srl);
     if (s->srange == SRC_RANGE_INVALID) return PE_FATAL;
