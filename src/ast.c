@@ -9,13 +9,15 @@ src_file* open_scope_get_file(open_scope* s)
 }
 bool ast_node_is_open_scope(ast_node* s)
 {
-    switch (*s) {
-        case OSC_MODULE:
-        case OSC_EXTEND:
-        case OSC_EXTEND_GENERIC:
-        case OSC_MODULE_GENERIC: return true;
-        default: return false;
-    }
+    return *s <= OSC_LAST_OSC_ID;
+}
+bool ast_node_is_scope(ast_node* s)
+{
+    return *s <= SC_LAST_SC_ID;
+}
+bool ast_node_is_symbol(ast_node* s)
+{
+    return *s <= SYM_LAST_SYM_ID;
 }
 bool ast_node_is_expr(ast_node* s)
 {

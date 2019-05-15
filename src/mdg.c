@@ -317,29 +317,16 @@ bool scope_find_import(
 {
     stmt* st = s->body.children;
     while (st) {
-        switch (st->type) {
-            case STMT_IMPORT: {
-                stmt_import* i = (stmt_import*)st;
-                if (module_import_find_import(
-                        &i->module_import, import, tgt_sym)) {
-                    *tgt = i;
-                    return true;
-                }
-            } break;
-            case SYM_FUNC:
-            case SYM_FUNC_GENERIC:
-            case SC_STRUCT:
-            case SC_STRUCT_GENERIC:
-            case SC_TRAIT:
-            case SC_TRAIT_GENERIC:
-            case OSC_EXTEND:
-            case OSC_EXTEND_GENERIC:
-            case OSC_MODULE:
-            case OSC_MODULE_GENERIC: {
-                if (scope_find_import((scope*)st, import, tgt, tgt_sym))
-                    return true;
-            } break;
-            default: break;
+        if (ast_node_is_scope((ast_node*)st)) {
+            if (scope_find_import((scope*)st, import, tgt, tgt_sym))
+                return true;
+        }
+        else if (st->type == STMT_IMPORT) {
+            stmt_import* i = (stmt_import*)st;
+            if (module_import_find_import(&i->module_import, import, tgt_sym)) {
+                *tgt = i;
+                return true;
+            }
         }
         st = st->next;
     }

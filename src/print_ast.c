@@ -235,26 +235,26 @@ void print_astn(stmt* astn, ureg indent)
             p("= ");
             print_expr(ca->value, indent);
         } break;
-        case SYM_FUNC: {
-            sym_func* f = (sym_func*)astn;
+        case SC_FUNC: {
+            sc_func* f = (sc_func*)astn;
             p("func ");
-            pu(f->symbol.name);
+            pu(f->scope.symbol.name);
             p("(");
             print_sym_params(f->params, indent);
             pc(')');
-            print_body_braced(&f->body, indent);
+            print_body_braced(&f->scope.body, indent);
         } break;
-        case SYM_FUNC_GENERIC: {
-            sym_func_generic* f = (sym_func_generic*)astn;
+        case SC_FUNC_GENERIC: {
+            sc_func_generic* f = (sc_func_generic*)astn;
             p("func ");
-            pu(f->symbol.name);
+            pu(f->scope.symbol.name);
             p("[");
             print_sym_params(f->generic_params, indent);
             pc(']');
             p("(");
             print_sym_params(f->params, indent);
             pc(')');
-            print_body_braced(&f->body, indent);
+            print_body_braced(&f->scope.body, indent);
         } break;
         case SC_STRUCT: {
             sc_struct* s = (sc_struct*)astn;

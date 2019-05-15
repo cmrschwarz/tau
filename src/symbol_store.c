@@ -59,6 +59,7 @@ int symbol_store_setup_table(symbol_store* ss)
 void symbol_store_destruct_table(symbol_store* ss)
 {
     tfree(ss->table);
+    ss->table = NULL;
 }
 symbol* symbol_store_insert(symbol_store ss, symbol* s)
 {

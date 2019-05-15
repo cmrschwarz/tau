@@ -42,7 +42,11 @@ resolve_error mdg_node_add_sym(resolver* r, mdg_node* m, symbol* sym)
     }
     return RE_OK;
 }
-resolve_error map_module_declarations(resolver* r, mdg_node* m)
+resolve_error body_add_declarations(resolver* r, symbol* parent, body* tgt)
+{
+    // TODO
+}
+resolve_error mdg_node_add_declarations(resolver* r, mdg_node* m)
 {
     symbol_store_init(&m->ss);
     aseglist_iterator tgti;
@@ -54,8 +58,9 @@ resolve_error map_module_declarations(resolver* r, mdg_node* m)
     }
     if (symbol_store_setup_table(&m->ss)) return RE_FATAL;
     aseglist_iterator_begin(&tgti, &m->targets);
-    osci = aseglist_iterator_next(&tgti);
-    while (osci) {
+    while (true) {
+        osci = aseglist_iterator_next(&tgti);
+        if (!osci) break;
         if (symbol_store_setup_table(&osci->scope.body.ss)) {
             do {
                 // to prevent the uninitialized tables from being freed
@@ -66,27 +71,24 @@ resolve_error map_module_declarations(resolver* r, mdg_node* m)
         }
         stmt* si = osci->scope.body.children;
         while (si) {
-            switch (si->type) {
-                case OSC_MODULE:
-                case SYM_FUNC:
-                case SYM_FUNC_GENERIC:
-                case SYM_VAR:
-                case SYM_VAR_UNINITIALIZED:
-                case SYM_NAMED_USING: {
-                    symbol* sym = (symbol*)si;
-                    si = si->next;
-                    access_modifier am =
-                        stmt_flags_get_access_mod(sym->stmt.flags);
-                    if (am == AM_SCOPE_LOCAL) {
-                        osc_add_sym(r, osci, sym);
-                    }
-                    else {
-                    }
-                } break;
-                default: si = si->next;
+            if (ast_node_is_symbol((ast_node*)si)) {
+                symbol* sym = (symbol*)si;
+                access_modifier am = stmt_flags_get_access_mod(sym->stmt.flags);
+                if (am == AM_SCOPE_LOCAL) {
+                    osc_add_sym(r, osci, sym);
+                }
+                else {
+                    mdg_node_add_sym(r, m, sym);
+                }
+                if (ast_node_is_scope((ast_node*)si)) {
+                    body_add_declarations(r, sym, &((scope*)sym)->body);
+                }
             }
+            else if (si->type == STMT_EXPRESSION) {
+                // TODO
+            }
+            si = si->next;
         }
-        osci = aseglist_iterator_next(&tgti);
     }
     return OK;
 }
@@ -107,7 +109,7 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
     r->end = end;
     resolve_error re;
     for (mdg_node** i = start; i != end; i++) {
-        re = map_module_declarations(r, *i);
+        re = mdg_node_add_declarations(r, *i);
         if (re) {
             if (re == RE_FATAL) {
             }

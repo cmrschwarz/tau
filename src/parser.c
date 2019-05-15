@@ -215,7 +215,8 @@ bool expr_allowed_to_drop_semicolon(expr* e)
 bool stmt_allowed_to_drop_semicolon(stmt* s)
 {
     switch (s->type) {
-        case SYM_FUNC:
+        case SC_FUNC:
+        case SC_FUNC_GENERIC:
         case OSC_MODULE:
         case OSC_MODULE_GENERIC:
         case OSC_EXTEND:
@@ -328,8 +329,8 @@ char* get_context_msg(parser* p, ast_node* node)
 {
     if (!node) return NULL;
     switch ((ast_node_type)*node) {
-        case SYM_FUNC: return "in this function";
-        case SYM_FUNC_GENERIC: return "in this generic function";
+        case SC_FUNC: return "in this function";
+        case SC_FUNC_GENERIC: return "in this generic function";
         case SC_STRUCT: return "in this struct";
         case SC_STRUCT_GENERIC: return "in this generic struct";
         case SC_TRAIT: return "in this struct";
@@ -1992,25 +1993,25 @@ parse_error parse_func_decl(
     if (!name) return PE_FATAL;
     tk_void(&p->tk);
     PEEK(p, t);
-    symbol* fn;
+    scope* fn;
     bool generic;
     if (t->type == TT_BRACKET_OPEN) {
         generic = true;
-        fn = alloc_perm(p, sizeof(sym_func_generic));
+        fn = alloc_perm(p, sizeof(sc_func_generic));
         if (!fn) return PE_FATAL;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((sym_func_generic*)fn)->generic_params, true, start, decl_end,
+            p, &((sc_func_generic*)fn)->generic_params, true, start, decl_end,
             "in this function declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
         generic = false;
-        fn = alloc_perm(p, sizeof(sym_func));
+        fn = alloc_perm(p, sizeof(sc_func));
         if (!fn) return PE_FATAL;
     }
-    fn->name = name;
+    fn->symbol.name = name;
     pe = sym_fill_srange(p, (symbol*)fn, start, decl_end);
     if (pe) return pe;
     if (t->type != TT_PAREN_OPEN) {
@@ -2022,17 +2023,15 @@ parse_error parse_func_decl(
     }
     tk_void(&p->tk);
     sym_param** pd =
-        generic ? &((sym_func_generic*)fn)->params : &((sym_func*)fn)->params;
+        generic ? &((sc_func_generic*)fn)->params : &((sc_func*)fn)->params;
     pe = parse_param_list(
         p, pd, false, start, decl_end, "in this function declaration");
     if (pe) return pe;
-    fn->stmt.type = generic ? SYM_FUNC_GENERIC : SYM_FUNC;
-    fn->stmt.flags = flags;
+    fn->symbol.stmt.type = generic ? SC_FUNC_GENERIC : SC_FUNC;
+    fn->symbol.stmt.flags = flags;
     *n = (stmt*)fn;
     curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
-    return parse_body(
-        p, generic ? &((sym_func_generic*)fn)->body : &((sym_func*)fn)->body,
-        (ast_node*)fn);
+    return parse_scope_body(p, fn);
 }
 parse_error parse_struct_decl(
     parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** n)

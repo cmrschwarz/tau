@@ -13,32 +13,33 @@ typedef enum PACK_ENUM ast_node_type {
     OSC_MODULE_GENERIC,
     OSC_EXTEND,
     OSC_EXTEND_GENERIC,
+    OSC_LAST_OSC_ID = OSC_EXTEND_GENERIC,
 
     SC_STRUCT,
     SC_STRUCT_GENERIC,
     SC_TRAIT,
     SC_TRAIT_GENERIC,
+    SC_FUNC,
+    SC_FUNC_GENERIC,
+    SC_LAST_SC_ID = SC_FUNC_GENERIC,
 
-    SYM_FUNC,
-    SYM_FUNC_GENERIC,
-
-    STMT_IMPORT,
-    STMT_USING,
     SYM_NAMED_USING,
     SYM_VAR,
     SYM_VAR_UNINITIALIZED,
     SYM_PARAM,
+    SYM_LAST_SYM_ID = SYM_PARAM,
+
+    STMT_IMPORT,
+    STMT_USING,
 
     STMT_EXPRESSION,
     STMT_COMPOUND_ASSIGN,
-    STMT_LAST_STMT_ID = STMT_COMPOUND_ASSIGN,
-
-    EXPR_BLOCK,
-
-    STMT_GOTO,
     STMT_RETURN,
     STMT_CONTINUE,
     STMT_BREAK,
+    STMT_LAST_STMT_ID = STMT_BREAK,
+
+    EXPR_BLOCK,
 
     EXPR_MATCH,
     EXPR_IF,
@@ -321,18 +322,16 @@ typedef struct sym_param {
     expr* default_value;
 } sym_param;
 
-typedef struct sym_func {
-    symbol symbol;
+typedef struct sc_func {
+    scope scope;
     sym_param* params;
-    body body;
-} sym_func;
+} sc_func;
 
-typedef struct sym_func_generic {
-    symbol symbol;
+typedef struct sc_func_generic {
+    scope scope;
     sym_param* generic_params;
     sym_param* params;
-    body body;
-} sym_func_generic;
+} sc_func_generic;
 
 typedef struct sc_struct {
     scope scope;
@@ -473,6 +472,8 @@ typedef struct expr_lambda {
 
 src_range ast_node_get_src_range(ast_node* s);
 bool ast_node_is_open_scope(ast_node* s);
+bool ast_node_is_scope(ast_node* s);
+bool ast_node_is_symbol(ast_node* s);
 bool ast_node_is_expr(ast_node* s);
 src_file* open_scope_get_file(open_scope* s);
 src_file* stmt_get_file(stmt* s);
