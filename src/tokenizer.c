@@ -138,9 +138,10 @@ static inline int tk_load_file_buffer(tokenizer* tk, char** holding)
     }
     tk->file_buffer_pos = tk->file_buffer_head;
     ureg siz = fread(
-        tk->file_buffer_head, 1, buff_size - size_to_keep, tk->file_stream);
+        tk->file_buffer_head, 1, buff_size - size_to_keep,
+        tk->file->file_stream);
     if (siz == 0) {
-        if (ferror(tk->file_stream)) {
+        if (ferror(tk->file->file_stream)) {
             tk->status = TK_STATUS_IO_ERROR;
             error* e =
                 (error*)error_log_alloc(&tk->tc->error_log, sizeof(error));
@@ -199,26 +200,27 @@ int tk_init(tokenizer* tk, thread_context* tc)
     tk->file_buffer_end = ptradd(tk->file_buffer_start, size);
     tk->token_buffer_end = tk->token_buffer + TK_TOKEN_BUFFER_SIZE;
     tk->loaded_tokens_start = tk->token_buffer; // head is set on open_file
-    tk->file_stream = NULL;
     return 0;
 }
 void tk_fin(tokenizer* tk)
 {
     tfree(tk->file_buffer_start);
-    if (tk->file_stream != NULL) tk_close_file(tk);
+    if (tk->file) {
+        if (tk->file->file_stream) tk_close_file(tk);
+    }
 }
 
 int tk_open_stream(tokenizer* tk, src_file* f, FILE* stream)
 {
     tk->file = f;
-    tk->file_stream = stream;
+    tk->file->file_stream = stream;
     tk->file_buffer_pos = tk->file_buffer_start;
     tk->file_buffer_head = tk->file_buffer_start;
     tk->loaded_tokens_start->start = 0;
     tk->loaded_tokens_head = tk->loaded_tokens_start;
 
     if (tk_load_file_buffer(tk, NULL)) {
-        fclose(tk->file_stream);
+        fclose(tk->file->file_stream);
         return ERR;
     }
     tk->status = TK_STATUS_OK;
@@ -249,8 +251,8 @@ int tk_open_file(tokenizer* tk, src_file* f)
 }
 int tk_close_file(tokenizer* tk)
 {
-    int r = fclose(tk->file_stream);
-    tk->file_stream = NULL;
+    int r = fclose(tk->file->file_stream);
+    tk->file->file_stream = NULL;
     return r;
 }
 

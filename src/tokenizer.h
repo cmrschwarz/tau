@@ -17,7 +17,6 @@ typedef enum PACK_ENUM tk_status {
 #define TK_TOKEN_BUFFER_SIZE 32
 #define TK_MIN_FILE_READ_SIZE 4096
 typedef struct {
-    FILE* file_stream;
     src_file* file;
     token token_buffer[TK_TOKEN_BUFFER_SIZE];
     token* token_buffer_end;

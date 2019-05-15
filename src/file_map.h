@@ -6,6 +6,7 @@
 #include "utils/rwslock.h"
 #include "utils/string.h"
 #include "utils/threading.h"
+#include <stdio.h>
 
 typedef struct src_dir src_dir;
 
@@ -36,6 +37,7 @@ typedef struct src_file {
     src_file_stage stage;
     src_map src_map;
     osc_extend root;
+    FILE* file_stream;
 } source_file;
 
 void src_file_print_path(src_file* f, bool to_stderr);

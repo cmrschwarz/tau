@@ -40,6 +40,7 @@ src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
         return ERR;
     }
     f->stage = SFS_UNNEDED;
+    f->file_stream = NULL;
     return OK;
 }
 int src_file_require(
