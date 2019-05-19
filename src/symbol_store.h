@@ -1,5 +1,5 @@
 #pragma once
-#include "access_modifiers.h"
+#include "stmt_flags.h"
 #include "utils/string.h"
 typedef struct symbol symbol;
 

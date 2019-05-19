@@ -452,7 +452,6 @@ static inline void parser_error_unexpected_token(
 }
 static inline void stmt_init(stmt* s, ast_node_type type)
 {
-    s->eflags = ERR_FLAGS_DEFAULT;
     s->flags = STMT_FLAGS_DEFAULT;
     s->type = type;
 }
@@ -813,7 +812,6 @@ parse_uninitialized_var_in_tuple(parser* p, token* t, expr** ex)
 {
     sym_var_uninitialized* v = alloc_perm(p, sizeof(tuple_ident_node));
     v->symbol.stmt.type = SYM_VAR_UNINITIALIZED;
-    v->symbol.stmt.eflags = ERR_FLAGS_DEFAULT;
     v->symbol.stmt.flags = STMT_FLAGS_DEFAULT;
     stmt_flags_set_compound_decl(&v->symbol.stmt.flags);
     v->symbol.name = alloc_string_perm(p, t->str);
@@ -850,7 +848,6 @@ build_ident_node_in_tuple(parser* p, token* t, expr** ex)
     tuple_ident_node* tin = alloc_perm(p, sizeof(tuple_ident_node));
     sym_var_uninitialized* v = &tin->var;
     v->symbol.stmt.type = SYM_VAR_UNINITIALIZED;
-    v->symbol.stmt.eflags = ERR_FLAGS_DEFAULT;
     v->symbol.stmt.flags = STMT_FLAGS_DEFAULT;
     v->symbol.name = alloc_string_perm(p, t->str);
     if (!v->symbol.name) return PE_FATAL;
@@ -2313,7 +2310,6 @@ static inline parse_error parse_compound_assignment_after_equals(
     ca->elements = elements;
     ca->stmt.type = STMT_COMPOUND_ASSIGN;
     ca->stmt.flags = STMT_FLAGS_DEFAULT;
-    ca->stmt.eflags = ERR_FLAGS_DEFAULT;
     if (had_colon) stmt_flags_set_compound_decl(&ca->stmt.flags);
     parse_error pe = parse_expression(p, &ca->value);
     token* t;

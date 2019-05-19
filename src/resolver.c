@@ -9,20 +9,26 @@ int resolver_init(resolver* r, thread_context* tc)
 void resolver_fin(resolver* r)
 {
 }
-resolve_error osc_add_sym(resolver* r, open_scope* osc, symbol* sym)
+resolve_error symbol_redefinition_error(
+    resolver* r, src_range_large sr_old, src_range_large sr_new)
 {
-    symbol* res = symbol_store_insert(osc->scope.body.ss, sym);
+    error_log_report_annotated_twice(
+        &r->tc->error_log, ES_RESOLVER, false, "symbol redeclaration",
+        sr_new.file, sr_new.start, sr_new.end,
+        "a symbol with this name is already defined", sr_old.file, sr_old.start,
+        sr_old.end, "previously defined here");
+    return RE_SYMBOL_REDECLARATION;
+}
+resolve_error body_add_sym(resolver* r, body* b, src_file* f, symbol* sym)
+{
+    symbol* res = symbol_store_insert(b->ss, sym);
     if (res) {
         src_range_large sr_new, sr_old;
         src_range_unpack(sym->stmt.srange, &sr_new);
         src_range_unpack(res->stmt.srange, &sr_old);
-        src_file* f = open_scope_get_file(osc);
-        error_log_report_annotated_twice(
-            &r->tc->error_log, ES_RESOLVER, false, "symbol redeclaration", f,
-            sr_new.start, sr_new.end,
-            "a symbol with this name is already defined", f, sr_old.start,
-            sr_old.end, "previously defined here");
-        return RE_SYMBOL_REDECLARATION;
+        sr_old.file = f;
+        sr_new.file = f;
+        return symbol_redefinition_error(r, sr_old, sr_new);
     }
     return RE_OK;
 }
@@ -33,18 +39,87 @@ resolve_error mdg_node_add_sym(resolver* r, mdg_node* m, symbol* sym)
         src_range_large sr_new, sr_old;
         src_range_unpack(sym->stmt.srange, &sr_new);
         src_range_unpack(res->stmt.srange, &sr_old);
-        error_log_report_annotated_twice(
-            &r->tc->error_log, ES_RESOLVER, false, "symbol redeclaration",
-            sr_new.file, sr_new.start, sr_new.end,
-            "a symbol with this name is already defined", sr_old.file,
-            sr_old.start, sr_old.end, "previously defined here");
-        return RE_SYMBOL_REDECLARATION;
+        return symbol_redefinition_error(r, sr_old, sr_new);
     }
     return RE_OK;
 }
-resolve_error body_add_declarations(resolver* r, symbol* parent, body* tgt)
+resolve_error
+body_add_declarations(resolver* r, mdg_node* mdg, body* tgt, src_file* f);
+resolve_error expr_add_declarations(resolver* r, expr* ex, src_file* f)
+{
+    switch (ex->type) {
+        case EXPR_OP_UNARY:
+            return expr_add_declarations(r, ((expr_op_unary*)ex)->child, f);
+        case EXPR_OP_BINARY: {
+            expr_op_binary* eob = (expr_op_binary*)ex;
+            resolve_error re = expr_add_declarations(r, eob->lhs, f);
+            if (re) return re;
+            re = expr_add_declarations(r, eob->rhs, f);
+            return re;
+        }
+        case EXPR_BLOCK:
+            return body_add_declarations(r, NULL, &((expr_block*)ex)->body, f);
+        case EXPR_ARRAY: {
+            expr** fst = ((expr_array*)ex)->elements;
+            while (*fst) {
+                resolve_error re = expr_add_declarations(r, *fst, f);
+                if (re) return re;
+            }
+            return RE_OK;
+        }
+        case EXPR_DO: {
+        }
+        default: return RE_OK;
+    }
+}
+resolve_error
+compound_assign_add_declarations(resolver* r, stmt_compound_assignment* sc)
 {
     // TODO
+}
+resolve_error
+body_add_declarations(resolver* r, mdg_node* mdg, body* tgt, src_file* f)
+{
+    // Order of resolving: decls, pp stmts (in order) & usings,
+    resolve_error re = symbol_store_setup_table(&tgt->ss);
+    if (re) return re;
+    stmt** prev_next = &tgt->children;
+    stmt* si = *prev_next;
+    while (si) {
+        if (ast_node_is_symbol((ast_node*)si)) {
+            symbol* sym = (symbol*)si;
+            *prev_next = si->next;
+            si = si->next;
+            if (mdg) {
+                access_modifier am = stmt_flags_get_access_mod(sym->stmt.flags);
+                if (am == AM_SCOPE_LOCAL) {
+                    re = body_add_sym(r, tgt, f, sym);
+                }
+                else {
+                    re = mdg_node_add_sym(r, mdg, sym);
+                }
+            }
+            else {
+                re = body_add_sym(r, tgt, f, sym);
+            }
+            if (re) break;
+            if (ast_node_is_scope((ast_node*)sym)) {
+                re = body_add_declarations(r, NULL, &((scope*)sym)->body, f);
+                if (re) break;
+            }
+        }
+        else if (si->type == STMT_EXPRESSION) {
+            re = expr_add_declarations(r, ((stmt_expr*)si)->expr, f);
+            if (re) break;
+            *prev_next = si->next;
+            si = si->next;
+        }
+        else {
+            prev_next = &si->next;
+            si = si->next;
+        }
+    }
+    return re;
 }
 resolve_error mdg_node_add_declarations(resolver* r, mdg_node* m)
 {
@@ -58,39 +133,23 @@ resolve_error mdg_node_add_declarations(resolver* r, mdg_node* m)
     }
     if (symbol_store_setup_table(&m->ss)) return RE_FATAL;
     aseglist_iterator_begin(&tgti, &m->targets);
+    resolve_error re = RE_OK;
     while (true) {
         osci = aseglist_iterator_next(&tgti);
         if (!osci) break;
-        if (symbol_store_setup_table(&osci->scope.body.ss)) {
-            do {
-                // to prevent the uninitialized tables from being freed
-                osci->scope.body.ss.table = NULL;
-                osci = aseglist_iterator_next(&tgti);
-            } while (osci);
-            return RE_FATAL;
-        }
-        stmt* si = osci->scope.body.children;
-        while (si) {
-            if (ast_node_is_symbol((ast_node*)si)) {
-                symbol* sym = (symbol*)si;
-                access_modifier am = stmt_flags_get_access_mod(sym->stmt.flags);
-                if (am == AM_SCOPE_LOCAL) {
-                    osc_add_sym(r, osci, sym);
-                }
-                else {
-                    mdg_node_add_sym(r, m, sym);
-                }
-                if (ast_node_is_scope((ast_node*)si)) {
-                    body_add_declarations(r, sym, &((scope*)sym)->body);
-                }
-            }
-            else if (si->type == STMT_EXPRESSION) {
-                // TODO
-            }
-            si = si->next;
+        re = body_add_declarations(
+            r, m, &osci->scope.body, open_scope_get_file(osci));
+        if (re) break;
+    }
+    if (re) {
+        while (true) {
+            osci = aseglist_iterator_next(&tgti);
+            if (!osci) break;
+            // to prevent the uninitialized tables from being freed
+            osci->scope.body.ss.table = NULL;
         }
     }
-    return OK;
+    return re;
 }
 resolve_error
 resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)

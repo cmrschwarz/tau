@@ -26,14 +26,14 @@ func main(args: String[]){
         }
         (x: int) := foo;
         
-        x:= do while true {
+        y:= do while true {
                 foo();
             }
             finally {
                 x++;
             } 
             * 3;
-        using x = if (x > 3) foo@{
+        using z = if (x > 3) foo@{
             return 3 * {
             break @foo 12;
             break;

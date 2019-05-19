@@ -1,12 +1,8 @@
 #pragma once
 #include "src_map.h"
+#include "stmt_flags.h"
 #include "symbol_store.h"
 #include "utils/c_extensions.h"
-
-typedef u8 stmt_flags;
-typedef u8 err_flags;
-#define STMT_FLAGS_DEFAULT 0
-#define ERR_FLAGS_DEFAULT 0
 
 typedef enum PACK_ENUM ast_node_type {
     OSC_MODULE,
@@ -144,7 +140,6 @@ typedef struct expr {
 typedef struct stmt {
     ast_node_type type;
     stmt_flags flags;
-    err_flags eflags;
     src_range srange;
     struct stmt* next;
 } stmt;
@@ -484,26 +479,3 @@ bool is_unary_op_postfix(op_type t);
 stmt* get_parent_body(scope* parent);
 void stmt_get_highlight_bounds(stmt* stmt, ureg* start, ureg* end);
 void get_expr_bounds(expr* n, ureg* start, ureg* end);
-
-void stmt_flags_set_access_mod(stmt_flags* f, access_modifier m);
-access_modifier stmt_flags_get_access_mod(stmt_flags f);
-
-void stmt_flags_set_const(stmt_flags* f);
-bool stmt_flags_get_const(stmt_flags f);
-
-void stmt_flags_set_sealed(stmt_flags* f);
-bool stmt_flags_get_sealed(stmt_flags f);
-
-void stmt_flags_set_virtual(stmt_flags* f);
-bool stmt_flags_get_virtual(stmt_flags f);
-
-void stmt_flags_set_static(stmt_flags* f);
-bool stmt_flags_get_static(stmt_flags f);
-
-void stmt_flags_set_compound_decl(stmt_flags* f);
-bool stmt_flags_get_compound_decl(stmt_flags f);
-
-void err_flags_set_parse_error(err_flags* f);
-bool err_flags_get_parse_error(err_flags f);
-void err_flags_set_redeclared(err_flags* f);
-bool err_flags_get_redeclared(err_flags f);

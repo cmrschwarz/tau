@@ -854,7 +854,7 @@ void master_error_log_unwind()
             while (true) {
                 src_file* f = file_map_iterator_next_file(&fmi);
                 if (!f) break;
-                if (f->file_stream && f->file_stream != NULL_PTR_PTR) {
+                if (f->file_stream && f->file_stream != (void*)NULL_PTR_PTR) {
                     fclose(f->file_stream);
                 }
             }
