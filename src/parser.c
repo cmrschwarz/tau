@@ -1206,6 +1206,8 @@ parse_error parse_match(parser* p, expr** tgt)
             "expected match expression", start, t_end, "in this match");
     }
     if (pe) return pe;
+    expr_fill_srange(
+        p, (expr*)em, start, src_range_get_end(em->match_expr->srange));
     PEEK(p, t);
     if (t->type == TT_STRING) {
         token* t2 = tk_peek_2nd(&p->tk);
@@ -1279,6 +1281,13 @@ parse_error parse_match(parser* p, expr** tgt)
             }
             tk_void(&p->tk);
             pe = parse_expression(p, &ma->value);
+            if (pe == PE_EOEX) {
+                PEEK(p, t);
+                parser_error_1a_pc(
+                    p, "invalid match syntax", t->start, t->end,
+                    "expected match arm expression");
+                return PE_ERROR;
+            }
             if (pe) return pe;
             t = tk_peek(&p->tk);
             if (!t) {
@@ -1678,7 +1687,6 @@ parse_expr_in_parens(parser* p, expr* parent, ureg start, ureg end, expr** ex)
 {
     token* t;
     PEEK(p, t);
-    tk_void(&p->tk);
     if (t->type != TT_PAREN_OPEN) {
         parser_error_2a(
             p, "expected opening parenthesis", t->start, t->end,
@@ -1686,6 +1694,7 @@ parse_expr_in_parens(parser* p, expr* parent, ureg start, ureg end, expr** ex)
             get_context_msg(p, (ast_node*)parent));
         return PE_ERROR;
     }
+    tk_void(&p->tk);
     parse_error pe = parse_expression(p, ex);
     if (pe == PE_EOEX) {
         PEEK(p, t);
@@ -1708,6 +1717,7 @@ parse_expr_in_parens(parser* p, expr* parent, ureg start, ureg end, expr** ex)
         return PE_ERROR;
     }
     tk_void(&p->tk);
+    expr_fill_srange(p, *ex, start, t->end);
     return pe;
 }
 parse_error parse_expression(parser* p, expr** ex)
