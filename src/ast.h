@@ -279,31 +279,14 @@ typedef struct expr_while {
     char* finally_name;
 } expr_while;
 
-typedef struct expr_for_in {
-    expr_named expr_named;
-    stmt* decl;
-    expr* range;
-    body for_body;
-    body finally_body;
-} expr_for_in;
-
-typedef struct expr_for {
-    expr_named expr_named;
-    stmt* decl;
-    expr* condition;
-    stmt* iteration;
-    body for_body;
-    body finally_body;
-} expr_for;
-
 typedef struct expr_pp {
     expr expr;
     expr* child;
 } expr_pp;
 
 typedef struct match_arm {
-    expr* condition; // debatable
-    body body;
+    expr* condition;
+    expr* value;
 } match_arm;
 
 typedef struct expr_match {

@@ -528,7 +528,7 @@ void print_expr(expr* ex, ureg indent)
                 print_indent(indent);
                 print_expr((**ma).condition, indent);
                 p(" => ");
-                print_body(&(**ma).body, indent);
+                print_expr((**ma).value, indent);
                 pc('\n');
                 ma++;
             }

@@ -48,70 +48,70 @@ parse_braced_namable_body(parser* p, expr* parent, body* b, char** name);
 parse_error
 parse_expr_in_parens(parser* p, expr* parent, ureg start, ureg end, expr** ex);
 static const unsigned char op_precedence[] = {
-        [OP_POST_INCREMENT] = 15,
-        [OP_POST_DECREMENT] = 15,
-        [OP_CALL] = 15,
-        [OP_ACCESS] = 15,
-        [OP_MEMBER_ACCESS] = 15,
+    [OP_POST_INCREMENT] = 15,
+    [OP_POST_DECREMENT] = 15,
+    [OP_CALL] = 15,
+    [OP_ACCESS] = 15,
+    [OP_MEMBER_ACCESS] = 15,
 
-        [OP_PRE_INCREMENT] = 14,
-        [OP_PRE_DECREMENT] = 14,
-        [OP_UNARY_PLUS] = 14,
-        [OP_UNARY_MINUS] = 14,
-        [OP_NOT] = 14,
-        [OP_BITWISE_NOT] = 14,
-        [OP_DEREF] = 14,
-        [OP_POINTER_OF] = 14,
-        [OP_REF_OF] = 14,
-        [OP_RREF_OF] = 14,
-        [OP_CLOSURE_BY_VALUE] = 14,
-        [OP_CONST] = 14,
-        [OP_PP] = 14,
+    [OP_PRE_INCREMENT] = 14,
+    [OP_PRE_DECREMENT] = 14,
+    [OP_UNARY_PLUS] = 14,
+    [OP_UNARY_MINUS] = 14,
+    [OP_NOT] = 14,
+    [OP_BITWISE_NOT] = 14,
+    [OP_DEREF] = 14,
+    [OP_POINTER_OF] = 14,
+    [OP_REF_OF] = 14,
+    [OP_RREF_OF] = 14,
+    [OP_CLOSURE_BY_VALUE] = 14,
+    [OP_CONST] = 14,
+    [OP_PP] = 14,
 
-        [OP_BITWISE_AND] = 13,
+    [OP_BITWISE_AND] = 13,
 
-        [OP_BITWISE_XOR] = 12,
+    [OP_BITWISE_XOR] = 12,
 
-        [OP_BITWISE_OR] = 11,
+    [OP_BITWISE_OR] = 11,
 
-        [OP_MUL] = 10,
-        [OP_DIV] = 10,
-        [OP_MOD] = 10,
+    [OP_MUL] = 10,
+    [OP_DIV] = 10,
+    [OP_MOD] = 10,
 
-        [OP_ADD] = 9,
-        [OP_SUB] = 9,
+    [OP_ADD] = 9,
+    [OP_SUB] = 9,
 
-        [OP_LSHIFT] = 8,
-        [OP_RSHIFT] = 8,
+    [OP_LSHIFT] = 8,
+    [OP_RSHIFT] = 8,
 
-        [OP_CAST] = 7,
+    [OP_CAST] = 7,
 
-        [OP_LESS_THAN] = 6,
-        [OP_LESS_THAN_OR_EQUAL] = 6,
-        [OP_GREATER_THAN] = 6,
-        [OP_GREATER_THAN_OR_EQUAL] = 6,
+    [OP_LESS_THAN] = 6,
+    [OP_LESS_THAN_OR_EQUAL] = 6,
+    [OP_GREATER_THAN] = 6,
+    [OP_GREATER_THAN_OR_EQUAL] = 6,
 
-        [OP_EQUAL] = 5,
-        [OP_UNEQAL] = 5,
+    [OP_EQUAL] = 5,
+    [OP_UNEQAL] = 5,
 
-        [OP_AND] = 4,
+    [OP_AND] = 4,
 
-        [OP_XOR] = 3,
+    [OP_XOR] = 3,
 
-        [OP_OR] = 2,
+    [OP_OR] = 2,
 
-        [OP_ASSIGN] = 1,
-        [OP_ADD_ASSIGN] = 1,
-        [OP_SUB_ASSIGN] = 1,
-        [OP_MUL_ASSIGN] = 1,
-        [OP_DIV_ASSIGN] = 1,
-        [OP_MOD_ASSIGN] = 1,
-        [OP_LSHIFT_ASSIGN] = 1,
-        [OP_RSHIFT_ASSIGN] = 1,
-        [OP_BITWISE_AND_ASSIGN] = 1,
-        [OP_BITWISE_XOR_ASSIGN] = 1,
-        [OP_BITWISE_OR_ASSIGN] = 1,
-        [OP_BITWISE_NOT_ASSIGN] = 1,
+    [OP_ASSIGN] = 1,
+    [OP_ADD_ASSIGN] = 1,
+    [OP_SUB_ASSIGN] = 1,
+    [OP_MUL_ASSIGN] = 1,
+    [OP_DIV_ASSIGN] = 1,
+    [OP_MOD_ASSIGN] = 1,
+    [OP_LSHIFT_ASSIGN] = 1,
+    [OP_RSHIFT_ASSIGN] = 1,
+    [OP_BITWISE_AND_ASSIGN] = 1,
+    [OP_BITWISE_XOR_ASSIGN] = 1,
+    [OP_BITWISE_OR_ASSIGN] = 1,
+    [OP_BITWISE_NOT_ASSIGN] = 1,
 };
 
 #define PREC_BASELINE 0
@@ -897,8 +897,9 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             PEEK(p, t);
             parser_error_2a(
                 p, "unexpected token after opening parenthesis", t->start,
-                t->end, "expected an expression, a declaration or a closing "
-                        "parenthesis",
+                t->end,
+                "expected an expression, a declaration or a closing "
+                "parenthesis",
                 t_start, t_end, "opening parenthesis here");
             return PE_ERROR;
         }
@@ -1277,7 +1278,7 @@ parse_error parse_match(parser* p, expr** tgt)
                 return PE_ERROR;
             }
             tk_void(&p->tk);
-            pe = parse_body(p, &ma->body, (ast_node*)em);
+            pe = parse_expression(p, &ma->value);
             if (pe) return pe;
             t = tk_peek(&p->tk);
             if (!t) {
@@ -1288,14 +1289,14 @@ parse_error parse_match(parser* p, expr** tgt)
             if (t->type == TT_SEMICOLON) {
                 tk_void(&p->tk);
             }
-            else if (!body_is_braced(&ma->body)) {
+            else if (ma->value->type != EXPR_BLOCK) {
                 ureg arm_start, arm_end;
                 get_expr_bounds(ma->condition, &arm_start, NULL);
-                arm_end = src_range_get_end(ma->body.srange);
+                arm_end = src_range_get_end(ma->value->srange);
                 parser_error_2a(
                     p, "invalid match syntax", t->start, t->end,
                     "expected semicolon", arm_start, arm_end,
-                    "after this match arm statement");
+                    "after this match arm expression");
                 list_builder_drop_list(&p->tk.tc->list_builder, list);
                 POP_PARENT(p);
                 return PE_ERROR;
