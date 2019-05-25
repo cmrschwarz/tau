@@ -1147,7 +1147,7 @@ parse_error parse_break_stmt(
     if (pe) return pe;
     tk_void(&p->tk);
     PEEK(p, t);
-    stmt_break* g = alloc_perm(p, sizeof(stmt_give));
+    stmt_break* g = alloc_perm(p, sizeof(stmt_break));
     if (!g) return PE_FATAL;
     g->stmt.type = STMT_BREAK;
     pe = parse_label_target(p, (expr*)g, start, end, &g->target.name, &end);

@@ -25,7 +25,6 @@ const char* token_strings[255] = {
     [TT_KW_CONTINUE] = "continue",
     [TT_KW_BREAK] = "break",
     [TT_KW_RETURN] = "return",
-    [TT_KW_GOTO] = "goto",
     [TT_KW_USING] = "using",
     [TT_KW_IF] = "if",
     [TT_KW_ELSE] = "else",

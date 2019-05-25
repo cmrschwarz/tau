@@ -216,15 +216,6 @@ typedef struct stmt_return {
     expr* value;
 } stmt_return;
 
-typedef struct stmt_give {
-    stmt stmt;
-    union {
-        expr_named* expr;
-        const char* name;
-    } target;
-    expr* value;
-} stmt_give;
-
 typedef struct stmt_break {
     stmt stmt;
     union {

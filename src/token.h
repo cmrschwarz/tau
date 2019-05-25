@@ -39,7 +39,6 @@ typedef enum PACK_ENUM {
     TT_KW_BREAK,
     TT_KW_RETURN,
     TT_KW_USING,
-    TT_KW_GOTO,
     TT_KW_IF,
     TT_KW_ELSE,
     TT_KW_MATCH,
