@@ -342,8 +342,8 @@ char* get_context_msg(parser* p, ast_node* node)
         case EXPR_DO_WHILE: return "in this do while expression";
         case EXPR_WHILE: return "in this while expression";
         case EXPR_LOOP: return "in this loop expression";
-        case STMT_CONTINUE: return "in this continue statement";
-        case STMT_BREAK: return "in this break statement";
+        case EXPR_CONTINUE: return "in this continue";
+        case EXPR_BREAK: return "in this break";
         case EXPR_MATCH: return "in this match expression";
         case EXPR_IF: return "in this if expression";
         case OSC_EXTEND_GENERIC: return "in this generic extend statement";
@@ -1072,21 +1072,20 @@ parse_error parse_label_target(
     }
     return PE_OK;
 }
-parse_error parse_continue_stmt(
-    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
+parse_error parse_continue(parser* p, expr** tgt)
 {
     token* t = tk_aquire(&p->tk);
+    ureg start = t->start;
     ureg end = t->end;
-    parse_error pe = require_default_flags(p, t, flags, start, flags_end);
-    if (pe) return pe;
     tk_void(&p->tk);
-    stmt_continue* c = alloc_perm(p, sizeof(stmt_continue));
+    expr_continue* c = alloc_perm(p, sizeof(expr_continue));
     if (!c) return PE_FATAL;
-    stmt_init((stmt*)c, STMT_CONTINUE);
-    pe = parse_label_target(p, (expr*)c, start, end, &c->target.name, &end);
+    stmt_init((stmt*)c, EXPR_CONTINUE);
+    parse_error pe =
+        parse_label_target(p, (expr*)c, start, end, &c->target.name, &end);
     if (pe) return pe;
     if (stmt_fill_srange(p, (stmt*)c, start, end)) return PE_FATAL;
-    *tgt = (stmt*)c;
+    *tgt = (expr*)c;
     return PE_OK;
 }
 parse_error parse_pp_stmt(
@@ -1103,21 +1102,19 @@ parse_error parse_pp_stmt(
     *tgt = (stmt*)pps;
     return pe;
 }
-parse_error parse_return_stmt(
-    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
+parse_error parse_return(parser* p, expr** tgt)
 {
     token* t = tk_aquire(&p->tk);
-    parse_error pe = require_default_flags(p, t, flags, start, flags_end);
-    if (pe) return pe;
+    ureg start = t->start;
     ureg end = t->end;
     tk_void(&p->tk);
-    stmt_return* r = alloc_perm(p, sizeof(stmt_return));
+    expr_return* r = alloc_perm(p, sizeof(expr_return));
     if (!r) return PE_FATAL;
-    r->stmt.type = STMT_RETURN;
+    r->expr.type = EXPR_RETURN;
     PEEK(p, t);
     if (t->type == TT_SEMICOLON) {
         r->value = NULL;
-        if (stmt_fill_srange(p, (stmt*)r, start, t->end)) return PE_FATAL;
+        if (expr_fill_srange(p, (expr*)r, start, t->end)) return PE_FATAL;
     }
     else {
         parse_error pe = parse_expression(p, &r->value);
@@ -1130,27 +1127,26 @@ parse_error parse_return_stmt(
             return PE_ERROR;
         }
         if (pe) return pe;
-        if (stmt_fill_srange(
-                p, (stmt*)r, start, src_range_get_end(r->value->srange)))
+        if (expr_fill_srange(
+                p, (expr*)r, start, src_range_get_end(r->value->srange)))
             return PE_FATAL;
     }
-    if (r->stmt.srange == SRC_RANGE_INVALID) return PE_FATAL;
-    *tgt = (stmt*)r;
+    if (r->expr.srange == SRC_RANGE_INVALID) return PE_FATAL;
+    *tgt = (expr*)r;
     return PE_OK;
 }
-parse_error parse_break_stmt(
-    parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
+parse_error parse_break(parser* p, expr** tgt)
 {
     token* t = tk_aquire(&p->tk);
+    ureg start = t->start;
     ureg end = t->end;
-    parse_error pe = require_default_flags(p, t, flags, start, flags_end);
-    if (pe) return pe;
     tk_void(&p->tk);
     PEEK(p, t);
-    stmt_break* g = alloc_perm(p, sizeof(stmt_break));
+    expr_break* g = alloc_perm(p, sizeof(expr_break));
     if (!g) return PE_FATAL;
-    g->stmt.type = STMT_BREAK;
-    pe = parse_label_target(p, (expr*)g, start, end, &g->target.name, &end);
+    g->expr.type = EXPR_BREAK;
+    parse_error pe =
+        parse_label_target(p, (expr*)g, start, end, &g->target.name, &end);
     if (pe) return pe;
     pe = parse_expression(p, &g->value);
     if (pe == PE_EOEX) {
@@ -1160,7 +1156,7 @@ parse_error parse_break_stmt(
         if (pe) return pe;
     }
     if (stmt_fill_srange(p, (stmt*)g, start, end)) return PE_FATAL;
-    *tgt = (stmt*)g;
+    *tgt = (expr*)g;
     return PE_OK;
 }
 static inline parse_error
@@ -1496,6 +1492,15 @@ static inline parse_error parse_value_expr(parser* p, expr** ex)
         }
         case TT_KW_IF: {
             return parse_if(p, ex);
+        }
+        case TT_KW_RETURN: {
+            return parse_return(p, ex);
+        }
+        case TT_KW_BREAK: {
+            return parse_break(p, ex);
+        }
+        case TT_KW_CONTINUE: {
+            return parse_continue(p, ex);
         }
         case TT_STRING: {
             token* t2 = tk_peek_2nd(&p->tk);
@@ -2870,12 +2875,6 @@ parse_error parse_statement(parser* p, stmt** tgt)
                 return parse_require(p, flags, start, flags_end);
             case TT_KW_IMPORT:
                 return parse_import(p, flags, start, flags_end, tgt);
-            case TT_KW_BREAK:
-                return parse_break_stmt(p, flags, start, flags_end, tgt);
-            case TT_KW_CONTINUE:
-                return parse_continue_stmt(p, flags, start, flags_end, tgt);
-            case TT_KW_RETURN:
-                return parse_return_stmt(p, flags, start, flags_end, tgt);
             case TT_HASH: return parse_pp_stmt(p, flags, start, flags_end, tgt);
             case TT_STRING: {
                 token* t2 = tk_peek_2nd(&p->tk);

@@ -347,36 +347,6 @@ void print_astn(stmt* astn, ureg indent)
             p("using ");
             print_expr(u->target, indent);
         } break;
-        case STMT_BREAK: {
-            stmt_break* b = (stmt_break*)astn;
-            p("break");
-            if (b->target.name) {
-                pc(' ');
-                pc('@');
-                p(b->target.name);
-            }
-            if (b->value) {
-                pc(' ');
-                print_expr(b->value, indent);
-            }
-        } break;
-        case STMT_CONTINUE: {
-            stmt_continue* c = (stmt_continue*)astn;
-            p("continue");
-            if (c->target.name) {
-                pc(' ');
-                pc('@');
-                p(c->target.name);
-            }
-        } break;
-        case STMT_RETURN: {
-            stmt_return* r = (stmt_return*)astn;
-            p("return");
-            if (r->value != NULL) {
-                pc(' ');
-                print_expr(r->value, indent);
-            }
-        } break;
         default: {
             p("<Unkown Statement>;");
         }
@@ -473,6 +443,36 @@ void print_expr(expr* ex, ureg indent)
         case EXPR_OP_PARENTHESES: {
             expr_parentheses* pr = (expr_parentheses*)ex;
             print_expr_in_parens(pr->child, indent);
+        } break;
+        case EXPR_BREAK: {
+            expr_break* b = (expr_break*)ex;
+            p("break");
+            if (b->target.name) {
+                pc(' ');
+                pc('@');
+                p(b->target.name);
+            }
+            if (b->value) {
+                pc(' ');
+                print_expr(b->value, indent);
+            }
+        } break;
+        case EXPR_CONTINUE: {
+            expr_continue* c = (expr_continue*)ex;
+            p("continue");
+            if (c->target.name) {
+                pc(' ');
+                pc('@');
+                p(c->target.name);
+            }
+        } break;
+        case EXPR_RETURN: {
+            expr_return* r = (expr_return*)ex;
+            p("return");
+            if (r->value != NULL) {
+                pc(' ');
+                print_expr(r->value, indent);
+            }
         } break;
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)ex;

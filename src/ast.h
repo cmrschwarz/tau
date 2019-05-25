@@ -30,14 +30,14 @@ typedef enum PACK_ENUM ast_node_type {
 
     STMT_EXPRESSION,
     STMT_COMPOUND_ASSIGN,
-    STMT_RETURN,
-    STMT_CONTINUE,
-    STMT_BREAK,
     STMT_PP_STMT,
-    STMT_LAST_STMT_ID = STMT_BREAK,
+    STMT_LAST_STMT_ID = STMT_PP_STMT,
 
     EXPR_BLOCK,
 
+    EXPR_RETURN,
+    EXPR_CONTINUE,
+    EXPR_BREAK,
     EXPR_MATCH,
     EXPR_IF,
     EXPR_WHILE,
@@ -211,27 +211,27 @@ typedef struct stmt_import {
     module_import module_import;
 } stmt_import;
 
-typedef struct stmt_return {
-    stmt stmt;
+typedef struct expr_return {
+    expr expr;
     expr* value;
-} stmt_return;
+} expr_return;
 
-typedef struct stmt_break {
-    stmt stmt;
+typedef struct expr_break {
+    expr expr;
     union {
         expr_named* expr;
         const char* name;
     } target;
     expr* value;
-} stmt_break;
+} expr_break;
 
-typedef struct stmt_continue {
-    stmt stmt;
+typedef struct expr_continue {
+    expr expr;
     union {
         expr_named* expr;
         const char* name;
     } target;
-} stmt_continue;
+} expr_continue;
 
 typedef struct expr_block {
     expr_named expr_named;
