@@ -12,6 +12,7 @@ typedef struct thread_context {
     error_log error_log;
     pool permmem;
     pool tempmem;
+    list_builder list_builder;
     parser parser;
     resolver resolver;
     scc_detector sccd;

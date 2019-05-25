@@ -2,21 +2,25 @@
 #include "stmt_flags.h"
 #include "utils/string.h"
 typedef struct symbol symbol;
+typedef struct stmt stmt;
+struct symbol_table;
+
+typedef union symbol_store {
+    struct symbol_table* table;
+    ureg decl_count;
+} symbol_store;
 
 typedef struct symbol_table {
     ureg decl_count;
-    struct symbol_map** usings;
+    stmt* usings;
+    symbol_store ppst;
 } symbol_table;
 
 typedef struct symbol_table_with_usings {
+    struct symbol_map** used_sts;
     symbol_table** using_ends[AM_ENUM_ELEMENT_COUNT];
     symbol_table table;
 } symbol_table_with_usings;
-
-typedef union symbol_store {
-    symbol_table* table;
-    ureg decl_count;
-} symbol_store;
 
 void symbol_store_init(symbol_store* ss);
 

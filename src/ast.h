@@ -33,6 +33,7 @@ typedef enum PACK_ENUM ast_node_type {
     STMT_RETURN,
     STMT_CONTINUE,
     STMT_BREAK,
+    STMT_PP_STMT,
     STMT_LAST_STMT_ID = STMT_BREAK,
 
     EXPR_BLOCK,
@@ -199,6 +200,12 @@ typedef struct expr_named {
     expr expr;
     char* name;
 } expr_named;
+
+typedef struct stmt_pp_stmt {
+    stmt stmt;
+    stmt* pp_stmt;
+} stmt_pp_stmt;
+
 typedef struct stmt_import {
     stmt stmt;
     module_import module_import;

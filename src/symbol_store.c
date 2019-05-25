@@ -6,6 +6,7 @@
 #include "utils/fnv_hash.h"
 #include "utils/math_utils.h"
 #define USING_BIT (((ureg)1) << (REG_BITS - 1))
+static symbol_table EMPTY_ST = {0, NULL, {&EMPTY_ST}};
 void symbol_store_init(symbol_store* ss)
 {
     ss->decl_count = 0;
@@ -40,6 +41,10 @@ symbol_store_get_table_with_usings(symbol_store ss)
 int symbol_store_setup_table(symbol_store* ss)
 {
     ureg decl_count = ss->decl_count;
+    if (ss->decl_count == 0) {
+        ss->table = &EMPTY_ST;
+        return OK;
+    }
     if (decl_count & USING_BIT) {
         decl_count &= ~USING_BIT;
         symbol_table_with_usings* stwu = tmalloc(
@@ -54,11 +59,15 @@ int symbol_store_setup_table(symbol_store* ss)
     }
     ss->table->usings = NULL;
     ss->table->decl_count = decl_count;
+    ss->table->ppst.table = &EMPTY_ST;
     return OK;
 }
 void symbol_store_destruct_table(symbol_store* ss)
 {
-    tfree(ss->table);
+    if (ss->table != &EMPTY_ST) {
+        symbol_store_destruct_table(&ss->table->ppst);
+        tfree(ss->table);
+    }
     ss->table = NULL;
 }
 symbol* symbol_store_insert(symbol_store ss, symbol* s)

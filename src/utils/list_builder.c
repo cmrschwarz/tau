@@ -17,6 +17,9 @@ int list_builder_init(list_builder* b, pool* memsrc, ureg initial_capacity)
     b->head = ptradd(first, sizeof(list_build_segment));
     return OK;
 }
+void list_builder_fin()
+{
+}
 void** list_builder_start(list_builder* b)
 {
     return b->head;

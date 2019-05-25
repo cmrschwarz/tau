@@ -14,6 +14,7 @@ typedef struct list_builder {
 } list_builder;
 
 int list_builder_init(list_builder* b, pool* memsrc, ureg initial_capacity);
+void list_builder_fin();
 void** list_builder_start(list_builder* b);
 void* list_builder_start_blocklist(list_builder* b);
 int list_builder_add(list_builder* b, void* el);
