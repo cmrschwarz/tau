@@ -44,6 +44,7 @@ typedef enum PACK_ENUM ast_node_type {
     EXPR_DO_WHILE,
     EXPR_DO,
     EXPR_LOOP,
+    EXPR_MACRO, // TODO
 
     EXPR_NUMBER,
     EXPR_STRING_LITERAL,
@@ -269,6 +270,13 @@ typedef struct expr_while {
     body finally_body;
     char* finally_name;
 } expr_while;
+
+typedef struct expr_macro {
+    expr expr;
+    expr** args;
+    body body;
+    struct expr_macro* next;
+} expr_macro;
 
 typedef struct expr_pp {
     expr expr;
