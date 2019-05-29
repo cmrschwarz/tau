@@ -29,6 +29,10 @@ static inline void stack_state_apply(stack_state* ss, stack* s)
     s->curr_seg = ss->curr_seg;
     s->head = ss->head;
 }
+static inline ureg stack_is_empty(stack* s)
+{
+    return (s->curr_seg->prev == NULL && s->head == s->curr_seg_start);
+}
 
 static inline stack_segment*
 stack_alloc_segment(stack* s, ureg size, stack_segment* prev)

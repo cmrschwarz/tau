@@ -3,9 +3,20 @@
 #include "math_utils.h"
 #include <memory.h>
 
-int sbuffer_init(sbuffer* sb, ureg pages_per_segment)
+static inline sbuffer_segment* sbuffer_segment_create(sbuffer* sb, ureg size)
 {
-    sb->first = sbuffer_segment_create(sb, plattform_get_page_size());
+    sbuffer_segment* seg = (sbuffer_segment*)tmalloc(size);
+    if (!seg) return NULL;
+    seg->end = (u8*)ptradd(seg, size);
+    seg->start = (u8*)(seg + 1);
+    seg->head = seg->start;
+    return seg;
+}
+int sbuffer_init(sbuffer* sb, ureg initial_capacity)
+{
+
+    sb->first = sbuffer_segment_create(
+        sb, ceil_to_pow2(initial_capacity + sizeof(sbuffer_segment)));
     if (!sb->first) return -1;
     sb->last = sb->first;
     sb->first->next = NULL;
@@ -21,19 +32,8 @@ void sbuffer_fin(sbuffer* sb)
         tfree(d);
     } while (sb->last != NULL);
 }
-
-sbuffer_segment* sbuffer_segment_create(sbuffer* sb, ureg size)
-{
-    sbuffer_segment* seg = (sbuffer_segment*)tmalloc(size);
-    if (!seg) return NULL;
-    seg->end = (u8*)ptradd(seg, size);
-    seg->start = (u8*)(seg + 1);
-    seg->head = seg->start;
-    return seg;
-}
 int sbuffer_segment_append(sbuffer* sb, ureg size)
 {
-    // we always double the segment size
     sbuffer_segment* sn = sbuffer_segment_create(sb, size);
     if (!sn) return -1;
     sn->next = NULL;
@@ -43,6 +43,33 @@ int sbuffer_segment_append(sbuffer* sb, ureg size)
     return 0;
 }
 
+void* sbuffer_append(sbuffer* sb, ureg size)
+{
+    if (sb->last->head + size <= sb->last->end) {
+        void* ret_val = sb->last->head;
+        sb->last->head += size;
+        return ret_val;
+    }
+    if (sbuffer_segment_append(sb, (sb->last->end - sb->last->start) * 2)) {
+        return NULL;
+    }
+    sb->last->head += size;
+    return sb->last->start;
+}
+void sbuffer_remove(sbuffer* sb, sbi* sbi, ureg size)
+{
+    sbuffer_segment* cs = sbi->seg;
+    ureg used_before = ptrdiff(sbi->pos, cs->start);
+    ureg used_after = ptrdiff(cs->end, sbi->pos) - size;
+    if (used_before < used_after) {
+        memmove(cs->start, ptradd(cs->start, size), used_before);
+        cs->start = ptradd(cs->start, size);
+    }
+    else {
+        memmove(ptradd(sbi->pos, size), sbi->pos, used_after);
+        cs->head = ptrsub(cs->head, size);
+    }
+}
 void* sbuffer_insert(sbuffer* sb, sbi* sbi, ureg size)
 {
     sbuffer_segment* cs = sbi->seg;

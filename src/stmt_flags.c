@@ -1,7 +1,7 @@
 #include "stmt_flags.h"
 
 #define USED_IN_PP_OFFSET 11
-#define FROM_PP_OFFSET 10
+#define DEFINED_IN_PP_OFFSET 10
 #define COMPUND_DECL_OFFSET 9
 #define REDECL_OFFSET 8
 #define PE_OFFSET 7
@@ -116,13 +116,13 @@ bool stmt_flags_get_resolved(stmt_flags f)
 {
     return bitmask_get_bit(f, RESOLVED_OFFSET);
 }
-void stmt_flags_set_from_pp(stmt_flags* f)
+void stmt_flags_set_defined_in_pp(stmt_flags* f)
 {
-    bitmask_set_bit(f, FROM_PP_OFFSET);
+    bitmask_set_bit(f, DEFINED_IN_PP_OFFSET);
 }
-bool stmt_flags_get_from_pp(stmt_flags f)
+bool stmt_flags_get_defined_in_pp(stmt_flags f)
 {
-    return bitmask_get_bit(f, FROM_PP_OFFSET);
+    return bitmask_get_bit(f, DEFINED_IN_PP_OFFSET);
 }
 void stmt_flags_set_used_in_pp(stmt_flags* f)
 {

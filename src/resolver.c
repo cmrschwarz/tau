@@ -1,6 +1,11 @@
 #include "resolver.h"
 #include "thread_context.h"
 #include "utils/error.h"
+
+resolve_error add_delarations(
+    resolver* r, symbol_table* sst, symbol_store* ss, src_file* f,
+    stmt** stmt_list);
+
 int resolver_init(resolver* r, thread_context* tc)
 {
     r->tc = tc;
@@ -19,9 +24,10 @@ resolve_error symbol_redefinition_error(
         sr_old.end, "previously defined here");
     return RE_SYMBOL_REDECLARATION;
 }
-resolve_error body_add_sym(resolver* r, body* b, src_file* f, symbol* sym)
+resolve_error
+st_add_sym(resolver* r, symbol_table* st, src_file* f, symbol* sym)
 {
-    symbol* res = symbol_store_insert(b->ss, sym);
+    symbol* res = symbol_table_insert(st, sym);
     if (res) {
         src_range_large sr_new, sr_old;
         src_range_unpack(sym->stmt.srange, &sr_new);
@@ -32,9 +38,9 @@ resolve_error body_add_sym(resolver* r, body* b, src_file* f, symbol* sym)
     }
     return RE_OK;
 }
-resolve_error mdg_node_add_sym(resolver* r, mdg_node* m, symbol* sym)
+resolve_error sst_add_sym(resolver* r, symbol_table* sst, symbol* sym)
 {
-    symbol* res = symbol_store_insert(m->ss, sym);
+    symbol* res = symbol_table_insert(sst, sym);
     if (res) {
         src_range_large sr_new, sr_old;
         src_range_unpack(sym->stmt.srange, &sr_new);
@@ -43,7 +49,6 @@ resolve_error mdg_node_add_sym(resolver* r, mdg_node* m, symbol* sym)
     }
     return RE_OK;
 }
-resolve_error body_add_declarations(resolver* r, body* tgt, src_file* f);
 resolve_error expr_add_declarations(resolver* r, expr* ex, src_file* f)
 {
     switch (ex->type) {
@@ -57,7 +62,9 @@ resolve_error expr_add_declarations(resolver* r, expr* ex, src_file* f)
             return re;
         }
         case EXPR_BLOCK:
-            return body_add_declarations(r, &((expr_block*)ex)->body, f);
+            return add_delarations(
+                r, NULL, &((expr_block*)ex)->body.ss, f,
+                &((expr_block*)ex)->body.children);
         case EXPR_ARRAY: {
             expr** fst = ((expr_array*)ex)->elements;
             while (*fst) {
@@ -77,27 +84,23 @@ compound_assign_add_declarations(resolver* r, stmt_compound_assignment* sc)
     // TODO
     return RE_OK;
 }
-resolve_error osc_run_preprocessor(resolver* r, mdg_node* m, open_scope* osc)
+resolve_error add_delarations(
+    resolver* r, symbol_table* sst, symbol_store* ss, src_file* f,
+    stmt** stmt_list)
 {
-    // TODO
-    return RE_OK;
-}
-resolve_error osc_add_delarations(resolver* r, mdg_node* mdgn, open_scope* osc)
-{
-    resolve_error re = symbol_store_setup_table(&osc->scope.body.ss);
+    resolve_error re = symbol_store_setup_table(ss);
     if (re) return re;
-    stmt** prev_next = &osc->scope.body.children;
-    stmt* si = *prev_next;
-    src_file* f = open_scope_get_file(osc);
+    symbol_table* st = ss->table;
+    stmt* si = *stmt_list;
     while (si) {
         if (ast_node_is_symbol((ast_node*)si)) {
             symbol* sym = (symbol*)si;
-            access_modifier am = stmt_flags_get_access_mod(sym->stmt.flags);
-            if (am == AM_SCOPE_LOCAL) {
-                re = body_add_sym(r, &osc->scope.body, f, sym);
+            if (!sst ||
+                stmt_flags_get_access_mod(sym->stmt.flags) == AM_SCOPE_LOCAL) {
+                re = st_add_sym(r, st, f, sym);
             }
             else {
-                re = mdg_node_add_sym(r, mdgn, sym);
+                re = sst_add_sym(r, sst, sym);
             }
             if (re) break;
         }
@@ -105,13 +108,12 @@ resolve_error osc_add_delarations(resolver* r, mdg_node* mdgn, open_scope* osc)
             stmt_pp_stmt* pps = (stmt_pp_stmt*)si;
             if (ast_node_is_symbol((ast_node*)pps->pp_stmt)) {
                 symbol* sym = (symbol*)pps->pp_stmt;
-                access_modifier am = stmt_flags_get_access_mod(sym->stmt.flags);
-                if (am == AM_SCOPE_LOCAL) {
-                    symbol_store_inc_decl_count(
-                        &osc->scope.body.ss.table->ppst, 1);
+                if (!sst || stmt_flags_get_access_mod(sym->stmt.flags) ==
+                                AM_SCOPE_LOCAL) {
+                    symbol_store_inc_decl_count(&st->ppst, 1);
                 }
                 else {
-                    symbol_store_inc_decl_count(&mdgn->ss.table->ppst, 1);
+                    symbol_store_inc_decl_count(&sst->ppst, 1);
                 }
             }
         }
@@ -119,130 +121,165 @@ resolve_error osc_add_delarations(resolver* r, mdg_node* mdgn, open_scope* osc)
             stmt_using* su = (stmt_using*)si;
             access_modifier am = stmt_flags_get_access_mod(su->stmt.flags);
             if (am == AM_SCOPE_LOCAL) {
-                su->stmt.next = osc->scope.body.ss.table->usings;
-                osc->scope.body.ss.table->usings = (stmt*)su;
+                su->stmt.next = st->usings;
+                st->usings = (stmt*)su;
             }
             else {
-                su->stmt.next = mdgn->ss.table->usings;
-                mdgn->ss.table->usings = (stmt*)su;
+                su->stmt.next = sst->usings;
+                sst->usings = (stmt*)su;
             }
         }
         else {
-            *prev_next = si;
-            prev_next = &si->next;
+            *stmt_list = si->next;
+            stmt_list = &si->next;
         }
         si = si->next;
     }
+    *stmt_list = NULL;
     return re;
 }
-resolve_error body_add_declarations(resolver* r, body* tgt, src_file* f)
+static inline resolve_error add_resolve_group_declarations(resolver* r)
 {
-    resolve_error re = symbol_store_setup_table(&tgt->ss);
-    if (re) return re;
-    stmt** prev_next = &tgt->children;
-    stmt* si = *prev_next;
-    while (si) {
-        if (ast_node_is_symbol((ast_node*)si)) {
-            symbol* sym = (symbol*)si;
-            si = si->next;
-            *prev_next = si;
-            re = body_add_sym(r, tgt, f, sym);
-            if (re) break;
-            if (ast_node_is_scope((ast_node*)sym)) {
-                re = body_add_declarations(r, &((scope*)sym)->body, f);
-                if (re) break;
-            }
-        }
-        else if (si->type == STMT_EXPRESSION) {
-            re = expr_add_declarations(r, ((stmt_expr*)si)->expr, f);
-            if (re) break;
-            si = si->next;
-            *prev_next = si;
-        }
-        else {
-            *prev_next = si;
-            prev_next = &si->next;
-            si = si->next;
-        }
-    }
-    return re;
-}
-resolve_error mdg_node_add_declarations(resolver* r, mdg_node* m)
-{
-    symbol_store_init(&m->ss);
-    aseglist_iterator tgti;
-    aseglist_iterator_begin(&tgti, &m->targets);
-    open_scope* osci = aseglist_iterator_next(&tgti);
-    while (osci) {
-        symbol_store_merge_decls(&m->ss, osci->shared_decl_count);
-        osci = aseglist_iterator_next(&tgti);
-    }
-    if (symbol_store_setup_table(&m->ss)) return RE_FATAL;
-    aseglist_iterator_begin(&tgti, &m->targets);
     resolve_error re = RE_OK;
-    while (true) {
-        osci = aseglist_iterator_next(&tgti);
-        if (!osci) break;
-        re = osc_add_delarations(r, m, osci);
-        if (re) break;
-    }
-    if (re) {
+    mdg_node** i;
+    for (i = r->start; i != r->end; i++) {
+        symbol_store_init(&(**i).ss);
+        aseglist_iterator tgti;
+        aseglist_iterator_begin(&tgti, &(**i).targets);
+        open_scope* osci = aseglist_iterator_next(&tgti);
+        while (osci) {
+            symbol_store_merge_decls(&(**i).ss, osci->shared_decl_count);
+            osci = aseglist_iterator_next(&tgti);
+        }
+        if (symbol_store_setup_table(&(**i).ss)) return RE_FATAL;
+        aseglist_iterator_begin(&tgti, &(**i).targets);
         while (true) {
             osci = aseglist_iterator_next(&tgti);
             if (!osci) break;
-            // to prevent the uninitialized tables from being freed
-            osci->scope.body.ss.table = NULL;
+            re = add_delarations(
+                r, (**i).ss.table, &osci->scope.body.ss,
+                open_scope_get_file(osci), &osci->scope.body.children);
+            if (re) break;
+        }
+        if (re) {
+            while (true) {
+                osci = aseglist_iterator_next(&tgti);
+                if (!osci) break;
+                // to prevent the uninitialized tables from being freed
+                osci->scope.body.ss.table = NULL;
+            }
+        }
+    }
+    if (re) {
+        for (mdg_node** j = i + 1; j != r->end; j++) {
+            (**j).ss.table = NULL;
         }
         return re;
     }
     return re;
 }
-resolve_error mdg_node_run_preprocessor(resolver* r, mdg_node* mdgn)
+static inline void print_debug_info(resolver* r)
 {
-    aseglist_iterator tgti;
-    aseglist_iterator_begin(&tgti, &mdgn->targets);
-    while (true) {
-        open_scope* osci = aseglist_iterator_next(&tgti);
-        if (!osci) break;
-        resolve_error re = osc_run_preprocessor(r, mdgn, osci);
-        if (re) return re;
-    }
-    return RE_OK;
-}
-resolve_error
-resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
-{
-    // DEBUG
     printf("resolving {");
-    mdg_node** i = start;
-    i = start;
-    while (i + 1 != end) {
+    mdg_node** i = r->start;
+    i = r->start;
+    while (i + 1 != r->end) {
         printf("%s, ", (**i).name);
         i++;
     }
     printf("%s}\n", (**i).name);
-    // TODO: resolve
-    r->start = start;
-    r->end = end;
-    resolve_error re;
-    for (mdg_node** i = start; i != end; i++) {
-        re = mdg_node_add_declarations(r, *i);
-        if (re) {
-            for (mdg_node** j = i + 1; j != end; j++) {
-                (**j).ss.table = NULL;
+}
+static inline resolve_error try_resolve_stack(resolver* r, stack* s)
+{
+    return RE_OK;
+}
+static inline resolve_error handle_preprocessor(resolver* r)
+{
+    ureg stacks_remaining = 0;
+    sbuffer sb;
+    sbi sbi;
+    sbuffer_init(&sb, sizeof(stack) * 8);
+    sbi_begin(&sbi, &sb);
+    for (mdg_node** i = r->start; i != r->end; i++) {
+        aseglist_iterator mdgn_tgts_it;
+        aseglist_iterator_begin(&mdgn_tgts_it, &(**i).targets);
+        while (true) {
+            open_scope* osci = aseglist_iterator_next(&mdgn_tgts_it);
+            if (!osci) break;
+            if (osci->scope.body.children) {
+                stack* st = sbi_get(&sbi, sizeof(stack));
+                if (!st || !stack_is_empty(st)) {
+                    st = (stack*)sbuffer_append(&sb, sizeof(stack));
+                    stack_init(st, &r->tc->tempmem);
+                }
+                stack_push(st, osci);
+                stack_push(st, osci->scope.body.children);
+                stacks_remaining++;
+                resolve_error re = try_resolve_stack(r, st);
+                if (re == RE_UNKNOWN_SYMBOL) {
+                    stack* st2;
+                    while (true) {
+                        st2 = (stack*)sbi_next(&sbi, sizeof(stack));
+                        if (st2 == NULL) {
+                            sbi_begin(&sbi, &sb);
+                            continue;
+                        }
+                        if (st2 == st) break;
+                        re = try_resolve_stack(r, st2);
+                        if (re == RE_UNKNOWN_SYMBOL) continue;
+                        if (re == OK) {
+                            stack tmp = *st2;
+                            *st2 = *st;
+                            *st = tmp;
+                            // something was resolved -> try each one again
+                            st = st2;
+                        }
+                        else {
+                            return re;
+                        }
+                    }
+                }
+                else if (re == RE_OK) {
+                    stacks_remaining--;
+                }
+                else {
+                    return re;
+                }
             }
-            return re;
         }
     }
-    for (mdg_node** i = start; i != end; i++) {
-        re = mdg_node_run_preprocessor(r, *i);
-        if (re) return re;
+    if (stacks_remaining > 0) {
+        panic("unresolved stuff");
     }
-    for (mdg_node** i = start; i != end; i++) {
-        re = mdg_node_resolved(*i, r->tc);
+    while (true) {
+        stack* s = sbi_next(&sbi, sizeof(stack));
+        if (!s) break;
+    }
+    sbuffer_fin(&sb);
+    return RE_OK;
+}
+static inline resolve_error mark_mdg_nodes_resolved(resolver* r)
+{
+    for (mdg_node** i = r->start; i != r->end; i++) {
+        resolve_error re = mdg_node_resolved(*i, r->tc);
         if (re) return re;
     }
     return RE_OK;
+}
+
+resolve_error
+resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
+{
+    r->start = start;
+    r->end = end;
+    resolve_error re;
+    print_debug_info(r);
+    re = add_resolve_group_declarations(r);
+    if (re) return re;
+    re = handle_preprocessor(r);
+    if (re) return re;
+    re = mark_mdg_nodes_resolved(r);
+    return re;
 }
 
 int resolver_resolve_single(resolver* r, mdg_node* node)

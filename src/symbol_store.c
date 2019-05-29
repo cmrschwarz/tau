@@ -57,6 +57,9 @@ int symbol_store_setup_table(symbol_store* ss)
             decl_count * sizeof(symbol*) + sizeof(symbol_table_with_usings));
         if (!ss->table) return ERR;
     }
+    memset(
+        ptradd(ss->table, sizeof(symbol_table)), 0,
+        decl_count * sizeof(symbol*));
     ss->table->usings = NULL;
     ss->table->decl_count = decl_count;
     ss->table->ppst.table = &EMPTY_ST;
@@ -70,11 +73,10 @@ void symbol_store_destruct_table(symbol_store* ss)
     }
     ss->table = NULL;
 }
-symbol* symbol_store_insert(symbol_store ss, symbol* s)
+symbol* symbol_table_insert(symbol_table* st, symbol* s)
 {
-    ureg hash = fnv_hash_str(FNV_START_HASH, s->name) % ss.table->decl_count;
-    symbol** tgt =
-        ptradd(ss.table, sizeof(symbol_table) + hash * sizeof(symbol*));
+    ureg hash = fnv_hash_str(FNV_START_HASH, s->name) % st->decl_count;
+    symbol** tgt = ptradd(st, sizeof(symbol_table) + hash * sizeof(symbol*));
     while (*tgt) {
         if (strcmp((**tgt).name, s->name) == 0) return *tgt;
         tgt = (symbol**)&(**tgt).stmt.next;
@@ -83,11 +85,11 @@ symbol* symbol_store_insert(symbol_store ss, symbol* s)
     s->stmt.next = NULL;
     return NULL;
 }
-symbol* symbol_store_lookup(symbol_store ss, const char* s)
+symbol* symbol_table_lookup(symbol_table* st, const char* s)
 {
-    ureg hash = fnv_hash_str(FNV_START_HASH, s) % ss.table->decl_count;
-    symbol* tgt = *(symbol**)ptradd(
-        ss.table, sizeof(symbol_table) + hash * sizeof(symbol*));
+    ureg hash = fnv_hash_str(FNV_START_HASH, s) % st->decl_count;
+    symbol* tgt =
+        *(symbol**)ptradd(st, sizeof(symbol_table) + hash * sizeof(symbol*));
     while (tgt) {
         if (strcmp(tgt->name, s) == 0) return tgt;
         tgt = (symbol*)tgt->stmt.next;

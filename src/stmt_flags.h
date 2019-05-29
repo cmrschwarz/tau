@@ -37,8 +37,8 @@ bool stmt_flags_get_compound_decl(stmt_flags f);
 void stmt_flags_set_resolved(stmt_flags* f);
 bool stmt_flags_get_resolved(stmt_flags f);
 
-void stmt_flags_set_from_pp(stmt_flags* f);
-bool stmt_flags_get_from_pp(stmt_flags f);
+void stmt_flags_set_defined_in_pp(stmt_flags* f);
+bool stmt_flags_get_defined_in_pp(stmt_flags f);
 
 void stmt_flags_set_used_in_pp(stmt_flags* f);
 bool stmt_flags_get_used_in_pp(stmt_flags f);

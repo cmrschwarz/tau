@@ -34,5 +34,5 @@ int symbol_store_setup_table(symbol_store* ss);
 void symbol_store_destruct_table(symbol_store* ss);
 // if a symbol of that name already exists returns that
 // otherwise inserts and returns NULL
-symbol* symbol_store_insert(symbol_store ss, symbol* s);
-symbol* symbol_store_lookup(symbol_store ss, const char* s);
+symbol* symbol_table_insert(symbol_table* st, symbol* s);
+symbol* symbol_table_lookup(symbol_table* st, const char* s);
