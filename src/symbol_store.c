@@ -6,7 +6,7 @@
 #include "utils/fnv_hash.h"
 #include "utils/math_utils.h"
 #define USING_BIT (((ureg)1) << (REG_BITS - 1))
-static symbol_table EMPTY_ST = {0, NULL, {&EMPTY_ST}};
+static symbol_table EMPTY_ST = {0, NULL, {0}};
 void symbol_store_init(symbol_store* ss)
 {
     ss->decl_count = 0;
@@ -49,12 +49,15 @@ int symbol_store_setup_table(symbol_store* ss)
         decl_count &= ~USING_BIT;
         symbol_table_with_usings* stwu = tmalloc(
             decl_count * sizeof(symbol*) + sizeof(symbol_table_with_usings));
-        if (!stwu) return ERR;
+        if (!stwu) {
+            ss->table = NULL;
+            return ERR;
+        }
         ss->table = &stwu->table;
     }
     else {
-        ss->table = tmalloc(
-            decl_count * sizeof(symbol*) + sizeof(symbol_table_with_usings));
+        ss->table =
+            tmalloc(decl_count * sizeof(symbol*) + sizeof(symbol_table));
         if (!ss->table) return ERR;
     }
     memset(
@@ -62,13 +65,26 @@ int symbol_store_setup_table(symbol_store* ss)
         decl_count * sizeof(symbol*));
     ss->table->usings = NULL;
     ss->table->decl_count = decl_count;
-    ss->table->ppst.table = &EMPTY_ST;
+    symbol_store_init(&ss->table->ppst);
+    return OK;
+}
+int symbol_store_ensure_unique(symbol_store* ss)
+{
+    if (ss->table == &EMPTY_ST) {
+        ss->table = malloc(sizeof(symbol_table));
+        if (!ss->table) return ERR;
+        ss->table->decl_count = 0;
+        ss->table->usings = NULL;
+        ss->table->ppst.decl_count = 0;
+    }
     return OK;
 }
 void symbol_store_destruct_table(symbol_store* ss)
 {
     if (ss->table != &EMPTY_ST) {
-        symbol_store_destruct_table(&ss->table->ppst);
+        if (ss->table->ppst.table != NULL) {
+            symbol_store_destruct_table(&ss->table->ppst);
+        }
         tfree(ss->table);
     }
     ss->table = NULL;

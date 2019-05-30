@@ -138,7 +138,6 @@ typedef struct file_require {
 typedef struct expr {
     ast_node_kind kind;
     op_type op_type;
-    struct expr* type;
     src_range srange;
 } expr;
 

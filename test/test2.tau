@@ -1,6 +1,6 @@
 import bar;
 module bar;
-x:=3;
+#x := 3;
 func main(args: String[]){    
     func test_compound_assignment(){
         do label@{

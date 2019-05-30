@@ -24,6 +24,7 @@ typedef struct symbol_table_with_usings {
 
 void symbol_store_init(symbol_store* ss);
 
+int symbol_store_ensure_unique(symbol_store* ss);
 void symbol_store_inc_decl_count(symbol_store* ss, ureg dc);
 ureg symbol_store_get_decl_count(symbol_store ss);
 void symbol_store_merge_decls(symbol_store* tgt, symbol_store src);
