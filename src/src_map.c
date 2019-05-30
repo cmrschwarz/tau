@@ -84,7 +84,7 @@ int src_pos_get_line_bounds(
     }
     else {
         *length = 0; // otherwise impossible, because of newlines counting
-                     // towards old line
+        // towards old line
     }
     return OK;
 }
@@ -181,7 +181,6 @@ src_range src_range_pack_lines(thread_context* tc, ureg start, ureg end)
     src_range_large srl = {NULL, start, end};
     return src_range_large_pack(tc, &srl);
 }
-
 void src_range_unpack(src_range r, src_range_large* d)
 {
     if (r & SRC_RANGE_EXTERN_BIT) {
@@ -219,4 +218,11 @@ ureg src_range_get_end(src_range r)
     src_range_large l;
     src_range_unpack(r, &l);
     return l.end;
+}
+void src_range_unpack_lines(src_range r, ureg* start, ureg* end)
+{
+    src_range_large l;
+    src_range_unpack(r, &l);
+    *start = l.start;
+    *end = l.end;
 }

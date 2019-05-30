@@ -545,6 +545,7 @@ parse_error parse_param_decl(
     d->symbol.name = alloc_string_perm(p, t->str);
     if (!d->symbol.name) return PE_FATAL;
     d->symbol.stmt.kind = SYM_PARAM;
+    d->symbol.parent = p->curr_parent;
     // TODO: flags parsing
     d->symbol.stmt.flags = STMT_FLAGS_DEFAULT;
     tk_void(&p->tk);
@@ -813,6 +814,7 @@ parse_uninitialized_var_in_tuple(parser* p, token* t, expr** ex)
     sym_var_uninitialized* v = alloc_perm(p, sizeof(tuple_ident_node));
     v->symbol.stmt.kind = SYM_VAR_UNINITIALIZED;
     v->symbol.stmt.flags = STMT_FLAGS_DEFAULT;
+    v->symbol.parent = p->curr_parent;
     stmt_flags_set_compound_decl(&v->symbol.stmt.flags);
     v->symbol.name = alloc_string_perm(p, t->str);
     if (!v->symbol.name) return PE_FATAL;
@@ -1812,6 +1814,7 @@ parse_error parse_eof_delimited_open_scope(parser* p, open_scope* osc)
 }
 parse_error parser_parse_file(parser* p, job_parse* j)
 {
+    p->curr_parent = NULL;
     // This is test code. it sucks
     int r = tk_open_file(&p->tk, j->file);
     if (r) {
@@ -1962,8 +1965,8 @@ parse_error parse_var_decl(
     return PE_OK;
 }
 parse_error parse_param_list(
-    parser* p, sym_param** tgt, bool generic, ureg ctx_start, ureg ctx_end,
-    char* msg)
+    parser* p, symbol* parent, sym_param** tgt, bool generic, ureg ctx_start,
+    ureg ctx_end, char* msg)
 {
     token* t;
     token_kind end_tok = generic ? TT_BRACKET_CLOSE : TT_PAREN_CLOSE;
@@ -1973,14 +1976,21 @@ parse_error parse_param_list(
         *tgt = NULL;
         return PE_OK;
     }
+    parent->parent = p->curr_parent;
+    p->curr_parent = parent;
     do {
         parse_error pe = parse_param_decl(p, tgt, ctx_start, ctx_end, msg);
         if (pe) {
             *tgt = NULL;
+            p->curr_parent = parent->parent;
             return pe;
         }
         tgt = (sym_param**)&(*tgt)->symbol.stmt.next;
-        PEEK(p, t);
+        t = tk_peek(&p->tk);
+        if (!t) {
+            p->curr_parent = parent->parent;
+            return PE_TK_ERROR;
+        }
         if (t->kind == TT_COMMA) {
             tk_void(&p->tk);
         }
@@ -1992,11 +2002,13 @@ parse_error parse_param_list(
             error_log_report_annotated_twice(
                 &p->tk.tc->error_log, ES_PARSER, false, e1, p->tk.file,
                 t->start, t->end, e2, p->tk.file, ctx_start, ctx_end, msg);
+            p->curr_parent = parent->parent;
             return PE_ERROR;
         }
     } while (t->kind != end_tok);
     tk_void(&p->tk);
     *tgt = NULL;
+    p->curr_parent = parent->parent;
     return PE_OK;
 }
 parse_error parse_func_decl(
@@ -2026,8 +2038,8 @@ parse_error parse_func_decl(
         if (!fn) return PE_FATAL;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((sc_func_generic*)fn)->generic_params, true, start, decl_end,
-            "in this function declaration");
+            p, (symbol*)fn, &((sc_func_generic*)fn)->generic_params, true,
+            start, decl_end, "in this function declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -2050,7 +2062,8 @@ parse_error parse_func_decl(
     sym_param** pd =
         generic ? &((sc_func_generic*)fn)->params : &((sc_func*)fn)->params;
     pe = parse_param_list(
-        p, pd, false, start, decl_end, "in this function declaration");
+        p, (symbol*)fn, pd, false, start, decl_end,
+        "in this function declaration");
     if (pe) return pe;
     fn->symbol.stmt.kind = generic ? SC_FUNC_GENERIC : SC_FUNC;
     fn->symbol.stmt.flags = flags;
@@ -2085,8 +2098,8 @@ parse_error parse_struct_decl(
         if (!st) return PE_FATAL;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((sc_struct_generic*)st)->generic_params, true, start, decl_end,
-            "in this struct declaration");
+            p, (symbol*)st, &((sc_struct_generic*)st)->generic_params, true,
+            start, decl_end, "in this struct declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -2161,8 +2174,8 @@ parse_error parse_module_decl(
         if (!md) return PE_FATAL;
         tk_void_n(&p->tk, 2);
         pe = parse_param_list(
-            p, &((osc_module_generic*)md)->generic_params, true, start,
-            decl_end, "in this module declaration");
+            p, (symbol*)md, &((osc_module_generic*)md)->generic_params, true,
+            start, decl_end, "in this module declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -2230,8 +2243,8 @@ parse_error parse_extend_decl(
         if (!ex) return PE_FATAL;
         tk_void_n(&p->tk, 2);
         pe = parse_param_list(
-            p, &((osc_extend_generic*)ex)->generic_params, true, start,
-            decl_end, "in this extend declaration");
+            p, (symbol*)ex, &((osc_extend_generic*)ex)->generic_params, true,
+            start, decl_end, "in this extend declaration");
         if (pe) return pe;
     }
     else {
@@ -2297,8 +2310,8 @@ parse_error parse_trait_decl(
         if (!tr) return PE_FATAL;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, &((sc_trait_generic*)tr)->generic_params, true, start, decl_end,
-            "in this trait declaration");
+            p, (symbol*)tr, &((sc_trait_generic*)tr)->generic_params, true,
+            start, decl_end, "in this trait declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -2454,6 +2467,7 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
             if (!nu) return PE_FATAL;
             nu->symbol.stmt.kind = SYM_NAMED_USING;
             nu->symbol.stmt.flags = flags;
+            nu->symbol.parent = p->curr_parent;
             nu->symbol.name = alloc_string_perm(p, t->str);
             if (!nu->symbol.name) return PE_FATAL;
             tk_void_n(&p->tk, 2);
@@ -2968,7 +2982,10 @@ parse_error parse_brace_delimited_body(parser* p, body* b, ast_node* parent)
 parse_error parse_scope_body(parser* p, scope* s)
 {
     if (stack_push(&p->tk.tc->stack, s)) return PE_FATAL;
+    s->symbol.parent = p->curr_parent;
+    p->curr_parent = (symbol*)s;
     parse_error pe = parse_body(p, &s->body, (ast_node*)s);
+    p->curr_parent = s->symbol.parent;
     stack_pop(&p->tk.tc->stack);
     return pe;
 }

@@ -138,6 +138,7 @@ typedef struct file_require {
 typedef struct expr {
     ast_node_kind kind;
     op_type op_type;
+    struct expr* type;
     src_range srange;
 } expr;
 
@@ -151,6 +152,8 @@ typedef struct stmt {
 typedef struct symbol {
     stmt stmt;
     char* name;
+    // always points to the parent symbol, even if in a nested expr block
+    symbol* parent;
 } symbol;
 
 typedef struct body {

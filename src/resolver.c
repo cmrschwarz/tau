@@ -17,6 +17,48 @@ int resolver_init(resolver* r, thread_context* tc)
 void resolver_fin(resolver* r)
 {
 }
+static src_file* get_stack_file(stack* s)
+{
+    stack_state ss;
+    stack_state_save(&ss, s);
+    src_range_large srl;
+    while (true) {
+        ast_node* n = stack_pop(s);
+        if (n == NULL) {
+            srl.file = NULL;
+            break;
+        }
+        if (ast_node_is_symbol(n)) {
+            src_range_unpack(((symbol*)n)->stmt.srange, &srl);
+            if (srl.file != NULL) break;
+        }
+    }
+    stack_state_apply(&ss, s);
+    return srl.file;
+}
+static inline void resolver_error_1a(
+    resolver* r, char* msg, src_file* file, ureg start, ureg end, char* annot)
+{
+    error_log_report_annotated(
+        &r->tc->error_log, ES_RESOLVER, false, msg, file, start, end, annot);
+}
+static inline void resolver_error_2a(
+    resolver* r, char* msg, src_file* file, ureg start, ureg end, char* annot,
+    src_file* file2, ureg start2, ureg end2, char* annot2)
+{
+    error_log_report_annotated_twice(
+        &r->tc->error_log, ES_RESOLVER, false, msg, file, start, end, annot,
+        file2, start2, end2, annot2);
+}
+static inline void resolver_error_3a(
+    resolver* r, char* msg, src_file* file, ureg start, ureg end, char* annot,
+    src_file* file2, ureg start2, ureg end2, char* annot2, src_file* file3,
+    ureg start3, ureg end3, char* annot3)
+{
+    error_log_report_annotated_thrice(
+        &r->tc->error_log, ES_RESOLVER, false, msg, file, start, end, annot,
+        file2, start2, end2, annot2, file3, start3, end3, annot3);
+}
 resolve_error symbol_redefinition_error(
     resolver* r, src_range_large sr_old, src_range_large sr_new)
 {
@@ -194,11 +236,25 @@ static inline void print_debug_info(resolver* r)
     printf("%s}\n", (**i).name);
 }
 static inline resolve_error
+resolve_type(resolver* r, stack* s, symbol* p, expr* type)
+{
+    switch (type->kind) {
+        ureg start, end;
+        src_range_unpack_lines(type->srange, &start, &end);
+        default:
+            resolver_error_1a(
+                r, "invalid type expression", get_stack_file(s), start, end,
+                "not a valid type expression");
+    }
+}
+static inline resolve_error
 resolve_var(resolver* r, stack* s, symbol* p, sym_var* sv)
 {
     if (sv->type == NULL) {
         resolve_error re = resolve_ast_node(r, s, p, (ast_node*)sv->value);
         if (re != RE_OK) return re;
+    }
+    else {
     }
     return RE_OK;
 }
