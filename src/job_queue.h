@@ -5,12 +5,12 @@
 #include "utils/error.h"
 #include "utils/threading.h"
 
-typedef enum PACK_ENUM job_type {
+typedef enum PACK_ENUM job_kind {
     JOB_PARSE,
     JOB_RESOLVE_SINGLE,
     JOB_RESOLVE_MULTIPLE,
     JOB_FINALIZE,
-} job_type;
+} job_kind;
 
 typedef struct job_parse {
     src_file* file;
@@ -28,7 +28,7 @@ typedef struct job_resolve_multiple {
 } job_resolve_multiple;
 
 typedef struct job {
-    job_type type;
+    job_kind kind;
     union concrete {
         job_parse parse;
         job_resolve_single resolve_single;

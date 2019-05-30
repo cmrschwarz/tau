@@ -45,7 +45,7 @@ bool is_unary_op_postfix(op_type t)
 }
 void get_expr_bounds(expr* n, ureg* start, ureg* end)
 {
-    switch (n->type) {
+    switch (n->kind) {
         case EXPR_LOOP: {
             if (start) *start = src_range_get_start(n->srange);
             if (end) get_expr_bounds(n, NULL, end);

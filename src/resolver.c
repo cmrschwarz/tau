@@ -1,10 +1,13 @@
 #include "resolver.h"
 #include "thread_context.h"
 #include "utils/error.h"
+#include "utils/panic.h"
 
 resolve_error add_delarations(
     resolver* r, symbol_table* sst, symbol_store* ss, src_file* f,
     stmt** stmt_list);
+static inline resolve_error
+resolve_ast_node(resolver* r, stack* s, symbol* p, ast_node* n);
 
 int resolver_init(resolver* r, thread_context* tc)
 {
@@ -51,7 +54,7 @@ resolve_error sst_add_sym(resolver* r, symbol_table* sst, symbol* sym)
 }
 resolve_error expr_add_declarations(resolver* r, expr* ex, src_file* f)
 {
-    switch (ex->type) {
+    switch (ex->kind) {
         case EXPR_OP_UNARY:
             return expr_add_declarations(r, ((expr_op_unary*)ex)->child, f);
         case EXPR_OP_BINARY: {
@@ -104,12 +107,13 @@ resolve_error add_delarations(
             }
             if (re) break;
         }
-        else if (si->type == STMT_PP_STMT) {
+        else if (si->kind == STMT_PP_STMT) {
             stmt_pp_stmt* pps = (stmt_pp_stmt*)si;
             if (ast_node_is_symbol((ast_node*)pps->pp_stmt)) {
                 symbol* sym = (symbol*)pps->pp_stmt;
-                if (!sst || stmt_flags_get_access_mod(sym->stmt.flags) ==
-                                AM_SCOPE_LOCAL) {
+                if (!sst ||
+                    stmt_flags_get_access_mod(sym->stmt.flags) ==
+                        AM_SCOPE_LOCAL) {
                     symbol_store_inc_decl_count(&st->ppst, 1);
                 }
                 else {
@@ -117,7 +121,7 @@ resolve_error add_delarations(
                 }
             }
         }
-        else if (si->type == STMT_USING) {
+        else if (si->kind == STMT_USING) {
             stmt_using* su = (stmt_using*)si;
             access_modifier am = stmt_flags_get_access_mod(su->stmt.flags);
             if (am == AM_SCOPE_LOCAL) {
@@ -189,9 +193,38 @@ static inline void print_debug_info(resolver* r)
     }
     printf("%s}\n", (**i).name);
 }
-static inline resolve_error try_resolve_stack(resolver* r, stack* s)
+static inline resolve_error
+resolve_var(resolver* r, stack* s, symbol* p, sym_var* sv)
 {
+    if (sv->type == NULL) {
+        resolve_error re = resolve_ast_node(r, s, p, (ast_node*)sv->value);
+        if (re != RE_OK) return re;
+    }
     return RE_OK;
+}
+static inline resolve_error
+resolve_ast_node(resolver* r, stack* s, symbol* p, ast_node* n)
+{
+    switch (*(ast_node_kind*)n) {
+        case STMT_EXPRESSION:
+            stack_set(s, ((stmt_expr*)n)->expr);
+            return resolve_ast_node(r, s, p, (ast_node*)((stmt_expr*)n)->expr);
+        case SYM_VAR: return resolve_var(r, s, p, (sym_var*)n);
+        default:
+            stack_pop(s);
+            stack_pop(s);
+            return RE_OK;
+    }
+}
+static inline resolve_error resolve_stack(resolver* r, stack* s)
+{
+    while (true) {
+        ast_node* next = stack_peek(s);
+        if (!next) return RE_OK;
+        symbol* parent = stack_peek_prev(s);
+        resolve_error re = resolve_ast_node(r, s, parent, next);
+        if (re != RE_OK) return re;
+    }
 }
 static inline resolve_error handle_preprocessor(resolver* r)
 {
@@ -215,7 +248,7 @@ static inline resolve_error handle_preprocessor(resolver* r)
                 stack_push(st, osci);
                 stack_push(st, osci->scope.body.children);
                 stacks_remaining++;
-                resolve_error re = try_resolve_stack(r, st);
+                resolve_error re = resolve_stack(r, st);
                 if (re == RE_UNKNOWN_SYMBOL) {
                     stack* st2;
                     while (true) {
@@ -225,7 +258,7 @@ static inline resolve_error handle_preprocessor(resolver* r)
                             continue;
                         }
                         if (st2 == st) break;
-                        re = try_resolve_stack(r, st2);
+                        re = resolve_stack(r, st2);
                         if (re == RE_UNKNOWN_SYMBOL) continue;
                         if (re == OK) {
                             stack tmp = *st2;
@@ -249,7 +282,7 @@ static inline resolve_error handle_preprocessor(resolver* r)
         }
     }
     if (stacks_remaining > 0) {
-        panic("unresolved stuff");
+        panic("unresolved preprocessor statements!");
     }
     while (true) {
         stack* s = sbi_next(&sbi, sizeof(stack));

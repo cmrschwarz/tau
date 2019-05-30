@@ -102,12 +102,12 @@ typedef enum PACK_ENUM {
 
     TT_EOF,
     TT_NONE,
-} token_type;
+} token_kind;
 
 extern const char* token_strings[255];
 
 typedef struct token {
-    token_type type;
+    token_kind kind;
     string str;
     ureg start;
     ureg end;
@@ -115,13 +115,13 @@ typedef struct token {
 
 static inline bool token_has_string(token* t)
 {
-    return t->type >= TT_MIN_STR_INDEX && t->type <= TT_MAX_STR_INDEX;
+    return t->kind >= TT_MIN_STR_INDEX && t->kind <= TT_MAX_STR_INDEX;
 }
 static inline bool token_is_keyword(token* t)
 {
-    return t->type >= TT_MIN_KW_INDEX && t->type <= TT_MAX_KW_INDEX;
+    return t->kind >= TT_MIN_KW_INDEX && t->kind <= TT_MAX_KW_INDEX;
 }
 
-token_type match_kw(string str);
+token_kind match_kw(string str);
 
 void token_debug_print(src_file* f, token* t);

@@ -93,6 +93,16 @@ static inline void* stack_peek(stack* s)
     if (s->curr_seg->prev == NULL) return NULL;
     return *(s->curr_seg->prev->end - 1);
 }
+static inline int stack_set(stack* s, void* value)
+{
+    if (s->head != s->curr_seg_start) {
+        *(s->head - 1) = value;
+        return OK;
+    }
+    if (s->curr_seg->prev == NULL) return ERR;
+    *(s->curr_seg->prev->end - 1) = value;
+    return OK;
+}
 static inline void* stack_peek_prev(stack* s)
 {
     if (s->head > s->curr_seg_start + 1) return *(s->head - 2);

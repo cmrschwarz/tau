@@ -15,18 +15,18 @@ typedef enum PACK_ENUM error_stage {
     //...
 } error_stage;
 
-typedef enum error_type {
+typedef enum error_kind {
     ET_ERROR,
     ET_BUG,
     ET_1_ANNOT,
     ET_MULTI_ANNOT,
-} error_type;
+} error_kind;
 
 typedef struct error {
     struct error* previous;
     bool warn;
     error_stage stage;
-    error_type type;
+    error_kind kind;
     src_file* file;
     ureg position;
     const char* message;

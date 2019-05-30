@@ -40,7 +40,7 @@ int tauc_init()
 int tauc_request_end()
 {
     job jb;
-    jb.type = JOB_FINALIZE;
+    jb.kind = JOB_FINALIZE;
     ureg w, j;
     int r = job_queue_push(&TAUC.job_queue, &jb, &w, &j);
     if (r != ERR) return OK;
@@ -145,7 +145,7 @@ int tauc_request_parse(
     src_file* f, src_file* requiring_file, src_range requiring_srange)
 {
     job j;
-    j.type = JOB_PARSE;
+    j.kind = JOB_PARSE;
     j.concrete.parse.file = f;
     j.concrete.parse.requiring_file = requiring_file;
     j.concrete.parse.requiring_srange = requiring_srange;
@@ -154,7 +154,7 @@ int tauc_request_parse(
 int tauc_request_resolve_multiple(mdg_node** start, mdg_node** end)
 {
     job j;
-    j.type = JOB_RESOLVE_MULTIPLE;
+    j.kind = JOB_RESOLVE_MULTIPLE;
     j.concrete.resolve_multiple.start = start;
     j.concrete.resolve_multiple.end = end;
     return tauc_add_job(&j);
@@ -162,7 +162,7 @@ int tauc_request_resolve_multiple(mdg_node** start, mdg_node** end)
 int tauc_request_resolve_single(mdg_node* node)
 {
     job j;
-    j.type = JOB_RESOLVE_SINGLE;
+    j.kind = JOB_RESOLVE_SINGLE;
     j.concrete.resolve_single.node = node;
     return tauc_add_job(&j);
 }

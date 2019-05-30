@@ -126,7 +126,7 @@ void print_expr_list(expr** el, ureg indent)
 void print_compound_decl_list(expr** el, ureg indent)
 {
     while (*el) {
-        if ((**el).type == SYM_VAR_UNINITIALIZED) {
+        if ((**el).kind == SYM_VAR_UNINITIALIZED) {
             sym_var* d = (sym_var*)*el;
             if (stmt_flags_get_const(d->symbol.stmt.flags)) p("const ");
             pu(d->symbol.name);
@@ -135,7 +135,7 @@ void print_compound_decl_list(expr** el, ureg indent)
                 print_expr(d->type, indent);
             }
         }
-        else if ((**el).type == EXPR_TUPLE) {
+        else if ((**el).kind == EXPR_TUPLE) {
             expr_tuple* t = (expr_tuple*)(*el);
             pc('(');
             print_compound_decl_list(t->elements, indent);
@@ -207,7 +207,7 @@ void print_module_import(module_import* mi, mdg_node* parent, ureg indent)
 void print_astn(stmt* astn, ureg indent)
 {
     // TODO: print access modifiers
-    switch (astn->type) {
+    switch (astn->kind) {
         case STMT_EXPRESSION: {
             stmt_expr* e = (stmt_expr*)astn;
             print_expr(e->expr, indent);
@@ -360,7 +360,7 @@ void print_expr_in_parens(expr* ex, ureg indent)
 }
 void print_expr(expr* ex, ureg indent)
 {
-    switch (ex->type) {
+    switch (ex->kind) {
         case EXPR_IDENTIFIER:
         case EXPR_NUMBER: pu(((expr_str_value*)ex)->value); break;
         case EXPR_BLOCK: {

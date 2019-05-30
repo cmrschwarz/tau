@@ -44,17 +44,17 @@ int thread_context_init(thread_context* tc)
 }
 int thread_context_do_job(thread_context* tc, job* j)
 {
-    if (j->type == JOB_PARSE) {
+    if (j->kind == JOB_PARSE) {
         return parser_parse_file(&tc->parser, &j->concrete.parse);
     }
-    else if (j->type == JOB_RESOLVE_MULTIPLE) {
+    else if (j->kind == JOB_RESOLVE_MULTIPLE) {
         int r = resolver_resolve_multiple(
             &tc->resolver, j->concrete.resolve_multiple.start,
             j->concrete.resolve_multiple.end);
         tfree(j->concrete.resolve_multiple.start);
         return r;
     }
-    else if (j->type == JOB_RESOLVE_SINGLE) {
+    else if (j->kind == JOB_RESOLVE_SINGLE) {
         int r = resolver_resolve_single(
             &tc->resolver, j->concrete.resolve_single.node);
         if (r) return r;
@@ -63,7 +63,7 @@ int thread_context_do_job(thread_context* tc, job* j)
         }
         return OK;
     }
-    else if (j->type == JOB_FINALIZE) {
+    else if (j->kind == JOB_FINALIZE) {
         job_queue_stop(&TAUC.job_queue);
         return mdg_final_sanity_check(&TAUC.mdg, tc);
     }

@@ -96,12 +96,12 @@ void* error_log_alloc(error_log* el, ureg size)
     return e;
 }
 static inline void error_fill(
-    error* e, error_stage stage, bool warn, error_type type,
+    error* e, error_stage stage, bool warn, error_kind type,
     const char* message, src_file* file, ureg position)
 {
     e->stage = stage;
     e->warn = warn;
-    e->type = type;
+    e->kind = type;
     e->file = file;
     e->position = position;
     e->message = message;
@@ -295,8 +295,8 @@ void print_msg(const char* msg, ureg msg_len)
 void printCriticalThreadError(const char* msg)
 {
     pectc(
-        ANSICOLOR_RED ANSICOLOR_BOLD,
-        "critical error in worker thread: ", ANSICOLOR_CLEAR);
+        ANSICOLOR_RED ANSICOLOR_BOLD, "critical error in worker thread: ",
+        ANSICOLOR_CLEAR);
     pe(msg);
     pe("\n");
 }
@@ -480,7 +480,8 @@ int print_src_line(
             ureg after_tab = bpos;
             print_until(&bpos, &next, buffer, &after_tab, &length_diff);
             switch (mode) {
-                case 3: (ep_pos + 1)->length_diff_start = length_diff;
+                case 3:
+                    (ep_pos + 1)->length_diff_start = length_diff;
                 // fallthrough
                 case 0:
                     ep_pos->length_diff_start = length_diff;
@@ -679,7 +680,7 @@ int report_error(error* e)
         src_pos pos = src_map_get_pos(&e->file->src_map, e->position);
 
         // TODO: multiline errors
-        switch (e->type) {
+        switch (e->kind) {
             case ET_1_ANNOT: {
                 error_annotated* ea = (error_annotated*)e;
                 err_points[0].file = e->file;

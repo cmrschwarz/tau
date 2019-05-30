@@ -4,7 +4,7 @@
 #include "types.h"
 
 typedef struct sbuffer_segment {
-    u8* start;
+    u8* start; // needed for efficient removal
     u8* head;
     u8* end;
     struct sbuffer_segment* next;

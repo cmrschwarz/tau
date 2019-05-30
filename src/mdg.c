@@ -321,7 +321,7 @@ bool scope_find_import(
             if (scope_find_import((scope*)st, import, tgt, tgt_sym))
                 return true;
         }
-        else if (st->type == STMT_IMPORT) {
+        else if (st->kind == STMT_IMPORT) {
             stmt_import* i = (stmt_import*)st;
             if (module_import_find_import(&i->module_import, import, tgt_sym)) {
                 *tgt = i;
@@ -669,8 +669,8 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
             open_scope* i = aseglist_iterator_next(&it);
             first_target = i;
             while (i) {
-                if (i->scope.symbol.stmt.type == OSC_MODULE ||
-                    i->scope.symbol.stmt.type == OSC_MODULE_GENERIC) {
+                if (i->scope.symbol.stmt.kind == OSC_MODULE ||
+                    i->scope.symbol.stmt.kind == OSC_MODULE_GENERIC) {
                     if (mod != NULL) {
                         src_range_large srl;
                         src_range_unpack(i->scope.symbol.stmt.srange, &srl);

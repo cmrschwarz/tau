@@ -98,7 +98,7 @@ const char* token_strings[255] = {
 };
 // clang-format on
 
-token_type match_kw(string str)
+token_kind match_kw(string str)
 {
     for (ureg kwid = TT_MIN_KW_INDEX; kwid < TT_MAX_KW_INDEX; kwid++) {
         if (string_eq_cstr(str, token_strings[kwid])) return kwid;
@@ -112,7 +112,7 @@ void token_debug_print(src_file* f, token* t)
         puts("ERROR");
         return;
     }
-    switch (t->type) {
+    switch (t->kind) {
         case TT_NUMBER:
         case TT_STRING: {
             string_print(t->str);
@@ -128,7 +128,7 @@ void token_debug_print(src_file* f, token* t)
             putchar('\'');
         } break;
         default: {
-            fputs(token_strings[t->type], stdout);
+            fputs(token_strings[t->kind], stdout);
         } break;
     }
     src_pos p = src_map_get_pos(&f->src_map, t->start);

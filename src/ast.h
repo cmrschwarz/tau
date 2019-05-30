@@ -4,7 +4,7 @@
 #include "symbol_store.h"
 #include "utils/c_extensions.h"
 
-typedef enum PACK_ENUM ast_node_type {
+typedef enum PACK_ENUM ast_node_kind {
     OSC_MODULE,
     OSC_MODULE_GENERIC,
     OSC_EXTEND,
@@ -50,6 +50,8 @@ typedef enum PACK_ENUM ast_node_type {
     EXPR_STRING_LITERAL,
     EXPR_BINARY_LITERAL,
     EXPR_IDENTIFIER,
+    EXPR_VARIABLE,
+    EXPR_TYPE,
     EXPR_ARRAY,
     EXPR_TUPLE,
     EXPR_LAMBDA,
@@ -62,7 +64,7 @@ typedef enum PACK_ENUM ast_node_type {
 
     EXPR_OP_UNARY,
     EXPR_OP_BINARY,
-} ast_node_type;
+} ast_node_kind;
 
 typedef enum PACK_ENUM op_type {
     // special ops
@@ -126,7 +128,7 @@ typedef enum PACK_ENUM op_type {
     OP_POST_DECREMENT,
 } op_type;
 
-typedef ast_node_type ast_node;
+typedef ast_node_kind ast_node;
 
 typedef struct file_require {
     src_file* file;
@@ -134,13 +136,13 @@ typedef struct file_require {
 } file_require;
 
 typedef struct expr {
-    ast_node_type type;
+    ast_node_kind kind;
     op_type op_type;
     src_range srange;
 } expr;
 
 typedef struct stmt {
-    ast_node_type type;
+    ast_node_kind kind;
     stmt_flags flags;
     src_range srange;
     struct stmt* next;
