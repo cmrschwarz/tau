@@ -1,6 +1,7 @@
 #pragma once
 #include "stdio.h"
 #include "types.h"
+#include "utils/allocator.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -119,7 +120,7 @@ static inline char* string_to_cstr(string s)
 {
     // this is temporary until we get rid of c strings entirely
     ureg path_len = string_len(s);
-    char* path = (char*)malloc(path_len + 1);
+    char* path = (char*)tmalloc(path_len + 1);
     if (!path) return NULL;
     memcpy(path, s.start, path_len);
     path[path_len] = '\0';
@@ -128,7 +129,7 @@ static inline char* string_to_cstr(string s)
 
 static inline void string_free_cstr(char* s)
 {
-    free(s);
+    tfree(s);
 }
 
 static inline bool is_utf8_continuation(char c)

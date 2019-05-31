@@ -491,6 +491,7 @@ sym_fill_srange(parser* p, symbol* s, ureg start, ureg end)
     src_range_large srl;
     srl.start = start;
     srl.end = end;
+    srl.file = NULL;
     if (stmt_flags_get_access_mod(s->stmt.flags) != AM_UNSPECIFIED) {
         if (ast_node_is_open_scope(stack_peek(&p->tk.tc->stack))) {
             srl.file = p->tk.file;
@@ -1100,6 +1101,8 @@ parse_error parse_pp_stmt(
     if (!pps) return PE_FATAL;
     stmt_init((stmt*)pps, STMT_PP_STMT);
     pe = parse_statement(p, &pps->pp_stmt);
+    pps->stmt.srange = src_range_pack_lines(
+        p->tk.tc, start, src_range_get_end(pps->pp_stmt->srange));
     *tgt = (stmt*)pps;
     return pe;
 }
@@ -1346,7 +1349,8 @@ parse_error parse_do(parser* p, expr** tgt)
                         "in this do expression");
                     return PE_ERROR;
                 }
-                pe = parse_brace_delimited_body(p, &b, (ast_node*)tgt);
+                pe = parse_brace_delimited_body(
+                    p, &b, (ast_node*)stack_peek(&p->tk.tc->stack));
                 if (pe) return pe;
             }
         }
@@ -2049,6 +2053,8 @@ parse_error parse_func_decl(
         if (!fn) return PE_FATAL;
     }
     fn->symbol.name = name;
+    fn->symbol.stmt.kind = generic ? SC_FUNC_GENERIC : SC_FUNC;
+    fn->symbol.stmt.flags = flags;
     pe = sym_fill_srange(p, (symbol*)fn, start, decl_end);
     if (pe) return pe;
     if (t->kind != TT_PAREN_OPEN) {
@@ -2065,8 +2071,6 @@ parse_error parse_func_decl(
         p, (symbol*)fn, pd, false, start, decl_end,
         "in this function declaration");
     if (pe) return pe;
-    fn->symbol.stmt.kind = generic ? SC_FUNC_GENERIC : SC_FUNC;
-    fn->symbol.stmt.flags = flags;
     *n = (stmt*)fn;
     curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
     return parse_scope_body(p, fn);

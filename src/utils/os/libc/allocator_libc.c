@@ -4,7 +4,6 @@
 #include "../../math_utils.h"
 
 #include <memory.h>
-
 #if DEBUG
 #include "../../panic.h"
 #include "../../threading.h"
@@ -65,8 +64,8 @@ void* trealloc(void* old, ureg used_size, ureg new_size)
 
 void tfree(void* mem)
 {
-    free(mem);
     count_free();
+    free(mem);
 }
 
 #endif

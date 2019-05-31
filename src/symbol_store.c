@@ -71,7 +71,7 @@ int symbol_store_setup_table(symbol_store* ss)
 int symbol_store_ensure_unique(symbol_store* ss)
 {
     if (ss->table == &EMPTY_ST) {
-        ss->table = malloc(sizeof(symbol_table));
+        ss->table = tmalloc(sizeof(symbol_table));
         if (!ss->table) return ERR;
         ss->table->decl_count = 0;
         ss->table->usings = NULL;

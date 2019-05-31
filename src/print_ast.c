@@ -347,8 +347,13 @@ void print_astn(stmt* astn, ureg indent)
             p("using ");
             print_expr(u->target, indent);
         } break;
+        case STMT_PP_STMT: {
+            stmt_pp_stmt* pps = (stmt_pp_stmt*)astn;
+            pc('#');
+            print_astn(pps->pp_stmt, indent);
+        } break;
         default: {
-            p("<Unkown Statement>;");
+            p("<Unkown Statement>");
         }
     }
 }

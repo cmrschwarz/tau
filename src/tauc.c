@@ -41,6 +41,7 @@ int tauc_request_end()
 {
     job jb;
     jb.kind = JOB_FINALIZE;
+    // memset(&jb.concrete, 1, sizeof(jb.concrete)); //why valgrind?
     ureg w, j;
     int r = job_queue_push(&TAUC.job_queue, &jb, &w, &j);
     if (r != ERR) return OK;
@@ -51,8 +52,8 @@ void tauc_fin()
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &TAUC.worker_threads);
     worker_thread* wt;
-    tauc_request_end();
-    thread_context_run(&TAUC.main_thread_context);
+    // tauc_request_end();
+    // thread_context_run(&TAUC.main_thread_context);
     while (true) {
         wt = aseglist_iterator_next(&it);
         if (!wt) break;

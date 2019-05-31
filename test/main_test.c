@@ -216,5 +216,4 @@ int main_test(int argc, char** argv)
     putchar('\n');
     talloc_fin();
     return res;
-    return 0;
 }
