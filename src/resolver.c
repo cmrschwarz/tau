@@ -4,8 +4,8 @@
 #include "utils/panic.h"
 
 resolve_error add_delarations(
-    resolver* r, bool* require_pp, ureg pp_level, symbol_store* shared_ss,
-    symbol_store* ss, src_file* f, stmt** stmt_list);
+    resolver* r, symbol_store* shared_ss, symbol_store* ss, src_file* f,
+    stmt** stmt_list);
 static inline resolve_error
 resolve_ast_node(resolver* r, stack* s, symbol* p, ast_node* n);
 
@@ -146,8 +146,8 @@ static stmt* get_pp_level_stmt(stmt* s, ureg pp_level)
     return s;
 }
 resolve_error add_delarations(
-    resolver* r, bool* require_pp, ureg pp_level, symbol_store* shared_ss,
-    symbol_store* ss, src_file* f, stmt** stmt_list)
+    resolver* r, symbol_store* shared_ss, symbol_store* ss, src_file* f,
+    stmt** stmt_list)
 {
     if (symbol_store_setup_table(ss)) return RE_FATAL;
     stmt* si = *stmt_list;
@@ -169,7 +169,23 @@ resolve_error add_delarations(
             if (re) break;
         }
         else if (sipl->kind == STMT_PP_STMT) {
+            ureg pp_level = 1;
             stmt* pps = ((stmt_pp_stmt*)sipl)->pp_stmt;
+            while (pps->kind == STMT_PP_STMT) {
+                pp_level++;
+                pps = ((stmt_pp_stmt*)pps)->pp_stmt;
+            }
+            symbol_table* st;
+            if (ast_node_is_stmt(pps)) {
+                if (!shared_ss ||
+                    stmt_flags_get_access_mod(sym->stmt.flags) ==
+                        AM_SCOPE_LOCAL) {
+                    if (symbol_store_ensure_unique(ss)) return RE_FATAL;
+                }
+                else {
+                    if (symbol_store_ensure_unique(shared_ss)) return RE_FATAL;
+                }
+            }
             if (ast_node_is_symbol((ast_node*)pps)) {
                 symbol* sym = (symbol*)pps;
                 if (!shared_ss ||
@@ -182,7 +198,6 @@ resolve_error add_delarations(
                     if (symbol_store_ensure_unique(shared_ss)) return RE_FATAL;
                     symbol_store_inc_decl_count(&shared_ss->table->ppst, 1);
                 }
-                *require_pp = true;
             }
             else if (pps->kind == STMT_USING) {
                 stmt_using* su = (stmt_using*)pps;
@@ -227,14 +242,6 @@ resolve_error add_delarations(
     *stmt_list = NULL;
     return re;
 }
-static inline symbol_store* get_pp_ss(symbol_store* s, ureg pp_level)
-{
-    while (pp_level > 0) {
-        s = &s->table->ppst;
-        pp_level--;
-    }
-    return s;
-}
 static inline resolve_error add_resolve_group_declarations(resolver* r)
 {
     resolve_error re = RE_OK;
@@ -251,23 +258,15 @@ static inline resolve_error add_resolve_group_declarations(resolver* r)
         }
         ureg pp_level = 0;
         bool require_pp = false;
+        if (symbol_store_setup_table(shared_ss)) return RE_FATAL;
+        aseglist_iterator_begin(&tgti, &(**i).targets);
         while (true) {
-            if (symbol_store_setup_table(shared_ss)) return RE_FATAL;
-            aseglist_iterator_begin(&tgti, &(**i).targets);
-            while (true) {
-                osci = aseglist_iterator_next(&tgti);
-                if (!osci) break;
-                re = add_delarations(
-                    r, &require_pp, pp_level, shared_ss,
-                    get_pp_ss(&osci->scope.body.ss, pp_level),
-                    open_scope_get_file(osci), &osci->scope.body.children);
-                if (re) break;
-            }
-            if (re || !require_pp) break;
-            pp_level++;
-            symbol_store_ensure_unique(shared_ss);
-            shared_ss = &shared_ss->table->ppst;
-            require_pp = false;
+            osci = aseglist_iterator_next(&tgti);
+            if (!osci) break;
+            re = add_delarations(
+                r, &require_pp, pp_level, shared_ss, &osci->scope.body.ss,
+                open_scope_get_file(osci), &osci->scope.body.children);
+            if (re) break;
         }
         if (re) {
             while (true) {

@@ -19,6 +19,10 @@ bool ast_node_is_symbol(ast_node* s)
 {
     return *s <= SYM_LAST_SYM_ID;
 }
+bool ast_node_is_stmt(ast_node* s)
+{
+    return (*s < STMT_LAST_STMT_ID);
+}
 bool ast_node_is_expr(ast_node* s)
 {
     return (*s > STMT_LAST_STMT_ID);
