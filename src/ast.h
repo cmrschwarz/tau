@@ -1,7 +1,7 @@
 #pragma once
 #include "src_map.h"
 #include "stmt_flags.h"
-#include "symbol_store.h"
+#include "symbol_table.h"
 #include "utils/c_extensions.h"
 
 typedef enum PACK_ENUM ast_node_kind {
@@ -157,7 +157,7 @@ typedef struct symbol {
 
 typedef struct body {
     stmt* children;
-    symbol_store ss;
+    symbol_table* symtab;
     src_range srange;
 } body;
 
@@ -169,7 +169,6 @@ typedef struct scope {
 typedef struct open_scope {
     scope scope;
     file_require* requires;
-    symbol_store shared_decl_count;
 } open_scope;
 
 typedef struct sym_named_using {

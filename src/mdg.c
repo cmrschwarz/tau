@@ -127,6 +127,9 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
         return NULL;
     }
     n->stage = MS_UNNEEDED;
+    n->symtab = NULL;
+    n->decl_count = 0;
+    n->using_count = 0;
     return n;
 }
 void mdg_node_fin(mdg_node* n)
@@ -134,13 +137,13 @@ void mdg_node_fin(mdg_node* n)
     if (n->stage >= MS_RESOLVING) {
         aseglist_iterator it;
         aseglist_iterator_begin(&it, &n->targets);
-        if (n->ss.table != NULL) {
-            symbol_store_destruct_table(&n->ss);
+        if (n->symtab != NULL) {
+            symbol_table_delete(n->symtab);
             while (true) {
                 open_scope* osc = aseglist_iterator_next(&it);
                 if (!osc) break;
-                if (osc->scope.body.ss.table != NULL) {
-                    symbol_store_destruct_table(&osc->scope.body.ss);
+                if (osc->scope.body.symtab != NULL) {
+                    symbol_table_delete(osc->scope.body.symtab);
                 }
             }
         }

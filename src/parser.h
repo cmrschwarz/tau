@@ -16,7 +16,18 @@ typedef struct parser {
     tokenizer tk;
     mdg_node* current_module;
     symbol* curr_parent;
+    sbuffer body_stack; // awfully sounds like corpse pile :)
 } parser;
+
+// pp scopes sit below the rt scope, node and body are repeated
+typedef struct body_parse_data {
+    ast_node* node;
+    body* body;
+    ureg decl_count;
+    ureg usings_count;
+    ureg shared_decl_count;
+    ureg shared_usings_count;
+} body_parse_data;
 
 int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);

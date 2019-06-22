@@ -14,25 +14,10 @@
         t = tk_peek(&(p)->tk);                                                 \
         if (!t) return PE_TK_ERROR;                                            \
     } while (false)
-
-#define PEEK2(p, t)                                                            \
+#define PEEK_SND(p, t)                                                         \
     do {                                                                       \
         t = tk_peek_2nd(&(p)->tk);                                             \
         if (!t) return PE_TK_ERROR;                                            \
-    } while (false)
-#define PUSH_PARENT(p, n, b)                                                   \
-    do {                                                                       \
-        if (stack_push(&(p)->tk.tc->stack, b)) return PE_FATAL;                \
-        if (stack_push(&(p)->tk.tc->stack, n)) {                               \
-            stack_pop(&(p)->tk.tc->stack);                                     \
-            return PE_FATAL;                                                   \
-        }                                                                      \
-    } while (false)
-
-#define POP_PARENT(p)                                                          \
-    do {                                                                       \
-        stack_pop(&(p)->tk.tc->stack);                                         \
-        stack_pop(&(p)->tk.tc->stack);                                         \
     } while (false)
 
 bool body_supports_exprs(ast_node_kind pt);
@@ -48,70 +33,70 @@ parse_braced_namable_body(parser* p, expr* parent, body* b, char** name);
 parse_error
 parse_expr_in_parens(parser* p, expr* parent, ureg start, ureg end, expr** ex);
 static const unsigned char op_precedence[] = {
-        [OP_POST_INCREMENT] = 15,
-        [OP_POST_DECREMENT] = 15,
-        [OP_CALL] = 15,
-        [OP_ACCESS] = 15,
-        [OP_MEMBER_ACCESS] = 15,
+    [OP_POST_INCREMENT] = 15,
+    [OP_POST_DECREMENT] = 15,
+    [OP_CALL] = 15,
+    [OP_ACCESS] = 15,
+    [OP_MEMBER_ACCESS] = 15,
 
-        [OP_PRE_INCREMENT] = 14,
-        [OP_PRE_DECREMENT] = 14,
-        [OP_UNARY_PLUS] = 14,
-        [OP_UNARY_MINUS] = 14,
-        [OP_NOT] = 14,
-        [OP_BITWISE_NOT] = 14,
-        [OP_DEREF] = 14,
-        [OP_POINTER_OF] = 14,
-        [OP_REF_OF] = 14,
-        [OP_RREF_OF] = 14,
-        [OP_CLOSURE_BY_VALUE] = 14,
-        [OP_CONST] = 14,
-        [OP_PP] = 14,
+    [OP_PRE_INCREMENT] = 14,
+    [OP_PRE_DECREMENT] = 14,
+    [OP_UNARY_PLUS] = 14,
+    [OP_UNARY_MINUS] = 14,
+    [OP_NOT] = 14,
+    [OP_BITWISE_NOT] = 14,
+    [OP_DEREF] = 14,
+    [OP_POINTER_OF] = 14,
+    [OP_REF_OF] = 14,
+    [OP_RREF_OF] = 14,
+    [OP_CLOSURE_BY_VALUE] = 14,
+    [OP_CONST] = 14,
+    [OP_PP] = 14,
 
-        [OP_BITWISE_AND] = 13,
+    [OP_BITWISE_AND] = 13,
 
-        [OP_BITWISE_XOR] = 12,
+    [OP_BITWISE_XOR] = 12,
 
-        [OP_BITWISE_OR] = 11,
+    [OP_BITWISE_OR] = 11,
 
-        [OP_MUL] = 10,
-        [OP_DIV] = 10,
-        [OP_MOD] = 10,
+    [OP_MUL] = 10,
+    [OP_DIV] = 10,
+    [OP_MOD] = 10,
 
-        [OP_ADD] = 9,
-        [OP_SUB] = 9,
+    [OP_ADD] = 9,
+    [OP_SUB] = 9,
 
-        [OP_LSHIFT] = 8,
-        [OP_RSHIFT] = 8,
+    [OP_LSHIFT] = 8,
+    [OP_RSHIFT] = 8,
 
-        [OP_CAST] = 7,
+    [OP_CAST] = 7,
 
-        [OP_LESS_THAN] = 6,
-        [OP_LESS_THAN_OR_EQUAL] = 6,
-        [OP_GREATER_THAN] = 6,
-        [OP_GREATER_THAN_OR_EQUAL] = 6,
+    [OP_LESS_THAN] = 6,
+    [OP_LESS_THAN_OR_EQUAL] = 6,
+    [OP_GREATER_THAN] = 6,
+    [OP_GREATER_THAN_OR_EQUAL] = 6,
 
-        [OP_EQUAL] = 5,
-        [OP_UNEQAL] = 5,
+    [OP_EQUAL] = 5,
+    [OP_UNEQAL] = 5,
 
-        [OP_AND] = 4,
+    [OP_AND] = 4,
 
-        [OP_XOR] = 3,
+    [OP_XOR] = 3,
 
-        [OP_OR] = 2,
+    [OP_OR] = 2,
 
-        [OP_ASSIGN] = 1,
-        [OP_ADD_ASSIGN] = 1,
-        [OP_SUB_ASSIGN] = 1,
-        [OP_MUL_ASSIGN] = 1,
-        [OP_DIV_ASSIGN] = 1,
-        [OP_MOD_ASSIGN] = 1,
-        [OP_LSHIFT_ASSIGN] = 1,
-        [OP_RSHIFT_ASSIGN] = 1,
-        [OP_BITWISE_AND_ASSIGN] = 1,
-        [OP_BITWISE_XOR_ASSIGN] = 1,
-        [OP_BITWISE_OR_ASSIGN] = 1,
-        [OP_BITWISE_NOT_ASSIGN] = 1,
+    [OP_ASSIGN] = 1,
+    [OP_ADD_ASSIGN] = 1,
+    [OP_SUB_ASSIGN] = 1,
+    [OP_MUL_ASSIGN] = 1,
+    [OP_DIV_ASSIGN] = 1,
+    [OP_MOD_ASSIGN] = 1,
+    [OP_LSHIFT_ASSIGN] = 1,
+    [OP_RSHIFT_ASSIGN] = 1,
+    [OP_BITWISE_AND_ASSIGN] = 1,
+    [OP_BITWISE_XOR_ASSIGN] = 1,
+    [OP_BITWISE_OR_ASSIGN] = 1,
+    [OP_BITWISE_NOT_ASSIGN] = 1,
 };
 
 #define PREC_BASELINE 0
@@ -325,6 +310,49 @@ static inline void parser_error_3a(
         annot, p->tk.file, start2, end2, annot2, p->tk.file, start3, end3,
         annot3);
 }
+static inline int push_bpd(parser* p, ast_node* n, body* b)
+{
+    body_parse_data* bpd =
+        sbuffer_append(&p->body_stack, sizeof(body_parse_data));
+    if (bpd == NULL) return ERR;
+    // make sure the symtab is NULL to prevent it from being freed
+    b->symtab = NULL;
+    bpd->node = n;
+    bpd->body = b;
+    bpd->decl_count = 0;
+    bpd->usings_count = 0;
+    return OK;
+}
+static inline body_parse_data* get_bpd(parser* p)
+{
+    sbi i;
+    sbi_begin_at_end(&i, &p->body_stack);
+    return sbi_previous(&i, sizeof(body_parse_data));
+}
+static inline void pop_bpd(parser* p)
+{
+    sbi i;
+    sbi_begin_at_end(&i, &p->body_stack);
+    sbi_previous(&i, sizeof(body_parse_data));
+    sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
+}
+static inline int push_bpd_pp(parser* p, ureg level)
+{
+    body_parse_data* bpd;
+    sbi i;
+    sbi_begin_at_end(&i, &p->body_stack);
+    while (level > 0) {
+        bpd = sbi_previous(&i, sizeof(body_parse_data));
+    }
+    body_parse_data* pp =
+        sbuffer_insert(&p->body_stack, &i, sizeof(body_parse_data));
+    if (!pp) return ERR;
+    pp->node = bpd->node;
+    pp->body = bpd->body;
+    pp->decl_count = 0;
+    pp->usings_count = 0;
+    return OK;
+}
 char* get_context_msg(parser* p, ast_node* node)
 {
     if (!node) return NULL;
@@ -361,47 +389,44 @@ char* get_context_msg(parser* p, ast_node* node)
 }
 body* get_current_body(parser* p)
 {
-    return (body*)stack_peek_prev(&p->tk.tc->stack);
+    return get_bpd(p)->body;
 }
-static inline void curr_scope_require_usings(parser* p, access_modifier am)
+static inline void
+curr_scope_add_usings(parser* p, access_modifier am, ureg count)
 {
-    body* b = (body*)stack_peek_prev(&p->tk.tc->stack);
+    body_parse_data* bpd = get_bpd(p);
     if (am == AM_UNSPECIFIED) {
-        symbol_store_require_unnamed_usings(&b->ss);
+        bpd->usings_count += count;
     }
     else {
-        ast_node* n = stack_peek(&p->tk.tc->stack);
-        if (ast_node_is_open_scope(n)) {
-            open_scope* osc = (open_scope*)n;
-            symbol_store_require_unnamed_usings(&osc->shared_decl_count);
+        if (ast_node_is_open_scope(bpd->node)) {
+            bpd->shared_usings_count += count;
         }
         else {
-            symbol_store_require_unnamed_usings(&b->ss);
+            bpd->usings_count += count;
         }
     }
 }
 static inline void
 curr_scope_add_decls(parser* p, access_modifier am, ureg count)
 {
-    body* b = (body*)stack_peek_prev(&p->tk.tc->stack);
+    body_parse_data* bpd = get_bpd(p);
     if (am == AM_UNSPECIFIED) {
-        symbol_store_inc_decl_count(&b->ss, count);
+        bpd->decl_count += count;
     }
     else {
-        ast_node* n = stack_peek(&p->tk.tc->stack);
-        if (ast_node_is_open_scope(n)) {
-            open_scope* osc = (open_scope*)n;
-            symbol_store_inc_decl_count(&osc->shared_decl_count, count);
+        if (ast_node_is_open_scope(bpd->node)) {
+            bpd->shared_decl_count += count;
         }
         else {
-            symbol_store_inc_decl_count(&b->ss, count);
+            bpd->decl_count += count;
         }
     }
 }
 static inline void
 parser_error_1a_pc(parser* p, char* msg, ureg start, ureg end, char* annot)
 {
-    ast_node* parent = (ast_node*)stack_peek(&p->tk.tc->stack);
+    ast_node* parent = get_bpd(p)->node;
     if (parent != (ast_node*)&p->tk.file->root) {
         char* bpmmsg = get_context_msg(p, parent);
         if (bpmmsg != NULL) {
@@ -418,7 +443,7 @@ static inline void parser_error_2a_pc(
     parser* p, char* msg, ureg start, ureg end, char* annot, ureg start2,
     ureg end2, char* annot2)
 {
-    ast_node* parent = (ast_node*)stack_peek(&p->tk.tc->stack);
+    ast_node* parent = get_bpd(p)->node;
     if (parent != (ast_node*)&p->tk.file->root) {
         char* bpmmsg = get_context_msg(p, parent);
         if (bpmmsg != NULL) {
@@ -464,6 +489,12 @@ int parser_init(parser* p, thread_context* tc)
         tk_fin(&p->tk);
         return r;
     }
+    r = sbuffer_init(&p->body_stack, sizeof(body_parse_data) * 16);
+    if (r) {
+        list_builder_fin(&p->tk.tc->list_builder);
+        tk_fin(&p->tk);
+        return r;
+    }
     return OK;
 }
 void parser_fin(parser* p)
@@ -493,7 +524,7 @@ sym_fill_srange(parser* p, symbol* s, ureg start, ureg end)
     srl.end = end;
     srl.file = NULL;
     if (stmt_flags_get_access_mod(s->stmt.flags) != AM_UNSPECIFIED) {
-        if (ast_node_is_open_scope(stack_peek(&p->tk.tc->stack))) {
+        if (ast_node_is_open_scope(get_bpd(p)->node)) {
             srl.file = p->tk.file;
         }
     }
@@ -900,8 +931,9 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             PEEK(p, t);
             parser_error_2a(
                 p, "unexpected token after opening parenthesis", t->start,
-                t->end, "expected an expression, a declaration or a closing "
-                        "parenthesis",
+                t->end,
+                "expected an expression, a declaration or a closing "
+                "parenthesis",
                 t_start, t_end, "opening parenthesis here");
             return PE_ERROR;
         }
@@ -1050,7 +1082,7 @@ parse_error parse_label_target(
     PEEK(p, t);
     if (t->kind == TT_AT) {
         token* t2;
-        PEEK2(p, t2);
+        PEEK_SND(p, t2);
         if (t2->kind == TT_STRING) {
             *target = alloc_string_perm(p, t2->str);
             if (!*target) return PE_FATAL;
@@ -1234,8 +1266,6 @@ parse_error parse_match(parser* p, expr** tgt)
             "expected match expression", start, e_end, "in this match");
     }
     tk_void(&p->tk);
-    // TODO: evaluate
-    PUSH_PARENT(p, em, em->match_arms);
     void** list = list_builder_start(&p->tk.tc->list_builder);
     while (true) {
         PEEK(p, t);
@@ -1246,7 +1276,6 @@ parse_error parse_match(parser* p, expr** tgt)
             *tgt = (expr*)em;
             tk_void(&p->tk);
             em->body_end = t->end;
-            POP_PARENT(p);
             return PE_OK;
         }
         else {
@@ -1258,14 +1287,12 @@ parse_error parse_match(parser* p, expr** tgt)
                     p, "invalid match syntax", t->start, t->end,
                     "expected match arm condition");
                 list_builder_drop_list(&p->tk.tc->list_builder, list);
-                POP_PARENT(p);
                 return PE_ERROR;
             }
             if (pe) return pe;
             t = tk_peek(&p->tk);
             if (!t) {
                 list_builder_drop_list(&p->tk.tc->list_builder, list);
-                POP_PARENT(p);
                 return PE_TK_ERROR;
             }
             if (t->kind != TT_FAT_ARROW) {
@@ -1276,7 +1303,6 @@ parse_error parse_match(parser* p, expr** tgt)
                     "expected '=>'", exp_start, exp_end,
                     "after this match condition");
                 list_builder_drop_list(&p->tk.tc->list_builder, list);
-                POP_PARENT(p);
                 return PE_ERROR;
             }
             tk_void(&p->tk);
@@ -1292,7 +1318,6 @@ parse_error parse_match(parser* p, expr** tgt)
             t = tk_peek(&p->tk);
             if (!t) {
                 list_builder_drop_list(&p->tk.tc->list_builder, list);
-                POP_PARENT(p);
                 return PE_TK_ERROR;
             }
             if (t->kind == TT_SEMICOLON) {
@@ -1307,7 +1332,6 @@ parse_error parse_match(parser* p, expr** tgt)
                     "expected semicolon", arm_start, arm_end,
                     "after this match arm expression");
                 list_builder_drop_list(&p->tk.tc->list_builder, list);
-                POP_PARENT(p);
                 return PE_ERROR;
             }
             list_builder_add(&p->tk.tc->list_builder, ma);
@@ -1329,8 +1353,7 @@ parse_error parse_do(parser* p, expr** tgt)
     if (t->kind == TT_BRACE_OPEN) {
         // TODO: fix the passed parent here
         // since we really don't know, we just push the current parent again...
-        pe = parse_brace_delimited_body(
-            p, &b, (ast_node*)stack_peek(&p->tk.tc->stack));
+        pe = parse_brace_delimited_body(p, &b, get_bpd(p)->node);
         if (pe) return pe;
     }
     else {
@@ -1349,8 +1372,7 @@ parse_error parse_do(parser* p, expr** tgt)
                         "in this do expression");
                     return PE_ERROR;
                 }
-                pe = parse_brace_delimited_body(
-                    p, &b, (ast_node*)stack_peek(&p->tk.tc->stack));
+                pe = parse_brace_delimited_body(p, &b, get_bpd(p)->node);
                 if (pe) return pe;
             }
         }
@@ -1764,9 +1786,7 @@ parse_error handle_semicolon_after_statement(parser* p, stmt* s)
 static inline parse_error parse_delimited_open_scope(
     parser* p, open_scope* osc, token_kind delimiter_1, token_kind delimiter_2)
 {
-    symbol_store_init(&osc->shared_decl_count);
-    symbol_store_init(&osc->scope.body.ss);
-    PUSH_PARENT(p, osc, &osc->scope.body);
+    if (push_bpd(p, (ast_node*)osc, &osc->scope.body)) return PE_FATAL;
     osc->requires =
         (file_require*)list_builder_start_blocklist(&p->tk.tc->list_builder);
     stmt** head = &osc->scope.body.children;
@@ -1774,7 +1794,7 @@ static inline parse_error parse_delimited_open_scope(
     token* t;
     t = tk_peek(&p->tk);
     if (!t) {
-        POP_PARENT(p);
+        pop_bpd(p);
         return PE_TK_ERROR;
     }
     ureg start = t->start;
@@ -1802,7 +1822,7 @@ static inline parse_error parse_delimited_open_scope(
     *head = NULL;
     osc->requires = list_builder_pop_block_list_zt(
         &p->tk.tc->list_builder, osc->requires, &p->tk.tc->permmem);
-    POP_PARENT(p);
+    pop_bpd(p);
     src_range_large srl;
     srl.start = start;
     srl.end = t->end;
@@ -1847,8 +1867,6 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     j->file->root.oscope.scope.symbol.stmt.kind = OSC_MODULE;
     j->file->root.oscope.scope.body.children = NULL;
     j->file->root.oscope.scope.symbol.stmt.next = NULL;
-    symbol_store_init(&j->file->root.oscope.scope.body.ss);
-    symbol_store_init(&j->file->root.oscope.shared_decl_count);
     parse_error pe = parse_eof_delimited_open_scope(p, &j->file->root.oscope);
     // DBUG:
     print_astn_nl((stmt*)&j->file->root, 0);
@@ -2125,7 +2143,7 @@ parse_error
 check_if_first_stmt(parser* p, stmt** tgt, ureg start, ureg end, bool extend)
 {
     // TODO: use extend bool to be more precise than "scope" in the err msg
-    scope* curr_scope = stack_peek(&p->tk.tc->stack);
+    scope* curr_scope = (scope*)get_bpd(p)->node;
     if (curr_scope != &p->tk.file->root.oscope.scope) {
         parser_error_1a_pc(
             p, "block free scope statement not allowed here", start, end,
@@ -2339,7 +2357,7 @@ bool ast_node_supports_exprs(ast_node* n)
 }
 bool curr_parent_supports_exprs(parser* p)
 {
-    return ast_node_supports_exprs((ast_node*)stack_peek(&p->tk.tc->stack));
+    return ast_node_supports_exprs((ast_node*)get_bpd(p)->node);
 }
 bool body_customizes_exprs(ast_node_kind pt)
 {
@@ -2507,7 +2525,7 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
             p, (stmt*)u, start, src_range_get_end(u->target->srange)))
         return PE_FATAL;
     *tgt = (stmt*)u;
-    curr_scope_require_usings(p, stmt_flags_get_access_mod(flags));
+    curr_scope_add_usings(p, stmt_flags_get_access_mod(flags), 1);
     return pe;
 }
 parse_error parse_symbol_imports(parser* p, module_import* mi)
@@ -2763,7 +2781,7 @@ parse_require(parser* p, stmt_flags flags, ureg start, ureg flags_end)
     if (pe) return pe;
     ureg end = t->end;
     tk_void(&p->tk);
-    if (!ast_node_is_open_scope((ast_node*)stack_peek(&p->tk.tc->stack))) {
+    if (!ast_node_is_open_scope(get_bpd(p)->node)) {
         parser_error_1a_pc(
             p, "invalid scope for require statement", t->start, t->end,
             "require statement only allowed at module scope");
@@ -2941,8 +2959,7 @@ parse_error parse_brace_delimited_body(parser* p, body* b, ast_node* parent)
     parse_error pe = PE_OK;
     PEEK(p, t);
     stmt** head = &b->children;
-    symbol_store_init(&b->ss);
-    PUSH_PARENT(p, parent, b);
+    if (push_bpd(p, parent, b)) return PE_FATAL;
     while (t->kind != TT_BRACE_CLOSE) {
         if (t->kind != TT_EOF) {
             pe = parse_statement(p, head);
@@ -2979,18 +2996,15 @@ parse_error parse_brace_delimited_body(parser* p, body* b, ast_node* parent)
         if (b->srange == SRC_RANGE_INVALID) pe = PE_FATAL;
     }
     *head = NULL;
-    POP_PARENT(p);
+    pop_bpd(p);
     return pe;
 }
 
 parse_error parse_scope_body(parser* p, scope* s)
 {
-    if (stack_push(&p->tk.tc->stack, s)) return PE_FATAL;
-    s->symbol.parent = p->curr_parent;
-    p->curr_parent = (symbol*)s;
+    if (push_bpd(p, (ast_node*)s, &s->body)) return PE_FATAL;
     parse_error pe = parse_body(p, &s->body, (ast_node*)s);
-    p->curr_parent = s->symbol.parent;
-    stack_pop(&p->tk.tc->stack);
+    pop_bpd(p);
     return pe;
 }
 parse_error parse_open_scope_body(parser* p, open_scope* s, mdg_node* m)
@@ -2999,7 +3013,6 @@ parse_error parse_open_scope_body(parser* p, open_scope* s, mdg_node* m)
     p->current_module = m;
     s->requires =
         (file_require*)list_builder_start_blocklist(&p->tk.tc->list_builder);
-    symbol_store_init(&s->shared_decl_count);
     parse_error pe = parse_scope_body(p, (scope*)s);
     s->requires = (file_require*)list_builder_pop_block_list_zt(
         &p->tk.tc->list_builder, s->requires, &p->tk.tc->permmem);
@@ -3042,9 +3055,8 @@ parse_error parse_body(parser* p, body* b, ast_node* parent)
     parse_error pe;
     token* t;
     PEEK(p, t);
-    symbol_store_init(&b->ss);
     if (t->kind != TT_BRACE_OPEN) {
-        PUSH_PARENT(p, parent, b);
+        if (push_bpd(p, parent, b)) return PE_FATAL;
         do {
             pe = parse_statement(p, &b->children);
         } while (pe == PE_NO_STMT);
@@ -3052,7 +3064,7 @@ parse_error parse_body(parser* p, body* b, ast_node* parent)
             b->children->next = NULL;
             b->srange = b->children->srange;
         }
-        POP_PARENT(p);
+        pop_bpd(p);
     }
     else {
         pe = parse_brace_delimited_body(p, b, parent);

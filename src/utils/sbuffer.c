@@ -233,3 +233,13 @@ void* sbuffer_insert(sbuffer* sb, sbi* sbi, ureg size)
         }
     }
 }
+
+void sbuffer_clear(sbuffer* sb)
+{
+    sbuffer_segment* s = sb->first;
+    do {
+        s->start = ptradd(s, sizeof(sbuffer_segment));
+        s->head = s->start;
+        s = s->next;
+    } while (s);
+}
