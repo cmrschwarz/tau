@@ -499,6 +499,7 @@ int parser_init(parser* p, thread_context* tc)
 }
 void parser_fin(parser* p)
 {
+    sbuffer_fin(&p->body_stack);
     tk_fin(&p->tk);
 }
 static inline parse_error
