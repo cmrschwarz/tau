@@ -333,8 +333,13 @@ static inline void pop_bpd(parser* p)
 {
     sbi i;
     sbi_begin_at_end(&i, &p->body_stack);
-    sbi_previous(&i, sizeof(body_parse_data));
-    sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
+    body_parse_data* bpd =
+        (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
+    body* bd = bpd->body;
+    do {
+        sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
+        bpd = (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
+    } while (bpd && bpd->body == bd);
 }
 static inline int push_bpd_pp(parser* p, ureg level)
 {
@@ -1353,7 +1358,8 @@ parse_error parse_do(parser* p, expr** tgt)
 
     if (t->kind == TT_BRACE_OPEN) {
         // TODO: fix the passed parent here
-        // since we really don't know, we just push the current parent again...
+        // since we really don't know, we just push the current parent
+        // again...
         pe = parse_brace_delimited_body(p, &b, get_bpd(p)->node);
         if (pe) return pe;
     }
@@ -3003,9 +3009,9 @@ parse_error parse_brace_delimited_body(parser* p, body* b, ast_node* parent)
 
 parse_error parse_scope_body(parser* p, scope* s)
 {
-    if (push_bpd(p, (ast_node*)s, &s->body)) return PE_FATAL;
+    // if (push_bpd(p, (ast_node*)s, &s->body)) return PE_FATAL;
     parse_error pe = parse_body(p, &s->body, (ast_node*)s);
-    pop_bpd(p);
+    // pop_bpd(p);
     return pe;
 }
 parse_error parse_open_scope_body(parser* p, open_scope* s, mdg_node* m)
