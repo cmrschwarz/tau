@@ -60,8 +60,13 @@ void sbuffer_remove(sbuffer* sb, sbi* sbi, ureg size)
 {
     sbuffer_segment* cs = sbi->seg;
     ureg used_before = ptrdiff(sbi->pos, cs->start);
-    ureg used_after = ptrdiff(cs->end, sbi->pos) - size;
-    if (used_before < used_after) {
+    ureg used_after = ptrdiff(cs->head, sbi->pos) - size;
+    if (used_before == 0 && used_after == 0) {
+        cs->start = (u8*)(cs + 1);
+        cs->head = cs->start;
+        sbi->pos = cs->start;
+    }
+    else if (used_before < used_after) {
         memmove(cs->start, ptradd(cs->start, size), used_before);
         cs->start = ptradd(cs->start, size);
     }
