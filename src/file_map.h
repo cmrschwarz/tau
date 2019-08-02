@@ -22,7 +22,7 @@ typedef struct src_dir {
 } src_dir;
 
 typedef enum src_file_stage {
-    SFS_UNNEDED,
+    SFS_UNNEEDED,
     SFS_UNPARSED,
     // the distinction between unparsed and parsing is needed
     // because only once parsing the src_map is initialized

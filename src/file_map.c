@@ -85,7 +85,7 @@ src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
         rwslock_fin(&f->stage_lock);
         return ERR;
     }
-    f->stage = SFS_UNNEDED;
+    f->stage = SFS_UNNEEDED;
     f->file_stream = NULL;
     return OK;
 }
@@ -99,7 +99,7 @@ int src_file_require(
     if (f->stage == SFS_UNPARSED || f->stage == SFS_PARSING) {
         aseglist_add(&f->requiring_modules, n);
     }
-    if (f->stage == SFS_UNNEDED) {
+    if (f->stage == SFS_UNNEEDED) {
         f->stage = SFS_UNPARSED;
     }
     rwslock_end_write(&f->stage_lock);
@@ -107,7 +107,7 @@ int src_file_require(
         case SFS_PARSED: return SF_ALREADY_PARSED;
         case SFS_PARSING:
         case SFS_UNPARSED: return OK;
-        case SFS_UNNEDED: {
+        case SFS_UNNEEDED: {
             aseglist_add(&f->requiring_modules, n);
             return tauc_request_parse(f, requiring_file, requiring_srange);
         }
