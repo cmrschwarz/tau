@@ -12,16 +12,20 @@ typedef struct mdg_deps_list mdg_deps_list;
 typedef struct mdg_node mdg_node;
 
 typedef enum module_stage {
-    MS_UNNEEDED,
-    MS_AWAITING_NEED,
-    MS_NOT_FOUND,
-    MS_PARSING,
-    MS_AWAITING_DEPENDENCIES,
-    MS_RESOLVING,
-    MS_GENERATING,
-    MS_DONE,
+    MS_UNNEEDED, // partially parsed, but unneded
+    MS_AWAITING_NEED, // fully parsed, but unneded
+    MS_NOT_FOUND, // required but not found in src
+    MS_PARSING, // required and partially parsed
+    MS_AWAITING_DEPENDENCIES, // required, parsed
+    MS_RESOLVING, // required, parsed, deps resolved or in same resolve group
+    MS_GENERATING, // resolved, generating IR
+    MS_DONE, // IR generated
 } module_stage;
 
+static inline bool module_stage_needed(module_stage ms)
+{
+    return ms != MS_UNNEEDED && ms != MS_AWAITING_NEED;
+}
 typedef struct mdg_new_node {
     ureg pos;
     mdg_node* node;
@@ -41,7 +45,7 @@ typedef struct mdg_node {
     char* name;
     atomic_ureg unparsed_files;
     aseglist dependencies;
-    aseglist targets;
+    aseglist open_scopes;
     aseglist notify;
     ureg id;
     rwslock stage_lock;

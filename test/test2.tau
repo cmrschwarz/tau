@@ -1,4 +1,5 @@
 import bar;
+import doo;
 module bar;
 #x := 3;
 func main(args: String[]){    

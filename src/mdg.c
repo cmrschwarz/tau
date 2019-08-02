@@ -98,24 +98,24 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
     memcpy(n->name, ident.start, identlen);
     n->name[identlen] = '\0';
     n->parent = parent;
-    int r = aseglist_init(&n->targets);
+    int r = aseglist_init(&n->open_scopes);
     if (r) return NULL;
     r = rwslock_init(&n->stage_lock);
     if (r) {
-        aseglist_fin(&n->targets);
+        aseglist_fin(&n->open_scopes);
         return NULL;
     }
     r = aseglist_init(&n->dependencies);
     if (r) {
         rwslock_fin(&n->stage_lock);
-        aseglist_fin(&n->targets);
+        aseglist_fin(&n->open_scopes);
         return NULL;
     }
     r = atomic_ureg_init(&n->unparsed_files, 0);
     if (r) {
         aseglist_fin(&n->dependencies);
         rwslock_fin(&n->stage_lock);
-        aseglist_fin(&n->targets);
+        aseglist_fin(&n->open_scopes);
         return NULL;
     }
     r = aseglist_init(&n->notify);
@@ -123,7 +123,7 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
         atomic_ureg_fin(&n->unparsed_files);
         aseglist_fin(&n->dependencies);
         rwslock_fin(&n->stage_lock);
-        aseglist_fin(&n->targets);
+        aseglist_fin(&n->open_scopes);
         return NULL;
     }
     n->stage = MS_UNNEEDED;
@@ -136,7 +136,7 @@ void mdg_node_fin(mdg_node* n)
 {
     if (n->stage >= MS_RESOLVING) {
         aseglist_iterator it;
-        aseglist_iterator_begin(&it, &n->targets);
+        aseglist_iterator_begin(&it, &n->open_scopes);
         if (n->symtab != NULL) {
             symbol_table_delete(n->symtab);
             while (true) {
@@ -152,7 +152,7 @@ void mdg_node_fin(mdg_node* n)
     atomic_ureg_fin(&n->unparsed_files);
     aseglist_fin(&n->dependencies);
     rwslock_fin(&n->stage_lock);
-    aseglist_fin(&n->targets);
+    aseglist_fin(&n->open_scopes);
 }
 
 mdg_node* mdg_get_node(mdg* m, mdg_node* parent, string ident)
@@ -197,7 +197,7 @@ mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident)
         if (n->stage == MS_NOT_FOUND) n->stage = MS_PARSING;
         rwslock_end_write(&n->stage_lock);
     }
-    aseglist_add(&n->targets, osc);
+    aseglist_add(&n->open_scopes, osc);
     osc->scope.symbol.name = n->name;
     return n;
 }
@@ -340,7 +340,7 @@ void mdg_node_find_import(
     src_file** file)
 {
     aseglist_iterator it;
-    aseglist_iterator_begin(&it, &m->targets);
+    aseglist_iterator_begin(&it, &m->open_scopes);
     while (true) {
         open_scope* osc = aseglist_iterator_next(&it);
         if (!osc) break;
@@ -567,11 +567,13 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
 {
     mdg_node* parent = n->parent;
     // TODO: evaluate this. we don't really want all the parents
+    mdg_node* start_node = n;
+    bool run_scc = false;
     while (true) {
         rwslock_read(&n->stage_lock);
-        bool unneded = (parent->stage == MS_UNNEEDED);
+        bool needed = module_stage_needed(parent->stage);
         rwslock_end_read(&n->stage_lock);
-        if (!unneded) break;
+        if (needed) break;
         int r = mdg_node_require(parent, tc);
         if (r) return r;
         parent = parent->parent;
@@ -580,7 +582,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
     scc_detector_housekeep_ids(&tc->sccd);
     tc->sccd.dfs_start_index = tc->sccd.dfs_index;
     tc->sccd.dfs_index++;
-    aseglist* tgts;
+    aseglist* oscs;
     void** stack_head = tc->stack.head;
     while (true) {
         rwslock_write(&n->stage_lock);
@@ -592,7 +594,18 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
             else {
                 n->stage = MS_PARSING;
             }
-            tgts = &n->targets;
+            oscs = &n->open_scopes;
+        }
+        else if (n->stage == MS_AWAITING_NEED) {
+            n->stage = MS_AWAITING_DEPENDENCIES;
+            oscs = &n->open_scopes;
+            run_scc = true;
+        }
+        else {
+            oscs = NULL;
+        }
+
+        if (oscs) {
             aseglist_iterator it;
             aseglist_iterator_begin(&it, &n->dependencies);
             while (true) {
@@ -609,44 +622,41 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
                 }
             }
         }
-        else if (n->stage == MS_AWAITING_NEED) {
-            n->stage = MS_AWAITING_DEPENDENCIES;
-        }
-        else {
-            tgts = NULL;
-        }
         rwslock_end_write(&n->stage_lock);
-        if (tgts) {
-            aseglist_iterator tgt_it;
-            aseglist_iterator_begin(&tgt_it, tgts);
+        if (oscs) {
+            aseglist_iterator oscs_it;
+            aseglist_iterator_begin(&oscs_it, oscs);
             while (true) {
-                open_scope* tgt = aseglist_iterator_next(&tgt_it);
-                if (!tgt) break;
-                file_require* r = tgt->requires;
+                open_scope* osc = aseglist_iterator_next(&oscs_it);
+                if (!osc) break;
+                file_require* r = osc->requires;
                 while (*(void**)r) {
                     src_file_require(
-                        r->file, open_scope_get_file(tgt), r->srange, n);
+                        r->file, open_scope_get_file(osc), r->srange, n);
                     r++;
                 }
             }
         }
         while (true) {
-            if (tc->stack.head == stack_head) return OK;
+            if (tc->stack.head == stack_head) {
+                if (run_scc) return scc_detector_run(tc, start_node);
+                return OK;
+            }
             n = stack_pop(&tc->stack);
             rwslock_read(&n->stage_lock);
-            bool unneded = (n->stage == MS_UNNEEDED);
+            bool needed = module_stage_needed(n->stage);
             rwslock_end_read(&n->stage_lock);
-            if (unneded) break;
+            if (!needed) break;
         }
     }
-    return OK;
+    assert(false);
 }
 int mdg_node_add_dependency(
     mdg_node* n, mdg_node* dependency, thread_context* tc)
 {
     rwslock_read(&n->stage_lock);
     int r = aseglist_add(&n->dependencies, dependency);
-    bool needed = (n->stage != MS_UNNEEDED);
+    bool needed = module_stage_needed(n->stage);
     rwslock_end_read(&n->stage_lock);
     if (!r && needed) mdg_node_require(dependency, tc);
     return r;
@@ -667,7 +677,7 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
         if (n->stage == MS_UNNEEDED || n->stage == MS_AWAITING_NEED) {
             open_scope* mod = NULL;
             aseglist_iterator it;
-            aseglist_iterator_begin(&it, &n->targets);
+            aseglist_iterator_begin(&it, &n->open_scopes);
             open_scope* first_target = NULL;
             open_scope* i = aseglist_iterator_next(&it);
             first_target = i;

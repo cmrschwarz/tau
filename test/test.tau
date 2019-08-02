@@ -2,3 +2,5 @@ require "test2.tau";
 func foo(){
     x: int = 32;
 }
+module doo{
+}
