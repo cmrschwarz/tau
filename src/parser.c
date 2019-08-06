@@ -355,22 +355,26 @@ static inline int pop_bpd(parser* p)
     sbi_begin_at_end(&i, &p->body_stack);
     body_parse_data* bpd =
         (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
-    body* bd;
-    do {
-        bd = bpd->body;
-        bd->symtab = symbol_table_new(bpd->decl_count, bpd->usings_count);
-        if (bd->symtab == NULL) return ERR;
-        if (bpd->shared_decl_count > 0 || bpd->shared_usings_count > 0) {
-            assert(ast_node_is_open_scope(bpd->node));
-            // assert(*osc is member of current module*);
-            atomic_ureg_add(
-                &p->current_module->decl_count, bpd->shared_decl_count);
-            atomic_ureg_add(
-                &p->current_module->using_count, bpd->shared_usings_count);
-        }
+    if (bpd->shared_decl_count > 0 || bpd->shared_usings_count > 0) {
+        assert(ast_node_is_open_scope(bpd->node));
+        // assert(*osc is member of current module*);
+        atomic_ureg_add(&p->current_module->decl_count, bpd->shared_decl_count);
+        atomic_ureg_add(
+            &p->current_module->using_count, bpd->shared_usings_count);
+    }
+    body* bd = bpd->body;
+    symbol_table** st = &bd->symtab;
+    while (true) {
+        *st = symbol_table_new(bpd->decl_count, bpd->usings_count);
+        if (!*st) return ERR;
         sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
         bpd = (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
-    } while (bpd && bpd->body == bd);
+        st = &(**st).pp_symtab;
+        if (!bpd || bpd->body != bd) break;
+        // we don't support shared pp decls for now :(
+        assert(bpd->shared_decl_count == 0 && bpd->shared_usings_count == 0);
+    }
+    *st = NULL;
     return OK;
 }
 
@@ -1451,6 +1455,7 @@ parse_error parse_do(parser* p, expr** tgt)
     ed->expr_named.expr.kind = EXPR_DO;
     ed->expr_named.name = block_name;
     ed->expr_body = e;
+    expr_fill_srange(p, (expr*)ed, start, src_range_get_end(e->srange));
     *tgt = (expr*)ed;
     return pe;
 }

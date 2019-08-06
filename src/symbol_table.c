@@ -7,6 +7,8 @@
 #include "utils/fnv_hash.h"
 #include "utils/math_utils.h"
 
+#include "utils/zero.h"
+
 #define USING_BIT (((ureg)1) << (REG_BITS - 1))
 static symbol_table EMPTY_ST = {0, NULL, &EMPTY_ST};
 
@@ -14,11 +16,12 @@ symbol_table* symbol_table_new(ureg decl_count, ureg using_count)
 {
     if (decl_count == 0 && using_count == 0) return &EMPTY_ST;
     symbol_table* st;
-    if (using_count == 0) {
+    if (using_count != 0) {
         symbol_table_with_usings* stwu = tmalloc(
             decl_count * sizeof(symbol*) + sizeof(symbol_table_with_usings));
         if (!stwu) return NULL;
         st = &stwu->table;
+        st->usings = (stmt*)NULL_PTR_PTR;
     }
     else {
         st = tmalloc(decl_count * sizeof(symbol*) + sizeof(symbol_table));
@@ -33,9 +36,14 @@ symbol_table* symbol_table_new(ureg decl_count, ureg using_count)
 
 void symbol_table_delete(symbol_table* st)
 {
-    if (st != &EMPTY_ST) {
+    if (st != NULL && st != &EMPTY_ST) {
         symbol_table_delete(st->pp_symtab);
-        tfree(st);
+        if (st->usings != NULL) {
+            tfree(ptrsub(st, offsetof(symbol_table_with_usings, table)));
+        }
+        else {
+            tfree(st);
+        }
     }
 }
 

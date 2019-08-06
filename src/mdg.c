@@ -130,21 +130,93 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
     n->symtab = NULL;
     return n;
 }
-void mdg_node_fin(mdg_node* n)
+static void free_body_symtabs(body* b);
+static void free_expr_symtabs(expr* e)
 {
-    if (n->stage >= MS_RESOLVING) {
-        aseglist_iterator it;
-        aseglist_iterator_begin(&it, &n->open_scopes);
-        if (n->symtab != NULL) {
-            symbol_table_delete(n->symtab);
-            while (true) {
-                open_scope* osc = aseglist_iterator_next(&it);
-                if (!osc) break;
-                if (osc->scope.body.symtab != NULL) {
-                    symbol_table_delete(osc->scope.body.symtab);
-                }
+    if (e == NULL) return;
+    switch (e->kind) {
+        case EXPR_RETURN: free_expr_symtabs(((expr_return*)e)->value); break;
+
+        case EXPR_BREAK: free_expr_symtabs(((expr_break*)e)->value); break;
+
+        case EXPR_BLOCK: free_body_symtabs(&((expr_block*)e)->body); break;
+
+        case EXPR_IF: {
+            expr_if* ei = (expr_if*)e;
+            free_expr_symtabs(ei->condition);
+            free_expr_symtabs(ei->if_body);
+            free_expr_symtabs(ei->else_body);
+        } break;
+
+        case EXPR_LOOP: free_body_symtabs(&((expr_loop*)e)->body); break;
+
+        case EXPR_DO: free_expr_symtabs(((expr_do*)e)->expr_body); break;
+
+        case EXPR_DO_WHILE: {
+            expr_do_while* edw = (expr_do_while*)e;
+            free_expr_symtabs(edw->condition);
+            free_body_symtabs(&edw->do_body);
+            free_body_symtabs(&edw->finally_body);
+        } break;
+
+        case EXPR_WHILE: {
+            expr_while* ew = (expr_while*)e;
+            free_expr_symtabs(ew->condition);
+            free_body_symtabs(&ew->while_body);
+            free_body_symtabs(&ew->finally_body);
+        } break;
+
+        case EXPR_MACRO: {
+            expr_macro* em = (expr_macro*)e;
+            free_body_symtabs(&em->body);
+            free_expr_symtabs((expr*)em->next);
+        } break;
+
+        case EXPR_PP: free_expr_symtabs(((expr_pp*)e)->child); break;
+
+        case EXPR_MATCH: {
+            expr_match* em = (expr_match*)e;
+            free_expr_symtabs(em->match_expr);
+            for (match_arm** ma = em->match_arms; *ma != NULL; ma++) {
+                free_expr_symtabs((**ma).condition);
+                free_expr_symtabs((**ma).value);
+            }
+        } break;
+
+        default: break;
+    }
+}
+static void free_stmt_symtabs(stmt* s)
+{
+    // TODO: free symtabs in obscure places like parameters...
+    while (s != NULL) {
+        if (ast_node_is_scope((ast_node*)s)) {
+            // these are parts of a module and therefore already handled
+            if (!ast_node_is_open_scope((ast_node*)s)) {
+                symbol_table_delete(((scope*)s)->body.symtab);
+                free_stmt_symtabs(((scope*)s)->body.children);
             }
         }
+        else if (s->kind == STMT_EXPRESSION)
+            free_expr_symtabs(((stmt_expr*)s)->expr);
+        s = s->next;
+    }
+}
+static void free_body_symtabs(body* b)
+{
+    if (!b->children) return;
+    symbol_table_delete(b->symtab);
+    free_stmt_symtabs(b->children);
+}
+void mdg_node_fin(mdg_node* n)
+{
+    symbol_table_delete(n->symtab);
+    aseglist_iterator it;
+    aseglist_iterator_begin(&it, &n->open_scopes);
+    while (true) {
+        open_scope* osc = aseglist_iterator_next(&it);
+        if (!osc) break;
+        free_body_symtabs(&osc->scope.body);
     }
     mdg_node_partial_fin(n, 0);
 }

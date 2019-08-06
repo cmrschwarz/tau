@@ -35,6 +35,7 @@ typedef enum PACK_ENUM ast_node_kind {
 
     EXPR_BLOCK,
 
+    EXPR_PP,
     EXPR_RETURN,
     EXPR_CONTINUE,
     EXPR_BREAK,
@@ -223,8 +224,8 @@ typedef struct expr_return {
 typedef struct expr_break {
     expr expr;
     union {
-        expr_named* expr;
-        const char* name;
+        expr_named* expr; // points to target expr once found
+        const char* name; // label, before target found
     } target;
     expr* value;
 } expr_break;
@@ -232,8 +233,8 @@ typedef struct expr_break {
 typedef struct expr_continue {
     expr expr;
     union {
-        expr_named* expr;
-        const char* name;
+        expr_named* expr; // points to target expr once found
+        const char* name; // label, before target found
     } target;
 } expr_continue;
 

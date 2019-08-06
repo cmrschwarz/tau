@@ -49,6 +49,9 @@ int tauc_request_end()
 }
 void tauc_fin()
 {
+    // this needs the parsers mem pools to figure out where the osc's symtabs
+    // are, therefore it needs to be freed first
+    mdg_fin(&TAUC.mdg);
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &TAUC.worker_threads);
     worker_thread* wt;
@@ -64,7 +67,11 @@ void tauc_fin()
         thread_context_fin(&wt->tc);
         tfree(wt);
     }
-    tauc_partial_fin(0, 6);
+    atomic_ureg_fin(&TAUC.thread_count);
+    aseglist_fin(&TAUC.worker_threads);
+    job_queue_fin(&TAUC.job_queue);
+    file_map_fin(&TAUC.file_map);
+    thread_context_fin(&TAUC.main_thread_context);
 }
 
 int tauc_run(int argc, char** argv)

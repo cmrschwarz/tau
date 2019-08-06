@@ -28,6 +28,14 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
     r->start = start;
     r->end = end;
     print_debug_info(r);
+
+    for (mdg_node** i = start; i != end; i++) {
+        (**i).symtab = symbol_table_new(
+            atomic_ureg_load(&(**i).decl_count),
+            atomic_ureg_load(&(**i).using_count));
+        if (!(**i).symtab) return RE_FATAL;
+    }
+
     return mark_mdg_nodes_resolved(r);
 }
 
