@@ -310,6 +310,21 @@ static inline void parser_error_3a(
         annot, p->tk.file, start2, end2, annot2, p->tk.file, start3, end3,
         annot3);
 }
+static inline body_parse_data* get_bpd(parser* p)
+{
+    sbi i;
+    sbi_begin_at_end(&i, &p->body_stack);
+    return sbi_previous(&i, sizeof(body_parse_data));
+}
+static inline void init_bpd(body_parse_data* bpd, ast_node* node, body* body)
+{
+    bpd->node = node;
+    bpd->body = body;
+    bpd->decl_count = 0;
+    bpd->usings_count = 0;
+    bpd->shared_decl_count = 0;
+    bpd->shared_usings_count = 0;
+}
 static inline int push_bpd(parser* p, ast_node* n, body* b)
 {
     body_parse_data* bpd =
@@ -317,29 +332,8 @@ static inline int push_bpd(parser* p, ast_node* n, body* b)
     if (bpd == NULL) return ERR;
     // make sure the symtab is NULL to prevent it from being freed
     b->symtab = NULL;
-    bpd->node = n;
-    bpd->body = b;
-    bpd->decl_count = 0;
-    bpd->usings_count = 0;
+    init_bpd(bpd, n, b);
     return OK;
-}
-static inline body_parse_data* get_bpd(parser* p)
-{
-    sbi i;
-    sbi_begin_at_end(&i, &p->body_stack);
-    return sbi_previous(&i, sizeof(body_parse_data));
-}
-static inline void pop_bpd(parser* p)
-{
-    sbi i;
-    sbi_begin_at_end(&i, &p->body_stack);
-    body_parse_data* bpd =
-        (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
-    body* bd = bpd->body;
-    do {
-        sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
-        bpd = (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
-    } while (bpd && bpd->body == bd);
 }
 static inline int push_bpd_pp(parser* p, ureg level)
 {
@@ -352,12 +346,34 @@ static inline int push_bpd_pp(parser* p, ureg level)
     body_parse_data* pp =
         sbuffer_insert(&p->body_stack, &i, sizeof(body_parse_data));
     if (!pp) return ERR;
-    pp->node = bpd->node;
-    pp->body = bpd->body;
-    pp->decl_count = 0;
-    pp->usings_count = 0;
+    init_bpd(pp, bpd->node, bpd->body);
     return OK;
 }
+static inline int pop_bpd(parser* p)
+{
+    sbi i;
+    sbi_begin_at_end(&i, &p->body_stack);
+    body_parse_data* bpd =
+        (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
+    body* bd;
+    do {
+        bd = bpd->body;
+        bd->symtab = symbol_table_new(bpd->decl_count, bpd->usings_count);
+        if (bd->symtab == NULL) return ERR;
+        if (bpd->shared_decl_count > 0 || bpd->shared_usings_count > 0) {
+            assert(ast_node_is_open_scope(bpd->node));
+            // assert(*osc is member of current module*);
+            atomic_ureg_add(
+                &p->current_module->decl_count, bpd->shared_decl_count);
+            atomic_ureg_add(
+                &p->current_module->using_count, bpd->shared_usings_count);
+        }
+        sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
+        bpd = (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
+    } while (bpd && bpd->body == bd);
+    return OK;
+}
+
 char* get_context_msg(parser* p, ast_node* node)
 {
     if (!node) return NULL;
@@ -1801,7 +1817,7 @@ static inline parse_error parse_delimited_open_scope(
     token* t;
     t = tk_peek(&p->tk);
     if (!t) {
-        pop_bpd(p);
+        if (pop_bpd(p)) return PE_FATAL;
         return PE_TK_ERROR;
     }
     ureg start = t->start;
@@ -1829,7 +1845,7 @@ static inline parse_error parse_delimited_open_scope(
     *head = NULL;
     osc->requires = list_builder_pop_block_list_zt(
         &p->tk.tc->list_builder, osc->requires, &p->tk.tc->permmem);
-    pop_bpd(p);
+    if (pop_bpd(p)) return PE_FATAL;
     src_range_large srl;
     srl.start = start;
     srl.end = t->end;
@@ -3003,7 +3019,7 @@ parse_error parse_brace_delimited_body(parser* p, body* b, ast_node* parent)
         if (b->srange == SRC_RANGE_INVALID) pe = PE_FATAL;
     }
     *head = NULL;
-    pop_bpd(p);
+    if (pop_bpd(p)) return PE_FATAL;
     return pe;
 }
 
@@ -3071,7 +3087,7 @@ parse_error parse_body(parser* p, body* b, ast_node* parent)
             b->children->next = NULL;
             b->srange = b->children->srange;
         }
-        pop_bpd(p);
+        if (pop_bpd(p)) return PE_FATAL;
     }
     else {
         pe = parse_brace_delimited_body(p, b, parent);

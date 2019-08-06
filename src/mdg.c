@@ -85,6 +85,20 @@ void mdg_end_write(mdg* m)
 {
     evmap2_end_write(&m->evm);
 }
+void* mdg_node_partial_fin(mdg_node* n, int i)
+{
+    switch (i) {
+        default:
+        case 7: atomic_ureg_fin(&n->using_count);
+        case 6: atomic_ureg_fin(&n->decl_count);
+        case 5: atomic_ureg_fin(&n->unparsed_files);
+        case 4: aseglist_fin(&n->notify);
+        case 3: aseglist_fin(&n->dependencies);
+        case 2: rwslock_fin(&n->stage_lock);
+        case 1: aseglist_fin(&n->open_scopes);
+    }
+    return NULL;
+}
 // since this is called while inside mdg_write, there is no race
 // on the memory pools
 mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
@@ -101,35 +115,19 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
     int r = aseglist_init(&n->open_scopes);
     if (r) return NULL;
     r = rwslock_init(&n->stage_lock);
-    if (r) {
-        aseglist_fin(&n->open_scopes);
-        return NULL;
-    }
+    if (r) return mdg_node_partial_fin(n, 1);
     r = aseglist_init(&n->dependencies);
-    if (r) {
-        rwslock_fin(&n->stage_lock);
-        aseglist_fin(&n->open_scopes);
-        return NULL;
-    }
-    r = atomic_ureg_init(&n->unparsed_files, 0);
-    if (r) {
-        aseglist_fin(&n->dependencies);
-        rwslock_fin(&n->stage_lock);
-        aseglist_fin(&n->open_scopes);
-        return NULL;
-    }
+    if (r) return mdg_node_partial_fin(n, 2);
     r = aseglist_init(&n->notify);
-    if (r) {
-        atomic_ureg_fin(&n->unparsed_files);
-        aseglist_fin(&n->dependencies);
-        rwslock_fin(&n->stage_lock);
-        aseglist_fin(&n->open_scopes);
-        return NULL;
-    }
+    if (r) return mdg_node_partial_fin(n, 3);
+    r = atomic_ureg_init(&n->unparsed_files, 0);
+    if (r) return mdg_node_partial_fin(n, 4);
+    r = atomic_ureg_init(&n->decl_count, 0);
+    if (r) return mdg_node_partial_fin(n, 5);
+    r = atomic_ureg_init(&n->using_count, 0);
+    if (r) return mdg_node_partial_fin(n, 6);
     n->stage = MS_UNNEEDED;
     n->symtab = NULL;
-    n->decl_count = 0;
-    n->using_count = 0;
     return n;
 }
 void mdg_node_fin(mdg_node* n)
@@ -148,11 +146,7 @@ void mdg_node_fin(mdg_node* n)
             }
         }
     }
-    aseglist_fin(&n->notify);
-    atomic_ureg_fin(&n->unparsed_files);
-    aseglist_fin(&n->dependencies);
-    rwslock_fin(&n->stage_lock);
-    aseglist_fin(&n->open_scopes);
+    mdg_node_partial_fin(n, 0);
 }
 
 mdg_node* mdg_get_node(mdg* m, mdg_node* parent, string ident)

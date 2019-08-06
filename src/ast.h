@@ -151,7 +151,7 @@ typedef struct stmt {
 typedef struct symbol {
     stmt stmt;
     char* name;
-    // always points to the parent symbol, even if in a nested expr block
+    // always points to the parent *symbol*, even if in a nested expr block
     symbol* parent;
 } symbol;
 

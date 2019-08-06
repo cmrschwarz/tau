@@ -48,11 +48,11 @@ typedef struct mdg_node {
     aseglist open_scopes;
     aseglist notify;
     ureg id;
+    atomic_ureg decl_count;
+    atomic_ureg using_count;
+    symbol_table* symtab;
     rwslock stage_lock;
     module_stage stage;
-    ureg decl_count;
-    ureg using_count;
-    symbol_table* symtab;
 } mdg_node;
 
 #define MDG_MAX_CHANGES 16

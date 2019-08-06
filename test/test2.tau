@@ -1,6 +1,7 @@
 import bar;
-import doo;
+
 module bar;
+import doo;
 #x := 3;
 func main(args: String[]){    
     func test_compound_assignment(){

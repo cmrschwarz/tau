@@ -16,7 +16,7 @@ typedef struct parser {
     tokenizer tk;
     mdg_node* current_module;
     symbol* curr_parent;
-    sbuffer body_stack; // awfully sounds like corpse pile :)
+    sbuffer body_stack; // sounds kinda morbid :)
 } parser;
 
 // pp scopes sit below the rt scope, node and body are repeated
