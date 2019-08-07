@@ -20,8 +20,8 @@ typedef enum PACK_ENUM ast_node_kind {
     SC_LAST_SC_ID = SC_FUNC_GENERIC,
 
     SYM_NAMED_USING,
-    SYM_VAR,
-    SYM_VAR_UNINITIALIZED,
+    SYM_VAR_DECL,
+    SYM_VAR_DECL_UNINITIALIZED,
     SYM_PARAM,
     SYM_LAST_SYM_ID = SYM_PARAM,
 
@@ -358,16 +358,16 @@ typedef struct osc_extend_generic {
     sym_param* generic_params;
 } osc_extend_generic;
 
-typedef struct sym_var {
+typedef struct sym_var_decl {
     symbol symbol;
     expr* type;
     expr* value;
-} sym_var;
+} sym_var_decl;
 
-typedef struct sym_var_uninitialized {
+typedef struct sym_var_decl_uninitialized {
     symbol symbol;
     expr* type;
-} sym_var_uninitialized;
+} sym_var_decl_uninitialized;
 
 typedef struct stmt_compound_assignment {
     stmt stmt;

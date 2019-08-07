@@ -401,7 +401,7 @@ char* get_context_msg(parser* p, ast_node* node)
         case EXPR_IF: return "in this if expression";
         case OSC_EXTEND_GENERIC: return "in this generic extend statement";
         case EXPR_LAMBDA: return "in this lambda";
-        case SYM_VAR: return "in this variable declaration";
+        case SYM_VAR_DECL: return "in this variable declaration";
         case STMT_IMPORT: return "in this import statement";
         case STMT_EXPRESSION: return "in this expression";
         case SYM_NAMED_USING:
@@ -862,15 +862,15 @@ parse_paren_group_or_tuple(parser* p, token* t, expr** ex)
     }
 }
 typedef union tuple_ident_node {
-    sym_var_uninitialized var;
+    sym_var_decl_uninitialized var;
     expr_identifier ident;
 } tuple_ident_node;
 
 static inline parse_error
 parse_uninitialized_var_in_tuple(parser* p, token* t, expr** ex)
 {
-    sym_var_uninitialized* v = alloc_perm(p, sizeof(tuple_ident_node));
-    v->symbol.stmt.node.kind = SYM_VAR_UNINITIALIZED;
+    sym_var_decl_uninitialized* v = alloc_perm(p, sizeof(tuple_ident_node));
+    v->symbol.stmt.node.kind = SYM_VAR_DECL_UNINITIALIZED;
     v->symbol.stmt.node.flags = STMT_FLAGS_DEFAULT;
     v->symbol.parent = p->curr_parent;
     stmt_flags_set_compound_decl(&v->symbol.stmt.node.flags);
@@ -906,8 +906,8 @@ static inline parse_error
 build_ident_node_in_tuple(parser* p, token* t, expr** ex)
 {
     tuple_ident_node* tin = alloc_perm(p, sizeof(tuple_ident_node));
-    sym_var_uninitialized* v = &tin->var;
-    ast_node_init(&v->symbol.stmt.node, SYM_VAR_UNINITIALIZED);
+    sym_var_decl_uninitialized* v = &tin->var;
+    ast_node_init(&v->symbol.stmt.node, SYM_VAR_DECL_UNINITIALIZED);
     v->symbol.name = alloc_string_perm(p, t->str);
     if (!v->symbol.name) return PE_FATAL;
     if (stmt_fill_srange(p, (stmt*)v, t->start, t->end)) return PE_FATAL;
@@ -920,7 +920,7 @@ static inline void turn_ident_nodes_to_exprs(expr** elems)
 {
     if (!elems) return;
     while (*elems) {
-        if ((**elems).kind == SYM_VAR_UNINITIALIZED) {
+        if ((**elems).kind == SYM_VAR_DECL_UNINITIALIZED) {
             tuple_ident_node* tin = (tuple_ident_node*)*elems;
             if (tin->var.type == NULL && !stmt_flags_get_compound_decl(
                                              tin->var.symbol.stmt.node.flags)) {
@@ -1957,11 +1957,11 @@ parse_error parse_var_decl(
     ureg col_end = t->end;
     tk_void(&p->tk);
     parse_error pe;
-    sym_var* vd = alloc_perm(p, sizeof(sym_var));
+    sym_var_decl* vd = alloc_perm(p, sizeof(sym_var_decl));
     if (!vd) return PE_FATAL;
     vd->symbol.name = alloc_string_perm(p, ident);
     if (!vd->symbol.name) return PE_FATAL;
-    vd->symbol.stmt.node.kind = SYM_VAR;
+    vd->symbol.stmt.node.kind = SYM_VAR_DECL;
     vd->symbol.stmt.node.flags = flags;
     PEEK(p, t);
     if (t->kind == TT_EQUALS) {

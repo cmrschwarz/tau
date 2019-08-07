@@ -126,8 +126,8 @@ void print_expr_list(expr** el, ureg indent)
 void print_compound_decl_list(expr** el, ureg indent)
 {
     while (*el) {
-        if ((**el).kind == SYM_VAR_UNINITIALIZED) {
-            sym_var* d = (sym_var*)*el;
+        if ((**el).kind == SYM_VAR_DECL_UNINITIALIZED) {
+            sym_var_decl* d = (sym_var_decl*)*el;
             if (stmt_flags_get_const(d->symbol.stmt.node.flags)) p("const ");
             pu(d->symbol.name);
             if (d->type != NULL) {
@@ -316,8 +316,8 @@ void print_stmt(stmt* st, ureg indent)
             pc(']');
             print_open_scope_body(&e->oscope, indent);
         } break;
-        case SYM_VAR: {
-            sym_var* d = (sym_var*)st;
+        case SYM_VAR_DECL: {
+            sym_var_decl* d = (sym_var_decl*)st;
             if (stmt_flags_get_const(d->symbol.stmt.node.flags)) p("const ");
             pu(d->symbol.name);
             if (d->type != NULL) {
@@ -376,8 +376,8 @@ void print_expr(expr* ex, ureg indent)
             }
             print_body_braced(&b->body, indent);
         } break;
-        case SYM_VAR_UNINITIALIZED: {
-            sym_var* d = (sym_var*)ex;
+        case SYM_VAR_DECL_UNINITIALIZED: {
+            sym_var_decl* d = (sym_var_decl*)ex;
             if (stmt_flags_get_const(d->symbol.stmt.node.flags)) p("const ");
             pu(d->symbol.name);
             pc(':');
