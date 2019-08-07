@@ -1,11 +1,16 @@
 #include "ast.h"
 #include "utils/panic.h"
-
 src_file* open_scope_get_file(open_scope* s)
 {
-    src_range_large srl;
-    src_range_unpack(s->scope.symbol.stmt.node.srange, &srl);
-    return srl.file;
+    return src_range_get_file(s->scope.symbol.stmt.node.srange);
+}
+src_file* ast_node_get_file(ast_node* n, symbol_table* st)
+{
+    src_file* f = src_range_get_file(n->srange);
+    if (f) return f;
+    f = symbol_table_get_file(st);
+    assert(f);
+    return f;
 }
 bool ast_node_is_open_scope(ast_node* s)
 {

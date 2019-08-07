@@ -207,6 +207,12 @@ void src_range_unpack(src_range r, src_range_large* d)
         d->end = d->start + len;
     }
 }
+src_file* src_range_get_file(src_range r)
+{
+    src_range_large l;
+    src_range_unpack(r, &l);
+    return l.file;
+}
 ureg src_range_get_start(src_range r)
 {
     src_range_large l;

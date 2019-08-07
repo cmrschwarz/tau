@@ -3,71 +3,73 @@
 #include "utils/error.h"
 #include "utils/panic.h"
 
-static resolve_error add_body_decls(src_file* f, symbol_table* sst, body* b);
 static resolve_error
-add_expr_decls(src_file* f, symbol_table* st, symbol_table* sst, expr* e)
+add_simple_body_decls(resolver* r, symbol_table* parent_st, body* b);
+static resolve_error
+add_expr_decls(resolver* r, symbol_table* st, symbol_table* sst, expr* e)
 {
-    if (e == NULL) return;
+    if (e == NULL) return RE_OK;
     switch (e->kind) {
         case EXPR_RETURN:
-            return add_expr_decls(f, st, sst, ((expr_return*)e)->value);
+            return add_expr_decls(r, st, sst, ((expr_return*)e)->value);
 
         case EXPR_BREAK:
-            return add_expr_decls(f, st, sst, ((expr_break*)e)->value);
+            return add_expr_decls(r, st, sst, ((expr_break*)e)->value);
 
         case EXPR_BLOCK:
-            return add_body_decls(f, NULL, &((expr_block*)e)->body);
+            return add_simple_body_decls(r, st, &((expr_block*)e)->body);
 
         case EXPR_IF: {
             expr_if* ei = (expr_if*)e;
-            resolve_error r = add_expr_decls(f, st, sst, ei->condition);
-            if (r) return r;
-            r = add_expr_decls(f, st, sst, ei->if_body);
-            if (r) return r;
-            return add_expr_decls(f, st, sst, ei->else_body);
+            resolve_error re = add_expr_decls(r, st, sst, ei->condition);
+            if (re) return re;
+            re = add_expr_decls(r, st, sst, ei->if_body);
+            if (re) return re;
+            return add_expr_decls(r, st, sst, ei->else_body);
         }
 
-        case EXPR_LOOP: return add_body_decls(f, NULL, &((expr_loop*)e)->body);
+        case EXPR_LOOP:
+            return add_simple_body_decls(r, st, &((expr_loop*)e)->body);
 
         case EXPR_DO:
-            return add_expr_decls(f, st, sst, ((expr_do*)e)->expr_body);
+            return add_expr_decls(r, st, sst, ((expr_do*)e)->expr_body);
 
         case EXPR_DO_WHILE: {
             expr_do_while* edw = (expr_do_while*)e;
-            resolve_error r = add_expr_decls(f, st, sst, edw->condition);
-            if (r) return r;
-            r = add_body_decls(f, NULL, &edw->do_body);
-            if (r) return r;
-            return add_body_decls(f, NULL, &edw->finally_body);
+            resolve_error re = add_expr_decls(r, st, sst, edw->condition);
+            if (re) return re;
+            re = add_simple_body_decls(r, st, &edw->do_body);
+            if (re) return re;
+            return add_simple_body_decls(r, st, &edw->finally_body);
         }
 
         case EXPR_WHILE: {
             expr_while* ew = (expr_while*)e;
-            resolve_error r = add_expr_decls(f, st, sst, ew->condition);
-            if (r) return r;
-            r = add_body_decls(f, NULL, &ew->while_body);
-            if (r) return r;
-            return add_body_decls(f, NULL, &ew->finally_body);
+            resolve_error re = add_expr_decls(r, st, sst, ew->condition);
+            if (re) return re;
+            re = add_simple_body_decls(r, st, &ew->while_body);
+            if (re) return re;
+            return add_simple_body_decls(r, st, &ew->finally_body);
         }
 
         case EXPR_MACRO: {
             expr_macro* em = (expr_macro*)e;
-            resolve_error r = add_body_decls(f, NULL, &em->body);
-            if (r) return r;
-            return add_expr_decls(f, st, sst, (expr*)em->next);
+            resolve_error re = add_simple_body_decls(r, st, &em->body);
+            if (re) return re;
+            return add_expr_decls(r, st, sst, (expr*)em->next);
         }
 
-        case EXPR_PP: return add_expr_decls(f, st, sst, ((expr_pp*)e)->child);
+        case EXPR_PP: return add_expr_decls(r, st, sst, ((expr_pp*)e)->child);
 
         case EXPR_MATCH: {
             expr_match* em = (expr_match*)e;
-            resolve_error r = add_expr_decls(f, st, sst, em->match_expr);
-            if (r) return r;
+            resolve_error re = add_expr_decls(r, st, sst, em->match_expr);
+            if (re) return re;
             for (match_arm** ma = em->match_arms; *ma != NULL; ma++) {
-                r = add_expr_decls(f, st, sst, (**ma).condition);
-                if (r) return r;
-                r = add_expr_decls(f, st, sst, (**ma).value);
-                if (r) return r;
+                re = add_expr_decls(r, st, sst, (**ma).condition);
+                if (re) return re;
+                re = add_expr_decls(r, st, sst, (**ma).value);
+                if (re) return re;
             }
             return RE_OK;
         }
@@ -75,31 +77,77 @@ add_expr_decls(src_file* f, symbol_table* st, symbol_table* sst, expr* e)
     }
 }
 static resolve_error
-add_stmt_decls(src_file* f, symbol_table* st, symbol_table* sst, stmt* s)
-{
-    // TODO: handle actual decls, lol
-    if (ast_node_is_scope((ast_node*)s)) {
-        // these are parts of a module and therefore already handled
-        if (!ast_node_is_open_scope((ast_node*)s)) {
-            return add_body_decls(f, NULL, &((scope*)s)->body);
-        }
-        else {
-            return RE_OK;
-        }
-    }
-    else if (s->node.kind == STMT_EXPRESSION) {
-        return add_expr_decls(f, st, sst, ((stmt_expr*)s)->expr);
-    }
-}
-static resolve_error add_body_decls(src_file* f, symbol_table* sst, body* b)
+add_stmt_list_decls(resolver* r, symbol_table* st, symbol_table* sst, stmt** sl)
 {
     resolve_error re;
-    for (stmt* s = b->children; s != NULL; s = s->next) {
-        re = add_stmt_decls(f, b->symtab, sst, s);
-        if (re) return re;
-    }
-}
 
+    while (*sl) {
+        stmt* s = *sl;
+        // TODO: handle actual decls, lol
+        if (ast_node_is_scope((ast_node*)s)) {
+            // these are parts of a module and therefore already handled
+            if (!ast_node_is_open_scope((ast_node*)s)) {
+                re = add_simple_body_decls(r, st, &((scope*)s)->body);
+                if (re) return re;
+            }
+            sl = &(*sl)->next;
+        }
+        else if (s->node.kind == STMT_EXPRESSION) {
+            re = add_expr_decls(r, st, sst, ((stmt_expr*)s)->expr);
+            if (re) return re;
+            sl = &(*sl)->next;
+        }
+        else {
+            switch (s->node.kind) {
+                case SYM_VAR_DECL:
+                case SYM_VAR_DECL_UNINITIALIZED: {
+                    symbol_table* tgtst = st;
+                    symbol* conflict;
+                    *sl = s->next;
+                    if (sst && stmt_flags_get_access_mod(s->node.flags) !=
+                                   AM_UNSPECIFIED) {
+                        tgtst = sst;
+                    }
+                    conflict = symbol_table_insert(tgtst, (symbol*)s);
+                    if (conflict) {
+                        error_log_report_annotated_twice(
+                            &r->tc->error_log, ES_RESOLVER, false,
+                            "symbol redeclaration",
+                            ast_node_get_file((ast_node*)s, tgtst),
+                            src_range_get_start(s->node.srange),
+                            src_range_get_end(s->node.srange),
+                            "a symbol of this name is already defined in this "
+                            "scope",
+                            ast_node_get_file((ast_node*)conflict, tgtst),
+                            src_range_get_start(conflict->stmt.node.srange),
+                            src_range_get_end(conflict->stmt.node.srange),
+                            "previous definition here");
+                        return RE_SYMBOL_REDECLARATION;
+                    }
+                } break;
+                case STMT_IMPORT:
+                case STMT_USING:
+                case SYM_NAMED_USING:
+                case SYM_PARAM:
+                case STMT_PP_STMT:
+                case STMT_COMPOUND_ASSIGN: sl = &(*sl)->next; break; // TODO
+                default: assert(false); // unknown node_kind
+            }
+        }
+    }
+    return RE_OK;
+}
+static resolve_error
+add_simple_body_decls(resolver* r, symbol_table* parent_st, body* b)
+{
+    if (b->symtab == NULL) {
+        b->symtab = parent_st;
+    }
+    else {
+        b->symtab->parent = parent_st;
+    }
+    return add_stmt_list_decls(r, b->symtab, NULL, &b->children);
+}
 static inline resolve_error mark_mdg_nodes_resolved(resolver* r)
 {
     for (mdg_node** i = r->start; i != r->end; i++) {
@@ -129,8 +177,20 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
     for (mdg_node** i = start; i != end; i++) {
         (**i).symtab = symbol_table_new(
             atomic_ureg_load(&(**i).decl_count),
-            atomic_ureg_load(&(**i).using_count));
+            atomic_ureg_load(&(**i).using_count), NULL);
+        (**i).symtab->parent = NULL;
         if (!(**i).symtab) return RE_FATAL;
+    }
+    for (mdg_node** i = start; i != end; i++) {
+        aseglist_iterator asi;
+        aseglist_iterator_begin(&asi, &(**i).open_scopes);
+        for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
+             osc = aseglist_iterator_next(&asi)) {
+            osc->scope.body.symtab->parent = (**i).symtab;
+            add_stmt_list_decls(
+                r, osc->scope.body.symtab, (**i).symtab,
+                &osc->scope.body.children);
+        }
     }
     return mark_mdg_nodes_resolved(r);
 }

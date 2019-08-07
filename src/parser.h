@@ -15,7 +15,6 @@ typedef enum parse_error {
 typedef struct parser {
     tokenizer tk;
     mdg_node* current_module;
-    symbol* curr_parent;
     sbuffer body_stack; // sounds kinda morbid :)
 } parser;
 

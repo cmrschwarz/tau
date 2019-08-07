@@ -144,17 +144,16 @@ typedef struct file_require {
 } file_require;
 
 typedef ast_node expr;
+typedef ast_node expr_t; // to avoid conflicts with identifiers named expr
 
 typedef struct stmt {
     ast_node node;
     struct stmt* next;
 } stmt;
-
+typedef struct scope scope;
 typedef struct symbol {
     stmt stmt;
     char* name;
-    // always points to the parent *symbol*, even if in a nested expr block
-    symbol* parent;
 } symbol;
 
 typedef struct body {
@@ -218,8 +217,8 @@ typedef struct stmt_import {
 } stmt_import;
 
 typedef struct expr_return {
-    expr expr;
-    expr* value;
+    expr_t expr;
+    expr_t* value;
 } expr_return;
 
 typedef struct expr_break {
@@ -376,32 +375,32 @@ typedef struct stmt_compound_assignment {
 } stmt_compound_assignment;
 
 typedef struct expr_parentheses {
-    expr expr;
-    expr* child;
+    expr_t expr;
+    expr_t* child;
 } expr_parentheses;
 
 typedef struct expr_op_binary {
-    expr expr;
-    expr* lhs;
-    expr* rhs;
+    expr_t expr;
+    expr_t* lhs;
+    expr_t* rhs;
 } expr_op_binary;
 
 typedef struct expr_op_unary {
-    expr expr;
-    expr* child;
+    expr_t expr;
+    expr_t* child;
 } expr_op_unary;
 
 // TODO: implement named arguments
 typedef struct expr_call {
-    expr expr;
-    expr* lhs;
-    expr** args;
+    expr_t expr;
+    expr_t* lhs;
+    expr_t** args;
 } expr_call;
 
 typedef struct expr_access {
-    expr expr;
-    expr* lhs;
-    expr** args;
+    expr_t expr;
+    expr_t* lhs;
+    expr_t** args;
 } expr_access;
 
 typedef struct expr_str_value {
@@ -434,23 +433,23 @@ typedef struct expr_member_access {
 
 typedef struct expr_tuple {
     expr expr;
-    expr** elements;
+    expr_t** elements;
 } expr_tuple;
 
 typedef struct expr_array {
     expr expr;
-    expr** elements;
+    expr_t** elements;
 } expr_array;
 
 typedef struct expr_type_array {
     expr expr;
-    expr* inside;
-    expr* rhs;
+    expr_t* inside;
+    expr_t* rhs;
 } expr_type_array;
 
 typedef struct expr_type_slice {
     expr expr;
-    expr* rhs;
+    expr_t* rhs;
 } expr_type_slice;
 
 typedef struct expr_lambda {
@@ -466,7 +465,7 @@ bool ast_node_is_symbol(ast_node* s);
 bool ast_node_is_expr(ast_node* s);
 bool ast_node_is_stmt(ast_node* s);
 src_file* open_scope_get_file(open_scope* s);
-src_file* stmt_get_file(stmt* s);
+src_file* ast_node_get_file(ast_node* n, symbol_table* st);
 
 bool body_is_braced(body* b);
 

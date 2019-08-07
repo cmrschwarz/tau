@@ -1,6 +1,7 @@
 require "test2.tau";
 func foo(){
     x: int = 32;
+    x: float = 64;
 }
 module doo{
     import bar;

@@ -365,7 +365,7 @@ static inline int pop_bpd(parser* p)
     body* bd = bpd->body;
     symbol_table** st = &bd->symtab;
     while (true) {
-        *st = symbol_table_new(bpd->decl_count, bpd->usings_count);
+        *st = symbol_table_new(bpd->decl_count, bpd->usings_count, bpd->node);
         if (!*st) return ERR;
         sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
         bpd = (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
@@ -603,7 +603,6 @@ parse_error parse_param_decl(
     d->symbol.name = alloc_string_perm(p, t->str);
     if (!d->symbol.name) return PE_FATAL;
     d->symbol.stmt.node.kind = SYM_PARAM;
-    d->symbol.parent = p->curr_parent;
     // TODO: flags parsing
     d->symbol.stmt.node.flags = STMT_FLAGS_DEFAULT;
     tk_void(&p->tk);
@@ -872,7 +871,6 @@ parse_uninitialized_var_in_tuple(parser* p, token* t, expr** ex)
     sym_var_decl_uninitialized* v = alloc_perm(p, sizeof(tuple_ident_node));
     v->symbol.stmt.node.kind = SYM_VAR_DECL_UNINITIALIZED;
     v->symbol.stmt.node.flags = STMT_FLAGS_DEFAULT;
-    v->symbol.parent = p->curr_parent;
     stmt_flags_set_compound_decl(&v->symbol.stmt.node.flags);
     v->symbol.name = alloc_string_perm(p, t->str);
     if (!v->symbol.name) return PE_FATAL;
@@ -1866,7 +1864,6 @@ parse_error parse_eof_delimited_open_scope(parser* p, open_scope* osc)
 }
 parse_error parser_parse_file(parser* p, job_parse* j)
 {
-    p->curr_parent = NULL;
     // This is test code. it sucks
     int r = tk_open_file(&p->tk, j->file);
     if (r) {
@@ -2026,19 +2023,15 @@ parse_error parse_param_list(
         *tgt = NULL;
         return PE_OK;
     }
-    parent->parent = p->curr_parent;
-    p->curr_parent = parent;
     do {
         parse_error pe = parse_param_decl(p, tgt, ctx_start, ctx_end, msg);
         if (pe) {
             *tgt = NULL;
-            p->curr_parent = parent->parent;
             return pe;
         }
         tgt = (sym_param**)&(*tgt)->symbol.stmt.next;
         t = tk_peek(&p->tk);
         if (!t) {
-            p->curr_parent = parent->parent;
             return PE_TK_ERROR;
         }
         if (t->kind == TT_COMMA) {
@@ -2052,13 +2045,11 @@ parse_error parse_param_list(
             error_log_report_annotated_twice(
                 &p->tk.tc->error_log, ES_PARSER, false, e1, p->tk.file,
                 t->start, t->end, e2, p->tk.file, ctx_start, ctx_end, msg);
-            p->curr_parent = parent->parent;
             return PE_ERROR;
         }
     } while (t->kind != end_tok);
     tk_void(&p->tk);
     *tgt = NULL;
-    p->curr_parent = parent->parent;
     return PE_OK;
 }
 parse_error parse_func_decl(
@@ -2517,7 +2508,6 @@ parse_using(parser* p, stmt_flags flags, ureg start, ureg flags_end, stmt** tgt)
             if (!nu) return PE_FATAL;
             nu->symbol.stmt.node.kind = SYM_NAMED_USING;
             nu->symbol.stmt.node.flags = flags;
-            nu->symbol.parent = p->curr_parent;
             nu->symbol.name = alloc_string_perm(p, t->str);
             if (!nu->symbol.name) return PE_FATAL;
             tk_void_n(&p->tk, 2);

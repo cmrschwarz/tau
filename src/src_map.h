@@ -57,5 +57,6 @@ src_range src_range_large_pack(thread_context* tc, src_range_large* d);
 void src_range_unpack(src_range r, src_range_large* d);
 void src_range_unpack_lines(src_range r, ureg* start, ureg* end);
 ureg src_range_get_start(src_range r);
+src_file* src_range_get_file(src_range r);
 ureg src_range_get_end(src_range r);
 void src_range_set_end(thread_context* tc, src_range* old, ureg end);
