@@ -130,7 +130,7 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
     n->symtab = NULL;
     return n;
 }
-static void free_body_symtabs(body* b);
+static void free_body_symtabs(ast_node* node, body* b);
 static void free_expr_symtabs(expr* e)
 {
     if (e == NULL) return;
@@ -139,7 +139,7 @@ static void free_expr_symtabs(expr* e)
 
         case EXPR_BREAK: free_expr_symtabs(((expr_break*)e)->value); break;
 
-        case EXPR_BLOCK: free_body_symtabs(&((expr_block*)e)->body); break;
+        case EXPR_BLOCK: free_body_symtabs(e, &((expr_block*)e)->body); break;
 
         case EXPR_IF: {
             expr_if* ei = (expr_if*)e;
@@ -148,27 +148,27 @@ static void free_expr_symtabs(expr* e)
             free_expr_symtabs(ei->else_body);
         } break;
 
-        case EXPR_LOOP: free_body_symtabs(&((expr_loop*)e)->body); break;
+        case EXPR_LOOP: free_body_symtabs(e, &((expr_loop*)e)->body); break;
 
         case EXPR_DO: free_expr_symtabs(((expr_do*)e)->expr_body); break;
 
         case EXPR_DO_WHILE: {
             expr_do_while* edw = (expr_do_while*)e;
             free_expr_symtabs(edw->condition);
-            free_body_symtabs(&edw->do_body);
-            free_body_symtabs(&edw->finally_body);
+            free_body_symtabs(e, &edw->do_body);
+            free_body_symtabs(e, &edw->finally_body);
         } break;
 
         case EXPR_WHILE: {
             expr_while* ew = (expr_while*)e;
             free_expr_symtabs(ew->condition);
-            free_body_symtabs(&ew->while_body);
-            free_body_symtabs(&ew->finally_body);
+            free_body_symtabs(e, &ew->while_body);
+            free_body_symtabs(e, &ew->finally_body);
         } break;
 
         case EXPR_MACRO: {
             expr_macro* em = (expr_macro*)e;
-            free_body_symtabs(&em->body);
+            free_body_symtabs(e, &em->body);
             free_expr_symtabs((expr*)em->next);
         } break;
 
@@ -193,7 +193,9 @@ static void free_stmt_symtabs(stmt* s)
         if (ast_node_is_scope((ast_node*)s)) {
             // these are parts of a module and therefore already handled
             if (!ast_node_is_open_scope((ast_node*)s)) {
-                symbol_table_delete(((scope*)s)->body.symtab);
+                if (((scope*)s)->body.symtab->owning_node == (ast_node*)s) {
+                    symbol_table_delete(((scope*)s)->body.symtab);
+                }
                 free_stmt_symtabs(((scope*)s)->body.children);
             }
         }
@@ -202,10 +204,12 @@ static void free_stmt_symtabs(stmt* s)
         s = s->next;
     }
 }
-static void free_body_symtabs(body* b)
+static void free_body_symtabs(ast_node* node, body* b)
 {
     if (!b->children) return;
-    symbol_table_delete(b->symtab);
+    if (b->symtab->owning_node == node) {
+        symbol_table_delete(b->symtab);
+    }
     free_stmt_symtabs(b->children);
 }
 void mdg_node_fin(mdg_node* n)
@@ -216,7 +220,7 @@ void mdg_node_fin(mdg_node* n)
     while (true) {
         open_scope* osc = aseglist_iterator_next(&it);
         if (!osc) break;
-        free_body_symtabs(&osc->scope.body);
+        free_body_symtabs((ast_node*)osc, &osc->scope.body);
     }
     mdg_node_partial_fin(n, 0);
 }

@@ -505,6 +505,11 @@ static inline void ast_node_init(ast_node* n, ast_node_kind type)
     n->flags = STMT_FLAGS_DEFAULT;
     n->kind = type;
 }
+static inline void body_init_empty(body* b)
+{
+    b->children = NULL;
+    b->symtab = NULL;
+}
 int parser_init(parser* p, thread_context* tc)
 {
     int r = tk_init(&p->tk, tc);
@@ -1434,7 +1439,7 @@ parse_error parse_do(parser* p, expr** tgt)
             pe = parse_body(p, &edw->finally_body, (ast_node*)edw);
         }
         else {
-            edw->finally_body.children = NULL;
+            body_init_empty(&edw->finally_body);
         }
         return pe;
     }
@@ -1486,7 +1491,7 @@ parse_error parse_while(parser* p, expr** tgt)
         pe = parse_body(p, &w->finally_body, (ast_node*)w);
     }
     else {
-        w->finally_body.children = NULL;
+        body_init_empty(&w->finally_body);
     }
     return pe;
 }
