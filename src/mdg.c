@@ -197,7 +197,7 @@ static void free_stmt_symtabs(stmt* s)
                 free_stmt_symtabs(((scope*)s)->body.children);
             }
         }
-        else if (s->kind == STMT_EXPRESSION)
+        else if (s->node.kind == STMT_EXPRESSION)
             free_expr_symtabs(((stmt_expr*)s)->expr);
         s = s->next;
     }
@@ -390,7 +390,7 @@ bool scope_find_import(
             if (scope_find_import((scope*)st, import, tgt, tgt_sym))
                 return true;
         }
-        else if (st->kind == STMT_IMPORT) {
+        else if (st->node.kind == STMT_IMPORT) {
             stmt_import* i = (stmt_import*)st;
             if (module_import_find_import(&i->module_import, import, tgt_sym)) {
                 *tgt = i;
@@ -426,7 +426,7 @@ void mdg_node_report_missing_import(
     src_file* f;
     mdg_node_find_import(m, import, &tgt, &tgt_sym, &f);
     src_range_large tgt_srl, tgt_sym_srl;
-    src_range_unpack(tgt->stmt.srange, &tgt_srl);
+    src_range_unpack(tgt->stmt.node.srange, &tgt_srl);
     src_range_unpack(tgt_sym->srange, &tgt_sym_srl);
     error_log_report_annotated_twice(
         &tc->error_log, ES_RESOLVER, false,
@@ -748,14 +748,15 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
             open_scope* i = aseglist_iterator_next(&it);
             first_target = i;
             while (i) {
-                if (i->scope.symbol.stmt.kind == OSC_MODULE ||
-                    i->scope.symbol.stmt.kind == OSC_MODULE_GENERIC) {
+                if (i->scope.symbol.stmt.node.kind == OSC_MODULE ||
+                    i->scope.symbol.stmt.node.kind == OSC_MODULE_GENERIC) {
                     if (mod != NULL) {
                         src_range_large srl;
-                        src_range_unpack(i->scope.symbol.stmt.srange, &srl);
+                        src_range_unpack(
+                            i->scope.symbol.stmt.node.srange, &srl);
                         src_range_large srl_mod;
                         src_range_unpack(
-                            mod->scope.symbol.stmt.srange, &srl_mod);
+                            mod->scope.symbol.stmt.node.srange, &srl_mod);
                         // since aseglist iterates backwards we reverse, so if
                         // it's in the same file the redeclaration is always
                         // below
@@ -773,7 +774,8 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
             }
             if (mod == NULL && first_target != NULL) {
                 src_range_large srl;
-                src_range_unpack(first_target->scope.symbol.stmt.srange, &srl);
+                src_range_unpack(
+                    first_target->scope.symbol.stmt.node.srange, &srl);
                 // THINK: maybe report extend count here or report all
                 error_log_report_annotated(
                     &tc->error_log, ES_RESOLVER, false,

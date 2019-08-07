@@ -4,38 +4,33 @@
 src_file* open_scope_get_file(open_scope* s)
 {
     src_range_large srl;
-    src_range_unpack(s->scope.symbol.stmt.srange, &srl);
+    src_range_unpack(s->scope.symbol.stmt.node.srange, &srl);
     return srl.file;
 }
 bool ast_node_is_open_scope(ast_node* s)
 {
-    return *s <= OSC_LAST_OSC_ID;
+    return s->kind <= OSC_LAST_OSC_ID;
 }
 bool ast_node_is_scope(ast_node* s)
 {
-    return *s <= SC_LAST_SC_ID;
+    return s->kind <= SC_LAST_SC_ID;
 }
 bool ast_node_is_symbol(ast_node* s)
 {
-    return *s <= SYM_LAST_SYM_ID;
+    return s->kind <= SYM_LAST_SYM_ID;
 }
 bool ast_node_is_stmt(ast_node* s)
 {
-    return (*s < STMT_LAST_STMT_ID);
+    return (s->kind < STMT_LAST_STMT_ID);
 }
 bool ast_node_is_expr(ast_node* s)
 {
-    return (*s > STMT_LAST_STMT_ID);
-}
-src_range ast_node_get_src_range(ast_node* s)
-{
-    if (ast_node_is_expr(s)) return ((expr*)s)->srange;
-    return ((stmt*)s)->srange;
+    return (s->kind > STMT_LAST_STMT_ID);
 }
 bool body_is_braced(body* b)
 {
     if (b->children && !b->children->next) {
-        return (b->srange != b->children->srange);
+        return (b->srange != b->children->node.srange);
     }
     return true;
 }

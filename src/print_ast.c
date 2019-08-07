@@ -56,7 +56,7 @@ void print_body_elements(body* body, ureg indent)
     stmt* head = body->children;
     while (head) {
         print_indent(indent);
-        print_astn(head, indent);
+        print_stmt(head, indent);
         if (!stmt_allowed_to_drop_semicolon(head)) pc(';');
         pc('\n');
         head = head->next;
@@ -82,7 +82,7 @@ void print_body_braced(body* body, ureg indent)
 void print_body(body* body, ureg indent)
 {
     if (!body_is_braced(body) && body->children && !body->children->next) {
-        print_astn(body->children, indent);
+        print_stmt(body->children, indent);
     }
     else {
         print_body_braced(body, indent);
@@ -128,7 +128,7 @@ void print_compound_decl_list(expr** el, ureg indent)
     while (*el) {
         if ((**el).kind == SYM_VAR_UNINITIALIZED) {
             sym_var* d = (sym_var*)*el;
-            if (stmt_flags_get_const(d->symbol.stmt.flags)) p("const ");
+            if (stmt_flags_get_const(d->symbol.stmt.node.flags)) p("const ");
             pu(d->symbol.name);
             if (d->type != NULL) {
                 p(": ");
@@ -151,9 +151,9 @@ void print_compound_decl_list(expr** el, ureg indent)
         if (*el) p(", ");
     }
 }
-void print_astn_nl(stmt* astn, ureg indent)
+void print_stmt_nl(stmt* astn, ureg indent)
 {
-    print_astn(astn, indent);
+    print_stmt(astn, indent);
     pc('\n');
 }
 void print_mdg_node_until(mdg_node* m, mdg_node* stop)
@@ -204,23 +204,23 @@ void print_module_import(module_import* mi, mdg_node* parent, ureg indent)
         pc('}');
     }
 }
-void print_astn(stmt* astn, ureg indent)
+void print_stmt(stmt* st, ureg indent)
 {
     // TODO: print access modifiers
-    switch (astn->kind) {
+    switch (st->node.kind) {
         case STMT_EXPRESSION: {
-            stmt_expr* e = (stmt_expr*)astn;
+            stmt_expr* e = (stmt_expr*)st;
             print_expr(e->expr, indent);
         } break;
         case STMT_IMPORT: {
-            stmt_import* si = (stmt_import*)astn;
+            stmt_import* si = (stmt_import*)st;
             p("import ");
             print_module_import(&si->module_import, TAUC.mdg.root_node, indent);
         } break;
         case STMT_COMPOUND_ASSIGN: {
-            stmt_compound_assignment* ca = (stmt_compound_assignment*)astn;
+            stmt_compound_assignment* ca = (stmt_compound_assignment*)st;
             pc('(');
-            bool colon = stmt_flags_get_compound_decl(ca->stmt.flags);
+            bool colon = stmt_flags_get_compound_decl(ca->stmt.node.flags);
             if (colon) {
                 print_compound_decl_list(ca->elements, indent);
             }
@@ -236,7 +236,7 @@ void print_astn(stmt* astn, ureg indent)
             print_expr(ca->value, indent);
         } break;
         case SC_FUNC: {
-            sc_func* f = (sc_func*)astn;
+            sc_func* f = (sc_func*)st;
             p("func ");
             pu(f->scope.symbol.name);
             p("(");
@@ -245,7 +245,7 @@ void print_astn(stmt* astn, ureg indent)
             print_body_braced(&f->scope.body, indent);
         } break;
         case SC_FUNC_GENERIC: {
-            sc_func_generic* f = (sc_func_generic*)astn;
+            sc_func_generic* f = (sc_func_generic*)st;
             p("func ");
             pu(f->scope.symbol.name);
             p("[");
@@ -257,13 +257,13 @@ void print_astn(stmt* astn, ureg indent)
             print_body_braced(&f->scope.body, indent);
         } break;
         case SC_STRUCT: {
-            sc_struct* s = (sc_struct*)astn;
+            sc_struct* s = (sc_struct*)st;
             p("struct ");
             pinn(s->scope.symbol.name);
             print_body_braced(&s->scope.body, indent);
         } break;
         case SC_STRUCT_GENERIC: {
-            sc_struct_generic* s = (sc_struct_generic*)astn;
+            sc_struct_generic* s = (sc_struct_generic*)st;
             p("struct ");
             pinn(s->scope.symbol.name);
             p("[");
@@ -272,13 +272,13 @@ void print_astn(stmt* astn, ureg indent)
             print_body_braced(&s->scope.body, indent);
         } break;
         case SC_TRAIT: {
-            sc_trait* t = (sc_trait*)astn;
+            sc_trait* t = (sc_trait*)st;
             p("trait ");
             pinn(t->scope.symbol.name);
             print_body_braced(&t->scope.body, indent);
         } break;
         case SC_TRAIT_GENERIC: {
-            sc_trait_generic* t = (sc_trait_generic*)astn;
+            sc_trait_generic* t = (sc_trait_generic*)st;
             p("trait ");
             pinn(t->scope.symbol.name);
             p("[");
@@ -287,13 +287,13 @@ void print_astn(stmt* astn, ureg indent)
             print_body_braced(&t->scope.body, indent);
         } break;
         case OSC_MODULE: {
-            osc_module* m = (osc_module*)astn;
+            osc_module* m = (osc_module*)st;
             p("module ");
             pinn(m->oscope.scope.symbol.name);
             print_open_scope_body(&m->oscope, indent);
         } break;
         case OSC_MODULE_GENERIC: {
-            osc_module_generic* m = (osc_module_generic*)astn;
+            osc_module_generic* m = (osc_module_generic*)st;
             p("module ");
             pinn(m->oscope.scope.symbol.name);
             p("[");
@@ -302,13 +302,13 @@ void print_astn(stmt* astn, ureg indent)
             print_open_scope_body(&m->oscope, indent);
         } break;
         case OSC_EXTEND: {
-            osc_extend* e = (osc_extend*)astn;
+            osc_extend* e = (osc_extend*)st;
             p("extend ");
             pinn(e->oscope.scope.symbol.name);
             print_open_scope_body(&e->oscope, indent);
         } break;
         case OSC_EXTEND_GENERIC: {
-            osc_extend_generic* e = (osc_extend_generic*)astn;
+            osc_extend_generic* e = (osc_extend_generic*)st;
             p("extend ");
             pinn(e->oscope.scope.symbol.name);
             p("[");
@@ -317,8 +317,8 @@ void print_astn(stmt* astn, ureg indent)
             print_open_scope_body(&e->oscope, indent);
         } break;
         case SYM_VAR: {
-            sym_var* d = (sym_var*)astn;
-            if (stmt_flags_get_const(d->symbol.stmt.flags)) p("const ");
+            sym_var* d = (sym_var*)st;
+            if (stmt_flags_get_const(d->symbol.stmt.node.flags)) p("const ");
             pu(d->symbol.name);
             if (d->type != NULL) {
                 p(": ");
@@ -334,23 +334,23 @@ void print_astn(stmt* astn, ureg indent)
             }
         } break;
         case SYM_NAMED_USING: {
-            sym_named_using* nu = (sym_named_using*)astn;
-            if (stmt_flags_get_const(nu->symbol.stmt.flags)) p("const ");
+            sym_named_using* nu = (sym_named_using*)st;
+            if (stmt_flags_get_const(nu->symbol.stmt.node.flags)) p("const ");
             p("using ");
             p(nu->symbol.name);
             p(" = ");
             print_expr(nu->target, indent);
         } break;
         case STMT_USING: {
-            stmt_using* u = (stmt_using*)astn;
-            if (stmt_flags_get_const(u->stmt.flags)) p("const ");
+            stmt_using* u = (stmt_using*)st;
+            if (stmt_flags_get_const(u->stmt.node.flags)) p("const ");
             p("using ");
             print_expr(u->target, indent);
         } break;
         case STMT_PP_STMT: {
-            stmt_pp_stmt* pps = (stmt_pp_stmt*)astn;
+            stmt_pp_stmt* pps = (stmt_pp_stmt*)st;
             pc('#');
-            print_astn(pps->pp_stmt, indent);
+            print_stmt(pps->pp_stmt, indent);
         } break;
         default: {
             p("<Unkown Statement>");
@@ -378,7 +378,7 @@ void print_expr(expr* ex, ureg indent)
         } break;
         case SYM_VAR_UNINITIALIZED: {
             sym_var* d = (sym_var*)ex;
-            if (stmt_flags_get_const(d->symbol.stmt.flags)) p("const ");
+            if (stmt_flags_get_const(d->symbol.stmt.node.flags)) p("const ");
             pu(d->symbol.name);
             pc(':');
             if (d->type != NULL) {

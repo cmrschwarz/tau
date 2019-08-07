@@ -87,7 +87,7 @@ add_stmt_decls(src_file* f, symbol_table* st, symbol_table* sst, stmt* s)
             return RE_OK;
         }
     }
-    else if (s->kind == STMT_EXPRESSION) {
+    else if (s->node.kind == STMT_EXPRESSION) {
         return add_expr_decls(f, st, sst, ((stmt_expr*)s)->expr);
     }
 }

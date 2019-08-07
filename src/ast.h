@@ -129,23 +129,24 @@ typedef enum PACK_ENUM op_type {
     OP_POST_DECREMENT,
 } op_type;
 
-typedef ast_node_kind ast_node;
+typedef struct ast_node {
+    ast_node_kind kind;
+    ANONYMOUS_UNION_START
+    op_type op_type;
+    stmt_flags flags;
+    ANONYMOUS_UNION_END
+    src_range srange;
+} ast_node;
 
 typedef struct file_require {
     src_file* file;
     src_range srange;
 } file_require;
 
-typedef struct expr {
-    ast_node_kind kind;
-    op_type op_type;
-    src_range srange;
-} expr;
+typedef ast_node expr;
 
 typedef struct stmt {
-    ast_node_kind kind;
-    stmt_flags flags;
-    src_range srange;
+    ast_node node;
     struct stmt* next;
 } stmt;
 
