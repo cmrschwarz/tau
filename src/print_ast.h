@@ -1,8 +1,8 @@
 #pragma once
 #include "ast.h"
 
-char* op_to_str(op_type t);
-bool is_unary_op_postfix(op_type t);
-void print_stmt(stmt* astn, ureg indent);
-void print_stmt_nl(stmt* astn, ureg indent);
-void print_expr(expr* expr, ureg indent);
+char* op_to_str(operator_kind t);
+bool is_unary_op_postfix(operator_kind t);
+void print_ast_node_nl(ast_node* n, ureg indent);
+void print_ast_node(ast_node* n, ureg indent);
+void print_mdg_node(mdg_node* mdg, ureg indent);

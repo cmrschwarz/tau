@@ -131,86 +131,78 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
     return n;
 }
 static void free_body_symtabs(ast_node* node, body* b);
-static void free_expr_symtabs(expr* e)
+static void free_astn_symtabs(ast_node* n)
 {
-    if (e == NULL) return;
-    switch (e->kind) {
-        case EXPR_RETURN: free_expr_symtabs(((expr_return*)e)->value); break;
+    if (ast_node_is_scope(n)) {
+        // these are parts of a module and therefore already handled
+        if (!ast_node_is_open_scope(n)) {
+            free_body_symtabs(n, &((scope*)n)->body);
+        }
+        else {
+            return;
+        }
+    }
+    switch (n->kind) {
+        case EXPR_RETURN: free_astn_symtabs(((expr_return*)n)->value); break;
 
-        case EXPR_BREAK: free_expr_symtabs(((expr_break*)e)->value); break;
+        case EXPR_BREAK: free_astn_symtabs(((expr_break*)n)->value); break;
 
-        case EXPR_BLOCK: free_body_symtabs(e, &((expr_block*)e)->body); break;
+        case EXPR_BLOCK: free_body_symtabs(n, &((expr_block*)n)->body); break;
 
         case EXPR_IF: {
-            expr_if* ei = (expr_if*)e;
-            free_expr_symtabs(ei->condition);
-            free_expr_symtabs(ei->if_body);
-            free_expr_symtabs(ei->else_body);
+            expr_if* ei = (expr_if*)n;
+            free_astn_symtabs(ei->condition);
+            free_astn_symtabs(ei->if_body);
+            free_astn_symtabs(ei->else_body);
         } break;
 
-        case EXPR_LOOP: free_body_symtabs(e, &((expr_loop*)e)->body); break;
+        case EXPR_LOOP: free_body_symtabs(n, &((expr_loop*)n)->body); break;
 
-        case EXPR_DO: free_expr_symtabs(((expr_do*)e)->expr_body); break;
+        case EXPR_DO: free_astn_symtabs(((expr_do*)n)->expr_body); break;
 
         case EXPR_DO_WHILE: {
-            expr_do_while* edw = (expr_do_while*)e;
-            free_expr_symtabs(edw->condition);
-            free_body_symtabs(e, &edw->do_body);
-            free_body_symtabs(e, &edw->finally_body);
+            expr_do_while* edw = (expr_do_while*)n;
+            free_astn_symtabs(edw->condition);
+            free_body_symtabs(n, &edw->do_body);
+            free_body_symtabs(n, &edw->finally_body);
         } break;
 
         case EXPR_WHILE: {
-            expr_while* ew = (expr_while*)e;
-            free_expr_symtabs(ew->condition);
-            free_body_symtabs(e, &ew->while_body);
-            free_body_symtabs(e, &ew->finally_body);
+            expr_while* ew = (expr_while*)n;
+            free_astn_symtabs(ew->condition);
+            free_body_symtabs(n, &ew->while_body);
+            free_body_symtabs(n, &ew->finally_body);
         } break;
 
         case EXPR_MACRO: {
-            expr_macro* em = (expr_macro*)e;
-            free_body_symtabs(e, &em->body);
-            free_expr_symtabs((expr*)em->next);
+            expr_macro* em = (expr_macro*)n;
+            free_body_symtabs(n, &em->body);
+            free_astn_symtabs((ast_node*)em->next);
         } break;
 
-        case EXPR_PP: free_expr_symtabs(((expr_pp*)e)->child); break;
+        case EXPR_PP: free_astn_symtabs(((expr_pp*)n)->pp_expr); break;
 
         case EXPR_MATCH: {
-            expr_match* em = (expr_match*)e;
-            free_expr_symtabs(em->match_expr);
+            expr_match* em = (expr_match*)n;
+            free_astn_symtabs(em->match_expr);
             for (match_arm** ma = em->match_arms; *ma != NULL; ma++) {
-                free_expr_symtabs((**ma).condition);
-                free_expr_symtabs((**ma).value);
+                free_astn_symtabs((**ma).condition);
+                free_astn_symtabs((**ma).value);
             }
         } break;
 
         default: break;
     }
 }
-static void free_stmt_symtabs(stmt* s)
-{
-    // TODO: free symtabs in obscure places like parameters...
-    while (s != NULL) {
-        if (ast_node_is_scope((ast_node*)s)) {
-            // these are parts of a module and therefore already handled
-            if (!ast_node_is_open_scope((ast_node*)s)) {
-                if (((scope*)s)->body.symtab->owning_node == (ast_node*)s) {
-                    symbol_table_delete(((scope*)s)->body.symtab);
-                }
-                free_stmt_symtabs(((scope*)s)->body.children);
-            }
-        }
-        else if (s->node.kind == STMT_EXPRESSION)
-            free_expr_symtabs(((stmt_expr*)s)->expr);
-        s = s->next;
-    }
-}
 static void free_body_symtabs(ast_node* node, body* b)
 {
-    if (!b->children) return;
+    // delete children first since children might contain parent symtab pointer
+    for (ast_node** n = b->elements; *n != NULL; n++) {
+        free_astn_symtabs(*n);
+    }
     if (b->symtab->owning_node == node) {
         symbol_table_delete(b->symtab);
     }
-    free_stmt_symtabs(b->children);
 }
 void mdg_node_fin(mdg_node* n)
 {
@@ -388,20 +380,18 @@ bool module_import_find_import(
 bool scope_find_import(
     scope* s, mdg_node* import, stmt_import** tgt, module_import** tgt_sym)
 {
-    stmt* st = s->body.children;
-    while (st) {
-        if (ast_node_is_scope((ast_node*)st)) {
-            if (scope_find_import((scope*)st, import, tgt, tgt_sym))
+    for (ast_node** n = s->body.elements; *n; n++) {
+        if (ast_node_is_scope(*n)) {
+            if (scope_find_import((scope*)*n, import, tgt, tgt_sym))
                 return true;
         }
-        else if (st->node.kind == STMT_IMPORT) {
-            stmt_import* i = (stmt_import*)st;
+        else if ((**n).kind == STMT_IMPORT) {
+            stmt_import* i = (stmt_import*)*n;
             if (module_import_find_import(&i->module_import, import, tgt_sym)) {
                 *tgt = i;
                 return true;
             }
         }
-        st = st->next;
     }
     return false;
 }
@@ -418,7 +408,7 @@ void mdg_node_find_import(
             *file = open_scope_get_file(osc);
             return;
         }
-        osc = (open_scope*)osc->scope.symbol.stmt.next;
+        osc = (open_scope*)osc->scope.symbol.next;
     }
     panic("failed to find import!");
 }
@@ -430,7 +420,7 @@ void mdg_node_report_missing_import(
     src_file* f;
     mdg_node_find_import(m, import, &tgt, &tgt_sym, &f);
     src_range_large tgt_srl, tgt_sym_srl;
-    src_range_unpack(tgt->stmt.node.srange, &tgt_srl);
+    src_range_unpack(tgt->node.srange, &tgt_srl);
     src_range_unpack(tgt_sym->srange, &tgt_sym_srl);
     error_log_report_annotated_twice(
         &tc->error_log, ES_RESOLVER, false,
@@ -752,15 +742,14 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
             open_scope* i = aseglist_iterator_next(&it);
             first_target = i;
             while (i) {
-                if (i->scope.symbol.stmt.node.kind == OSC_MODULE ||
-                    i->scope.symbol.stmt.node.kind == OSC_MODULE_GENERIC) {
+                if (i->scope.symbol.node.kind == OSC_MODULE ||
+                    i->scope.symbol.node.kind == OSC_MODULE_GENERIC) {
                     if (mod != NULL) {
                         src_range_large srl;
-                        src_range_unpack(
-                            i->scope.symbol.stmt.node.srange, &srl);
+                        src_range_unpack(i->scope.symbol.node.srange, &srl);
                         src_range_large srl_mod;
                         src_range_unpack(
-                            mod->scope.symbol.stmt.node.srange, &srl_mod);
+                            mod->scope.symbol.node.srange, &srl_mod);
                         // since aseglist iterates backwards we reverse, so if
                         // it's in the same file the redeclaration is always
                         // below
@@ -778,8 +767,7 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
             }
             if (mod == NULL && first_target != NULL) {
                 src_range_large srl;
-                src_range_unpack(
-                    first_target->scope.symbol.stmt.node.srange, &srl);
+                src_range_unpack(first_target->scope.symbol.node.srange, &srl);
                 // THINK: maybe report extend count here or report all
                 error_log_report_annotated(
                     &tc->error_log, ES_RESOLVER, false,

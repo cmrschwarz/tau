@@ -67,7 +67,7 @@ typedef enum PACK_ENUM ast_node_kind {
     EXPR_OP_BINARY,
 } ast_node_kind;
 
-typedef enum PACK_ENUM op_type {
+typedef enum PACK_ENUM operator_kind {
     // special ops
     OP_NOOP, // invalid op, used for return values
 
@@ -127,14 +127,12 @@ typedef enum PACK_ENUM op_type {
     OP_PRE_DECREMENT,
     OP_POST_INCREMENT,
     OP_POST_DECREMENT,
-} op_type;
+} operator_kind;
 
 typedef struct ast_node {
     ast_node_kind kind;
-    ANONYMOUS_UNION_START
-    op_type op_type;
+    operator_kind operator_kind;
     stmt_flags flags;
-    ANONYMOUS_UNION_END
     src_range srange;
 } ast_node;
 
@@ -143,21 +141,15 @@ typedef struct file_require {
     src_range srange;
 } file_require;
 
-typedef ast_node expr;
-typedef ast_node expr_t; // to avoid conflicts with identifiers named expr
-
-typedef struct stmt {
-    ast_node node;
-    struct stmt* next;
-} stmt;
 typedef struct scope scope;
 typedef struct symbol {
-    stmt stmt;
+    ast_node node;
     char* name;
+    struct symbol* next;
 } symbol;
 
 typedef struct body {
-    stmt* children;
+    ast_node** elements;
     symbol_table* symtab;
     src_range srange;
 } body;
@@ -174,12 +166,12 @@ typedef struct open_scope {
 
 typedef struct sym_named_using {
     symbol symbol;
-    expr* target;
+    ast_node* target;
 } sym_named_using;
 
 typedef struct stmt_using {
-    stmt stmt;
-    expr* target;
+    ast_node node;
+    ast_node* target;
 } stmt_using;
 
 typedef struct symbol_import {
@@ -202,36 +194,31 @@ typedef struct module_import {
 } module_import;
 
 typedef struct expr_named {
-    expr expr;
+    ast_node node;
     char* name;
 } expr_named;
 
-typedef struct stmt_pp_stmt {
-    stmt stmt;
-    stmt* pp_stmt;
-} stmt_pp_stmt;
-
 typedef struct stmt_import {
-    stmt stmt;
+    ast_node node;
     module_import module_import;
 } stmt_import;
 
 typedef struct expr_return {
-    expr_t expr;
-    expr_t* value;
+    ast_node node;
+    ast_node* value;
 } expr_return;
 
 typedef struct expr_break {
-    expr expr;
+    ast_node node;
     union {
         expr_named* expr; // points to target expr once found
         const char* name; // label, before target found
     } target;
-    expr* value;
+    ast_node* value;
 } expr_break;
 
 typedef struct expr_continue {
-    expr expr;
+    ast_node node;
     union {
         expr_named* expr; // points to target expr once found
         const char* name; // label, before target found
@@ -244,10 +231,10 @@ typedef struct expr_block {
 } expr_block;
 
 typedef struct expr_if {
-    expr expr;
-    expr* condition;
-    expr* if_body;
-    expr* else_body;
+    ast_node node;
+    ast_node* condition;
+    ast_node* if_body;
+    ast_node* else_body;
 } expr_if;
 
 typedef struct expr_loop {
@@ -257,57 +244,52 @@ typedef struct expr_loop {
 
 typedef struct expr_do {
     expr_named expr_named;
-    expr* expr_body;
+    ast_node* expr_body;
 } expr_do;
 
 typedef struct expr_do_while {
     expr_named expr_named;
-    expr* condition;
+    ast_node* condition;
     body do_body;
     body finally_body;
 } expr_do_while;
 
 typedef struct expr_while {
     expr_named expr_named;
-    expr* condition;
+    ast_node* condition;
     body while_body;
     body finally_body;
     char* finally_name;
 } expr_while;
 
 typedef struct expr_macro {
-    expr expr;
-    expr** args;
+    ast_node node;
+    ast_node** args;
     body body;
     struct expr_macro* next;
 } expr_macro;
 
 typedef struct expr_pp {
-    expr expr;
-    expr* child;
+    ast_node node;
+    ast_node* pp_expr;
 } expr_pp;
 
 typedef struct match_arm {
-    expr* condition;
-    expr* value;
+    ast_node* condition;
+    ast_node* value;
 } match_arm;
 
 typedef struct expr_match {
     expr_named expr_named;
-    expr* match_expr;
+    ast_node* match_expr;
     match_arm** match_arms;
     ureg body_end;
 } expr_match;
 
-typedef struct stmt_expr {
-    stmt stmt;
-    expr* expr;
-} stmt_expr;
-
 typedef struct sym_param {
     symbol symbol;
-    expr* type;
-    expr* default_value;
+    ast_node* type;
+    ast_node* default_value;
 } sym_param;
 
 typedef struct sc_func {
@@ -359,52 +341,52 @@ typedef struct osc_extend_generic {
 
 typedef struct sym_var_decl {
     symbol symbol;
-    expr* type;
-    expr* value;
+    ast_node* type;
+    ast_node* value;
 } sym_var_decl;
 
 typedef struct sym_var_decl_uninitialized {
     symbol symbol;
-    expr* type;
+    ast_node* type;
 } sym_var_decl_uninitialized;
 
 typedef struct stmt_compound_assignment {
-    stmt stmt;
-    expr** elements;
-    expr* value;
+    ast_node node;
+    ast_node** elements;
+    ast_node* value;
 } stmt_compound_assignment;
 
 typedef struct expr_parentheses {
-    expr_t expr;
-    expr_t* child;
+    ast_node node;
+    ast_node* child;
 } expr_parentheses;
 
 typedef struct expr_op_binary {
-    expr_t expr;
-    expr_t* lhs;
-    expr_t* rhs;
+    ast_node node;
+    ast_node* lhs;
+    ast_node* rhs;
 } expr_op_binary;
 
 typedef struct expr_op_unary {
-    expr_t expr;
-    expr_t* child;
+    ast_node node;
+    ast_node* child;
 } expr_op_unary;
 
 // TODO: implement named arguments
 typedef struct expr_call {
-    expr_t expr;
-    expr_t* lhs;
-    expr_t** args;
+    ast_node node;
+    ast_node* lhs;
+    ast_node** args;
 } expr_call;
 
 typedef struct expr_access {
-    expr_t expr;
-    expr_t* lhs;
-    expr_t** args;
+    ast_node node;
+    ast_node* lhs;
+    ast_node** args;
 } expr_access;
 
 typedef struct expr_str_value {
-    expr expr;
+    ast_node node;
     char* value;
 } expr_str_value;
 
@@ -414,46 +396,46 @@ typedef expr_str_value expr_string_literal;
 typedef expr_str_value expr_binary_literal;
 
 typedef struct expr_cast {
-    expr expr;
-    expr* value;
-    expr* target_type;
+    ast_node node;
+    ast_node* value;
+    ast_node* target_type;
 } expr_cast;
 
 typedef struct expr_scope_access {
-    expr expr;
-    expr* lhs;
-    expr* rhs;
+    ast_node node;
+    ast_node* lhs;
+    ast_node* rhs;
 } expr_scope_access;
 
 typedef struct expr_member_access {
-    expr expr;
-    expr* lhs;
-    expr* rhs;
+    ast_node node;
+    ast_node* lhs;
+    ast_node* rhs;
 } expr_member_access;
 
 typedef struct expr_tuple {
-    expr expr;
-    expr_t** elements;
+    ast_node node;
+    ast_node** elements;
 } expr_tuple;
 
 typedef struct expr_array {
-    expr expr;
-    expr_t** elements;
+    ast_node node;
+    ast_node** elements;
 } expr_array;
 
 typedef struct expr_type_array {
-    expr expr;
-    expr_t* inside;
-    expr_t* rhs;
+    ast_node node;
+    ast_node* inside;
+    ast_node* rhs;
 } expr_type_array;
 
 typedef struct expr_type_slice {
-    expr expr;
-    expr_t* rhs;
+    ast_node node;
+    ast_node* rhs;
 } expr_type_slice;
 
 typedef struct expr_lambda {
-    expr expr;
+    ast_node node;
     sym_param* params;
     body body;
 } expr_lambda;
@@ -469,7 +451,7 @@ src_file* ast_node_get_file(ast_node* n, symbol_table* st);
 
 bool body_is_braced(body* b);
 
-bool is_unary_op_postfix(op_type t);
-stmt* get_parent_body(scope* parent);
-void stmt_get_highlight_bounds(stmt* stmt, ureg* start, ureg* end);
-void get_expr_bounds(expr* n, ureg* start, ureg* end);
+bool is_unary_op_postfix(operator_kind t);
+ast_node* get_parent_body(scope* parent);
+void ast_node_get_highlight_bounds(ast_node* n, ureg* start, ureg* end);
+void ast_node_get_bounds(ast_node* n, ureg* start, ureg* end);

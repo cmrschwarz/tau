@@ -2,11 +2,14 @@
 #include "job_queue.h"
 #include "resolver.h"
 #include "tauc.h"
+#include "print_ast.h"
 static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
 {
     switch (i) {
-        case -1: stack_fin(&tc->stack);
-        case 7:;
+        case -1:
+        case 9: list_builder_fin(&tc->list_builder2);
+        case 8: list_builder_fin(&tc->list_builder);
+        case 7: stack_fin(&tc->stack);
         case 6: scc_detector_fin(&tc->sccd);
         case 5: resolver_fin(&tc->resolver);
         case 4: parser_fin(&tc->parser);
@@ -40,6 +43,8 @@ int thread_context_init(thread_context* tc)
     if (r) return thread_context_partial_fin(tc, r, 6);
     r = list_builder_init(&tc->list_builder, &tc->tempmem, 64);
     if (r) return thread_context_partial_fin(tc, r, 7);
+    r = list_builder_init(&tc->list_builder2, &tc->tempmem, 64);
+    if (r) return thread_context_partial_fin(tc, r, 8);
     return OK;
 }
 int thread_context_do_job(thread_context* tc, job* j)
@@ -65,6 +70,10 @@ int thread_context_do_job(thread_context* tc, job* j)
     }
     else if (j->kind == JOB_FINALIZE) {
         job_queue_stop(&TAUC.job_queue);
+        // DEBUG:
+        print_mdg_node(TAUC.mdg.root_node, 0);
+        puts("");
+
         return mdg_final_sanity_check(&TAUC.mdg, tc);
     }
     else {

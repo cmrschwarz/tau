@@ -56,10 +56,10 @@ symbol* symbol_table_insert(symbol_table* st, symbol* s)
     symbol** tgt = ptradd(st, sizeof(symbol_table) + hash * sizeof(symbol*));
     while (*tgt) {
         if (strcmp((**tgt).name, s->name) == 0) return *tgt;
-        tgt = (symbol**)&(**tgt).stmt.next;
+        tgt = (symbol**)&(**tgt).next;
     }
     *tgt = s;
-    s->stmt.next = NULL;
+    s->next = NULL;
     return NULL;
 }
 symbol* symbol_table_lookup(symbol_table* st, const char* s)
@@ -69,7 +69,7 @@ symbol* symbol_table_lookup(symbol_table* st, const char* s)
         *(symbol**)ptradd(st, sizeof(symbol_table) + hash * sizeof(symbol*));
     while (tgt) {
         if (strcmp(tgt->name, s) == 0) return tgt;
-        tgt = (symbol*)tgt->stmt.next;
+        tgt = (symbol*)tgt->next;
     }
     return NULL;
 }

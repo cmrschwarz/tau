@@ -139,3 +139,13 @@ void list_builder_drop_list(list_builder* b, void* list_start)
 {
     b->head = list_start;
 }
+
+void**
+list_builder_create_single_entry_zt(list_builder* b, void* entry, pool* tgtmem)
+{
+    void** res = pool_alloc(tgtmem, sizeof(void*) * 2);
+    if (!res) return NULL;
+    res[0] = entry;
+    res[1] = NULL;
+    return res;
+}

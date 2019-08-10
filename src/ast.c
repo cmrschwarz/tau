@@ -2,7 +2,7 @@
 #include "utils/panic.h"
 src_file* open_scope_get_file(open_scope* s)
 {
-    return src_range_get_file(s->scope.symbol.stmt.node.srange);
+    return src_range_get_file(s->scope.symbol.node.srange);
 }
 src_file* ast_node_get_file(ast_node* n, symbol_table* st)
 {
@@ -34,12 +34,12 @@ bool ast_node_is_expr(ast_node* s)
 }
 bool body_is_braced(body* b)
 {
-    if (b->children && !b->children->next) {
-        return (b->srange != b->children->node.srange);
+    if (b->elements[0] && !b->elements[1]) {
+        return (b->srange != b->elements[0]->srange);
     }
     return true;
 }
-bool is_unary_op_postfix(op_type t)
+bool is_unary_op_postfix(operator_kind t)
 {
     switch (t) {
         case OP_POST_INCREMENT:
@@ -47,34 +47,35 @@ bool is_unary_op_postfix(op_type t)
         default: return false;
     }
 }
-void get_expr_bounds(expr* n, ureg* start, ureg* end)
+void ast_node_get_bounds(ast_node* n, ureg* start, ureg* end)
 {
     switch (n->kind) {
         case EXPR_LOOP: {
             if (start) *start = src_range_get_start(n->srange);
-            if (end) get_expr_bounds(n, NULL, end);
+            if (end) ast_node_get_bounds(n, NULL, end);
             return;
         }
         case EXPR_OP_BINARY: {
-            if (start) get_expr_bounds(((expr_op_binary*)n)->lhs, start, NULL);
-            if (end) get_expr_bounds(((expr_op_binary*)n)->rhs, NULL, end);
+            if (start)
+                ast_node_get_bounds(((expr_op_binary*)n)->lhs, start, NULL);
+            if (end) ast_node_get_bounds(((expr_op_binary*)n)->rhs, NULL, end);
             return;
         }
         case EXPR_OP_UNARY: {
             expr_op_unary* u = (expr_op_unary*)n;
-            if (!is_unary_op_postfix(u->expr.op_type)) {
+            if (!is_unary_op_postfix(u->node.operator_kind)) {
                 if (start) {
                     src_range_large r;
-                    src_range_unpack(u->expr.srange, &r);
+                    src_range_unpack(u->node.srange, &r);
                     *start = r.start;
                 }
-                if (end) get_expr_bounds(u->child, NULL, end);
+                if (end) ast_node_get_bounds(u->child, NULL, end);
                 return;
             }
         } // fallthrough for postfix unary op
         default: {
             src_range_large r;
-            src_range_unpack(((expr*)n)->srange, &r);
+            src_range_unpack(n->srange, &r);
             if (start) *start = r.start;
             if (end) *end = r.end;
             return;
