@@ -126,7 +126,7 @@ void print_compound_decl_list(ast_node** el, ureg indent)
     while (*el) {
         if ((**el).kind == SYM_VAR_DECL_UNINITIALIZED) {
             sym_var_decl* d = (sym_var_decl*)*el;
-            if (stmt_flags_get_const(d->symbol.node.flags)) p("const ");
+            if (ast_node_flags_get_const(d->symbol.node.flags)) p("const ");
             pu(d->symbol.name);
             if (d->type != NULL) {
                 p(": ");
@@ -220,7 +220,7 @@ void print_ast_node(ast_node* n, ureg indent)
         case STMT_COMPOUND_ASSIGN: {
             stmt_compound_assignment* ca = (stmt_compound_assignment*)n;
             pc('(');
-            bool colon = stmt_flags_get_compound_decl(ca->node.flags);
+            bool colon = ast_node_flags_get_compound_decl(ca->node.flags);
             if (colon) {
                 print_compound_decl_list(ca->elements, indent);
             }
@@ -318,7 +318,7 @@ void print_ast_node(ast_node* n, ureg indent)
         } break;
         case SYM_VAR_DECL: {
             sym_var_decl* d = (sym_var_decl*)n;
-            if (stmt_flags_get_const(d->symbol.node.flags)) p("const ");
+            if (ast_node_flags_get_const(d->symbol.node.flags)) p("const ");
             pu(d->symbol.name);
             if (d->type != NULL) {
                 p(": ");
@@ -335,7 +335,7 @@ void print_ast_node(ast_node* n, ureg indent)
         } break;
         case SYM_NAMED_USING: {
             sym_named_using* nu = (sym_named_using*)n;
-            if (stmt_flags_get_const(nu->symbol.node.flags)) p("const ");
+            if (ast_node_flags_get_const(nu->symbol.node.flags)) p("const ");
             p("using ");
             p(nu->symbol.name);
             p(" = ");
@@ -343,7 +343,7 @@ void print_ast_node(ast_node* n, ureg indent)
         } break;
         case STMT_USING: {
             stmt_using* u = (stmt_using*)n;
-            if (stmt_flags_get_const(u->node.flags)) p("const ");
+            if (ast_node_flags_get_const(u->node.flags)) p("const ");
             p("using ");
             print_ast_node(u->target, indent);
         } break;
@@ -359,7 +359,7 @@ void print_ast_node(ast_node* n, ureg indent)
         } break;
         case SYM_VAR_DECL_UNINITIALIZED: {
             sym_var_decl* d = (sym_var_decl*)n;
-            if (stmt_flags_get_const(d->symbol.node.flags)) p("const ");
+            if (ast_node_flags_get_const(d->symbol.node.flags)) p("const ");
             pu(d->symbol.name);
             pc(':');
             if (d->type != NULL) {

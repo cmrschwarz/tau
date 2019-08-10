@@ -1,5 +1,5 @@
 #pragma once
-#include "stmt_flags.h"
+#include "ast_node_flags.h"
 #include "utils/string.h"
 typedef struct symbol symbol;
 typedef struct stmt stmt;

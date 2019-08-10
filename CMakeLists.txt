@@ -3,7 +3,7 @@ project(tau C)
 
 set(TAUC_SRCS
     ./src/tokenizer.c
-    ./src/stmt_flags.c
+    ./src/ast_node_flags.c
     ./src/parser.c
     ./src/resolver.c
     ./src/symbol_table.c

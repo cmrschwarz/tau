@@ -1,6 +1,6 @@
 #pragma once
 #include "src_map.h"
-#include "stmt_flags.h"
+#include "ast_node_flags.h"
 #include "symbol_table.h"
 #include "utils/c_extensions.h"
 
@@ -132,7 +132,7 @@ typedef enum PACK_ENUM operator_kind {
 typedef struct ast_node {
     ast_node_kind kind;
     operator_kind operator_kind;
-    stmt_flags flags;
+    ast_node_flags flags;
     src_range srange;
 } ast_node;
 

@@ -36,8 +36,9 @@ static resolve_error add_ast_node_decls(
         case SYM_VAR_DECL:
         case SYM_VAR_DECL_UNINITIALIZED: {
             symbol_table* tgtst =
-                (stmt_flags_get_access_mod(n->flags) == AM_UNSPECIFIED) ? st
-                                                                        : sst;
+                (ast_node_flags_get_access_mod(n->flags) == AM_UNSPECIFIED)
+                    ? st
+                    : sst;
             symbol* conflict;
             conflict = symbol_table_insert(tgtst, (symbol*)n);
             if (conflict) {
@@ -142,7 +143,7 @@ static resolve_error add_body_decls(
 static resolve_error
 add_simple_body_decls(resolver* r, symbol_table* parent_st, body* b)
 {
-    add_body_decls(r, parent_st, NULL, b);
+    return add_body_decls(r, parent_st, NULL, b);
 }
 static inline resolve_error mark_mdg_nodes_resolved(resolver* r)
 {

@@ -1,4 +1,4 @@
-#include "stmt_flags.h"
+#include "ast_node_flags.h"
 
 #define USED_IN_PP_OFFSET 11
 #define DEFINED_IN_PP_OFFSET 10
@@ -38,97 +38,97 @@ static inline u16 bitmask_get_range(u16 data, ureg offs, ureg mask)
     return (data >> offs) & mask;
 }
 
-void stmt_flags_set_access_mod(stmt_flags* f, access_modifier m)
+void ast_node_flags_set_access_mod(ast_node_flags* f, access_modifier m)
 {
     bitmask_set_range(f, AM_OFFSET, m);
 }
-access_modifier stmt_flags_get_access_mod(stmt_flags f)
+access_modifier ast_node_flags_get_access_mod(ast_node_flags f)
 {
     return (access_modifier)(bitmask_get_range(f, AM_OFFSET, AM_MASK));
 }
 
-void stmt_flags_set_const(stmt_flags* f)
+void ast_node_flags_set_const(ast_node_flags* f)
 {
     bitmask_set_bit(f, CONST_OFFSET);
 }
-bool stmt_flags_get_const(stmt_flags f)
+bool ast_node_flags_get_const(ast_node_flags f)
 {
     return bitmask_get_bit(f, CONST_OFFSET);
 }
 
-void stmt_flags_set_sealed(stmt_flags* f)
+void ast_node_flags_set_sealed(ast_node_flags* f)
 {
     bitmask_set_bit(f, SEALED_OFFSET);
 }
-bool stmt_flags_get_sealed(stmt_flags f)
+bool ast_node_flags_get_sealed(ast_node_flags f)
 {
     return bitmask_get_bit(f, SEALED_OFFSET);
 }
 
-void stmt_flags_set_virtual(stmt_flags* f)
+void ast_node_flags_set_virtual(ast_node_flags* f)
 {
     bitmask_set_bit(f, VIRTUAL_OFFSET);
 }
-bool stmt_flags_get_virtual(stmt_flags f)
+bool ast_node_flags_get_virtual(ast_node_flags f)
 {
     return bitmask_get_bit(f, VIRTUAL_OFFSET);
 }
 
-void stmt_flags_set_static(stmt_flags* f)
+void ast_node_flags_set_static(ast_node_flags* f)
 {
     bitmask_set_bit(f, STATIC_OFFSET);
 }
-bool stmt_flags_get_static(stmt_flags f)
+bool ast_node_flags_get_static(ast_node_flags f)
 {
     return bitmask_get_bit(f, STATIC_OFFSET);
 }
 
-void stmt_flags_set_compound_decl(stmt_flags* f)
+void ast_node_flags_set_compound_decl(ast_node_flags* f)
 {
     bitmask_set_bit(f, COMPUND_DECL_OFFSET);
 }
-bool stmt_flags_get_compound_decl(stmt_flags f)
+bool ast_node_flags_get_compound_decl(ast_node_flags f)
 {
     return bitmask_get_bit(f, COMPUND_DECL_OFFSET);
 }
-void err_flags_set_parse_error(stmt_flags* f)
+void err_flags_set_parse_error(ast_node_flags* f)
 {
     bitmask_set_bit(f, PE_OFFSET);
 }
-bool err_flags_get_parse_error(stmt_flags f)
+bool err_flags_get_parse_error(ast_node_flags f)
 {
     return bitmask_get_bit(f, PE_OFFSET);
 }
-void err_flags_set_redeclared(stmt_flags* f)
+void err_flags_set_redeclared(ast_node_flags* f)
 {
     bitmask_set_bit(f, REDECL_OFFSET);
 }
-bool err_flags_get_redeclared(stmt_flags f)
+bool err_flags_get_redeclared(ast_node_flags f)
 {
     return bitmask_get_bit(f, REDECL_OFFSET);
 }
 
-void stmt_flags_set_resolved(stmt_flags* f)
+void ast_node_flags_set_resolved(ast_node_flags* f)
 {
     bitmask_set_bit(f, RESOLVED_OFFSET);
 }
-bool stmt_flags_get_resolved(stmt_flags f)
+bool ast_node_flags_get_resolved(ast_node_flags f)
 {
     return bitmask_get_bit(f, RESOLVED_OFFSET);
 }
-void stmt_flags_set_defined_in_pp(stmt_flags* f)
+void ast_node_flags_set_defined_in_pp(ast_node_flags* f)
 {
     bitmask_set_bit(f, DEFINED_IN_PP_OFFSET);
 }
-bool stmt_flags_get_defined_in_pp(stmt_flags f)
+bool ast_node_flags_get_defined_in_pp(ast_node_flags f)
 {
     return bitmask_get_bit(f, DEFINED_IN_PP_OFFSET);
 }
-void stmt_flags_set_used_in_pp(stmt_flags* f)
+void ast_node_flags_set_used_in_pp(ast_node_flags* f)
 {
     bitmask_set_bit(f, USED_IN_PP_OFFSET);
 }
-bool stmt_flags_get_used_in_pp(stmt_flags f)
+bool ast_node_flags_get_used_in_pp(ast_node_flags f)
 {
     return bitmask_get_bit(f, USED_IN_PP_OFFSET);
 }

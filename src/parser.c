@@ -539,7 +539,7 @@ sym_fill_srange(parser* p, symbol* s, ureg start, ureg end)
     srl.start = start;
     srl.end = end;
     srl.file = NULL;
-    if (stmt_flags_get_access_mod(s->node.flags) != AM_UNSPECIFIED) {
+    if (ast_node_flags_get_access_mod(s->node.flags) != AM_UNSPECIFIED) {
         if (ast_node_is_open_scope(get_bpd(p)->node)) {
             srl.file = p->tk.file;
         }
@@ -800,7 +800,7 @@ build_empty_tuple(parser* p, ureg t_start, ureg t_end, ast_node** ex)
     return PE_OK;
 }
 static inline parse_error require_default_flags(
-    parser* p, token* t, stmt_flags flags, ureg start, ureg end)
+    parser* p, token* t, ast_node_flags flags, ureg start, ureg end)
 {
     if (flags == STMT_FLAGS_DEFAULT) return PE_OK;
     char* loc_msg = error_log_cat_strings_2(
@@ -852,7 +852,7 @@ parse_uninitialized_var_in_tuple(parser* p, token* t, ast_node** ex)
     sym_var_decl_uninitialized* v = alloc_perm(p, sizeof(tuple_ident_node));
     v->symbol.node.kind = SYM_VAR_DECL_UNINITIALIZED;
     v->symbol.node.flags = STMT_FLAGS_DEFAULT;
-    stmt_flags_set_compound_decl(&v->symbol.node.flags);
+    ast_node_flags_set_compound_decl(&v->symbol.node.flags);
     v->symbol.name = alloc_string_perm(p, t->str);
     if (!v->symbol.name) return PE_FATAL;
     if (ast_node_fill_srange(p, (ast_node*)v, t->start, t->end))
@@ -904,7 +904,7 @@ static inline void turn_ident_nodes_to_exprs(ast_node** elems)
         if ((**elems).kind == SYM_VAR_DECL_UNINITIALIZED) {
             tuple_ident_node* tin = (tuple_ident_node*)*elems;
             if (tin->var.type == NULL &&
-                !stmt_flags_get_compound_decl(tin->var.symbol.node.flags)) {
+                !ast_node_flags_get_compound_decl(tin->var.symbol.node.flags)) {
                 ureg srange = tin->var.symbol.node.srange;
                 tin->ident.value = tin->var.symbol.name;
                 tin->ident.node.srange = srange;
@@ -1890,10 +1890,10 @@ report_redundant_specifier(parser* p, const char* spec, ureg start, ureg end)
     parser_error_1a(p, "redundant access modifiers specified", start, end, msg);
     return OK;
 }
-static inline parse_error stmt_flags_from_kw_set_access_mod(
-    parser* p, stmt_flags* f, access_modifier am, ureg start, ureg end)
+static inline parse_error ast_node_flags_from_kw_set_access_mod(
+    parser* p, ast_node_flags* f, access_modifier am, ureg start, ureg end)
 {
-    access_modifier old_am = stmt_flags_get_access_mod(*f);
+    access_modifier old_am = ast_node_flags_get_access_mod(*f);
     if (old_am != AM_UNSPECIFIED) {
         if (old_am == am) {
             report_redundant_specifier(
@@ -1918,7 +1918,7 @@ static inline parse_error stmt_flags_from_kw_set_access_mod(
     return PE_OK;
 }
 parse_error parse_var_decl(
-    parser* p, stmt_flags flags, ureg start, ureg flags_end, ast_node** n)
+    parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)
 {
     token* t = tk_aquire(&p->tk);
     string ident = t->str;
@@ -1981,7 +1981,7 @@ parse_error parse_var_decl(
     }
     if (sym_fill_srange(p, (symbol*)vd, start, t->end)) return PE_FATAL;
     *n = (ast_node*)vd;
-    curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
     return PE_OK;
 }
 parse_error parse_param_list(
@@ -2026,7 +2026,7 @@ parse_error parse_param_list(
     return PE_OK;
 }
 parse_error parse_func_decl(
-    parser* p, stmt_flags flags, ureg start, ureg flags_end, ast_node** n)
+    parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)
 {
     tk_void(&p->tk);
     token* t;
@@ -2082,11 +2082,11 @@ parse_error parse_func_decl(
         "in this function declaration");
     if (pe) return pe;
     *n = (ast_node*)fn;
-    curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
     return parse_scope_body(p, fn);
 }
 parse_error parse_struct_decl(
-    parser* p, stmt_flags flags, ureg start, ureg flags_end, ast_node** n)
+    parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)
 {
     tk_void(&p->tk);
     token* t;
@@ -2128,7 +2128,7 @@ parse_error parse_struct_decl(
     st->symbol.node.kind = generic ? SC_STRUCT_GENERIC : SC_STRUCT;
     st->symbol.node.flags = flags;
     *n = (ast_node*)st;
-    curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
     return parse_body(p, &st->body, (ast_node*)st);
 }
 parse_error check_if_first_stmt(
@@ -2163,7 +2163,7 @@ parse_error check_if_first_stmt(
     return PE_OK;
 }
 parse_error parse_module_decl(
-    parser* p, stmt_flags flags, ureg start, ureg flags_end, ast_node** n)
+    parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)
 {
     tk_void(&p->tk);
     token *t, *t2;
@@ -2229,12 +2229,12 @@ parse_error parse_module_decl(
         if (mdg_node_parsed(&TAUC.mdg, mdgn, p->tk.tc)) return PE_FATAL;
     }
     *n = (ast_node*)md;
-    curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
     // return PE_NO_STMT;
     return PE_OK; // DEBUG
 }
 parse_error parse_extend_decl(
-    parser* p, stmt_flags flags, ureg start, ureg flags_end, ast_node** n)
+    parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)
 {
     tk_void(&p->tk);
     token *t, *t2;
@@ -2295,12 +2295,12 @@ parse_error parse_extend_decl(
     }
     p->current_module = parent;
     *n = (ast_node*)ex;
-    curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
     return PE_OK; // DEBUG
     // return PE_NO_STMT;
 }
 parse_error parse_trait_decl(
-    parser* p, stmt_flags flags, ureg start, ureg flags_end, ast_node** n)
+    parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)
 {
     tk_void(&p->tk);
     token* t;
@@ -2342,7 +2342,7 @@ parse_error parse_trait_decl(
     tr->symbol.node.kind = generic ? SC_TRAIT_GENERIC : SC_TRAIT;
     tr->symbol.node.flags = flags;
     *n = (ast_node*)tr;
-    curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
     return parse_body(p, &tr->body, (ast_node*)tr);
 }
 bool ast_node_supports_exprs(ast_node* n)
@@ -2367,7 +2367,7 @@ static inline parse_error parse_compound_assignment_after_equals(
     ca->elements = elements;
     ca->node.kind = STMT_COMPOUND_ASSIGN;
     ca->node.flags = STMT_FLAGS_DEFAULT;
-    if (had_colon) stmt_flags_set_compound_decl(&ca->node.flags);
+    if (had_colon) ast_node_flags_set_compound_decl(&ca->node.flags);
     parse_error pe = parse_expression(p, &ca->value);
     token* t;
     if (pe == PE_EOEX) {
@@ -2469,7 +2469,7 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
     return pe;
 }
 parse_error parse_using(
-    parser* p, stmt_flags flags, ureg start, ureg flags_end, ast_node** tgt)
+    parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** tgt)
 {
     token* t = tk_aquire(&p->tk);
     ureg end = t->end;
@@ -2500,7 +2500,7 @@ parse_error parse_using(
                     src_range_get_end(nu->target->srange)))
                 return PE_FATAL;
             *tgt = (ast_node*)nu;
-            curr_scope_add_decls(p, stmt_flags_get_access_mod(flags), 1);
+            curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
             return PE_OK;
         }
     }
@@ -2519,7 +2519,7 @@ parse_error parse_using(
             p, (ast_node*)u, start, src_range_get_end(u->target->srange)))
         return PE_FATAL;
     *tgt = (ast_node*)u;
-    curr_scope_add_usings(p, stmt_flags_get_access_mod(flags), 1);
+    curr_scope_add_usings(p, ast_node_flags_get_access_mod(flags), 1);
     return pe;
 }
 parse_error parse_symbol_imports(parser* p, module_import* mi)
@@ -2578,7 +2578,7 @@ parse_error parse_symbol_imports(parser* p, module_import* mi)
         if (!si.symbol_name) return PE_FATAL;
         list_builder_add_block(&p->tk.tc->list_builder, &si, sizeof(si));
         curr_scope_add_decls(
-            p, stmt_flags_get_access_mod(mi->statement->node.flags), 1);
+            p, ast_node_flags_get_access_mod(mi->statement->node.flags), 1);
         end = t->end;
         tk_void(&p->tk);
         t = tk_peek(&p->tk);
@@ -2748,11 +2748,11 @@ parse_error parse_single_import(
         return PE_FATAL;
     }
     curr_scope_add_decls(
-        p, stmt_flags_get_access_mod(mi->statement->node.flags), 1);
+        p, ast_node_flags_get_access_mod(mi->statement->node.flags), 1);
     return PE_OK;
 }
 parse_error parse_import(
-    parser* p, stmt_flags flags, ureg start, ureg flags_end, ast_node** tgt)
+    parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** tgt)
 {
     tk_void(&p->tk);
     stmt_import* si = alloc_perm(p, sizeof(stmt_import));
@@ -2768,7 +2768,7 @@ parse_error parse_import(
     return PE_OK;
 }
 parse_error
-parse_require(parser* p, stmt_flags flags, ureg start, ureg flags_end)
+parse_require(parser* p, ast_node_flags flags, ureg start, ureg flags_end)
 {
     token* t = tk_aquire(&p->tk);
     parse_error pe = require_default_flags(p, t, flags, start, flags_end);
@@ -2817,51 +2817,51 @@ parse_require(parser* p, stmt_flags flags, ureg start, ureg flags_end)
     }
     return PE_NO_STMT;
 }
-static inline parse_error stmt_flags_from_kw(
-    parser* p, stmt_flags* f, token_kind kw, ureg start, ureg end)
+static inline parse_error ast_node_flags_from_kw(
+    parser* p, ast_node_flags* f, token_kind kw, ureg start, ureg end)
 {
     // TODO: enforce order
     switch (kw) {
         case TT_KW_PRIVATE:
-            return stmt_flags_from_kw_set_access_mod(
+            return ast_node_flags_from_kw_set_access_mod(
                 p, f, AM_PRIVATE, start, end);
         case TT_KW_PROTECTED:
-            return stmt_flags_from_kw_set_access_mod(
+            return ast_node_flags_from_kw_set_access_mod(
                 p, f, AM_PROTECTED, start, end);
         case TT_KW_PUBLIC:
-            return stmt_flags_from_kw_set_access_mod(
+            return ast_node_flags_from_kw_set_access_mod(
                 p, f, AM_PUBLIC, start, end);
         case TT_KW_CONST: {
-            if (stmt_flags_get_const(*f) != false) {
+            if (ast_node_flags_get_const(*f) != false) {
                 report_redundant_specifier(
                     p, token_strings[TT_KW_CONST], start, end);
                 return PE_ERROR;
             }
-            stmt_flags_set_const(f);
+            ast_node_flags_set_const(f);
         } break;
         case TT_KW_SEALED: {
-            if (stmt_flags_get_sealed(*f) != false) {
+            if (ast_node_flags_get_sealed(*f) != false) {
                 report_redundant_specifier(
                     p, token_strings[TT_KW_SEALED], start, end);
                 return PE_ERROR;
             }
-            stmt_flags_set_sealed(f);
+            ast_node_flags_set_sealed(f);
         } break;
         case TT_KW_VIRTUAL: {
-            if (stmt_flags_get_virtual(*f) != false) {
+            if (ast_node_flags_get_virtual(*f) != false) {
                 report_redundant_specifier(
                     p, token_strings[TT_KW_VIRTUAL], start, end);
                 return PE_ERROR;
             }
-            stmt_flags_set_virtual(f);
+            ast_node_flags_set_virtual(f);
         } break;
         case TT_KW_STATIC: {
-            if (stmt_flags_get_static(*f) != false) {
+            if (ast_node_flags_get_static(*f) != false) {
                 report_redundant_specifier(
                     p, token_strings[TT_KW_STATIC], start, end);
                 return PE_ERROR;
             }
-            stmt_flags_set_static(f);
+            ast_node_flags_set_static(f);
         } break;
         default: {
             return PE_EOEX;
@@ -2872,14 +2872,14 @@ static inline parse_error stmt_flags_from_kw(
 parse_error parse_statement(parser* p, ast_node** tgt)
 {
     parse_error pe;
-    stmt_flags flags = STMT_FLAGS_DEFAULT;
+    ast_node_flags flags = STMT_FLAGS_DEFAULT;
     token* t;
     PEEK(p, t);
     ureg start = t->start;
     ureg flags_end = t->start;
 
     while (true) {
-        pe = stmt_flags_from_kw(p, &flags, t->kind, start, t->end);
+        pe = ast_node_flags_from_kw(p, &flags, t->kind, start, t->end);
         if (pe == PE_OK) {
             flags_end = t->end;
             tk_void(&p->tk);
