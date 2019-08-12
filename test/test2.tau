@@ -5,7 +5,7 @@ import doo;
 //#x := 3;
 func main(args: String[]){    
     func test_compound_assignment(){
-        do label@{
+        if(3) @label{
             bar();
         };
         if (x) 3 else 5;
@@ -14,28 +14,28 @@ func main(args: String[]){
         (x, y, (a,b,c), d) := foo();
         (x, y:, (a,b: int,c), d) = foo();
         (a, b) += 3;
-        x * #match(foo) blk@{
-            while true {*x = 3;} => bar;
+        x * #match(foo) @blk{
+            if (true) {*x = 3;} => bar;
             x || Foo(x) => {
                 return x;
             }
         };
         
-        while true foo@{
-            continue @for;
+        if (true) @foo{
+            continue @foo;
             continue;
             return 12;
         }
         (x: int) := foo;
         
-        y:= do while true {
+        y:= if (true) {
                 foo();
             }
-            finally {
+            else {
                 x++;
             } 
             * 3;
-        using z = if (x > 3) foo@{
+        using z = if (x > 3) @foo{
             return 3 * {
             break @foo 12;
             break;

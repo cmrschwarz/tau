@@ -31,8 +31,6 @@ typedef enum PACK_ENUM {
     TT_KW_STRUCT,
     TT_KW_TRAIT,
     TT_KW_AUTO,
-    TT_KW_WHILE,
-    TT_KW_DO,
     TT_KW_LOOP,
     TT_KW_FINALLY,
     TT_KW_CONTINUE,

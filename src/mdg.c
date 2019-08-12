@@ -133,6 +133,7 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
 static void free_body_symtabs(ast_node* node, body* b);
 static void free_astn_symtabs(ast_node* n)
 {
+    if (!n) return;
     if (ast_node_is_scope(n)) {
         // these are parts of a module and therefore already handled
         if (!ast_node_is_open_scope(n)) {
@@ -158,22 +159,6 @@ static void free_astn_symtabs(ast_node* n)
 
         case EXPR_LOOP: free_body_symtabs(n, &((expr_loop*)n)->body); break;
 
-        case EXPR_DO: free_astn_symtabs(((expr_do*)n)->expr_body); break;
-
-        case EXPR_DO_WHILE: {
-            expr_do_while* edw = (expr_do_while*)n;
-            free_astn_symtabs(edw->condition);
-            free_body_symtabs(n, &edw->do_body);
-            free_body_symtabs(n, &edw->finally_body);
-        } break;
-
-        case EXPR_WHILE: {
-            expr_while* ew = (expr_while*)n;
-            free_astn_symtabs(ew->condition);
-            free_body_symtabs(n, &ew->while_body);
-            free_body_symtabs(n, &ew->finally_body);
-        } break;
-
         case EXPR_MACRO: {
             expr_macro* em = (expr_macro*)n;
             free_body_symtabs(n, &em->body);
@@ -185,7 +170,8 @@ static void free_astn_symtabs(ast_node* n)
         case EXPR_MATCH: {
             expr_match* em = (expr_match*)n;
             free_astn_symtabs(em->match_expr);
-            for (match_arm** ma = em->match_arms; *ma != NULL; ma++) {
+            for (match_arm** ma = (match_arm**)em->body.elements; *ma != NULL;
+                 ma++) {
                 free_astn_symtabs((**ma).condition);
                 free_astn_symtabs((**ma).value);
             }

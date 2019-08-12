@@ -1,5 +1,11 @@
 require "test2.tau";
 func foo(){
+    match (true) @foo{
+            foo => continue @foo;
+            bar => continue;
+            baz => return 12;
+        }
+        (x: int) := foo;
     x: int = 32;
     y: float = 64;
 }

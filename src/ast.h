@@ -28,10 +28,8 @@ typedef enum PACK_ENUM ast_node_kind {
     STMT_IMPORT,
     STMT_USING,
 
-    STMT_EXPRESSION,
     STMT_COMPOUND_ASSIGN,
-    STMT_PP_STMT,
-    STMT_LAST_STMT_ID = STMT_PP_STMT,
+    STMT_LAST_STMT_ID = STMT_COMPOUND_ASSIGN,
 
     EXPR_BLOCK,
 
@@ -111,7 +109,7 @@ typedef enum PACK_ENUM operator_kind {
     OP_BITWISE_NOT_ASSIGN,
 
     // unary ops
-    OP_PP,
+    OP_PP, // only used for precedence, has it's own expr_pp node
     OP_CONST,
     OP_DEREF,
     OP_POINTER_OF,
@@ -193,11 +191,6 @@ typedef struct module_import {
     src_range srange;
 } module_import;
 
-typedef struct expr_named {
-    ast_node node;
-    char* name;
-} expr_named;
-
 typedef struct stmt_import {
     ast_node node;
     module_import module_import;
@@ -205,28 +198,23 @@ typedef struct stmt_import {
 
 typedef struct expr_return {
     ast_node node;
-    ast_node* value;
+    ast_node* value; // NULL if no value provided
 } expr_return;
 
 typedef struct expr_break {
     ast_node node;
-    union {
-        expr_named* expr; // points to target expr once found
-        const char* name; // label, before target found
-    } target;
-    ast_node* value;
+    ast_node* target;
+    ast_node* value; // NULL if no value provided
 } expr_break;
 
 typedef struct expr_continue {
     ast_node node;
-    union {
-        expr_named* expr; // points to target expr once found
-        const char* name; // label, before target found
-    } target;
+    ast_node* target;
 } expr_continue;
 
 typedef struct expr_block {
-    expr_named expr_named;
+    ast_node node;
+    char* name; // NULL if no label provided and not in if/else
     body body;
 } expr_block;
 
@@ -238,33 +226,15 @@ typedef struct expr_if {
 } expr_if;
 
 typedef struct expr_loop {
-    expr_named expr_named;
+    ast_node node;
+    char* name;
     body body;
 } expr_loop;
-
-typedef struct expr_do {
-    expr_named expr_named;
-    ast_node* expr_body;
-} expr_do;
-
-typedef struct expr_do_while {
-    expr_named expr_named;
-    ast_node* condition;
-    body do_body;
-    body finally_body;
-} expr_do_while;
-
-typedef struct expr_while {
-    expr_named expr_named;
-    ast_node* condition;
-    body while_body;
-    body finally_body;
-    char* finally_name;
-} expr_while;
 
 typedef struct expr_macro {
     ast_node node;
     ast_node** args;
+    char* name;
     body body;
     struct expr_macro* next;
 } expr_macro;
@@ -280,10 +250,10 @@ typedef struct match_arm {
 } match_arm;
 
 typedef struct expr_match {
-    expr_named expr_named;
+    ast_node node;
+    char* name;
     ast_node* match_expr;
-    match_arm** match_arms;
-    ureg body_end;
+    body body;
 } expr_match;
 
 typedef struct sym_param {
@@ -295,12 +265,14 @@ typedef struct sym_param {
 typedef struct sc_func {
     scope scope;
     sym_param* params;
+    ast_node* return_type;
 } sc_func;
 
 typedef struct sc_func_generic {
     scope scope;
     sym_param* generic_params;
     sym_param* params;
+    ast_node* return_type;
 } sc_func_generic;
 
 typedef struct sc_struct {

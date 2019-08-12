@@ -6,6 +6,7 @@
 #include "stdio.h"
 #include "tauc.h"
 #include "utils/math_utils.h"
+#include <assert.h>
 
 void pc(char c)
 {
@@ -208,6 +209,15 @@ void print_expr_in_parens(ast_node* ex, ureg indent)
     print_ast_node(ex, indent);
     pc(')');
 }
+char* get_expr_name(ast_node* n)
+{
+    switch (n->kind) {
+        case EXPR_BLOCK: return ((expr_block*)n)->name;
+        case EXPR_MACRO: return ((expr_macro*)n)->name;
+        case EXPR_MATCH: return ((expr_match*)n)->name;
+        default: assert(false);
+    }
+}
 void print_ast_node(ast_node* n, ureg indent)
 {
     // TODO: print access modifiers
@@ -351,8 +361,8 @@ void print_ast_node(ast_node* n, ureg indent)
         case EXPR_NUMBER: pu(((expr_str_value*)n)->value); break;
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
-            if (b->expr_named.name) {
-                p(b->expr_named.name);
+            if (b->name) {
+                p(b->name);
                 pc('@');
             }
             print_body_braced(&b->body, indent);
@@ -433,10 +443,10 @@ void print_ast_node(ast_node* n, ureg indent)
         case EXPR_BREAK: {
             expr_break* b = (expr_break*)n;
             p("break");
-            if (b->target.name) {
+            if (b->target) {
                 pc(' ');
                 pc('@');
-                p(b->target.name);
+                p(get_expr_name(b->target));
             }
             if (b->value) {
                 pc(' ');
@@ -446,10 +456,10 @@ void print_ast_node(ast_node* n, ureg indent)
         case EXPR_CONTINUE: {
             expr_continue* c = (expr_continue*)n;
             p("continue");
-            if (c->target.name) {
+            if (c->target) {
                 pc(' ');
                 pc('@');
-                p(c->target.name);
+                p(get_expr_name(c->target));
             }
         } break;
         case EXPR_RETURN: {
@@ -463,58 +473,26 @@ void print_ast_node(ast_node* n, ureg indent)
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)n;
             p("loop ");
-            print_namable_braced_body(&l->body, l->expr_named.name, indent);
-        } break;
-        case EXPR_WHILE: {
-            expr_while* w = (expr_while*)n;
-            p("while ");
-            print_expr_in_parens(w->condition, indent);
-            pc(' ');
-            print_namable_braced_body(
-                &w->while_body, w->expr_named.name, indent);
-            if (w->finally_body.elements[0]) {
-                pc('\n');
-                print_indent(indent);
-                p("finally ");
-                print_body(&w->finally_body, indent);
-            }
-        } break;
-        case EXPR_DO: {
-            expr_do* ed = (expr_do*)n;
-            p("do ");
-            print_ast_node(ed->expr_body, indent);
-        } break;
-        case EXPR_DO_WHILE: {
-            expr_do_while* dw = (expr_do_while*)n;
-            p("do ");
-            print_namable_braced_body(
-                &dw->do_body, dw->expr_named.name, indent);
-            p(" while ");
-            print_expr_in_parens(dw->condition, indent);
-            if (dw->finally_body.elements[0]) {
-                pc('\n');
-                print_indent(indent);
-                p("finally ");
-                print_body(&dw->finally_body, indent);
-            }
+            print_namable_braced_body(&l->body, l->name, indent);
         } break;
         case EXPR_MATCH: {
             expr_match* m = (expr_match*)n;
             p("match ");
             print_expr_in_parens(m->match_expr, indent);
             pc(' ');
-            if (m->expr_named.name != NULL) {
-                p(m->expr_named.name);
+            if (m->name != NULL) {
+                p(m->name);
                 pc('@');
             }
             p("{\n");
-            match_arm** ma = m->match_arms;
+            match_arm** ma = (match_arm**)m->body.elements;
             indent++;
             while (*ma) {
                 print_indent(indent);
                 print_ast_node((**ma).condition, indent);
                 p(" => ");
                 print_ast_node((**ma).value, indent);
+                if (!ast_node_may_drop_semicolon((**ma).value)) pc(';');
                 pc('\n');
                 ma++;
             }

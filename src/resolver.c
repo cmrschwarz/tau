@@ -27,13 +27,34 @@ static resolve_error add_ast_node_decls(
     if (n == NULL) return RE_OK;
     if (ast_node_is_scope(n)) {
         // these are parts of a module and therefore already handled
-        if (!ast_node_is_open_scope((ast_node*)n)) {
-            resolve_error re = add_simple_body_decls(r, st, &((scope*)n)->body);
-            if (re) return re;
-        }
+        if (ast_node_is_open_scope((ast_node*)n)) return RE_OK;
+        return add_simple_body_decls(r, st, &((scope*)n)->body);
     }
     switch (n->kind) {
-        case SYM_VAR_DECL:
+        case OSC_MODULE:
+        case OSC_MODULE_GENERIC:
+        case OSC_EXTEND:
+        case OSC_EXTEND_GENERIC: {
+            return RE_OK;
+        }
+        case SC_STRUCT:
+        case SC_STRUCT_GENERIC:
+        case SC_TRAIT:
+        case SC_TRAIT_GENERIC: {
+            return add_simple_body_decls(r, st, &((scope*)n)->body);
+        }
+
+        case SC_FUNC:
+        case SC_FUNC_GENERIC: {
+        }
+        case STMT_IMPORT: {
+        }
+        case STMT_USING: {
+        }
+        case SYM_NAMED_USING:
+        case SYM_PARAM:
+        case STMT_COMPOUND_ASSIGN:
+        case SYM_VAR_DECL: return RE_OK;
         case SYM_VAR_DECL_UNINITIALIZED: {
             symbol_table* tgtst =
                 (ast_node_flags_get_access_mod(n->flags) == AM_UNSPECIFIED)
@@ -69,27 +90,6 @@ static resolve_error add_ast_node_decls(
         case EXPR_LOOP:
             return add_simple_body_decls(r, st, &((expr_loop*)n)->body);
 
-        case EXPR_DO:
-            return add_ast_node_decls(r, st, sst, ((expr_do*)n)->expr_body);
-
-        case EXPR_DO_WHILE: {
-            expr_do_while* edw = (expr_do_while*)n;
-            resolve_error re = add_ast_node_decls(r, st, sst, edw->condition);
-            if (re) return re;
-            re = add_simple_body_decls(r, st, &edw->do_body);
-            if (re) return re;
-            return add_simple_body_decls(r, st, &edw->finally_body);
-        }
-
-        case EXPR_WHILE: {
-            expr_while* ew = (expr_while*)n;
-            resolve_error re = add_ast_node_decls(r, st, sst, ew->condition);
-            if (re) return re;
-            re = add_simple_body_decls(r, st, &ew->while_body);
-            if (re) return re;
-            return add_simple_body_decls(r, st, &ew->finally_body);
-        }
-
         case EXPR_MACRO: {
             expr_macro* em = (expr_macro*)n;
             resolve_error re = add_simple_body_decls(r, st, &em->body);
@@ -104,7 +104,8 @@ static resolve_error add_ast_node_decls(
             expr_match* em = (expr_match*)n;
             resolve_error re = add_ast_node_decls(r, st, sst, em->match_expr);
             if (re) return re;
-            for (match_arm** ma = em->match_arms; *ma != NULL; ma++) {
+            for (match_arm** ma = (match_arm**)em->body.elements; *ma != NULL;
+                 ma++) {
                 re = add_ast_node_decls(r, st, sst, (**ma).condition);
                 if (re) return re;
                 re = add_ast_node_decls(r, st, sst, (**ma).value);
@@ -112,13 +113,7 @@ static resolve_error add_ast_node_decls(
             }
             return RE_OK;
         }
-        case STMT_IMPORT:
-        case STMT_USING:
-        case SYM_NAMED_USING:
-        case SYM_PARAM:
-        case STMT_PP_STMT:
         default:
-        case STMT_COMPOUND_ASSIGN:
             return RE_OK; // TODO
             assert(false); // unknown node_kind
     }
