@@ -1,5 +1,5 @@
 require "test2.tau";
-  #x: int;
+#x: int;
 func foo(){
     match (true) @foo{
         foo => continue @foo;

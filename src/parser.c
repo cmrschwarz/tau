@@ -333,32 +333,34 @@ static inline int push_bpd_pp(parser* p, ast_node* n)
 }
 static inline int pop_bpd_pp(parser* p, parse_error pe)
 {
-    body_parse_data *bpd, *bpd_to_pop;
+    body_parse_data bpd_popped;
+    body_parse_data* bpd;
     sbi it;
     sbi_begin_at_end(&it, &p->body_stack);
-    bpd_to_pop = sbi_previous(&it, sizeof(body_parse_data));
+    bpd_popped = *(body_parse_data*)sbi_previous(&it, sizeof(body_parse_data));
+    sbuffer_remove(&p->body_stack, &it, sizeof(body_parse_data));
     bpd = sbi_previous(&it, sizeof(body_parse_data));
     // since we are a pp node there must at least be the base node
-    assert(bpd->body == bpd_to_pop->body);
+    assert(bpd->body == bpd_popped.body);
     ureg pp_level = 0;
     do {
         pp_level++;
         bpd = sbi_previous(&it, sizeof(body_parse_data));
-    } while (bpd && bpd->body == bpd_to_pop->body);
+    } while (bpd && bpd->body == bpd_popped.body);
     for (ureg i = 0; i < pp_level; i++) {
         if (!bpd || bpd->node != NULL) {
             assert(i == pp_level - 1);
             bpd = sbuffer_insert(&p->body_stack, &it, sizeof(body_parse_data));
             if (!bpd) return ERR;
-            init_bpd(bpd, NULL, bpd_to_pop->body);
+            init_bpd(bpd, NULL, bpd_popped.body);
             break;
         }
         bpd = sbi_previous(&it, sizeof(body_parse_data));
     }
-    bpd->decl_count += bpd_to_pop->decl_count;
-    bpd->usings_count += bpd_to_pop->usings_count;
-    bpd->shared_decl_count += bpd_to_pop->shared_decl_count;
-    bpd->shared_usings_count += bpd_to_pop->shared_usings_count;
+    bpd->decl_count += bpd_popped.decl_count;
+    bpd->usings_count += bpd_popped.usings_count;
+    bpd->shared_decl_count += bpd_popped.shared_decl_count;
+    bpd->shared_usings_count += bpd_popped.shared_usings_count;
     return OK;
 }
 static inline int pop_bpd(parser* p, parse_error pe)
