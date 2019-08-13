@@ -326,6 +326,10 @@ void print_ast_node(ast_node* n, ureg indent)
             pc(']');
             print_open_scope_body(&e->oscope, indent);
         } break;
+        case EXPR_PP: {
+            pc('#');
+            print_ast_node(((expr_pp*)n)->pp_expr, indent);
+        } break;
         case SYM_VAR_DECL: {
             sym_var_decl* d = (sym_var_decl*)n;
             if (ast_node_flags_get_const(d->symbol.node.flags)) p("const ");
