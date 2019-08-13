@@ -11,12 +11,12 @@
 #include <assert.h>
 
 #define USING_BIT (((ureg)1) << (REG_BITS - 1))
-static symbol_table EMPTY_ST = {0, NULL, &EMPTY_ST, NULL, NULL};
+symbol_table EMPTY_ST = {0, NULL, &EMPTY_ST, NULL, NULL};
 
-symbol_table*
-symbol_table_new(ureg decl_count, ureg using_count, ast_node* owning_node)
+symbol_table* symbol_table_new(
+    ureg decl_count, ureg using_count, bool force_unique, ast_node* owning_node)
 {
-    if (decl_count == 0 && using_count == 0) return &EMPTY_ST;
+    if (!force_unique && decl_count == 0 && using_count == 0) return &EMPTY_ST;
     symbol_table* st;
     if (using_count != 0) {
         symbol_table_with_usings* stwu = tmalloc(

@@ -13,13 +13,16 @@ typedef struct symbol_table {
     ast_node* owning_node;
 } symbol_table;
 
+extern symbol_table EMPTY_ST;
+
 typedef struct symbol_table_with_usings {
     symbol_table** using_ends[AM_ENUM_ELEMENT_COUNT];
     symbol_table table;
 } symbol_table_with_usings;
 
-symbol_table*
-symbol_table_new(ureg decl_count, ureg using_count, ast_node* owning_node);
+symbol_table* symbol_table_new(
+    ureg decl_count, ureg using_count, bool force_unique,
+    ast_node* owning_node);
 void symbol_table_delete(symbol_table* st);
 
 // if a symbol of that name already exists returns that

@@ -123,7 +123,7 @@ static resolve_error add_ast_node_decls(
 static resolve_error add_body_decls(
     resolver* r, symbol_table* parent_st, symbol_table* shared_st, body* b)
 {
-    if (b->symtab == NULL) {
+    if (b->symtab == &EMPTY_ST) {
         b->symtab = parent_st;
     }
     else {
@@ -169,8 +169,8 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
     for (mdg_node** i = start; i != end; i++) {
         (**i).symtab = symbol_table_new(
             atomic_ureg_load(&(**i).decl_count),
-            atomic_ureg_load(&(**i).using_count), NULL);
-        (**i).symtab->parent = NULL;
+            atomic_ureg_load(&(**i).using_count), true, NULL);
+        //(**i).symtab->parent = &EMPTY_ST;
         if (!(**i).symtab) return RE_FATAL;
     }
     for (mdg_node** i = start; i != end; i++) {

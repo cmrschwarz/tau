@@ -6,7 +6,7 @@ import doo;
 func main(args: String[]){    
     func test_compound_assignment(){
         if(3) @label{
-            @bar();
+            bar();
         };
         if (x) 3 else 5;
         x := 3;

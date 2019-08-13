@@ -331,7 +331,7 @@ static inline int push_bpd_pp(parser* p, ast_node* n)
     init_bpd(bpd, n, prev->body);
     return OK;
 }
-static inline int pop_bpd_pp(parser* p)
+static inline int pop_bpd_pp(parser* p, parse_error pe)
 {
     body_parse_data *bpd, *bpd_to_pop;
     sbi it;
@@ -344,9 +344,9 @@ static inline int pop_bpd_pp(parser* p)
     do {
         pp_level++;
         bpd = sbi_previous(&it, sizeof(body_parse_data));
-    } while (bpd->body == bpd_to_pop->body);
+    } while (bpd && bpd->body == bpd_to_pop->body);
     for (ureg i = 0; i < pp_level; i++) {
-        if (bpd->node != NULL) {
+        if (!bpd || bpd->node != NULL) {
             assert(i == pp_level - 1);
             bpd = sbuffer_insert(&p->body_stack, &it, sizeof(body_parse_data));
             if (!bpd) return ERR;
@@ -365,33 +365,36 @@ static inline int pop_bpd(parser* p, parse_error pe)
 {
     sbi i;
     sbi_begin_at_end(&i, &p->body_stack);
-    body_parse_data* bpd =
-        (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
-    assert(bpd->node); // make sure it's not a pp node
-    if (bpd->shared_decl_count > 0 || bpd->shared_usings_count > 0) {
-        assert(ast_node_is_open_scope(bpd->node));
+    body_parse_data bpd =
+        *(body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
+    assert(bpd.node); // make sure it's not a pp node
+    if (bpd.shared_decl_count > 0 || bpd.shared_usings_count > 0) {
+        assert(ast_node_is_open_scope(bpd.node));
         // assert(*osc is member of current module*);
-        atomic_ureg_add(&p->current_module->decl_count, bpd->shared_decl_count);
+        atomic_ureg_add(&p->current_module->decl_count, bpd.shared_decl_count);
         atomic_ureg_add(
-            &p->current_module->using_count, bpd->shared_usings_count);
+            &p->current_module->using_count, bpd.shared_usings_count);
     }
-    body* bd = bpd->body;
+    body* bd = bpd.body;
     symbol_table** st = &bd->symtab;
     while (true) {
+        sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
+        body_parse_data* bpd2 =
+            (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
+        bool has_pp = (bpd2 && bpd2->node == NULL);
         if (!pe) {
-            *st =
-                symbol_table_new(bpd->decl_count, bpd->usings_count, bpd->node);
+            *st = symbol_table_new(
+                bpd.decl_count, bpd.usings_count, has_pp, bpd.node);
             if (!*st) return ERR;
         }
         else {
-            *st = symbol_table_new(0, 0, bpd->node);
+            *st = symbol_table_new(0, 0, false, bpd.node);
         }
-        sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
-        bpd = (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
         if (!pe) st = &(**st).pp_symtab;
-        if (!bpd || bpd->node != NULL) break;
+        if (!has_pp) break;
+        bpd = *bpd2;
         // we don't support shared pp decls for now :(
-        assert(bpd->shared_decl_count == 0 && bpd->shared_usings_count == 0);
+        assert(bpd.shared_decl_count == 0 && bpd.shared_usings_count == 0);
     }
     if (!pe) *st = NULL;
     return OK;
@@ -1503,7 +1506,7 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     if (push_bpd_pp(p, (ast_node*)sp)) return PE_FATAL;
     parse_error pe =
         parse_expression_of_prec(p, &sp->pp_expr, op_precedence[OP_PP]);
-    if (pop_bpd_pp(p)) return PE_FATAL;
+    if (pop_bpd_pp(p, pe)) return PE_FATAL;
     if (pe) return pe;
     pe = ast_node_fill_srange(
         p, (ast_node*)sp, start, src_range_get_end(sp->pp_expr->srange));
@@ -2875,9 +2878,7 @@ static inline parse_error parse_pp_stmt(
     ast_node_init(&sp->node, EXPR_PP);
     if (push_bpd_pp(p, (ast_node*)sp)) return PE_FATAL;
     pe = parse_statement(p, &sp->pp_expr);
-    if (pop_bpd_pp(p)) return PE_FATAL;
-    if (pe) return pe;
-    pe = handle_semicolon_after_statement(p, sp->pp_expr);
+    if (pop_bpd_pp(p, pe)) return PE_FATAL;
     if (pe) return pe;
     pe = ast_node_fill_srange(
         p, (ast_node*)sp, start, src_range_get_end(sp->pp_expr->srange));
