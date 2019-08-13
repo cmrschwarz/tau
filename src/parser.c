@@ -361,7 +361,7 @@ static inline int pop_bpd_pp(parser* p)
     bpd->shared_usings_count += bpd_to_pop->shared_usings_count;
     return OK;
 }
-static inline int pop_bpd(parser* p)
+static inline int pop_bpd(parser* p, parse_error pe)
 {
     sbi i;
     sbi_begin_at_end(&i, &p->body_stack);
@@ -378,16 +378,22 @@ static inline int pop_bpd(parser* p)
     body* bd = bpd->body;
     symbol_table** st = &bd->symtab;
     while (true) {
-        *st = symbol_table_new(bpd->decl_count, bpd->usings_count, bpd->node);
-        if (!*st) return ERR;
+        if (!pe) {
+            *st =
+                symbol_table_new(bpd->decl_count, bpd->usings_count, bpd->node);
+            if (!*st) return ERR;
+        }
+        else {
+            *st = symbol_table_new(0, 0, bpd->node);
+        }
         sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
         bpd = (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
-        st = &(**st).pp_symtab;
+        if (!pe) st = &(**st).pp_symtab;
         if (!bpd || bpd->node != NULL) break;
         // we don't support shared pp decls for now :(
         assert(bpd->shared_decl_count == 0 && bpd->shared_usings_count == 0);
     }
-    *st = NULL;
+    if (!pe) *st = NULL;
     return OK;
 }
 
@@ -1345,14 +1351,14 @@ parse_error parse_match(parser* p, ast_node** tgt)
             em->body.elements = (ast_node**)list_builder_pop_list_zt(
                 &p->tk.tc->list_builder, list, &p->tk.tc->permmem);
             if (!em->body.elements) {
-                pop_bpd(p);
+                pop_bpd(p, PE_FATAL);
                 return PE_FATAL;
             }
             *tgt = (ast_node*)em;
             tk_void(&p->tk);
             em->body.srange =
                 src_range_pack(p->tk.tc, body_start, t->end, p->tk.file);
-            pop_bpd(p);
+            pop_bpd(p, PE_OK);
             return PE_OK;
         }
         else {
@@ -1416,7 +1422,7 @@ parse_error parse_match(parser* p, ast_node** tgt)
         }
     }
     list_builder_drop_list(&p->tk.tc->list_builder, list);
-    pop_bpd(p);
+    pop_bpd(p, pe);
     return pe;
 }
 static inline parse_error parse_labeled_block(parser* p, ast_node** tgt)
@@ -1779,7 +1785,7 @@ static inline parse_error parse_delimited_open_scope(
     token* t;
     t = tk_peek(&p->tk);
     if (!t) {
-        if (pop_bpd(p)) return PE_FATAL;
+        if (pop_bpd(p, PE_TK_ERROR)) return PE_FATAL;
         return PE_TK_ERROR;
     }
     ureg start = t->start;
@@ -1812,7 +1818,7 @@ static inline parse_error parse_delimited_open_scope(
         &p->tk.tc->list_builder2, element_list_start, &p->tk.tc->permmem);
     osc->requires = (file_require*)list_builder_pop_block_list_zt(
         &p->tk.tc->list_builder, requires_list_start, &p->tk.tc->permmem);
-    if (pop_bpd(p)) return PE_FATAL;
+    if (pop_bpd(p, pe)) return PE_FATAL;
     if (!osc->scope.body.elements) return PE_FATAL;
     if (!osc->requires) return PE_FATAL;
     src_range_large srl;
@@ -3004,7 +3010,7 @@ parse_error parse_brace_delimited_body(parser* p, body* b, ast_node* parent)
     }
     b->elements = (ast_node**)list_builder_pop_list_zt(
         &p->tk.tc->list_builder2, elements_list_start, &p->tk.tc->permmem);
-    if (pop_bpd(p)) return PE_FATAL;
+    if (pop_bpd(p, pe)) return PE_FATAL;
     if (!b->elements) return PE_FATAL;
     return pe;
 }
@@ -3075,7 +3081,7 @@ parse_error parse_body(parser* p, body* b, ast_node* parent)
                 &p->tk.tc->list_builder2, target, &p->tk.tc->permmem);
             b->srange = b->elements[0]->srange;
         }
-        if (pop_bpd(p)) return PE_FATAL;
+        if (pop_bpd(p, pe)) return PE_FATAL;
     }
     else {
         pe = parse_brace_delimited_body(p, b, parent);
