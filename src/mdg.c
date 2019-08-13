@@ -187,12 +187,12 @@ static void free_body_symtabs(ast_node* node, body* b)
         free_astn_symtabs(*n);
     }
     if (b->symtab->owning_node == node) {
-        symbol_table_delete(b->symtab);
+        symbol_table_fin(b->symtab);
     }
 }
 void mdg_node_fin(mdg_node* n)
 {
-    symbol_table_delete(n->symtab);
+    symbol_table_fin(n->symtab);
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &n->open_scopes);
     while (true) {

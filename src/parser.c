@@ -385,12 +385,12 @@ static inline int pop_bpd(parser* p, parse_error pe)
             (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
         bool has_pp = (bpd2 && bpd2->node == NULL);
         if (!pe) {
-            *st = symbol_table_new(
-                bpd.decl_count, bpd.usings_count, has_pp, bpd.node);
-            if (!*st) return ERR;
+            if (symbol_table_init(
+                    st, bpd.decl_count, bpd.usings_count, has_pp, bpd.node))
+                return ERR;
         }
         else {
-            *st = symbol_table_new(0, 0, false, bpd.node);
+            *st = NULL;
         }
         if (!pe) st = &(**st).pp_symtab;
         if (!has_pp) break;

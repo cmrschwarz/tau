@@ -21,6 +21,18 @@ static resolve_error report_redeclaration_error(
         src_range_get_end(first->node.srange), "previous definition here");
     return RE_SYMBOL_REDECLARATION;
 }
+static resolve_error
+add_symbol(resolver* r, symbol_table* st, symbol_table* sst, ast_node* n)
+{
+    symbol_table* tgtst =
+        (ast_node_flags_get_access_mod(n->flags) == AM_UNSPECIFIED) ? st : sst;
+    symbol* conflict;
+    conflict = symbol_table_insert(tgtst, (symbol*)n);
+    if (conflict) {
+        return report_redeclaration_error(r, (symbol*)n, conflict, tgtst);
+    }
+    return RE_OK;
+}
 static resolve_error add_ast_node_decls(
     resolver* r, symbol_table* st, symbol_table* sst, ast_node* n)
 {
@@ -35,38 +47,35 @@ static resolve_error add_ast_node_decls(
         case OSC_MODULE_GENERIC:
         case OSC_EXTEND:
         case OSC_EXTEND_GENERIC: {
+            // these guys are handled from their mdg node, not from
+            // where they appear in source
             return RE_OK;
         }
         case SC_STRUCT:
         case SC_STRUCT_GENERIC:
         case SC_TRAIT:
         case SC_TRAIT_GENERIC: {
+            resolve_error re = add_symbol(r, st, sst, n);
+            if (re) return re;
             return add_simple_body_decls(r, st, &((scope*)n)->body);
         }
 
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
+            return add_symbol(r, st, sst, n);
+            // not doing function bodys because they are stronly ordered
+            // add_simple_body_decls(r, st, &((scope*)n)->body);
         }
-        case STMT_IMPORT: {
-        }
-        case STMT_USING: {
-        }
-        case SYM_NAMED_USING:
+        case STMT_IMPORT:
+        case STMT_USING:
         case SYM_PARAM:
         case STMT_COMPOUND_ASSIGN:
-        case SYM_VAR_DECL: return RE_OK;
-        case SYM_VAR_DECL_UNINITIALIZED: {
-            symbol_table* tgtst =
-                (ast_node_flags_get_access_mod(n->flags) == AM_UNSPECIFIED)
-                    ? st
-                    : sst;
-            symbol* conflict;
-            conflict = symbol_table_insert(tgtst, (symbol*)n);
-            if (conflict) {
-                return report_redeclaration_error(
-                    r, (symbol*)n, conflict, tgtst);
-            }
+            // TODO
             return RE_OK;
+        case SYM_NAMED_USING:
+        case SYM_VAR_DECL:
+        case SYM_VAR_DECL_UNINITIALIZED: {
+            return add_symbol(r, st, sst, n);
         }
 
         case EXPR_RETURN:
@@ -97,9 +106,11 @@ static resolve_error add_ast_node_decls(
             return add_ast_node_decls(r, st, sst, (ast_node*)em->next);
         }
 
-        case EXPR_PP:
-            return add_ast_node_decls(r, st, sst, ((expr_pp*)n)->pp_expr);
-
+        case EXPR_PP: {
+            symbol_table* sstpp = sst ? sst->pp_symtab : NULL;
+            return add_ast_node_decls(
+                r, st->pp_symtab, sstpp, ((expr_pp*)n)->pp_expr);
+        }
         case EXPR_MATCH: {
             expr_match* em = (expr_match*)n;
             resolve_error re = add_ast_node_decls(r, st, sst, em->match_expr);
@@ -167,9 +178,10 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
     r->end = end;
     print_debug_info(r);
     for (mdg_node** i = start; i != end; i++) {
-        (**i).symtab = symbol_table_new(
-            atomic_ureg_load(&(**i).decl_count),
+        int r = symbol_table_init(
+            &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
             atomic_ureg_load(&(**i).using_count), true, NULL);
+        if (r) return RE_FATAL;
         //(**i).symtab->parent = &EMPTY_ST;
         if (!(**i).symtab) return RE_FATAL;
     }

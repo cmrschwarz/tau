@@ -20,10 +20,10 @@ typedef struct symbol_table_with_usings {
     symbol_table table;
 } symbol_table_with_usings;
 
-symbol_table* symbol_table_new(
-    ureg decl_count, ureg using_count, bool force_unique,
+int symbol_table_init(
+    symbol_table** st, ureg decl_count, ureg using_count, bool force_unique,
     ast_node* owning_node);
-void symbol_table_delete(symbol_table* st);
+void symbol_table_fin(symbol_table* st);
 
 // if a symbol of that name already exists returns that
 // otherwise inserts and returns NULL
