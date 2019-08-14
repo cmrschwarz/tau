@@ -1,5 +1,10 @@
 #include "ast.h"
 #include "utils/panic.h"
+primitive pt_int = {PRIMITIVE, PT_INT};
+primitive pt_uint = {PRIMITIVE, PT_UINT};
+primitive pt_float = {PRIMITIVE, PT_FLOAT};
+primitive pt_string = {PRIMITIVE, PT_STRING};
+
 src_file* open_scope_get_file(open_scope* s)
 {
     return src_range_get_file(s->scope.symbol.node.srange);

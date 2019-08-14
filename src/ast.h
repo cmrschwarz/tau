@@ -64,11 +64,29 @@ typedef enum PACK_ENUM ast_node_kind {
     EXPR_OP_UNARY,
     EXPR_OP_BINARY,
 
+    PRIMITIVE,
     TYPE_ARRAY,
     TYPE_TUPLE,
     TYPE_MODIFIERS,
 
 } ast_node_kind;
+
+typedef struct primitive {
+    ast_node_kind kind;
+    primitive_kind pt_kind;
+} primitive;
+
+typedef enum PACK_ENUM primitive_kind {
+    PT_INT,
+    PT_UINT,
+    PT_FLOAT,
+    PT_STRING,
+} primitive_kind;
+
+extern primitive pt_int;
+extern primitive pt_uint;
+extern primitive pt_float;
+extern primitive pt_string;
 
 typedef enum PACK_ENUM operator_kind {
     // special ops
