@@ -69,13 +69,17 @@ symbol* symbol_table_insert(symbol_table* st, symbol* s)
 }
 symbol* symbol_table_lookup(symbol_table* st, const char* s)
 {
-    ureg hash = fnv_hash_str(FNV_START_HASH, s) % st->decl_count;
-    symbol* tgt =
-        *(symbol**)ptradd(st, sizeof(symbol_table) + hash * sizeof(symbol*));
-    while (tgt) {
-        if (strcmp(tgt->name, s) == 0) return tgt;
-        tgt = (symbol*)tgt->next;
-    }
+    ureg hash = fnv_hash_str(FNV_START_HASH, s);
+    do {
+        ureg idx = hash % st->decl_count;
+        symbol* tgt = *(symbol**)ptradd(
+            st, sizeof(symbol_table) + hash * sizeof(symbol*));
+        while (tgt) {
+            if (strcmp(tgt->name, s) == 0) return tgt;
+            tgt = (symbol*)tgt->next;
+        }
+        st = st->parent;
+    } while (st);
     return NULL;
 }
 src_file* symbol_table_get_file(symbol_table* st)
