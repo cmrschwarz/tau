@@ -1,17 +1,18 @@
 #include "ast_node_flags.h"
 
-#define USED_IN_PP_OFFSET 11
-#define DEFINED_IN_PP_OFFSET 10
-#define COMPUND_DECL_OFFSET 9
-#define REDECL_OFFSET 8
-#define PE_OFFSET 7
-#define AM_OFFSET 5
+#define USED_IN_PP_OFFSET 12
+#define DEFINED_IN_PP_OFFSET 11
+#define COMPUND_DECL_OFFSET 10
+#define REDECL_OFFSET 9
+#define PE_OFFSET 8
+#define AM_OFFSET 6
 #define AM_MASK (3 << AM_OFFSET)
-#define CONST_OFFSET 4
-#define SEALED_OFFSET 3
-#define VIRTUAL_OFFSET 2
-#define STATIC_OFFSET 1
-#define RESOLVED_OFFSET 0
+#define CONST_OFFSET 5
+#define SEALED_OFFSET 4
+#define VIRTUAL_OFFSET 3
+#define STATIC_OFFSET 2
+#define RESOLVED_OFFSET 1
+#define RESOLVING_OFFSET 0
 
 static inline void bitmask_set_bit(u16* data, ureg offs)
 {
@@ -116,6 +117,16 @@ bool ast_node_flags_get_resolved(ast_node_flags f)
 {
     return bitmask_get_bit(f, RESOLVED_OFFSET);
 }
+
+void ast_node_flags_set_resolving(ast_node_flags* f)
+{
+    bitmask_set_bit(f, RESOLVING_OFFSET);
+}
+bool ast_node_flags_get_resolving(ast_node_flags f)
+{
+    return bitmask_get_bit(f, RESOLVING_OFFSET);
+}
+
 void ast_node_flags_set_defined_in_pp(ast_node_flags* f)
 {
     bitmask_set_bit(f, DEFINED_IN_PP_OFFSET);

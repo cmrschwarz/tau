@@ -63,6 +63,11 @@ typedef enum PACK_ENUM ast_node_kind {
 
     EXPR_OP_UNARY,
     EXPR_OP_BINARY,
+
+    TYPE_ARRAY,
+    TYPE_TUPLE,
+    TYPE_MODIFIERS,
+
 } ast_node_kind;
 
 typedef enum PACK_ENUM operator_kind {
@@ -126,6 +131,10 @@ typedef enum PACK_ENUM operator_kind {
     OP_POST_INCREMENT,
     OP_POST_DECREMENT,
 } operator_kind;
+
+typedef struct ast_element {
+    ast_node_kind kind;
+} ast_element;
 
 typedef struct ast_node {
     ast_node_kind kind;
@@ -411,6 +420,45 @@ typedef struct expr_lambda {
     sym_param* params;
     body body;
 } expr_lambda;
+
+typedef enum ast_type_mod {
+    ATM_NONE = 0,
+    ATM_CONST = 1,
+    ATM_PTR = 2,
+    ATM_REF = 3,
+} ast_type_mod;
+
+#define ATM_BITS 2
+#define ATM_MASK 0x3
+#define ATM_PER_BYTE (8 / ATM_BITS)
+#define ATM_BYTES (sizeof(ast_element*) - sizeof(ast_node_kind))
+#define ATM_MAX_COUNT (ATM_BYTES * ATM_PER_BYTE)
+
+typedef struct ast_type_node {
+    ast_node_kind kind;
+    u8 mods[ATM_BYTES];
+} ast_type_node;
+
+typedef struct type_modifiers {
+    ast_type_node node;
+    ast_element* base;
+} type_modifiers;
+
+typedef struct type_array {
+    ast_type_node node;
+    ast_element* members_type;
+    ureg size;
+} type_array;
+
+typedef struct type_tuple {
+    ast_type_node node;
+    ast_element** member_types;
+    ureg size;
+} type_tuple;
+
+int ast_type_node_get_mod_count(ast_type_node atn);
+ast_type_mod ast_type_node_get_mod_n(ast_type_node atn, int n);
+void ast_type_node_set_mod_n(ast_type_node atn, ast_type_mod mod, int n);
 
 src_range ast_node_get_src_range(ast_node* s);
 bool ast_node_is_open_scope(ast_node* s);

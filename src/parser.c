@@ -1348,7 +1348,7 @@ parse_error parse_match(parser* p, ast_node** tgt)
         em->name = NULL;
     }
     tk_void(&p->tk);
-    push_bpd(p, em, &em->body);
+    push_bpd(p, (ast_node*)em, &em->body);
     void** list = list_builder_start(&p->tk.tc->list_builder);
     while (true) {
         PEEK(p, t);
