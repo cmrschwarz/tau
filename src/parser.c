@@ -592,8 +592,8 @@ static inline ast_node* parse_str_value(parser* p, token* t)
     expr_str_value* sv = (expr_str_value*)alloc_perm(p, sizeof(expr_str_value));
     if (!sv) return NULL;
     sv->node.kind = ent;
-    sv->value = alloc_string_temp(p, t->str);
-    if (!sv->value) return NULL;
+    sv->value.str = alloc_string_temp(p, t->str);
+    if (!sv->value.str) return NULL;
     if (ast_node_fill_srange(p, &sv->node, t->start, t->end)) return NULL;
     return (ast_node*)sv;
 }
@@ -937,7 +937,7 @@ static inline void turn_ident_nodes_to_exprs(ast_node** elems)
             if (tin->var.type == NULL &&
                 !ast_node_flags_get_compound_decl(tin->var.symbol.node.flags)) {
                 ureg srange = tin->var.symbol.node.srange;
-                tin->ident.value = tin->var.symbol.name;
+                tin->ident.value.str = tin->var.symbol.name;
                 tin->ident.node.srange = srange;
                 tin->ident.node.kind = EXPR_IDENTIFIER;
             }
@@ -1745,7 +1745,7 @@ parse_error parse_expr_in_parens(
         return PE_ERROR;
     }
     tk_void(&p->tk);
-    ast_node_fill_srange(p, *ex, start, t->end);
+    // ast_node_fill_srange(p, *ex, start, t->end);
     return pe;
 }
 parse_error parse_expression(parser* p, ast_node** ex)

@@ -15,20 +15,20 @@ func main(args: String[]){
         (x, y:, (a,b: int,c), d) = foo();
         (a, b) += 3;
         x * #match(foo) @blk{
-            if (true) {*x = 3;} => bar;
+            if (1) {*x = 3;} => bar;
             x || Foo(x) => {
                 return x;
             }
         };
         
-        if (true) @foo{
+        if (1) @foo{
             continue @foo;
             continue;
             return 12;
         }
         (x: int) := foo;
         
-        y:= if (true) {
+        y:= if (1) {
                 foo();
             }
             else {

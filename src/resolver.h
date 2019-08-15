@@ -1,6 +1,7 @@
 #pragma once
 #include "mdg.h"
 #include "utils/sbuffer.h"
+#include "utils/stack.h"
 typedef enum resolve_error {
     RE_FATAL = -1,
     RE_OK = 0,
@@ -8,10 +9,12 @@ typedef enum resolve_error {
     RE_TYPE_MISSMATCH,
     RE_SYMBOL_REDECLARATION,
     RE_UNKNOWN_SYMBOL,
+    RE_TYPE_LOOP,
 } resolve_error;
 
 typedef struct thread_context thread_context;
 typedef struct resolver {
+    stack error_stack;
     thread_context* tc;
     mdg_node** start;
     mdg_node** end;

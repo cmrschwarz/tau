@@ -218,6 +218,15 @@ char* get_expr_name(ast_node* n)
         default: assert(false);
     }
 }
+void print_ast_node_name(ast_node* n)
+{
+    if (ast_node_is_symbol(n)) {
+        pu(((symbol*)n)->name);
+    }
+    else {
+        pu("<unknown node>");
+    }
+}
 void print_ast_node(ast_node* n, ureg indent)
 {
     // TODO: print access modifiers
@@ -362,7 +371,17 @@ void print_ast_node(ast_node* n, ureg indent)
             print_ast_node(u->target, indent);
         } break;
         case EXPR_IDENTIFIER:
-        case EXPR_NUMBER: pu(((expr_str_value*)n)->value); break;
+        case EXPR_NUMBER: {
+            expr_str_value* v = (expr_str_value*)n;
+            if (ast_node_flags_get_resolved(n->flags)) {
+                print_ast_node_name(v->value.node);
+            }
+            else {
+                pu(v->value.str);
+            }
+
+            break;
+        }
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
             if (b->name) {
@@ -383,12 +402,12 @@ void print_ast_node(ast_node* n, ureg indent)
         } break;
         case EXPR_BINARY_LITERAL:
             pc('\'');
-            pu(((expr_str_value*)n)->value);
+            pu(((expr_str_value*)n)->value.str);
             pc('\'');
             break;
         case EXPR_STRING_LITERAL:
             pc('"');
-            pu(((expr_str_value*)n)->value);
+            pu(((expr_str_value*)n)->value.str);
             pc('"');
             break;
         case EXPR_OP_BINARY: {

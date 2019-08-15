@@ -1,10 +1,13 @@
 require "test2.tau";
 #x: int;
 func foo(){
-    match (true) @foo{
+    if(3){
+    }
+    foo := int;
+    match (1) @foo{
         foo => continue @foo;
-        bar => continue;
-        baz => return 12;
+        2 => continue;
+        3 => return 12;
     }
    /* (x: int) := foo;
     x: int = 32;

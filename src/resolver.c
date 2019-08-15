@@ -6,6 +6,15 @@
 static resolve_error
 add_simple_body_decls(resolver* r, symbol_table* parent_st, body* b);
 
+static inline resolve_error
+report_unknown_symbol(resolver* r, ast_node* n, symbol_table* st)
+{
+    error_log_report_annotated(
+        &r->tc->error_log, ES_RESOLVER, false, "unknown symbol",
+        ast_node_get_file(n, st), src_range_get_start(n->srange),
+        src_range_get_end(n->srange), "use of an undefined symbol");
+    return RE_UNKNOWN_SYMBOL;
+}
 static resolve_error report_redeclaration_error(
     resolver* r, symbol* redecl, symbol* first, symbol_table* st)
 {
@@ -68,7 +77,6 @@ static resolve_error add_ast_node_decls(
         }
         case STMT_IMPORT:
         case STMT_USING:
-        case SYM_PARAM:
         case STMT_COMPOUND_ASSIGN:
             // TODO
             return RE_OK;
@@ -171,6 +179,114 @@ static inline void print_debug_info(resolver* r)
     printf("%s}\n", (**i).name);
 }
 
+resolve_error resolve_body(resolver* r, body* b);
+
+// the symbol table is not the one that contains the symbol, but the one
+// where it was declared and where the type name loopup should start
+resolve_error resolve_ast_node(resolver* r, ast_node* n, symbol_table* st)
+{
+    if (!n) return RE_OK;
+    if (ast_node_flags_get_resolved(n->flags)) return RE_OK;
+    if (ast_node_flags_get_resolving(n->flags)) {
+        stack_push(&r->error_stack, n);
+        return RE_TYPE_LOOP;
+    }
+    switch (n->kind) {
+        case EXPR_IDENTIFIER: {
+            expr_identifier* e = (expr_identifier*)n;
+            symbol* s = symbol_table_lookup(st, e->value.str);
+            if (!s) return report_unknown_symbol(r, n, st);
+            e->value.node = (ast_node*)s;
+            ast_node_flags_set_resolved(&n->flags);
+            return RE_OK;
+        }
+        case SC_STRUCT:
+        case SC_STRUCT_GENERIC:
+        case SC_TRAIT:
+        case SC_TRAIT_GENERIC: {
+            return resolve_body(r, &((scope*)n)->body);
+        }
+        case SC_FUNC:
+        case SC_FUNC_GENERIC: {
+            // TODO: parameters
+            return resolve_body(r, &((scope*)n)->body);
+        }
+        case STMT_USING:
+        case STMT_COMPOUND_ASSIGN: {
+            // TODO
+            return RE_OK;
+        }
+        case SYM_NAMED_USING:
+        case SYM_VAR_DECL:
+        case SYM_VAR_DECL_UNINITIALIZED: {
+            return RE_OK;
+        }
+
+        case EXPR_RETURN:
+            return resolve_ast_node(r, ((expr_return*)n)->value, st);
+
+        case EXPR_BREAK:
+            return resolve_ast_node(r, ((expr_return*)n)->value, st);
+        case EXPR_BLOCK: return resolve_body(r, &((expr_block*)n)->body);
+
+        case EXPR_IF: {
+            expr_if* ei = (expr_if*)n;
+            resolve_error re = resolve_ast_node(r, ei->condition, st);
+            if (re) return re;
+            re = resolve_ast_node(r, ei->if_body, st);
+            if (re) return re;
+            return resolve_ast_node(r, ei->else_body, st);
+        }
+
+        case EXPR_LOOP:
+            return add_simple_body_decls(r, st, &((expr_loop*)n)->body);
+
+        case EXPR_MACRO: {
+            expr_macro* em = (expr_macro*)n;
+            resolve_error re = add_simple_body_decls(r, st, &em->body);
+            if (re) return re;
+            return resolve_ast_node(r, (ast_node*)em->next, st);
+        }
+
+        case EXPR_PP: {
+            // BIG TODO
+            return RE_OK;
+        }
+        case EXPR_MATCH: {
+            expr_match* em = (expr_match*)n;
+            resolve_error re = resolve_ast_node(r, em->match_expr, st);
+            if (re) return re;
+            for (match_arm** ma = (match_arm**)em->body.elements; *ma != NULL;
+                 ma++) {
+                re = resolve_ast_node(r, (**ma).condition, st);
+                if (re) return re;
+                re = resolve_ast_node(r, (**ma).value, st);
+                if (re) return re;
+            }
+            return RE_OK;
+        }
+        default: return RE_OK;
+    }
+}
+static inline resolve_error report_type_loop(resolver* r)
+{
+    // yadda yadda yadda
+}
+resolve_error resolve_body(resolver* r, body* b)
+{
+    resolve_error re;
+    for (ast_node** n = b->elements; *n != NULL; n++) {
+        re = resolve_ast_node(r, *n, b->symtab);
+        if (re) return re;
+    }
+    return RE_OK;
+}
+resolve_error resolve_body_reporting_loops(resolver* r, body* b)
+{
+    resolve_error re = resolve_body(r, b);
+    if (re == RE_TYPE_LOOP) report_type_loop(r);
+    return re;
+}
 resolve_error
 resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
 {
@@ -194,6 +310,15 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
             add_body_decls(r, NULL, (**i).symtab, &osc->scope.body);
         }
     }
+    for (mdg_node** i = start; i != end; i++) {
+        aseglist_iterator asi;
+        aseglist_iterator_begin(&asi, &(**i).open_scopes);
+        for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
+             osc = aseglist_iterator_next(&asi)) {
+            osc->scope.body.symtab->parent = (**i).symtab;
+            resolve_body_reporting_loops(r, &osc->scope.body);
+        }
+    }
     return mark_mdg_nodes_resolved(r);
 }
 
@@ -206,9 +331,11 @@ int resolver_resolve_single(resolver* r, mdg_node* node)
 }
 void resolver_fin(resolver* r)
 {
+    stack_fin(&r->error_stack);
 }
 int resolver_init(resolver* r, thread_context* tc)
 {
     r->tc = tc;
+    if (stack_init(&r->error_stack, &r->tc->tempmem)) return RE_FATAL;
     return OK;
 }

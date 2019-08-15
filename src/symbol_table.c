@@ -71,9 +71,13 @@ symbol* symbol_table_lookup(symbol_table* st, const char* s)
 {
     ureg hash = fnv_hash_str(FNV_START_HASH, s);
     do {
+        if (st->decl_count == 0) {
+            st = st->parent;
+            continue;
+        }
         ureg idx = hash % st->decl_count;
-        symbol* tgt = *(symbol**)ptradd(
-            st, sizeof(symbol_table) + hash * sizeof(symbol*));
+        symbol* tgt =
+            *(symbol**)ptradd(st, sizeof(symbol_table) + idx * sizeof(symbol*));
         while (tgt) {
             if (strcmp(tgt->name, s) == 0) return tgt;
             tgt = (symbol*)tgt->next;

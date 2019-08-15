@@ -71,17 +71,17 @@ typedef enum PACK_ENUM ast_node_kind {
 
 } ast_node_kind;
 
-typedef struct primitive {
-    ast_node_kind kind;
-    primitive_kind pt_kind;
-} primitive;
-
 typedef enum PACK_ENUM primitive_kind {
     PT_INT,
     PT_UINT,
     PT_FLOAT,
     PT_STRING,
 } primitive_kind;
+
+typedef struct primitive {
+    ast_node_kind kind;
+    primitive_kind pt_kind;
+} primitive;
 
 extern primitive pt_int;
 extern primitive pt_uint;
@@ -386,7 +386,10 @@ typedef struct expr_access {
 
 typedef struct expr_str_value {
     ast_node node;
-    char* value;
+    union {
+        char* str;
+        ast_node* node;
+    } value;
 } expr_str_value;
 
 typedef expr_str_value expr_number;
