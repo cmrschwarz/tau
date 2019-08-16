@@ -33,3 +33,7 @@ typedef struct src_file src_file;
 
 // might return NULL, for example for mdg_node symbol tables
 src_file* symbol_table_get_file(symbol_table* st);
+
+extern symbol_table* GLOBAL_SYMTAB;
+int init_global_symtab();
+void fin_global_symtab();

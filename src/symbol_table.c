@@ -13,6 +13,8 @@
 #define USING_BIT (((ureg)1) << (REG_BITS - 1))
 symbol_table EMPTY_ST = {0, NULL, NULL, NULL, NULL};
 
+symbol_table* GLOBAL_SYMTAB = NULL;
+
 int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
     ast_node* owning_node)
@@ -92,4 +94,21 @@ src_file* symbol_table_get_file(symbol_table* st)
     if (f) return f;
     if (st->parent) return symbol_table_get_file(st->parent);
     return NULL;
+}
+
+int init_global_symtab()
+{
+    if (symbol_table_init(&GLOBAL_SYMTAB, PT_LAST_ENTRY, 0, true, NULL))
+        return ERR;
+    for (int i = 0; i < PT_LAST_ENTRY; i++) {
+        if (symbol_table_insert(GLOBAL_SYMTAB, (symbol*)&primitives[i])) {
+            symbol_table_fin(GLOBAL_SYMTAB);
+            return ERR;
+        }
+    }
+    return OK;
+}
+void fin_global_symtab()
+{
+    symbol_table_fin(GLOBAL_SYMTAB);
 }

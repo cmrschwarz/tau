@@ -1,9 +1,12 @@
 #include "ast.h"
 #include "utils/panic.h"
-primitive pt_int = {PRIMITIVE, PT_INT};
-primitive pt_uint = {PRIMITIVE, PT_UINT};
-primitive pt_float = {PRIMITIVE, PT_FLOAT};
-primitive pt_string = {PRIMITIVE, PT_STRING};
+#include "utils/c_extensions.h"
+
+symbol primitives[] = {
+    {{PRIMITIVE, PT_INT, ASTF_RESOLVED, SRC_RANGE_INVALID}, "int", NULL},
+    {{PRIMITIVE, PT_UINT, ASTF_RESOLVED, SRC_RANGE_INVALID}, "uint", NULL},
+    {{PRIMITIVE, PT_FLOAT, ASTF_RESOLVED, SRC_RANGE_INVALID}, "float", NULL},
+    {{PRIMITIVE, PT_STRING, ASTF_RESOLVED, SRC_RANGE_INVALID}, "string", NULL}};
 
 src_file* open_scope_get_file(open_scope* s)
 {

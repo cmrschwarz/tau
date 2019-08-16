@@ -10,7 +10,7 @@ typedef struct thread_context thread_context;
 // LAYOUT EXTERNAL: [pointer to external src_range_large, change src_map(1 bit),
 // 1] LAYOUT INTERNAL: [start (UREG_BITS - 8 bits), length (7 bits), 1]
 typedef ureg src_range;
-static const ureg SRC_RANGE_INVALID = ((ureg)0x1) << (REG_BITS - 1);
+#define SRC_RANGE_INVALID (((ureg)0x1) << (REG_BITS - 1))
 
 typedef struct src_file src_file;
 

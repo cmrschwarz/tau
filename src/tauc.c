@@ -3,12 +3,15 @@
 #include "print_ast.h"
 #include "thread_context.h"
 #include "utils/allocator.h"
+#include "symbol_table.h"
 
 struct tauc TAUC;
 
 static inline int tauc_partial_fin(int r, int i)
 {
     switch (i) {
+        case -1:
+        case 7: fin_global_symtab();
         case 6: atomic_ureg_fin(&TAUC.thread_count);
         case 5: aseglist_fin(&TAUC.worker_threads);
         case 4: job_queue_fin(&TAUC.job_queue);
@@ -35,6 +38,8 @@ int tauc_init()
     if (r) return tauc_partial_fin(r, 4);
     r = atomic_ureg_init(&TAUC.thread_count, 1);
     if (r) return tauc_partial_fin(r, 5);
+    r = init_global_symtab();
+    if (r) return tauc_partial_fin(r, 6);
     return OK;
 }
 int tauc_request_end()
@@ -67,6 +72,7 @@ void tauc_fin()
         thread_context_fin(&wt->tc);
         tfree(wt);
     }
+    fin_global_symtab();
     atomic_ureg_fin(&TAUC.thread_count);
     aseglist_fin(&TAUC.worker_threads);
     job_queue_fin(&TAUC.job_queue);

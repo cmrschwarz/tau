@@ -71,23 +71,6 @@ typedef enum PACK_ENUM ast_node_kind {
 
 } ast_node_kind;
 
-typedef enum PACK_ENUM primitive_kind {
-    PT_INT,
-    PT_UINT,
-    PT_FLOAT,
-    PT_STRING,
-} primitive_kind;
-
-typedef struct primitive {
-    ast_node_kind kind;
-    primitive_kind pt_kind;
-} primitive;
-
-extern primitive pt_int;
-extern primitive pt_uint;
-extern primitive pt_float;
-extern primitive pt_string;
-
 typedef enum PACK_ENUM operator_kind {
     // special ops
     OP_NOOP, // invalid op, used for return values
@@ -150,13 +133,24 @@ typedef enum PACK_ENUM operator_kind {
     OP_POST_DECREMENT,
 } operator_kind;
 
+typedef enum PACK_ENUM primitive_kind {
+    PT_INT,
+    PT_UINT,
+    PT_FLOAT,
+    PT_STRING,
+    PT_LAST_ENTRY,
+} primitive_kind;
+
 typedef struct ast_element {
     ast_node_kind kind;
 } ast_element;
 
 typedef struct ast_node {
     ast_node_kind kind;
+    ANONYMOUS_UNION_START
+    primitive_kind primitive_kind;
     operator_kind operator_kind;
+    ANONYMOUS_UNION_END
     ast_node_flags flags;
     src_range srange;
 } ast_node;
@@ -286,6 +280,7 @@ typedef struct expr_match {
 typedef struct sym_param {
     symbol symbol;
     ast_node* type;
+    ast_element* type_reduced;
     ast_node* default_value;
 } sym_param;
 
@@ -293,6 +288,7 @@ typedef struct sc_func {
     scope scope;
     sym_param* params;
     ast_node* return_type;
+    ast_element* return_type_reduced;
 } sc_func;
 
 typedef struct sc_func_generic {
@@ -341,12 +337,14 @@ typedef struct osc_extend_generic {
 typedef struct sym_var_decl {
     symbol symbol;
     ast_node* type;
+    ast_element* type_reduced;
     ast_node* value;
 } sym_var_decl;
 
 typedef struct sym_var_decl_uninitialized {
     symbol symbol;
     ast_node* type;
+    ast_element* type_reduced;
 } sym_var_decl_uninitialized;
 
 typedef struct stmt_compound_assignment {
@@ -476,6 +474,8 @@ typedef struct type_tuple {
     ast_element** member_types;
     ureg size;
 } type_tuple;
+
+extern symbol primitives[];
 
 int ast_type_node_get_mod_count(ast_type_node atn);
 ast_type_mod ast_type_node_get_mod_n(ast_type_node atn, int n);

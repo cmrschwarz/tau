@@ -16,3 +16,5 @@
 // clang-format on
 
 #define STRINGIFY(s) #s
+#define CONCAT_RAW(a, b) a##b
+#define CONCAT(a, b) CONCAT_RAW(a, b)

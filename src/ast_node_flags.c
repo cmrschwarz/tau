@@ -3,10 +3,10 @@
 #define USED_IN_PP_OFFSET 12
 #define DEFINED_IN_PP_OFFSET 11
 #define COMPUND_DECL_OFFSET 10
-#define REDECL_OFFSET 9
-#define PE_OFFSET 8
-#define AM_OFFSET 6
-#define AM_MASK (3 << AM_OFFSET)
+#define REDECLARATION_OFFSET 9
+#define PARSE_ERROR_OFFSET 8
+#define ACCESS_MODIFIER_OFFSET 6
+#define ACCESS_MODIFIER_MASK (3 << ACCESS_MODIFIER_OFFSET)
 #define CONST_OFFSET 5
 #define SEALED_OFFSET 4
 #define VIRTUAL_OFFSET 3
@@ -16,7 +16,7 @@
 
 static inline void bitmask_set_bit(u16* data, ureg offs)
 {
-    *data = *data | 1 << offs;
+    *data = *data | (1 << offs);
 }
 static inline void bitmask_clear_bit(u16* data, ureg offs)
 {
@@ -24,7 +24,7 @@ static inline void bitmask_clear_bit(u16* data, ureg offs)
 }
 static inline bool bitmask_get_bit(u16 data, ureg offs)
 {
-    return (data >> offs) & 0x1;
+    return data & (1 << offs);
 }
 static inline void bitmask_set_range(u16* data, ureg offs, u16 value)
 {
@@ -41,11 +41,12 @@ static inline u16 bitmask_get_range(u16 data, ureg offs, ureg mask)
 
 void ast_node_flags_set_access_mod(ast_node_flags* f, access_modifier m)
 {
-    bitmask_set_range(f, AM_OFFSET, m);
+    bitmask_set_range(f, ACCESS_MODIFIER_OFFSET, m);
 }
 access_modifier ast_node_flags_get_access_mod(ast_node_flags f)
 {
-    return (access_modifier)(bitmask_get_range(f, AM_OFFSET, AM_MASK));
+    return (access_modifier)(
+        bitmask_get_range(f, ACCESS_MODIFIER_OFFSET, ACCESS_MODIFIER_MASK));
 }
 
 void ast_node_flags_set_const(ast_node_flags* f)
@@ -94,19 +95,19 @@ bool ast_node_flags_get_compound_decl(ast_node_flags f)
 }
 void err_flags_set_parse_error(ast_node_flags* f)
 {
-    bitmask_set_bit(f, PE_OFFSET);
+    bitmask_set_bit(f, PARSE_ERROR_OFFSET);
 }
 bool err_flags_get_parse_error(ast_node_flags f)
 {
-    return bitmask_get_bit(f, PE_OFFSET);
+    return bitmask_get_bit(f, PARSE_ERROR_OFFSET);
 }
 void err_flags_set_redeclared(ast_node_flags* f)
 {
-    bitmask_set_bit(f, REDECL_OFFSET);
+    bitmask_set_bit(f, REDECLARATION_OFFSET);
 }
 bool err_flags_get_redeclared(ast_node_flags f)
 {
-    return bitmask_get_bit(f, REDECL_OFFSET);
+    return bitmask_get_bit(f, REDECLARATION_OFFSET);
 }
 
 void ast_node_flags_set_resolved(ast_node_flags* f)

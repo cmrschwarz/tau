@@ -180,6 +180,11 @@ static inline void print_debug_info(resolver* r)
 }
 
 resolve_error resolve_body(resolver* r, body* b);
+resolve_error
+resolve_type(resolver* r, ast_node* t_expr, ast_element** reduced_tgt)
+{
+    return RE_OK;
+}
 
 // the symbol table is not the one that contains the symbol, but the one
 // where it was declared and where the type name loopup should start
@@ -217,7 +222,8 @@ resolve_error resolve_ast_node(resolver* r, ast_node* n, symbol_table* st)
             return RE_OK;
         }
         case SYM_NAMED_USING:
-        case SYM_VAR_DECL:
+        case SYM_VAR_DECL: {
+        }
         case SYM_VAR_DECL_UNINITIALIZED: {
             return RE_OK;
         }
@@ -270,7 +276,8 @@ resolve_error resolve_ast_node(resolver* r, ast_node* n, symbol_table* st)
 }
 static inline resolve_error report_type_loop(resolver* r)
 {
-    // yadda yadda yadda
+    // TODO
+    return RE_OK;
 }
 resolve_error resolve_body(resolver* r, body* b)
 {
@@ -298,7 +305,7 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
             &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
             atomic_ureg_load(&(**i).using_count), true, NULL);
         if (r) return RE_FATAL;
-        //(**i).symtab->parent = &EMPTY_ST;
+        (**i).symtab->parent = GLOBAL_SYMTAB;
         if (!(**i).symtab) return RE_FATAL;
     }
     for (mdg_node** i = start; i != end; i++) {

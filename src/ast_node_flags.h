@@ -16,6 +16,20 @@ typedef enum PACK_ENUM access_modifier {
     AM_ENUM_ELEMENT_COUNT = 4,
 } access_modifier;
 
+typedef enum ast_node_flag_values {
+    ASTF_RESOLVING = 0x1,
+    ASTF_RESOLVED = 0x2,
+    ASTF_STATIC = 0x4,
+    ASTF_VIRTUAL = 0x8,
+    ASTF_SEALED = 0x10,
+    ASTF_CONST = 0x20,
+    // ASTF_ACCESS_MODIFIER = 0xB0,
+    ASTF_PARSE_ERROR = 0x100,
+    ASTF_REDECLARATION = 0x200,
+    ASTF_COMPUND_DECL = 0x400,
+    ASTF_DEFINED_IN_PP = 0x800,
+} ast_node_flag_values;
+
 void ast_node_flags_set_access_mod(ast_node_flags* f, access_modifier m);
 access_modifier ast_node_flags_get_access_mod(ast_node_flags f);
 
