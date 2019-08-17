@@ -2,12 +2,20 @@
 #include "utils/panic.h"
 #include "utils/c_extensions.h"
 
+#define mk_prim(prim_kind, prim_name)                                          \
+    {                                                                          \
+        .node = {.kind = PRIMITIVE,                                            \
+                 .primitive_kind = prim_kind,                                  \
+                 .flags = ASTF_RESOLVED,                                       \
+                 .srange = SRC_RANGE_INVALID},                                 \
+        .name = prim_name, .next = NULL                                        \
+    }
 symbol primitives[] = {
-    {{PRIMITIVE, PT_INT, ASTF_RESOLVED, SRC_RANGE_INVALID}, "int", NULL},
-    {{PRIMITIVE, PT_UINT, ASTF_RESOLVED, SRC_RANGE_INVALID}, "uint", NULL},
-    {{PRIMITIVE, PT_FLOAT, ASTF_RESOLVED, SRC_RANGE_INVALID}, "float", NULL},
-    {{PRIMITIVE, PT_STRING, ASTF_RESOLVED, SRC_RANGE_INVALID}, "string", NULL}};
-
+    mk_prim(PT_INT, "int"),
+    mk_prim(PT_UINT, "uint"),
+    mk_prim(PT_STRING, "string"),
+    mk_prim(PT_FLOAT, "float"),
+};
 src_file* open_scope_get_file(open_scope* s)
 {
     return src_range_get_file(s->scope.symbol.node.srange);
