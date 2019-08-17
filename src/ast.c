@@ -11,9 +11,8 @@
         .name = prim_name, .next = NULL                                        \
     }
 symbol PRIMITIVES[] = {
-    mk_prim(PT_INT, "int"),
-    mk_prim(PT_UINT, "uint"),
-    mk_prim(PT_STRING, "string"),
+    mk_prim(PT_INT, "int"),       mk_prim(PT_UINT, "uint"),
+    mk_prim(PT_STRING, "string"), mk_prim(PT_BINARY_STRING, "bstring"),
     mk_prim(PT_FLOAT, "float"),
 };
 ureg PRIMITIVE_COUNT = sizeof(PRIMITIVES) / sizeof(symbol);
@@ -124,4 +123,60 @@ void ast_type_node_set_mod_n(ast_type_node atn, ast_type_mod mod, int n)
     int b = n / ATM_PER_BYTE;
     int offs = (n % ATM_PER_BYTE) * ATM_BITS;
     atn.mods[b] = (atn.mods[b] & (ATM_MASK << offs)) | (mod << offs);
+}
+
+char* op_to_str(operator_kind t)
+{
+    switch (t) {
+        case OP_ASSIGN: return "=";
+        case OP_ADD: return "+";
+        case OP_ADD_ASSIGN: return "+=";
+        case OP_SUB: return "-";
+        case OP_SUB_ASSIGN: return "-=";
+        case OP_MUL: return "*";
+        case OP_MUL_ASSIGN: return "*=";
+        case OP_DIV: return "/";
+        case OP_DIV_ASSIGN: return "/=";
+        case OP_MOD: return "%";
+        case OP_MOD_ASSIGN: return "%=";
+        case OP_LSHIFT: return "<<";
+        case OP_LSHIFT_ASSIGN: return "<<=";
+        case OP_RSHIFT: return ">>";
+        case OP_RSHIFT_ASSIGN: return ">>=";
+        case OP_LESS_THAN: return "<";
+        case OP_LESS_THAN_OR_EQUAL: return "<=";
+        case OP_GREATER_THAN: return ">";
+        case OP_GREATER_THAN_OR_EQUAL: return ">=";
+        case OP_EQUAL: return "==";
+        case OP_UNEQAL: return "!=";
+        case OP_AND: return "&&";
+        case OP_BITWISE_AND: return "&";
+        case OP_BITWISE_AND_ASSIGN: return "&=";
+        case OP_OR: return "||";
+        case OP_BITWISE_OR: return "|";
+        case OP_BITWISE_OR_ASSIGN: return "|=";
+        case OP_XOR: return "^^";
+        case OP_BITWISE_XOR: return "^";
+        case OP_BITWISE_XOR_ASSIGN: return "^=";
+        case OP_BITWISE_NOT_ASSIGN: return "~=";
+
+        case OP_DEREF: return "*";
+        case OP_POINTER_OF: return "%";
+        case OP_REF_OF: return "&";
+        case OP_RREF_OF: return "$";
+        case OP_CLOSURE_BY_VALUE: return "^";
+        case OP_NOT: return "!";
+        case OP_BITWISE_NOT: return "~";
+        case OP_UNARY_PLUS: return "+";
+        case OP_UNARY_MINUS: return "-";
+        case OP_PRE_INCREMENT: return "++";
+        case OP_PRE_DECREMENT: return "--";
+        case OP_POST_INCREMENT: return "++";
+        case OP_POST_DECREMENT: return "--";
+        case OP_CONST: return "const ";
+        case OP_MEMBER_ACCESS: return ".";
+        case OP_PP: return "#";
+        default: return "<Unknown Operator>";
+    }
+    return 0;
 }

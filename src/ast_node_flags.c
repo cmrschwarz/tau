@@ -119,6 +119,10 @@ bool ast_node_flags_get_resolved(ast_node_flags f)
     return bitmask_get_bit(f, RESOLVED_OFFSET);
 }
 
+void ast_node_flags_clear_resolving(ast_node_flags* f)
+{
+    bitmask_clear_bit(f, RESOLVING_OFFSET);
+}
 void ast_node_flags_set_resolving(ast_node_flags* f)
 {
     bitmask_set_bit(f, RESOLVING_OFFSET);

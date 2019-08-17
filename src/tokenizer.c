@@ -644,7 +644,7 @@ static token* tk_load(tokenizer* tk)
                                 ptrdiff(tk->file_buffer_pos, str_start));
                     }
                 } while (curr != '\'');
-                tok->kind = TT_BINARY_LITERAL;
+                tok->kind = TT_BINARY_STRING;
                 tok->str.start = str_start + 1;
                 tok->str.end = tk->file_buffer_pos - 1;
                 return tk_return_head(
@@ -675,7 +675,7 @@ static token* tk_load(tokenizer* tk)
                                 ptrdiff(tk->file_buffer_pos, str_start));
                     }
                 } while (curr != '"');
-                tok->kind = TT_LITERAL;
+                tok->kind = TT_STRING;
                 tok->str.start = str_start + 1;
                 tok->str.end = tk->file_buffer_pos - 1;
                 return tk_return_head(
@@ -745,7 +745,7 @@ static token* tk_load(tokenizer* tk)
                 tok->str.start = str_start;
                 tok->str.end = tk->file_buffer_pos;
                 tok->kind = match_kw(tok->str);
-                if (tok->kind == TT_NONE) tok->kind = TT_STRING;
+                if (tok->kind == TT_NONE) tok->kind = TT_IDENTIFIER;
                 return tk_return_head(
                     tk, ptrdiff(tk->file_buffer_pos, str_start));
             }

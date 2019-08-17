@@ -88,9 +88,9 @@ const char* token_strings[255] = {
     [TT_FAT_ARROW] = "=>",
 
     [TT_NUMBER] = "expression",
-    [TT_LITERAL] = "expression",
-    [TT_BINARY_LITERAL] = "expression",
     [TT_STRING] = "expression",
+    [TT_BINARY_STRING] = "expression",
+    [TT_IDENTIFIER] = "expression",
     [TT_EOF] = "EOF",
     [TT_AT] = "@",
 };
@@ -112,15 +112,15 @@ void token_debug_print(src_file* f, token* t)
     }
     switch (t->kind) {
         case TT_NUMBER:
+        case TT_IDENTIFIER: {
+            string_print(t->str);
+        } break;
         case TT_STRING: {
-            string_print(t->str);
-        } break;
-        case TT_LITERAL: {
             putchar('"');
             string_print(t->str);
             putchar('"');
         } break;
-        case TT_BINARY_LITERAL: {
+        case TT_BINARY_STRING: {
             putchar('\'');
             string_print(t->str);
             putchar('\'');

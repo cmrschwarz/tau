@@ -7,10 +7,10 @@
 typedef enum PACK_ENUM {
     TT_NUMBER,
     TT_MIN_STR_INDEX = TT_NUMBER,
-    TT_LITERAL,
-    TT_BINARY_LITERAL,
-    TT_STRING,
-    TT_MAX_STR_INDEX = TT_STRING,
+    TT_STRING, // a string enclosed by ""
+    TT_BINARY_STRING, // a string enclosed by ''
+    TT_IDENTIFIER, // a string not enclosed by any quotation
+    TT_MAX_STR_INDEX = TT_IDENTIFIER,
 
     TT_KW_MODULE,
     TT_MIN_KW_INDEX = TT_KW_MODULE,

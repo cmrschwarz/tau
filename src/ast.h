@@ -21,6 +21,7 @@ typedef enum PACK_ENUM ast_node_kind {
     SYM_FUNC_OVERLOADED,
 
     SYM_NAMED_USING,
+    // TODO: reverse this and make var_decl_initialized contain var_decl
     SYM_VAR_DECL,
     SYM_VAR_DECL_UNINITIALIZED,
     SYM_PARAM,
@@ -46,9 +47,7 @@ typedef enum PACK_ENUM ast_node_kind {
     EXPR_LOOP,
     EXPR_MACRO, // TODO
 
-    EXPR_NUMBER,
-    EXPR_STRING_LITERAL,
-    EXPR_BINARY_LITERAL,
+    EXPR_LITERAL,
     EXPR_IDENTIFIER,
     EXPR_VARIABLE,
     EXPR_TYPE,
@@ -135,10 +134,12 @@ typedef enum PACK_ENUM operator_kind {
 } operator_kind;
 
 typedef enum PACK_ENUM primitive_kind {
+    PT_NONE,
     PT_INT,
     PT_UINT,
     PT_FLOAT,
     PT_STRING,
+    PT_BINARY_STRING,
 } primitive_kind;
 
 // root of all, can be cast from ast_node since it only contains one element
@@ -369,14 +370,14 @@ typedef struct expr_op_binary {
     ast_node* lhs;
     ast_node* rhs;
     // points to a primitive (for inbuilt ops) or a sc_func (for overloaded ops)
-    ast_elem* operator;
+    ast_elem* op;
 } expr_op_binary;
 
 typedef struct expr_op_unary {
     ast_node node;
     ast_node* child;
     // points to a primitive (for inbuilt ops) or a sc_func (for overloaded ops)
-    ast_elem* operator;
+    ast_elem* op;
 } expr_op_unary;
 
 // TODO: implement named arguments
@@ -392,18 +393,21 @@ typedef struct expr_access {
     ast_node** args;
 } expr_access;
 
-typedef struct expr_str_value {
+typedef struct expr_literal {
+    ast_node node;
+    union {
+        char* str;
+        ureg val_ureg;
+    } value;
+} expr_literal;
+
+typedef struct expr_identifier {
     ast_node node;
     union {
         char* str;
         ast_elem* elem;
     } value;
-} expr_str_value;
-
-typedef expr_str_value expr_number;
-typedef expr_str_value expr_identifier;
-typedef expr_str_value expr_string_literal;
-typedef expr_str_value expr_binary_literal;
+} expr_identifier;
 
 typedef struct expr_cast {
     ast_node node;
@@ -507,3 +511,4 @@ bool is_unary_op_postfix(operator_kind t);
 ast_node* get_parent_body(scope* parent);
 void ast_node_get_highlight_bounds(ast_node* n, ureg* start, ureg* end);
 void ast_node_get_bounds(ast_node* n, ureg* start, ureg* end);
+char* op_to_str(operator_kind t);

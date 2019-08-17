@@ -3,8 +3,11 @@
 #include "utils/error.h"
 #include "utils/panic.h"
 
+resolve_error resolve_body(resolver* r, body* b);
 static resolve_error
 add_simple_body_decls(resolver* r, symbol_table* parent_st, body* b);
+resolve_error
+resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype);
 
 static inline resolve_error
 report_unknown_symbol(resolver* r, ast_node* n, symbol_table* st)
@@ -211,17 +214,55 @@ static inline void print_debug_info(resolver* r)
     printf("%s}\n", (**i).name);
 }
 
-resolve_error resolve_body(resolver* r, body* b);
-resolve_error
-resolve_type(resolver* r, ast_node* t_expr, ast_elem** reduced_tgt)
+resolve_error choose_binary_operator_overload(
+    resolver* r, expr_op_binary* ob, symbol* sym, ast_elem** overload,
+    ast_elem** ctype)
 {
-    return RE_OK;
+    // TODO
+    assert(false);
+}
+
+resolve_error get_symbol_ctype(
+    resolver* r, ast_node* requesting_node, symbol_table* st, symbol* s,
+    ast_elem** ctype)
+{
+    switch (s->node.kind) {
+        case SYM_VAR_DECL:
+        case SYM_VAR_DECL_UNINITIALIZED: {
+            if (ast_node_flags_get_resolved(s->node.flags)) {
+                if (s->node.kind == SYM_VAR_DECL) {
+                    *ctype = ((sym_var_decl*)s)->ctype;
+                }
+                else {
+                    *ctype = ((sym_var_decl_uninitialized*)s)->ctype;
+                }
+            }
+            else {
+                ast_node_flags_set_resolving(&requesting_node->flags);
+                // TODO: use correct symbol table here!!!
+                // should be the table where the symbol is declared,
+                // NOT the one where it is used
+                resolve_error re = resolve_ast_node(r, (ast_node*)s, st, ctype);
+                if (re) return re;
+                ast_node_flags_clear_resolving(&requesting_node->flags);
+            }
+            return RE_OK;
+        }
+        default: {
+            *ctype = (ast_elem*)s;
+            return RE_OK;
+        }
+    }
 }
 
 // the symbol table is not the one that contains the symbol, but the one
 // where it was declared and where the type name loopup should start
-resolve_error resolve_ast_node(resolver* r, ast_node* n, symbol_table* st)
+resolve_error
+resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
 {
+    ast_elem* void_tgt;
+    if (ctype == NULL) ctype = &void_tgt;
+    resolve_error re;
     if (!n) return RE_OK;
     if (ast_node_flags_get_resolved(n->flags)) return RE_OK;
     if (ast_node_flags_get_resolving(n->flags)) {
@@ -229,11 +270,41 @@ resolve_error resolve_ast_node(resolver* r, ast_node* n, symbol_table* st)
         return RE_TYPE_LOOP;
     }
     switch (n->kind) {
+        case EXPR_LITERAL: {
+            *ctype = (ast_elem*)&PRIMITIVES[n->primitive_kind];
+            return RE_OK;
+        };
         case EXPR_IDENTIFIER: {
             expr_identifier* e = (expr_identifier*)n;
             symbol** s = symbol_table_lookup(st, e->value.str);
             if (!s) return report_unknown_symbol(r, n, st);
             e->value.elem = (ast_elem*)*s;
+            re = get_symbol_ctype(r, n, st, *s, ctype);
+            if (re) return re;
+            ast_node_flags_set_resolved(&n->flags);
+            return RE_OK;
+        }
+        case EXPR_OP_BINARY: {
+            expr_op_binary* ob = (expr_op_binary*)n;
+            ast_elem *lhs_ctype, *rhs_ctype;
+            ast_node_flags_set_resolving(&n->flags);
+            re = resolve_ast_node(r, ob->lhs, st, &lhs_ctype);
+            if (re) return re;
+            re = resolve_ast_node(r, ob->rhs, st, &rhs_ctype);
+            if (re) return re;
+            if (lhs_ctype->kind == PRIMITIVE && rhs_ctype->kind == PRIMITIVE &&
+                lhs_ctype == rhs_ctype) {
+                ob->op = lhs_ctype;
+                // TODO: create a  more sophisticated inbuilt operator check
+            }
+            else {
+                symbol** s =
+                    symbol_table_lookup(st, op_to_str(ob->node.operator_kind));
+                if (!s) return report_unknown_symbol(r, n, st);
+                return choose_binary_operator_overload(
+                    r, ob, *s, &ob->op, ctype);
+            }
+            ast_node_flags_clear_resolving(&n->flags);
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }
@@ -241,11 +312,13 @@ resolve_error resolve_ast_node(resolver* r, ast_node* n, symbol_table* st)
         case SC_STRUCT_GENERIC:
         case SC_TRAIT:
         case SC_TRAIT_GENERIC: {
+            *ctype = (ast_elem*)n;
             return resolve_body(r, &((scope*)n)->body);
         }
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
             // TODO: parameters
+            *ctype = (ast_elem*)n;
             return resolve_body(r, &((scope*)n)->body);
         }
         case STMT_USING:
@@ -261,19 +334,19 @@ resolve_error resolve_ast_node(resolver* r, ast_node* n, symbol_table* st)
         }
 
         case EXPR_RETURN:
-            return resolve_ast_node(r, ((expr_return*)n)->value, st);
+            return resolve_ast_node(r, ((expr_return*)n)->value, st, NULL);
 
         case EXPR_BREAK:
-            return resolve_ast_node(r, ((expr_return*)n)->value, st);
+            return resolve_ast_node(r, ((expr_return*)n)->value, st, NULL);
         case EXPR_BLOCK: return resolve_body(r, &((expr_block*)n)->body);
 
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
-            resolve_error re = resolve_ast_node(r, ei->condition, st);
+            resolve_error re = resolve_ast_node(r, ei->condition, st, NULL);
             if (re) return re;
-            re = resolve_ast_node(r, ei->if_body, st);
+            re = resolve_ast_node(r, ei->if_body, st, NULL);
             if (re) return re;
-            return resolve_ast_node(r, ei->else_body, st);
+            return resolve_ast_node(r, ei->else_body, st, NULL);
         }
 
         case EXPR_LOOP:
@@ -283,7 +356,7 @@ resolve_error resolve_ast_node(resolver* r, ast_node* n, symbol_table* st)
             expr_macro* em = (expr_macro*)n;
             resolve_error re = add_simple_body_decls(r, st, &em->body);
             if (re) return re;
-            return resolve_ast_node(r, (ast_node*)em->next, st);
+            return resolve_ast_node(r, (ast_node*)em->next, st, NULL);
         }
 
         case EXPR_PP: {
@@ -292,13 +365,13 @@ resolve_error resolve_ast_node(resolver* r, ast_node* n, symbol_table* st)
         }
         case EXPR_MATCH: {
             expr_match* em = (expr_match*)n;
-            resolve_error re = resolve_ast_node(r, em->match_expr, st);
+            resolve_error re = resolve_ast_node(r, em->match_expr, st, NULL);
             if (re) return re;
             for (match_arm** ma = (match_arm**)em->body.elements; *ma != NULL;
                  ma++) {
-                re = resolve_ast_node(r, (**ma).condition, st);
+                re = resolve_ast_node(r, (**ma).condition, st, NULL);
                 if (re) return re;
-                re = resolve_ast_node(r, (**ma).value, st);
+                re = resolve_ast_node(r, (**ma).value, st, NULL);
                 if (re) return re;
             }
             return RE_OK;
@@ -315,7 +388,7 @@ resolve_error resolve_body(resolver* r, body* b)
 {
     resolve_error re;
     for (ast_node** n = b->elements; *n != NULL; n++) {
-        re = resolve_ast_node(r, *n, b->symtab);
+        re = resolve_ast_node(r, *n, b->symtab, NULL);
         if (re) return re;
     }
     return RE_OK;

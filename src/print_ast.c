@@ -370,18 +370,32 @@ void print_ast_node(ast_node* n, ureg indent)
             p("using ");
             print_ast_node(u->target, indent);
         } break;
-        case EXPR_IDENTIFIER:
-        case EXPR_NUMBER: {
-            expr_str_value* v = (expr_str_value*)n;
+        case EXPR_IDENTIFIER: {
+            expr_identifier* i = (expr_identifier*)n;
             if (ast_node_flags_get_resolved(n->flags)) {
-                print_ast_elem_name(v->value.elem);
+                print_ast_elem_name(i->value.elem);
             }
             else {
-                pu(v->value.str);
+                pu(i->value.str);
             }
-
-            break;
-        }
+        } break;
+        case EXPR_LITERAL: {
+            expr_literal* l = (expr_literal*)n;
+            switch (n->primitive_kind) {
+                case PT_BINARY_STRING:
+                    pc('\'');
+                    pu(l->value.str);
+                    pc('\'');
+                    break;
+                case PT_STRING:
+                    pc('"');
+                    pu(l->value.str);
+                    pc('"');
+                    break;
+                case PT_INT: pu(l->value.str); break;
+                default: assert(false); break;
+            }
+        } break;
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
             if (b->name) {
@@ -400,16 +414,6 @@ void print_ast_node(ast_node* n, ureg indent)
                 print_ast_node(d->type, indent);
             }
         } break;
-        case EXPR_BINARY_LITERAL:
-            pc('\'');
-            pu(((expr_str_value*)n)->value.str);
-            pc('\'');
-            break;
-        case EXPR_STRING_LITERAL:
-            pc('"');
-            pu(((expr_str_value*)n)->value.str);
-            pc('"');
-            break;
         case EXPR_OP_BINARY: {
             expr_op_binary* b = (expr_op_binary*)n;
             print_ast_node(b->lhs, indent);
@@ -545,62 +549,6 @@ void print_ast_node(ast_node* n, ureg indent)
             p("<unknown expression>");
         } break;
     }
-}
-
-char* op_to_str(operator_kind t)
-{
-    switch (t) {
-        case OP_ASSIGN: return "=";
-        case OP_ADD: return "+";
-        case OP_ADD_ASSIGN: return "+=";
-        case OP_SUB: return "-";
-        case OP_SUB_ASSIGN: return "-=";
-        case OP_MUL: return "*";
-        case OP_MUL_ASSIGN: return "*=";
-        case OP_DIV: return "/";
-        case OP_DIV_ASSIGN: return "/=";
-        case OP_MOD: return "%";
-        case OP_MOD_ASSIGN: return "%=";
-        case OP_LSHIFT: return "<<";
-        case OP_LSHIFT_ASSIGN: return "<<=";
-        case OP_RSHIFT: return ">>";
-        case OP_RSHIFT_ASSIGN: return ">>=";
-        case OP_LESS_THAN: return "<";
-        case OP_LESS_THAN_OR_EQUAL: return "<=";
-        case OP_GREATER_THAN: return ">";
-        case OP_GREATER_THAN_OR_EQUAL: return ">=";
-        case OP_EQUAL: return "==";
-        case OP_UNEQAL: return "!=";
-        case OP_AND: return "&&";
-        case OP_BITWISE_AND: return "&";
-        case OP_BITWISE_AND_ASSIGN: return "&=";
-        case OP_OR: return "||";
-        case OP_BITWISE_OR: return "|";
-        case OP_BITWISE_OR_ASSIGN: return "|=";
-        case OP_XOR: return "^^";
-        case OP_BITWISE_XOR: return "^";
-        case OP_BITWISE_XOR_ASSIGN: return "^=";
-        case OP_BITWISE_NOT_ASSIGN: return "~=";
-
-        case OP_DEREF: return "*";
-        case OP_POINTER_OF: return "%";
-        case OP_REF_OF: return "&";
-        case OP_RREF_OF: return "$";
-        case OP_CLOSURE_BY_VALUE: return "^";
-        case OP_NOT: return "!";
-        case OP_BITWISE_NOT: return "~";
-        case OP_UNARY_PLUS: return "+";
-        case OP_UNARY_MINUS: return "-";
-        case OP_PRE_INCREMENT: return "++";
-        case OP_PRE_DECREMENT: return "--";
-        case OP_POST_INCREMENT: return "++";
-        case OP_POST_DECREMENT: return "--";
-        case OP_CONST: return "const ";
-        case OP_MEMBER_ACCESS: return ".";
-        case OP_PP: return "#";
-        default: return "<Unknown Operator>";
-    }
-    return 0;
 }
 
 void print_mdg_node(mdg_node* mdg, ureg indent)

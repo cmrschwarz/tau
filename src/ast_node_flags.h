@@ -52,6 +52,7 @@ void ast_node_flags_set_resolved(ast_node_flags* f);
 bool ast_node_flags_get_resolved(ast_node_flags f);
 
 void ast_node_flags_set_resolving(ast_node_flags* f);
+void ast_node_flags_clear_resolving(ast_node_flags* f);
 bool ast_node_flags_get_resolving(ast_node_flags f);
 
 void ast_node_flags_set_defined_in_pp(ast_node_flags* f);

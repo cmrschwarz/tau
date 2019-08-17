@@ -13,7 +13,8 @@ func main(args: String[]){
         using ((), a, ((),),) = 17;
         (x, y, (a,b,c), d) := foo();
         (x, y:, (a,b: int,c), d) = foo();
-        (a, b) += 3;
+        b: int;
+        b += 3;
         x * #match(foo) @blk{
             if (1) {*x = 3;} => bar;
             x || Foo(x) => {

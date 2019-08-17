@@ -579,23 +579,35 @@ sym_fill_srange(parser* p, symbol* s, ureg start, ureg end)
     if (s->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     return PE_OK;
 }
-static inline ast_node* parse_str_value(parser* p, token* t)
+static inline parse_error
+parse_literal(parser* p, ast_node_kind nk, primitive_kind pk, ast_node** tgt)
 {
-    ast_node_kind ent;
-    switch (t->kind) {
-        case TT_BINARY_LITERAL: ent = EXPR_BINARY_LITERAL; break;
-        case TT_LITERAL: ent = EXPR_STRING_LITERAL; break;
-        case TT_NUMBER: ent = EXPR_NUMBER; break;
-        case TT_STRING: ent = EXPR_IDENTIFIER; break;
-        default: return NULL;
-    }
-    expr_str_value* sv = (expr_str_value*)alloc_perm(p, sizeof(expr_str_value));
-    if (!sv) return NULL;
-    sv->node.kind = ent;
-    sv->value.str = alloc_string_temp(p, t->str);
-    if (!sv->value.str) return NULL;
-    if (ast_node_fill_srange(p, &sv->node, t->start, t->end)) return NULL;
-    return (ast_node*)sv;
+    token* t = tk_aquire(&p->tk);
+    expr_literal* l = (expr_literal*)alloc_perm(p, sizeof(expr_literal));
+    if (!l) return PE_FATAL;
+    l->node.kind = nk;
+    l->node.primitive_kind = pk;
+    l->value.str = alloc_string_temp(p, t->str);
+    if (!l->value.str) return PE_FATAL;
+    if (ast_node_fill_srange(p, &l->node, t->start, t->end)) return PE_FATAL;
+    tk_void(&p->tk);
+    *tgt = (ast_node*)l;
+    return PE_OK;
+}
+static inline parse_error parse_identifier(parser* p, ast_node** tgt)
+{
+    token* t = tk_aquire(&p->tk);
+    expr_identifier* ident =
+        (expr_identifier*)alloc_perm(p, sizeof(expr_identifier));
+    if (!ident) return PE_FATAL;
+    ident->node.kind = EXPR_IDENTIFIER;
+    ident->value.str = alloc_string_temp(p, t->str);
+    if (!ident->value.str) return PE_FATAL;
+    if (ast_node_fill_srange(p, &ident->node, t->start, t->end))
+        return PE_FATAL;
+    tk_void(&p->tk);
+    *tgt = (ast_node*)ident;
+    return PE_OK;
 }
 parse_error parse_param_decl(
     parser* p, sym_param** tgt, ureg ctx_start, ureg ctx_end, char* msg_context)
@@ -603,7 +615,7 @@ parse_error parse_param_decl(
     parse_error pe;
     token* t;
     PEEK(p, t);
-    if (t->kind != TT_STRING) {
+    if (t->kind != TT_IDENTIFIER) {
         parser_error_2a(
             p, "invalid parameter syntax", t->start, t->end,
             "expected parameter identifier", ctx_start, ctx_end, msg_context);
@@ -962,7 +974,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         return build_empty_tuple(p, t_start, t->end, ex);
     }
     void** element_list = NULL;
-    if (t->kind != TT_STRING) {
+    if (t->kind != TT_IDENTIFIER) {
         pe = parse_expression(p, ex);
         if (pe == PE_EOEX) {
             PEEK(p, t);
@@ -1044,7 +1056,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             }
             return PE_OK;
         }
-        if (t->kind == TT_STRING) {
+        if (t->kind == TT_IDENTIFIER) {
             token* t2;
             t2 = tk_peek_2nd(&p->tk);
             if (!t2) return PE_TK_ERROR;
@@ -1140,7 +1152,7 @@ parse_error get_label_target(
     if (t->kind == TT_AT) {
         token* t2;
         PEEK_SND(p, t2);
-        if (t2->kind == TT_STRING) {
+        if (t2->kind == TT_IDENTIFIER) {
             while (true) {
                 if (!bpd) {
                     parser_error_2a(
@@ -1314,7 +1326,7 @@ parse_error parse_match(parser* p, ast_node** tgt)
     if (t->kind == TT_AT) {
         token* t2;
         PEEK_SND(p, t2);
-        if (t2->kind != TT_STRING) {
+        if (t2->kind != TT_IDENTIFIER) {
             parser_error_2a(
                 p, "invalid label syntax", t2->start, t2->end,
                 "expected label identifier", t->start, t->end,
@@ -1436,7 +1448,7 @@ static inline parse_error parse_labeled_block(parser* p, ast_node** tgt)
     ureg start = t->start;
     token* t2;
     PEEK_SND(p, t2);
-    if (t2->kind != TT_STRING) {
+    if (t2->kind != TT_IDENTIFIER) {
         parser_error_2a(
             p, "invalid label syntax", t2->start, t2->end,
             "expected label identifier", t->start, t->end,
@@ -1517,7 +1529,7 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
 }
 static inline parse_error parse_value_expr(parser* p, ast_node** ex)
 {
-    token* t = tk_aquire(&p->tk);
+    token* t;
     PEEK(p, t);
     switch (t->kind) {
         case TT_PAREN_OPEN: return parse_paren_group_or_tuple(p, t, ex);
@@ -1540,16 +1552,13 @@ static inline parse_error parse_value_expr(parser* p, ast_node** ex)
 
         case TT_KW_CONTINUE: return parse_continue(p, ex);
 
-        case TT_STRING:
-        case TT_NUMBER:
-        case TT_LITERAL:
-        case TT_BINARY_LITERAL: {
-            *ex = parse_str_value(p, t);
-            if (!*ex) return PE_FATAL;
-            tk_void(&p->tk);
-            return PE_OK;
-        } break;
+        case TT_NUMBER: return parse_literal(p, EXPR_LITERAL, PT_INT, ex);
+        case TT_STRING: return parse_literal(p, EXPR_LITERAL, PT_STRING, ex);
+        case TT_BINARY_STRING:
+            // TODO: handle this properly
+            return parse_literal(p, EXPR_LITERAL, PT_BINARY_STRING, ex);
 
+        case TT_IDENTIFIER: return parse_identifier(p, ex);
         case TT_AT: return parse_labeled_block(p, ex);
 
         default: {
@@ -1773,8 +1782,8 @@ parse_error handle_semicolon_after_statement(parser* p, ast_node* s)
         }
     }
     else {
-        src_range_set_end(p->tk.tc, &s->srange, t->end);
-        if (s->srange == SRC_RANGE_INVALID) return PE_FATAL;
+        // src_range_set_end(p->tk.tc, &s->srange, t->end);
+        // if (s->srange == SRC_RANGE_INVALID) return PE_FATAL;
         tk_void(&p->tk);
     }
     return PE_OK;
@@ -2031,7 +2040,7 @@ parse_error parse_func_decl(
     token* t;
     parse_error pe;
     PEEK(p, t);
-    if (t->kind != TT_STRING) {
+    if (t->kind != TT_IDENTIFIER) {
         parser_error_2a(
             p, "invalid function declaration syntax", t->start, t->end,
             "expected function identifier", start, t->end,
@@ -2091,7 +2100,7 @@ parse_error parse_struct_decl(
     token* t;
     parse_error pe;
     PEEK(p, t);
-    if (t->kind != TT_STRING) {
+    if (t->kind != TT_IDENTIFIER) {
         parser_error_2a(
             p, "invalid struct declaration syntax", t->start, t->end,
             "expected struct identifier", start, t->end,
@@ -2168,7 +2177,7 @@ parse_error parse_module_decl(
     token *t, *t2;
     parse_error pe;
     PEEK(p, t);
-    if (t->kind != TT_STRING) {
+    if (t->kind != TT_IDENTIFIER) {
         parser_error_2a(
             p, "invalid module declaration syntax", t->start, t->end,
             "expected module identifier", start, t->end,
@@ -2239,7 +2248,7 @@ parse_error parse_extend_decl(
     token *t, *t2;
     parse_error pe;
     PEEK(p, t);
-    if (t->kind != TT_STRING) {
+    if (t->kind != TT_IDENTIFIER) {
         parser_error_2a(
             p, "invalid extend declaration syntax", t->start, t->end,
             "expected extend identifier", start, t->end,
@@ -2305,7 +2314,7 @@ parse_error parse_trait_decl(
     token* t;
     parse_error pe;
     PEEK(p, t);
-    if (t->kind != TT_STRING) {
+    if (t->kind != TT_IDENTIFIER) {
         parser_error_2a(
             p, "invalid trait declaration syntax", t->start, t->end,
             "expected trait identifier", start, t->end,
@@ -2474,7 +2483,7 @@ parse_error parse_using(
     ureg end = t->end;
     tk_void(&p->tk);
     PEEK(p, t);
-    if (t->kind == TT_STRING) {
+    if (t->kind == TT_IDENTIFIER) {
         token* t2 = tk_peek_2nd(&p->tk);
         if (!t2) return PE_TK_ERROR;
         if (t2->kind == TT_EQUALS) {
@@ -2564,7 +2573,7 @@ parse_error parse_symbol_imports(parser* p, module_import* mi)
         else {
             si.alias = NULL;
         }
-        if (t->kind != TT_STRING) {
+        if (t->kind != TT_IDENTIFIER) {
             parser_error_2a(
                 p, "invalid identifier for named import", t->start, t->end,
                 "identifier must be a string", t2->start, t2->end,
@@ -2686,7 +2695,7 @@ parse_error parse_single_import(
     t2 = tk_peek_2nd(&p->tk);
     if (!t2) return PE_TK_ERROR;
     if (t2->kind == TT_EQUALS) {
-        if (t->kind != TT_STRING) {
+        if (t->kind != TT_IDENTIFIER) {
             parser_error_2a(
                 p, "invalid import syntax", t->start, t->end,
                 "expected identifier", start, end, "in this import statement");
@@ -2720,7 +2729,7 @@ parse_error parse_single_import(
             tk_void(&p->tk);
             break;
         }
-        else if (t->kind == TT_STRING) {
+        else if (t->kind == TT_IDENTIFIER) {
             mi->tgt = mdg_get_node(&TAUC.mdg, mi->tgt, t->str);
             if (!mi->tgt) return PE_FATAL;
             end = t->end;
@@ -2781,7 +2790,7 @@ parse_require(parser* p, ast_node_flags flags, ureg start, ureg flags_end)
         return PE_ERROR;
     }
     PEEK(p, t);
-    if (t->kind != TT_LITERAL) {
+    if (t->kind != TT_STRING) {
         parser_error_2a(
             p, "unexpected token", t->start, t->end,
             "expected path pattern as string literal", start, end,
@@ -2923,7 +2932,7 @@ parse_error parse_statement(parser* p, ast_node** tgt)
             case TT_KW_IMPORT:
                 return parse_import(p, flags, start, flags_end, tgt);
             case TT_HASH: return parse_pp_stmt(p, flags, start, flags_end, tgt);
-            case TT_STRING: {
+            case TT_IDENTIFIER: {
                 token* t2 = tk_peek_2nd(&p->tk);
                 if (!t2) return PE_TK_ERROR;
                 if (t2->kind == TT_COLON) {
@@ -3042,7 +3051,7 @@ parse_braced_namable_body(parser* p, ast_node* parent, body* b, char** name)
 {
     token* t;
     PEEK(p, t);
-    if (t->kind == TT_STRING) {
+    if (t->kind == TT_IDENTIFIER) {
         token* t2 = tk_peek_2nd(&p->tk);
         if (!t2) return PE_TK_ERROR;
         if (t2->kind == TT_AT) {
