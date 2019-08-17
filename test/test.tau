@@ -1,18 +1,6 @@
-require "test2.tau";
-#x: int;
-func foo(){
-    if(3){
-    }
-    foo := int;
-    match (1) @foo{
-        foo => continue @foo;
-        2 => continue;
-        3 => return 12;
-    }
-   /* (x: int) := foo;
-    x: int = 32;
-    y: float = 64;*/
-}
-module doo{
-    import bar;
+//require "test2.tau";
+func main(){
+    x:= 3 + 5;
+    y := x;
+    print(x);
 }

@@ -280,6 +280,10 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }
+        case EXPR_OP_CALL: {
+            // TODO.
+            return RE_OK;
+        }
         case EXPR_OP_BINARY: {
             expr_op_binary* ob = (expr_op_binary*)n;
             ast_elem *lhs_ctype, *rhs_ctype;
@@ -291,6 +295,7 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
             if (lhs_ctype->kind == PRIMITIVE && rhs_ctype->kind == PRIMITIVE &&
                 lhs_ctype == rhs_ctype) {
                 ob->op = lhs_ctype;
+                *ctype = lhs_ctype;
                 // TODO: create a  more sophisticated inbuilt operator check
             }
             else {
@@ -317,15 +322,38 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
             *ctype = (ast_elem*)n;
             return resolve_body(r, &((scope*)n)->body);
         }
+        case STMT_IMPORT:
         case STMT_USING:
+        case SYM_NAMED_USING:
         case STMT_COMPOUND_ASSIGN: {
             // TODO
             return RE_OK;
         }
-        case SYM_NAMED_USING:
         case SYM_VAR: {
+            sym_var* v = (sym_var*)n;
+            re = resolve_ast_node(r, v->type, st, ctype);
+            if (re) return re;
+            v->ctype = *ctype;
+            ast_node_flags_set_resolved(&n->flags);
+            return RE_OK;
         }
         case SYM_VAR_INITIALIZED: {
+            sym_var_initialized* vi = (sym_var_initialized*)n;
+            if (vi->var.type) {
+                re = resolve_ast_node(r, vi->var.type, st, ctype);
+                if (re) return re;
+                vi->var.ctype = *ctype;
+                ast_elem* val_type;
+                re = resolve_ast_node(r, vi->initial_value, st, &val_type);
+                if (re) return re;
+                // TODO: make assert(val_type == ctype)
+            }
+            else {
+                re = resolve_ast_node(r, vi->initial_value, st, ctype);
+                if (re) return re;
+                vi->var.ctype = *ctype;
+            }
+            ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }
 
@@ -372,7 +400,7 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
             }
             return RE_OK;
         }
-        default: return RE_OK;
+        default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
 static inline resolve_error report_type_loop(resolver* r)
@@ -400,6 +428,7 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
 {
     r->start = start;
     r->end = end;
+    resolve_error re;
     print_debug_info(r);
     for (mdg_node** i = start; i != end; i++) {
         int r = symbol_table_init(
@@ -415,7 +444,8 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
             osc->scope.body.symtab->parent = (**i).symtab;
-            add_body_decls(r, NULL, (**i).symtab, &osc->scope.body);
+            re = add_body_decls(r, NULL, (**i).symtab, &osc->scope.body);
+            if (re) return re;
         }
     }
     for (mdg_node** i = start; i != end; i++) {
@@ -424,7 +454,8 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
             osc->scope.body.symtab->parent = (**i).symtab;
-            resolve_body_reporting_loops(r, &osc->scope.body);
+            re = resolve_body_reporting_loops(r, &osc->scope.body);
+            if (re) return re;
         }
     }
     return mark_mdg_nodes_resolved(r);

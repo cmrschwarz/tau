@@ -134,7 +134,6 @@ typedef enum PACK_ENUM operator_kind {
 } operator_kind;
 
 typedef enum PACK_ENUM primitive_kind {
-    PT_NONE,
     PT_INT,
     PT_UINT,
     PT_FLOAT,
@@ -343,7 +342,7 @@ typedef struct osc_extend_generic {
 
 typedef struct sym_var {
     symbol symbol;
-    ast_node* type;
+    ast_node* type; // may be NULL in sym_var_initialized or compoind_assignment
     ast_elem* ctype;
 } sym_var;
 

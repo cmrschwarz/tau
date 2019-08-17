@@ -1989,15 +1989,16 @@ parse_error parse_var_decl(
         if (!vi) return PE_FATAL;
         vi->initial_value = value;
         v = (sym_var*)vi;
+        v->symbol.node.kind = SYM_VAR_INITIALIZED;
     }
     else {
         v = alloc_perm(p, sizeof(sym_var));
+        v->symbol.node.kind = SYM_VAR;
         if (!v) return PE_FATAL;
     }
     v->type = type;
     v->symbol.name = alloc_string_perm(p, ident);
     if (!v->symbol.name) return PE_FATAL;
-    v->symbol.node.kind = SYM_VAR;
     v->symbol.node.flags = flags;
     if (sym_fill_srange(p, (symbol*)v, start, t->end)) return PE_FATAL;
     *n = (ast_node*)v;

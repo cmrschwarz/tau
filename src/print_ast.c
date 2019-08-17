@@ -223,6 +223,9 @@ void print_ast_elem_name(ast_elem* n)
     if (ast_elem_is_symbol(n)) {
         pu(((symbol*)n)->name);
     }
+    else if (n->kind == PRIMITIVE) {
+        pu(PRIMITIVES[((ast_node*)n)->primitive_kind].name);
+    }
     else {
         pu("<unknown node>");
     }
