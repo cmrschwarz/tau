@@ -35,10 +35,10 @@ add_symbol(resolver* r, symbol_table* st, symbol_table* sst, ast_node* n)
 {
     symbol_table* tgtst =
         (ast_node_flags_get_access_mod(n->flags) == AM_UNSPECIFIED) ? st : sst;
-    symbol* conflict;
+    symbol** conflict;
     conflict = symbol_table_insert(tgtst, (symbol*)n);
     if (conflict) {
-        return report_redeclaration_error(r, (symbol*)n, conflict, tgtst);
+        return report_redeclaration_error(r, (symbol*)n, *conflict, tgtst);
     }
     return RE_OK;
 }
@@ -71,7 +71,36 @@ static resolve_error add_ast_node_decls(
 
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
-            return add_symbol(r, st, sst, n);
+            symbol_table* tgtst =
+                (ast_node_flags_get_access_mod(n->flags) == AM_UNSPECIFIED)
+                    ? st
+                    : sst;
+            symbol** conflict;
+            conflict = symbol_table_insert(tgtst, (symbol*)n);
+            if (conflict) {
+                sym_func_overloaded* sfo;
+                symbol* sn = (symbol*)n;
+                if ((**conflict).node.kind == SC_FUNC) {
+                    sfo = (sym_func_overloaded*)pool_alloc(
+                        &r->tc->permmem, sizeof(sym_func_overloaded));
+                    if (!sfo) return RE_FATAL;
+                    sfo->symbol.node.kind = SYM_FUNC_OVERLOADED;
+                    sfo->symbol.node.flags = STMT_FLAGS_DEFAULT;
+                    sfo->symbol.node.srange = SRC_RANGE_INVALID;
+                    sfo->symbol.next = (**conflict).next;
+                    sfo->symbol.name = (**conflict).name;
+                    sfo->funcs = *conflict;
+                    (**conflict).next = n;
+                    sn->next = NULL;
+                    *conflict = sfo;
+                }
+                else if ((**conflict).node.kind == SYM_FUNC_OVERLOADED) {
+                    sfo = (sym_func_overloaded*)conflict;
+                    sn->next = sfo->funcs;
+                    sfo->funcs = sn;
+                }
+            }
+            return RE_OK;
             // not doing function bodys because they are stronly ordered
             // add_simple_body_decls(r, st, &((scope*)n)->body);
         }

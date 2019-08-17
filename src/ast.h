@@ -18,6 +18,7 @@ typedef enum PACK_ENUM ast_node_kind {
     SC_FUNC,
     SC_FUNC_GENERIC,
     SC_LAST_SC_ID = SC_FUNC_GENERIC,
+    SYM_FUNC_OVERLOADED,
 
     SYM_NAMED_USING,
     SYM_VAR_DECL,
@@ -290,6 +291,11 @@ typedef struct sc_func {
     ast_node* return_type;
     ast_element* return_type_reduced;
 } sc_func;
+
+typedef struct sym_func_overloaded {
+    symbol symbol;
+    sc_func* funcs;
+} sym_func_overloaded;
 
 typedef struct sc_func_generic {
     scope scope;

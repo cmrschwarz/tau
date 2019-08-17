@@ -57,19 +57,19 @@ void symbol_table_fin(symbol_table* st)
     }
 }
 
-symbol* symbol_table_insert(symbol_table* st, symbol* s)
+symbol** symbol_table_insert(symbol_table* st, symbol* s)
 {
     ureg hash = fnv_hash_str(FNV_START_HASH, s->name) % st->decl_count;
     symbol** tgt = ptradd(st, sizeof(symbol_table) + hash * sizeof(symbol*));
     while (*tgt) {
-        if (strcmp((**tgt).name, s->name) == 0) return *tgt;
+        if (strcmp((**tgt).name, s->name) == 0) return tgt;
         tgt = (symbol**)&(**tgt).next;
     }
     *tgt = s;
     s->next = NULL;
     return NULL;
 }
-symbol* symbol_table_lookup(symbol_table* st, const char* s)
+symbol** symbol_table_lookup(symbol_table* st, const char* s)
 {
     ureg hash = fnv_hash_str(FNV_START_HASH, s);
     do {
@@ -78,11 +78,11 @@ symbol* symbol_table_lookup(symbol_table* st, const char* s)
             continue;
         }
         ureg idx = hash % st->decl_count;
-        symbol* tgt =
-            *(symbol**)ptradd(st, sizeof(symbol_table) + idx * sizeof(symbol*));
-        while (tgt) {
-            if (strcmp(tgt->name, s) == 0) return tgt;
-            tgt = (symbol*)tgt->next;
+        symbol** tgt =
+            (symbol**)ptradd(st, sizeof(symbol_table) + idx * sizeof(symbol*));
+        while (*tgt) {
+            if (strcmp((**tgt).name, s) == 0) return tgt;
+            tgt = (symbol**)&(**tgt).next;
         }
         st = st->parent;
     } while (st);
