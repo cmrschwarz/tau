@@ -116,8 +116,8 @@ static resolve_error add_ast_node_decls(
             // TODO
             return RE_OK;
         case SYM_NAMED_USING:
-        case SYM_VAR_DECL:
-        case SYM_VAR_DECL_UNINITIALIZED: {
+        case SYM_VAR:
+        case SYM_VAR_INITIALIZED: {
             return add_symbol(r, st, sst, n);
         }
 
@@ -227,15 +227,11 @@ resolve_error get_symbol_ctype(
     ast_elem** ctype)
 {
     switch (s->node.kind) {
-        case SYM_VAR_DECL:
-        case SYM_VAR_DECL_UNINITIALIZED: {
+        case SYM_VAR:
+        case SYM_VAR_INITIALIZED: {
+            sym_var* v = (sym_var*)s;
             if (ast_node_flags_get_resolved(s->node.flags)) {
-                if (s->node.kind == SYM_VAR_DECL) {
-                    *ctype = ((sym_var_decl*)s)->ctype;
-                }
-                else {
-                    *ctype = ((sym_var_decl_uninitialized*)s)->ctype;
-                }
+                *ctype = v->ctype;
             }
             else {
                 ast_node_flags_set_resolving(&requesting_node->flags);
@@ -327,9 +323,9 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
             return RE_OK;
         }
         case SYM_NAMED_USING:
-        case SYM_VAR_DECL: {
+        case SYM_VAR: {
         }
-        case SYM_VAR_DECL_UNINITIALIZED: {
+        case SYM_VAR_INITIALIZED: {
             return RE_OK;
         }
 

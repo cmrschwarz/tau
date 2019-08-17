@@ -425,7 +425,8 @@ char* get_context_msg(parser* p, ast_node* node)
         case EXPR_IF: return "in this if expression";
         case OSC_EXTEND_GENERIC: return "in this generic extend statement";
         case EXPR_LAMBDA: return "in this lambda";
-        case SYM_VAR_DECL: return "in this variable declaration";
+        case SYM_VAR:
+        case SYM_VAR_INITIALIZED: return "in this variable declaration";
         case STMT_IMPORT: return "in this import statement";
         case SYM_NAMED_USING:
         case STMT_USING: return "in this using statement";
@@ -885,15 +886,15 @@ parse_paren_group_or_tuple(parser* p, token* t, ast_node** ex)
     }
 }
 typedef union tuple_ident_node {
-    sym_var_decl_uninitialized var;
+    sym_var var;
     expr_identifier ident;
 } tuple_ident_node;
 
 static inline parse_error
 parse_uninitialized_var_in_tuple(parser* p, token* t, ast_node** ex)
 {
-    sym_var_decl_uninitialized* v = alloc_perm(p, sizeof(tuple_ident_node));
-    v->symbol.node.kind = SYM_VAR_DECL_UNINITIALIZED;
+    sym_var* v = alloc_perm(p, sizeof(tuple_ident_node));
+    v->symbol.node.kind = SYM_VAR;
     v->symbol.node.flags = AST_NODE_FLAGS_DEFAULT;
     ast_node_flags_set_compound_decl(&v->symbol.node.flags);
     v->symbol.name = alloc_string_perm(p, t->str);
@@ -929,8 +930,8 @@ static inline parse_error
 build_ident_node_in_tuple(parser* p, token* t, ast_node** ex)
 {
     tuple_ident_node* tin = alloc_perm(p, sizeof(tuple_ident_node));
-    sym_var_decl_uninitialized* v = &tin->var;
-    ast_node_init(&v->symbol.node, SYM_VAR_DECL_UNINITIALIZED);
+    sym_var* v = &tin->var;
+    ast_node_init(&v->symbol.node, SYM_VAR);
     v->symbol.name = alloc_string_perm(p, t->str);
     if (!v->symbol.name) return PE_FATAL;
     if (ast_node_fill_srange(p, (ast_node*)v, t->start, t->end))
@@ -944,7 +945,7 @@ static inline void turn_ident_nodes_to_exprs(ast_node** elems)
 {
     if (!elems) return;
     while (*elems) {
-        if ((**elems).kind == SYM_VAR_DECL_UNINITIALIZED) {
+        if ((**elems).kind == SYM_VAR) {
             tuple_ident_node* tin = (tuple_ident_node*)*elems;
             if (tin->var.type == NULL &&
                 !ast_node_flags_get_compound_decl(tin->var.symbol.node.flags)) {
@@ -1935,18 +1936,14 @@ parse_error parse_var_decl(
     ureg col_end = t->end;
     tk_void(&p->tk);
     parse_error pe;
-    sym_var_decl* vd = alloc_perm(p, sizeof(sym_var_decl));
-    if (!vd) return PE_FATAL;
-    vd->symbol.name = alloc_string_perm(p, ident);
-    if (!vd->symbol.name) return PE_FATAL;
-    vd->symbol.node.kind = SYM_VAR_DECL;
-    vd->symbol.node.flags = flags;
+    ast_node* type;
+    ast_node* value;
     PEEK(p, t);
     if (t->kind == TT_EQUALS) {
         ureg eq_end = t->end;
         tk_void(&p->tk);
-        vd->type = NULL;
-        pe = parse_expression(p, &vd->value);
+        type = NULL;
+        pe = parse_expression(p, &value);
         if (pe == PE_EOEX) {
             PEEK(p, t);
             parser_error_2a(
@@ -1958,8 +1955,7 @@ parse_error parse_var_decl(
         if (pe) return pe;
     }
     else {
-        pe =
-            parse_expression_of_prec(p, &vd->type, op_precedence[OP_EQUAL] + 1);
+        pe = parse_expression_of_prec(p, &type, op_precedence[OP_EQUAL] + 1);
         if (pe == PE_EOEX) {
             PEEK(p, t);
             parser_error_2a(
@@ -1972,7 +1968,7 @@ parse_error parse_var_decl(
         if (t->kind == TT_EQUALS) {
             ureg eq_end = t->end;
             tk_void(&p->tk);
-            pe = parse_expression(p, &vd->value);
+            pe = parse_expression(p, &value);
             if (pe == PE_EOEX) {
                 parser_error_2a(
                     p, "unexpeted token in declaration", t->start, t->end,
@@ -1984,11 +1980,27 @@ parse_error parse_var_decl(
             PEEK(p, t);
         }
         else {
-            vd->value = NULL;
+            value = NULL;
         }
     }
-    if (sym_fill_srange(p, (symbol*)vd, start, t->end)) return PE_FATAL;
-    *n = (ast_node*)vd;
+    sym_var* v;
+    if (value) {
+        sym_var_initialized* vi = alloc_perm(p, sizeof(sym_var_initialized));
+        if (!vi) return PE_FATAL;
+        vi->initial_value = value;
+        v = (sym_var*)vi;
+    }
+    else {
+        v = alloc_perm(p, sizeof(sym_var));
+        if (!v) return PE_FATAL;
+    }
+    v->type = type;
+    v->symbol.name = alloc_string_perm(p, ident);
+    if (!v->symbol.name) return PE_FATAL;
+    v->symbol.node.kind = SYM_VAR;
+    v->symbol.node.flags = flags;
+    if (sym_fill_srange(p, (symbol*)v, start, t->end)) return PE_FATAL;
+    *n = (ast_node*)v;
     curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
     return PE_OK;
 }

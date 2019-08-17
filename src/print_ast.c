@@ -125,13 +125,13 @@ void print_expr_list(ast_node** el, ureg indent)
 void print_compound_decl_list(ast_node** el, ureg indent)
 {
     while (*el) {
-        if ((**el).kind == SYM_VAR_DECL_UNINITIALIZED) {
-            sym_var_decl* d = (sym_var_decl*)*el;
-            if (ast_node_flags_get_const(d->symbol.node.flags)) p("const ");
-            pu(d->symbol.name);
-            if (d->type != NULL) {
+        if ((**el).kind == SYM_VAR) {
+            sym_var* v = (sym_var*)*el;
+            if (ast_node_flags_get_const(v->symbol.node.flags)) p("const ");
+            pu(v->symbol.name);
+            if (v->type != NULL) {
                 p(": ");
-                print_ast_node(d->type, indent);
+                print_ast_node(v->type, indent);
             }
         }
         else if ((**el).kind == EXPR_TUPLE) {
@@ -339,23 +339,6 @@ void print_ast_node(ast_node* n, ureg indent)
             pc('#');
             print_ast_node(((expr_pp*)n)->pp_expr, indent);
         } break;
-        case SYM_VAR_DECL: {
-            sym_var_decl* d = (sym_var_decl*)n;
-            if (ast_node_flags_get_const(d->symbol.node.flags)) p("const ");
-            pu(d->symbol.name);
-            if (d->type != NULL) {
-                p(": ");
-                print_ast_node(d->type, indent);
-                if (d->value != NULL) pc(' ');
-            }
-            else {
-                p(" :");
-            }
-            if (d->value != NULL) {
-                p("= ");
-                print_ast_node(d->value, indent);
-            }
-        } break;
         case SYM_NAMED_USING: {
             sym_named_using* nu = (sym_named_using*)n;
             if (ast_node_flags_get_const(nu->symbol.node.flags)) p("const ");
@@ -404,14 +387,30 @@ void print_ast_node(ast_node* n, ureg indent)
             }
             print_body_braced(&b->body, indent);
         } break;
-        case SYM_VAR_DECL_UNINITIALIZED: {
-            sym_var_decl* d = (sym_var_decl*)n;
-            if (ast_node_flags_get_const(d->symbol.node.flags)) p("const ");
-            pu(d->symbol.name);
-            pc(':');
-            if (d->type != NULL) {
-                pc(' ');
-                print_ast_node(d->type, indent);
+        case SYM_VAR: {
+            sym_var* v = (sym_var*)n;
+            if (ast_node_flags_get_const(v->symbol.node.flags)) p("const ");
+            pu(v->symbol.name);
+            if (v->type != NULL) {
+                p(": ");
+                print_ast_node(v->type, indent);
+            }
+        } break;
+        case SYM_VAR_INITIALIZED: {
+            sym_var_initialized* v = (sym_var_initialized*)n;
+            if (ast_node_flags_get_const(v->var.symbol.node.flags)) p("const ");
+            pu(v->var.symbol.name);
+            if (v->var.type != NULL) {
+                p(": ");
+                print_ast_node(v->var.type, indent);
+                if (v->initial_value != NULL) pc(' ');
+            }
+            else {
+                p(" :");
+            }
+            if (v->initial_value != NULL) {
+                p("= ");
+                print_ast_node(v->initial_value, indent);
             }
         } break;
         case EXPR_OP_BINARY: {

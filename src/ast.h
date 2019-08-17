@@ -22,8 +22,8 @@ typedef enum PACK_ENUM ast_node_kind {
 
     SYM_NAMED_USING,
     // TODO: reverse this and make var_decl_initialized contain var_decl
-    SYM_VAR_DECL,
-    SYM_VAR_DECL_UNINITIALIZED,
+    SYM_VAR,
+    SYM_VAR_INITIALIZED,
     SYM_PARAM,
     SYM_LAST_SYM_ID = SYM_PARAM,
 
@@ -341,18 +341,16 @@ typedef struct osc_extend_generic {
     sym_param* generic_params;
 } osc_extend_generic;
 
-typedef struct sym_var_decl {
+typedef struct sym_var {
     symbol symbol;
     ast_node* type;
     ast_elem* ctype;
-    ast_node* value;
-} sym_var_decl;
+} sym_var;
 
-typedef struct sym_var_decl_uninitialized {
-    symbol symbol;
-    ast_node* type;
-    ast_elem* ctype;
-} sym_var_decl_uninitialized;
+typedef struct sym_var_initialized {
+    sym_var var;
+    ast_node* initial_value;
+} sym_var_initialized;
 
 typedef struct stmt_compound_assignment {
     ast_node node;
