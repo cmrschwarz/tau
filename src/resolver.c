@@ -46,9 +46,9 @@ static resolve_error add_ast_node_decls(
     resolver* r, symbol_table* st, symbol_table* sst, ast_node* n)
 {
     if (n == NULL) return RE_OK;
-    if (ast_node_is_scope(n)) {
+    if (ast_elem_is_scope((ast_elem*)n)) {
         // these are parts of a module and therefore already handled
-        if (ast_node_is_open_scope((ast_node*)n)) return RE_OK;
+        if (ast_elem_is_open_scope((ast_elem*)n)) return RE_OK;
         return add_simple_body_decls(r, st, &((scope*)n)->body);
     }
     switch (n->kind) {
@@ -213,7 +213,7 @@ static inline void print_debug_info(resolver* r)
 
 resolve_error resolve_body(resolver* r, body* b);
 resolve_error
-resolve_type(resolver* r, ast_node* t_expr, ast_element** reduced_tgt)
+resolve_type(resolver* r, ast_node* t_expr, ast_elem** reduced_tgt)
 {
     return RE_OK;
 }
@@ -233,7 +233,7 @@ resolve_error resolve_ast_node(resolver* r, ast_node* n, symbol_table* st)
             expr_identifier* e = (expr_identifier*)n;
             symbol** s = symbol_table_lookup(st, e->value.str);
             if (!s) return report_unknown_symbol(r, n, st);
-            e->value.node = (ast_node*)*s;
+            e->value.elem = (ast_elem*)*s;
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }

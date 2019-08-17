@@ -134,9 +134,9 @@ static void free_body_symtabs(ast_node* node, body* b);
 static void free_astn_symtabs(ast_node* n)
 {
     if (!n) return;
-    if (ast_node_is_scope(n)) {
+    if (ast_elem_is_scope((ast_elem*)n)) {
         // these are parts of a module and therefore already handled
-        if (!ast_node_is_open_scope(n)) {
+        if (!ast_elem_is_open_scope((ast_elem*)n)) {
             free_body_symtabs(n, &((scope*)n)->body);
         }
         else {
@@ -367,7 +367,7 @@ bool scope_find_import(
     scope* s, mdg_node* import, stmt_import** tgt, module_import** tgt_sym)
 {
     for (ast_node** n = s->body.elements; *n; n++) {
-        if (ast_node_is_scope(*n)) {
+        if (ast_elem_is_scope((ast_elem*)*n)) {
             if (scope_find_import((scope*)*n, import, tgt, tgt_sym))
                 return true;
         }

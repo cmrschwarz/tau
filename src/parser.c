@@ -371,7 +371,7 @@ static inline int pop_bpd(parser* p, parse_error pe)
         *(body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
     assert(bpd.node); // make sure it's not a pp node
     if (bpd.shared_decl_count > 0 || bpd.shared_usings_count > 0) {
-        assert(ast_node_is_open_scope(bpd.node));
+        assert(ast_elem_is_open_scope((ast_elem*)bpd.node));
         // assert(*osc is member of current module*);
         atomic_ureg_add(&p->current_module->decl_count, bpd.shared_decl_count);
         atomic_ureg_add(
@@ -447,7 +447,7 @@ curr_scope_add_usings(parser* p, access_modifier am, ureg count)
         bpd->usings_count += count;
     }
     else {
-        if (ast_node_is_open_scope(bpd->node)) {
+        if (ast_elem_is_open_scope((ast_elem*)bpd->node)) {
             bpd->shared_usings_count += count;
         }
         else {
@@ -463,7 +463,7 @@ curr_scope_add_decls(parser* p, access_modifier am, ureg count)
         bpd->decl_count += count;
     }
     else {
-        if (ast_node_is_open_scope(bpd->node)) {
+        if (ast_elem_is_open_scope((ast_elem*)bpd->node)) {
             bpd->shared_decl_count += count;
         }
         else {
@@ -571,7 +571,7 @@ sym_fill_srange(parser* p, symbol* s, ureg start, ureg end)
     srl.end = end;
     srl.file = NULL;
     if (ast_node_flags_get_access_mod(s->node.flags) != AM_UNSPECIFIED) {
-        if (ast_node_is_open_scope(get_bpd(p)->node)) {
+        if (ast_elem_is_open_scope((ast_elem*)get_bpd(p)->node)) {
             srl.file = p->tk.file;
         }
     }
@@ -2344,13 +2344,13 @@ parse_error parse_trait_decl(
     curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
     return parse_body(p, &tr->body, (ast_node*)tr);
 }
-bool ast_node_supports_exprs(ast_node* n)
+bool ast_elem_supports_exprs(ast_elem* n)
 {
-    return !ast_node_is_open_scope(n);
+    return !ast_elem_is_open_scope(n);
 }
 bool curr_parent_supports_exprs(parser* p)
 {
-    return ast_node_supports_exprs((ast_node*)get_bpd(p)->node);
+    return ast_elem_supports_exprs((ast_elem*)get_bpd(p)->node);
 }
 bool body_customizes_exprs(ast_node_kind pt)
 {
@@ -2774,7 +2774,7 @@ parse_require(parser* p, ast_node_flags flags, ureg start, ureg flags_end)
     if (pe) return pe;
     ureg end = t->end;
     tk_void(&p->tk);
-    if (!ast_node_is_open_scope(get_bpd(p)->node)) {
+    if (!ast_elem_is_open_scope((ast_elem*)get_bpd(p)->node)) {
         parser_error_1a_pc(
             p, "invalid scope for require statement", t->start, t->end,
             "require statement only allowed at module scope");

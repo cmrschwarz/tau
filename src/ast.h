@@ -139,12 +139,12 @@ typedef enum PACK_ENUM primitive_kind {
     PT_UINT,
     PT_FLOAT,
     PT_STRING,
-    PT_LAST_ENTRY,
 } primitive_kind;
 
-typedef struct ast_element {
+// root of all, can be cast from ast_node since it only contains one element
+typedef struct ast_elem {
     ast_node_kind kind;
-} ast_element;
+} ast_elem;
 
 typedef struct ast_node {
     ast_node_kind kind;
@@ -281,7 +281,7 @@ typedef struct expr_match {
 typedef struct sym_param {
     symbol symbol;
     ast_node* type;
-    ast_element* type_reduced;
+    ast_elem* type_reduced;
     ast_node* default_value;
 } sym_param;
 
@@ -289,7 +289,7 @@ typedef struct sc_func {
     scope scope;
     sym_param* params;
     ast_node* return_type;
-    ast_element* return_type_reduced;
+    ast_elem* return_type_reduced;
 } sc_func;
 
 typedef struct sym_func_overloaded {
@@ -343,14 +343,14 @@ typedef struct osc_extend_generic {
 typedef struct sym_var_decl {
     symbol symbol;
     ast_node* type;
-    ast_element* type_reduced;
+    ast_elem* ctype;
     ast_node* value;
 } sym_var_decl;
 
 typedef struct sym_var_decl_uninitialized {
     symbol symbol;
     ast_node* type;
-    ast_element* type_reduced;
+    ast_elem* ctype;
 } sym_var_decl_uninitialized;
 
 typedef struct stmt_compound_assignment {
@@ -368,11 +368,15 @@ typedef struct expr_op_binary {
     ast_node node;
     ast_node* lhs;
     ast_node* rhs;
+    // points to a primitive (for inbuilt ops) or a sc_func (for overloaded ops)
+    ast_elem* operator;
 } expr_op_binary;
 
 typedef struct expr_op_unary {
     ast_node node;
     ast_node* child;
+    // points to a primitive (for inbuilt ops) or a sc_func (for overloaded ops)
+    ast_elem* operator;
 } expr_op_unary;
 
 // TODO: implement named arguments
@@ -392,7 +396,7 @@ typedef struct expr_str_value {
     ast_node node;
     union {
         char* str;
-        ast_node* node;
+        ast_elem* elem;
     } value;
 } expr_str_value;
 
@@ -456,7 +460,7 @@ typedef enum ast_type_mod {
 #define ATM_BITS 2
 #define ATM_MASK 0x3
 #define ATM_PER_BYTE (8 / ATM_BITS)
-#define ATM_BYTES (sizeof(ast_element*) - sizeof(ast_node_kind))
+#define ATM_BYTES (sizeof(ast_elem*) - sizeof(ast_node_kind))
 #define ATM_MAX_COUNT (ATM_BYTES * ATM_PER_BYTE)
 
 typedef struct ast_type_node {
@@ -466,33 +470,34 @@ typedef struct ast_type_node {
 
 typedef struct type_modifiers {
     ast_type_node node;
-    ast_element* base;
+    ast_elem* base;
 } type_modifiers;
 
 typedef struct type_array {
     ast_type_node node;
-    ast_element* members_type;
+    ast_elem* ctype_members;
     ureg size;
 } type_array;
 
 typedef struct type_tuple {
     ast_type_node node;
-    ast_element** member_types;
+    ast_elem** ctypes_of_members;
     ureg size;
 } type_tuple;
 
-extern symbol primitives[];
+extern symbol PRIMITIVES[];
+extern ureg PRIMITIVE_COUNT;
 
 int ast_type_node_get_mod_count(ast_type_node atn);
 ast_type_mod ast_type_node_get_mod_n(ast_type_node atn, int n);
 void ast_type_node_set_mod_n(ast_type_node atn, ast_type_mod mod, int n);
 
 src_range ast_node_get_src_range(ast_node* s);
-bool ast_node_is_open_scope(ast_node* s);
-bool ast_node_is_scope(ast_node* s);
-bool ast_node_is_symbol(ast_node* s);
-bool ast_node_is_expr(ast_node* s);
-bool ast_node_is_stmt(ast_node* s);
+bool ast_elem_is_open_scope(ast_elem* s);
+bool ast_elem_is_scope(ast_elem* s);
+bool ast_elem_is_symbol(ast_elem* s);
+bool ast_elem_is_expr(ast_elem* s);
+bool ast_elem_is_stmt(ast_elem* s);
 src_file* open_scope_get_file(open_scope* s);
 src_file* ast_node_get_file(ast_node* n, symbol_table* st);
 

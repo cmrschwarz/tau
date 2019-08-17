@@ -218,9 +218,9 @@ char* get_expr_name(ast_node* n)
         default: assert(false);
     }
 }
-void print_ast_node_name(ast_node* n)
+void print_ast_elem_name(ast_elem* n)
 {
-    if (ast_node_is_symbol(n)) {
+    if (ast_elem_is_symbol(n)) {
         pu(((symbol*)n)->name);
     }
     else {
@@ -374,7 +374,7 @@ void print_ast_node(ast_node* n, ureg indent)
         case EXPR_NUMBER: {
             expr_str_value* v = (expr_str_value*)n;
             if (ast_node_flags_get_resolved(n->flags)) {
-                print_ast_node_name(v->value.node);
+                print_ast_elem_name(v->value.elem);
             }
             else {
                 pu(v->value.str);

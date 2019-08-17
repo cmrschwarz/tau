@@ -10,12 +10,14 @@
                  .srange = SRC_RANGE_INVALID},                                 \
         .name = prim_name, .next = NULL                                        \
     }
-symbol primitives[] = {
+symbol PRIMITIVES[] = {
     mk_prim(PT_INT, "int"),
     mk_prim(PT_UINT, "uint"),
     mk_prim(PT_STRING, "string"),
     mk_prim(PT_FLOAT, "float"),
 };
+ureg PRIMITIVE_COUNT = sizeof(PRIMITIVES) / sizeof(symbol);
+
 src_file* open_scope_get_file(open_scope* s)
 {
     return src_range_get_file(s->scope.symbol.node.srange);
@@ -28,23 +30,23 @@ src_file* ast_node_get_file(ast_node* n, symbol_table* st)
     assert(f);
     return f;
 }
-bool ast_node_is_open_scope(ast_node* s)
+bool ast_elem_is_open_scope(ast_elem* s)
 {
     return s->kind <= OSC_LAST_OSC_ID;
 }
-bool ast_node_is_scope(ast_node* s)
+bool ast_elem_is_scope(ast_elem* s)
 {
     return s->kind <= SC_LAST_SC_ID;
 }
-bool ast_node_is_symbol(ast_node* s)
+bool ast_elem_is_symbol(ast_elem* s)
 {
     return s->kind <= SYM_LAST_SYM_ID;
 }
-bool ast_node_is_stmt(ast_node* s)
+bool ast_elem_is_stmt(ast_elem* s)
 {
     return (s->kind < STMT_LAST_STMT_ID);
 }
-bool ast_node_is_expr(ast_node* s)
+bool ast_elem_is_expr(ast_elem* s)
 {
     return (s->kind > STMT_LAST_STMT_ID);
 }
