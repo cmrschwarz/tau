@@ -525,7 +525,7 @@ static inline void parser_error_unexpected_token(
 }
 static inline void ast_node_init(ast_node* n, ast_node_kind type)
 {
-    n->flags = STMT_FLAGS_DEFAULT;
+    n->flags = AST_NODE_FLAGS_DEFAULT;
     n->kind = type;
 }
 static inline void body_init_empty(body* b)
@@ -615,7 +615,7 @@ parse_error parse_param_decl(
     if (!d->symbol.name) return PE_FATAL;
     d->symbol.node.kind = SYM_PARAM;
     // TODO: flags parsing
-    d->symbol.node.flags = STMT_FLAGS_DEFAULT;
+    d->symbol.node.flags = AST_NODE_FLAGS_DEFAULT;
     tk_void(&p->tk);
     PEEK(p, t);
     if (t->kind != TT_COLON) {
@@ -833,7 +833,7 @@ build_empty_tuple(parser* p, ureg t_start, ureg t_end, ast_node** ex)
 static inline parse_error require_default_flags(
     parser* p, token* t, ast_node_flags flags, ureg start, ureg end)
 {
-    if (flags == STMT_FLAGS_DEFAULT) return PE_OK;
+    if (flags == AST_NODE_FLAGS_DEFAULT) return PE_OK;
     char* loc_msg = error_log_cat_strings_2(
         &p->tk.tc->error_log, token_strings[t->kind],
         " does not accept any modifiers");
@@ -882,7 +882,7 @@ parse_uninitialized_var_in_tuple(parser* p, token* t, ast_node** ex)
 {
     sym_var_decl_uninitialized* v = alloc_perm(p, sizeof(tuple_ident_node));
     v->symbol.node.kind = SYM_VAR_DECL_UNINITIALIZED;
-    v->symbol.node.flags = STMT_FLAGS_DEFAULT;
+    v->symbol.node.flags = AST_NODE_FLAGS_DEFAULT;
     ast_node_flags_set_compound_decl(&v->symbol.node.flags);
     v->symbol.name = alloc_string_perm(p, t->str);
     if (!v->symbol.name) return PE_FATAL;
@@ -2365,7 +2365,7 @@ static inline parse_error parse_compound_assignment_after_equals(
     if (!ca) return PE_FATAL;
     ca->elements = elements;
     ca->node.kind = STMT_COMPOUND_ASSIGN;
-    ca->node.flags = STMT_FLAGS_DEFAULT;
+    ca->node.flags = AST_NODE_FLAGS_DEFAULT;
     if (had_colon) ast_node_flags_set_compound_decl(&ca->node.flags);
     parse_error pe = parse_expression(p, &ca->value);
     token* t;
@@ -2890,7 +2890,7 @@ static inline parse_error parse_pp_stmt(
 parse_error parse_statement(parser* p, ast_node** tgt)
 {
     parse_error pe;
-    ast_node_flags flags = STMT_FLAGS_DEFAULT;
+    ast_node_flags flags = AST_NODE_FLAGS_DEFAULT;
     token* t;
     PEEK(p, t);
     ureg start = t->start;

@@ -85,7 +85,7 @@ static resolve_error add_ast_node_decls(
                         &r->tc->permmem, sizeof(sym_func_overloaded));
                     if (!sfo) return RE_FATAL;
                     sfo->symbol.node.kind = SYM_FUNC_OVERLOADED;
-                    sfo->symbol.node.flags = STMT_FLAGS_DEFAULT;
+                    sfo->symbol.node.flags = AST_NODE_FLAGS_DEFAULT;
                     sfo->symbol.node.srange = SRC_RANGE_INVALID;
                     sfo->symbol.next = (**conflict).next;
                     sfo->symbol.name = (**conflict).name;

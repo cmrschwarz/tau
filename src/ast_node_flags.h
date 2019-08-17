@@ -1,7 +1,7 @@
 #pragma once
 #include "utils/c_extensions.h"
 typedef u16 ast_node_flags;
-#define STMT_FLAGS_DEFAULT (u16)0
+#define AST_NODE_FLAGS_DEFAULT (u16)0
 
 // !symbol_table's data layout depends on this enums order
 typedef enum PACK_ENUM access_modifier {
