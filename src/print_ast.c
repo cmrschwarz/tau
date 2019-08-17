@@ -359,7 +359,7 @@ void print_ast_node(ast_node* n, ureg indent)
         case EXPR_IDENTIFIER: {
             expr_identifier* i = (expr_identifier*)n;
             if (ast_node_flags_get_resolved(n->flags)) {
-                print_ast_elem_name(i->value.elem);
+                print_ast_elem_name((ast_elem*)i->value.symbol);
             }
             else {
                 pu(i->value.str);

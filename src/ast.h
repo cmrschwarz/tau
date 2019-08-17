@@ -281,15 +281,16 @@ typedef struct expr_match {
 typedef struct sym_param {
     symbol symbol;
     ast_node* type;
-    ast_elem* type_reduced;
+    ast_elem* ctype;
     ast_node* default_value;
 } sym_param;
 
 typedef struct sc_func {
     scope scope;
     sym_param* params;
+    ureg param_count;
     ast_node* return_type;
-    ast_elem* return_type_reduced;
+    ast_elem* return_ctype;
 } sc_func;
 
 typedef struct sym_func_overloaded {
@@ -402,7 +403,7 @@ typedef struct expr_identifier {
     ast_node node;
     union {
         char* str;
-        ast_elem* elem;
+        symbol* symbol;
     } value;
 } expr_identifier;
 
