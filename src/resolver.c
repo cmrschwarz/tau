@@ -89,15 +89,18 @@ static resolve_error add_ast_node_decls(
                     sfo->symbol.node.srange = SRC_RANGE_INVALID;
                     sfo->symbol.next = (**conflict).next;
                     sfo->symbol.name = (**conflict).name;
-                    sfo->funcs = *conflict;
-                    (**conflict).next = n;
+                    sfo->funcs = (sc_func*)*conflict;
+                    (**conflict).next = sn;
                     sn->next = NULL;
-                    *conflict = sfo;
+                    *conflict = (symbol*)sfo;
                 }
                 else if ((**conflict).node.kind == SYM_FUNC_OVERLOADED) {
                     sfo = (sym_func_overloaded*)conflict;
-                    sn->next = sfo->funcs;
-                    sfo->funcs = sn;
+                    sn->next = (symbol*)sfo->funcs;
+                    sfo->funcs = (sc_func*)n;
+                }
+                else {
+                    return report_redeclaration_error(r, sn, *conflict, tgtst);
                 }
             }
             return RE_OK;
@@ -228,9 +231,9 @@ resolve_error resolve_ast_node(resolver* r, ast_node* n, symbol_table* st)
     switch (n->kind) {
         case EXPR_IDENTIFIER: {
             expr_identifier* e = (expr_identifier*)n;
-            symbol* s = symbol_table_lookup(st, e->value.str);
+            symbol** s = symbol_table_lookup(st, e->value.str);
             if (!s) return report_unknown_symbol(r, n, st);
-            e->value.node = (ast_node*)s;
+            e->value.node = (ast_node*)*s;
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }
