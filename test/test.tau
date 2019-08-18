@@ -4,3 +4,5 @@ func main(){
     y := x;
     print(x);
 }
+module doo{
+}

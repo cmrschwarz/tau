@@ -166,6 +166,10 @@ typedef struct symbol {
     ast_node node;
     char* name;
     struct symbol* next;
+    // PERF: store this only for symbols in mdg symtabs, either by placing it
+    // before the symbol pointer or by creating some sort if lookup table
+    // in these symtabs (or find a smarter solution)
+    symbol_table* declaring_st;
 } symbol;
 
 typedef struct body {

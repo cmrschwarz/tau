@@ -28,7 +28,10 @@ void symbol_table_fin(symbol_table* st);
 // if a symbol of that name already exists returns pointer to that entry
 // otherwise inserts and returns NULL
 symbol** symbol_table_insert(symbol_table* st, symbol* s);
+// returns the symbol found or NULL if nonexistant
 symbol** symbol_table_lookup(symbol_table* st, const char* s);
+symbol** symbol_table_lookup_with_decl(
+    symbol_table* st, const char* s, symbol_table** decl_st);
 typedef struct src_file src_file;
 
 // might return NULL, for example for mdg_node symbol tables

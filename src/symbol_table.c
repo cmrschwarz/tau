@@ -68,7 +68,8 @@ symbol** symbol_table_insert(symbol_table* st, symbol* s)
     s->next = NULL;
     return NULL;
 }
-symbol** symbol_table_lookup(symbol_table* st, const char* s)
+symbol** symbol_table_lookup_with_decl(
+    symbol_table* st, const char* s, symbol_table** decl_st)
 {
     ureg hash = fnv_hash_str(FNV_START_HASH, s);
     do {
@@ -80,12 +81,20 @@ symbol** symbol_table_lookup(symbol_table* st, const char* s)
         symbol** tgt =
             (symbol**)ptradd(st, sizeof(symbol_table) + idx * sizeof(symbol*));
         while (*tgt) {
-            if (strcmp((**tgt).name, s) == 0) return tgt;
+            if (strcmp((**tgt).name, s) == 0) {
+                *decl_st = (**tgt).declaring_st;
+                return tgt;
+            }
             tgt = (symbol**)&(**tgt).next;
         }
         st = st->parent;
     } while (st);
     return NULL;
+}
+symbol** symbol_table_lookup(symbol_table* st, const char* s)
+{
+    symbol_table* lst;
+    return symbol_table_lookup_with_decl(st, s, &lst);
 }
 src_file* symbol_table_get_file(symbol_table* st)
 {
