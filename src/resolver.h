@@ -10,11 +10,13 @@ typedef enum resolve_error {
     RE_SYMBOL_REDECLARATION,
     RE_UNKNOWN_SYMBOL,
     RE_TYPE_LOOP,
+    RE_OVERLOADED,
 } resolve_error;
 
 typedef struct thread_context thread_context;
 typedef struct resolver {
     stack error_stack;
+    dbuffer call_types;
     thread_context* tc;
     mdg_node** start;
     mdg_node** end;

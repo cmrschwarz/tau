@@ -269,15 +269,75 @@ bool operator_func_applicable(
         if (re) return re;
     }
     else {
-        *ctype = f->return_ctype;
+        if (ctype) *ctype = f->return_ctype;
     }
     return true;
 }
-resolve_error
-resolve_func_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
+bool func_applicable(
+    resolver* r, symbol_table* fn_st, ast_elem** call_arg_types, ureg arg_count,
+    sc_func* func, ast_elem** ctype)
 {
+    // works cause varags are not in the lang yet
+    if (func->param_count != arg_count) return false;
+    for (ureg i = 0; i < arg_count; i++) {
+        ast_elem* param_type;
+        get_param_ctype(r, fn_st, &func->params[i], &param_type);
+        if (!ctypes_unifiable(call_arg_types[i], param_type)) return false;
+    }
+    return true;
+}
+resolve_error resolve_func_call(
+    resolver* r, char* func_name, expr_call* c, symbol_table* st,
+    ast_elem** ctype)
+{
+    ast_elem** call_arg_types =
+        dbuffer_claim(&r->call_types, c->arg_count * sizeof(ast_elem*));
+    for (ureg i = 0; i < c->arg_count; i++) {
+        resolve_ast_node(r, c->args[i], st, &call_arg_types[i]);
+    }
+    symbol_table* lt = st;
+    while (lt) {
+        symbol_table* fn_st;
+        symbol** s = symbol_table_lookup_with_decl(lt, func_name, &fn_st);
+        if (!s) return report_unknown_symbol(r, c->lhs, lt);
+        if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
+            sym_func_overloaded* sfo = (sym_func_overloaded*)s;
+            sc_func* f = sfo->funcs;
+            while (f) {
+                if (func_applicable(
+                        r, fn_st, call_arg_types, c->arg_count, f, ctype)) {
+                    return RE_OK;
+                }
+                f = (sc_func*)f->scope.symbol.next;
+            }
+        }
+        else if ((**s).node.kind == SC_FUNC) {
+            if (func_applicable(
+                    r, fn_st, call_arg_types, c->arg_count, (sc_func*)(*s),
+                    ctype)) {
+                return RE_OK;
+            }
+        }
+        else {
+            assert(false);
+        }
+        lt = lt->parent;
+    }
+    dbuffer_pop(&r->call_types, c->arg_count * sizeof(ast_elem*));
     // TODO
     return RE_OK;
+}
+resolve_error
+resolve_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
+{
+
+    if (c->lhs->kind == EXPR_IDENTIFIER) {
+        return resolve_func_call(
+            r, ((expr_identifier*)c->lhs)->value.str, c, st, ctype);
+    }
+    else {
+        assert(false); // TODO
+    }
 }
 resolve_error choose_binary_operator_overload(
     resolver* r, expr_op_binary* ob, symbol_table* st, ast_elem** ctype)
@@ -380,7 +440,7 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
         case EXPR_OP_CALL: {
             expr_call* c = (expr_call*)n;
             if (resolved) return ret_ctype(c->target->return_ctype, ctype);
-            return resolve_func_call(r, c, st, ctype);
+            return resolve_call(r, c, st, ctype);
         }
         case EXPR_CONTINUE:
         case EXPR_OP_UNARY: {
@@ -616,11 +676,16 @@ int resolver_resolve_single(resolver* r, mdg_node* node)
 }
 void resolver_fin(resolver* r)
 {
+    dbuffer_fin(&r->call_types);
     stack_fin(&r->error_stack);
 }
 int resolver_init(resolver* r, thread_context* tc)
 {
     r->tc = tc;
-    if (stack_init(&r->error_stack, &r->tc->tempmem)) return RE_FATAL;
+    if (stack_init(&r->error_stack, &r->tc->tempmem)) return ERR;
+    if (dbuffer_init(&r->call_types)) {
+        stack_fin(&r->error_stack);
+        return ERR;
+    }
     return OK;
 }
