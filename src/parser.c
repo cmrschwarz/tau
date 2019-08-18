@@ -2159,7 +2159,7 @@ parse_error parse_struct_decl(
     st->symbol.node.flags = flags;
     *n = (ast_node*)st;
     curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
-    return parse_body(p, &st->body, (ast_node*)st);
+    return parse_scope_body(p, st);
 }
 parse_error check_if_first_stmt(
     parser* p, ast_node** tgt, ureg start, ureg end, bool extend)
@@ -2373,7 +2373,7 @@ parse_error parse_trait_decl(
     tr->symbol.node.flags = flags;
     *n = (ast_node*)tr;
     curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
-    return parse_body(p, &tr->body, (ast_node*)tr);
+    return parse_scope_body(p, tr);
 }
 bool ast_elem_supports_exprs(ast_elem* n)
 {
@@ -3050,13 +3050,20 @@ parse_error parse_brace_delimited_body(parser* p, body* b, ast_node* parent)
     if (!b->elements) return PE_FATAL;
     return pe;
 }
-
 parse_error parse_scope_body(parser* p, scope* s)
 {
-    // if (push_bpd(p, (ast_node*)s, &s->body)) return PE_FATAL;
-    parse_error pe = parse_body(p, &s->body, (ast_node*)s);
-    // pop_bpd(p);
-    return pe;
+    token* t;
+    PEEK(p, t);
+    if (t->kind != TT_BRACE_OPEN) {
+        parser_error_2a(
+            p, "expected scope body", t->start, t->end,
+            "expected '{' to begin scope",
+            src_range_get_start(s->symbol.node.srange),
+            src_range_get_end(s->symbol.node.srange),
+            get_context_msg(p, (ast_node*)s));
+        return PE_ERROR;
+    }
+    return parse_brace_delimited_body(p, &s->body, (ast_node*)s);
 }
 parse_error parse_open_scope_body(parser* p, open_scope* s, mdg_node* m)
 {
@@ -3100,27 +3107,4 @@ parse_braced_namable_body(parser* p, ast_node* parent, body* b, char** name)
             get_context_msg(p, (ast_node*)parent));
         return PE_ERROR;
     }
-}
-parse_error parse_body(parser* p, body* b, ast_node* parent)
-{
-    parse_error pe;
-    token* t;
-    PEEK(p, t);
-    if (t->kind != TT_BRACE_OPEN) {
-        ast_node* target;
-        if (push_bpd(p, parent, b)) return PE_FATAL;
-        do {
-            pe = parse_statement(p, &target);
-        } while (pe == PE_NO_STMT);
-        if (!pe) {
-            list_builder_create_single_entry_zt(
-                &p->tk.tc->list_builder2, target, &p->tk.tc->permmem);
-            b->srange = b->elements[0]->srange;
-        }
-        if (pop_bpd(p, pe)) return PE_FATAL;
-    }
-    else {
-        pe = parse_brace_delimited_body(p, b, parent);
-    }
-    return pe;
 }

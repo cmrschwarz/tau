@@ -1,8 +1,10 @@
-//require "test2.tau";
 func main(){
-    x:= 3 + 5;
-    y := x;
-    print(x);
+    x:= 1 + 2;
+    y := 3;
+    return x + y + 1;
 }
-module doo{
-}
+
+/*
+require "test2.tau";
+module doo{}
+*/
