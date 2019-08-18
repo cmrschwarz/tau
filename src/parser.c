@@ -684,11 +684,12 @@ parse_error parse_param_decl(
         }
     }
     *tgt = d;
+    curr_scope_add_decls(p, AM_UNSPECIFIED, 1);
     return PE_OK;
 }
 parse_error parse_expr_node_list(
-    parser* p, ast_node* prefetch, ast_node*** tgt, char* type,
-    token_kind expected_trailer)
+    parser* p, ast_node* prefetch, ast_node*** tgt, ureg* elem_count,
+    char* type, token_kind expected_trailer)
 {
     token* t;
     PEEK(p, t);
@@ -733,8 +734,9 @@ parse_error parse_expr_node_list(
             return PE_ERROR;
         }
     }
-    *tgt = (ast_node**)list_builder_pop_list_zt(
-        &p->tk.tc->list_builder, list_start, &p->tk.tc->permmem);
+    *tgt = (ast_node**)list_builder_pop_list(
+        &p->tk.tc->list_builder, list_start, &p->tk.tc->permmem, elem_count, 0,
+        0);
     if (!*tgt) return PE_FATAL;
     return PE_OK;
 }
@@ -747,7 +749,7 @@ static inline parse_error parse_array(parser* p, token* t, ast_node** ex)
     if (!arr) return PE_FATAL;
     arr->node.kind = EXPR_ARRAY;
     parse_error pe = parse_expr_node_list(
-        p, NULL, &arr->elements, "array", TT_BRACKET_CLOSE);
+        p, NULL, &arr->elements, &arr->elem_count, "array", TT_BRACKET_CLOSE);
     // TODO: EMSG: suboptimal e.g. for case [,,]
     if (pe == PE_ERROR) {
         PEEK(p, t);
@@ -802,8 +804,9 @@ static inline parse_error parse_tuple_after_first_comma(
             "didn't find a matching parenthesis for this tuple");
         return PE_ERROR;
     }
-    tp->elements = (ast_node**)list_builder_pop_list_zt(
-        &p->tk.tc->list_builder, list, &p->tk.tc->permmem);
+    tp->elements = (ast_node**)list_builder_pop_list(
+        &p->tk.tc->list_builder, list, &p->tk.tc->permmem, &tp->elem_count, 0,
+        0);
     if (!tp->elements) return PE_FATAL;
     if (ast_node_fill_srange(p, (ast_node*)tp, t_start, t->end))
         return PE_FATAL;
@@ -942,10 +945,9 @@ build_ident_node_in_tuple(parser* p, token* t, ast_node** ex)
     tk_void(&p->tk);
     return PE_OK;
 }
-static inline void turn_ident_nodes_to_exprs(ast_node** elems)
+static inline void turn_ident_nodes_to_exprs(ast_node** elems, ureg elem_count)
 {
-    if (!elems) return;
-    while (*elems) {
+    for (ureg i = 0; i < elem_count; i++) {
         if ((**elems).kind == SYM_VAR) {
             tuple_ident_node* tin = (tuple_ident_node*)*elems;
             if (tin->var.type == NULL &&
@@ -957,14 +959,15 @@ static inline void turn_ident_nodes_to_exprs(ast_node** elems)
             }
         }
         else if ((**elems).kind == EXPR_TUPLE) {
-            turn_ident_nodes_to_exprs((**((expr_tuple**)elems)).elements);
+            expr_tuple* t = *((expr_tuple**)elems);
+            turn_ident_nodes_to_exprs(t->elements, t->elem_count);
         }
         elems++;
     }
 }
 static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
-    parser* p, token* t, ast_node** ex, ast_node*** elem_list, ureg* list_end,
-    ureg* decl_count, ureg* ident_count)
+    parser* p, token* t, ast_node** ex, ast_node*** elem_list, ureg* elem_count,
+    ureg* list_end, ureg* decl_count, ureg* ident_count)
 {
     parse_error pe;
     ureg t_start = t->start;
@@ -1040,11 +1043,14 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         }
         if (t->kind == TT_PAREN_CLOSE) {
             tk_void(&p->tk);
-            ast_node** res_elem_list = (ast_node**)list_builder_pop_list_zt(
-                &p->tk.tc->list_builder, element_list, &p->tk.tc->permmem);
+            ureg res_elem_count;
+            ast_node** res_elem_list = (ast_node**)list_builder_pop_list(
+                &p->tk.tc->list_builder, element_list, &p->tk.tc->permmem,
+                &res_elem_count, 0, 0);
             if (!res_elem_list) return PE_FATAL;
             if (elem_list) {
                 *elem_list = res_elem_list;
+                *elem_count = res_elem_count;
                 *list_end = t->end;
             }
             else {
@@ -1054,6 +1060,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
                 if (ast_node_fill_srange(p, (ast_node*)tp, t_start, t->end))
                     return PE_FATAL;
                 tp->elements = res_elem_list;
+                tp->elem_count = res_elem_count;
                 *ex = (ast_node*)tp;
             }
             return PE_OK;
@@ -1079,7 +1086,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         }
         else if (t->kind == TT_PAREN_OPEN) {
             pe = parse_paren_group_or_tuple_or_compound_decl(
-                p, t, ex, NULL, NULL, decl_count, ident_count);
+                p, t, ex, NULL, NULL, NULL, decl_count, ident_count);
             if (pe) return pe;
         }
         else {
@@ -1575,8 +1582,8 @@ static inline parse_error parse_call(parser* p, ast_node** ex, ast_node* lhs)
     tk_void(&p->tk);
     expr_call* call = alloc_perm(p, sizeof(expr_call));
     if (!call) return PE_FATAL;
-    parse_error pe =
-        parse_expr_node_list(p, NULL, &call->args, "call", TT_PAREN_CLOSE);
+    parse_error pe = parse_expr_node_list(
+        p, NULL, &call->args, &call->arg_count, "call", TT_PAREN_CLOSE);
     // EMSG: suboptimal e.g. for case {,,}
     if (pe == PE_ERROR) {
         PEEK(p, t);
@@ -1604,7 +1611,8 @@ static inline parse_error parse_access(parser* p, ast_node** ex, ast_node* lhs)
     expr_access* acc = alloc_perm(p, sizeof(expr_access));
     if (!acc) return PE_FATAL;
     parse_error pe = parse_expr_node_list(
-        p, NULL, &acc->args, "access operator", TT_BRACKET_CLOSE);
+        p, NULL, &acc->args, &acc->arg_count, "access operator",
+        TT_BRACKET_CLOSE);
     // EMSG: suboptimal e.g. for case {,,}
     if (pe == PE_ERROR) {
         PEEK(p, t);
@@ -2380,13 +2388,14 @@ bool body_customizes_exprs(ast_node_kind pt)
     return pt == EXPR_ARRAY;
 }
 static inline parse_error parse_compound_assignment_after_equals(
-    parser* p, ureg t_start, ureg t_end, ast_node** elements, ast_node** tgt,
-    bool had_colon)
+    parser* p, ureg t_start, ureg t_end, ast_node** elements, ureg elem_count,
+    ast_node** tgt, bool had_colon)
 {
     stmt_compound_assignment* ca =
         alloc_perm(p, sizeof(stmt_compound_assignment));
     if (!ca) return PE_FATAL;
     ca->elements = elements;
+    ca->elem_count = elem_count;
     ca->node.kind = STMT_COMPOUND_ASSIGN;
     ca->node.flags = AST_NODE_FLAGS_DEFAULT;
     if (had_colon) ast_node_flags_set_compound_decl(&ca->node.flags);
@@ -2416,8 +2425,9 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
         ureg decl_count = 0;
         ureg ident_count = 0;
         ast_node** elems = NULL;
+        ureg elem_count;
         pe = parse_paren_group_or_tuple_or_compound_decl(
-            p, t, &ex, &elems, &t_end, &decl_count, &ident_count);
+            p, t, &ex, &elems, &elem_count, &t_end, &decl_count, &ident_count);
         if (pe) return pe;
         if (elems) {
             PEEK(p, t);
@@ -2429,15 +2439,15 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
                     tk_void_n(&p->tk, 2);
                     curr_scope_add_decls(p, AM_UNSPECIFIED, decl_count);
                     return parse_compound_assignment_after_equals(
-                        p, t_start, t->end, elems, tgt, true);
+                        p, t_start, t->end, elems, elem_count, tgt, true);
                 }
             }
             if (t->kind == TT_EQUALS) {
                 tk_void(&p->tk);
-                turn_ident_nodes_to_exprs(elems);
+                turn_ident_nodes_to_exprs(elems, elem_count);
                 curr_scope_add_decls(p, AM_UNSPECIFIED, decl_count);
                 return parse_compound_assignment_after_equals(
-                    p, t_start, t->end, elems, tgt, false);
+                    p, t_start, t->end, elems, elem_count, tgt, false);
             }
             else {
                 if (decl_count != 0) {
@@ -2448,7 +2458,7 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
                         "after this compound which contains declarations");
                 }
                 else {
-                    turn_ident_nodes_to_exprs(elems);
+                    turn_ident_nodes_to_exprs(elems, elem_count);
                     expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
                     if (!tp) return PE_FATAL;
                     tp->node.kind = EXPR_TUPLE;

@@ -359,6 +359,7 @@ typedef struct sym_var_initialized {
 typedef struct stmt_compound_assignment {
     ast_node node;
     ast_node** elements;
+    ureg elem_count; // TODO
     ast_node* value;
 } stmt_compound_assignment;
 
@@ -387,12 +388,15 @@ typedef struct expr_call {
     ast_node node;
     ast_node* lhs;
     ast_node** args;
+    ureg arg_count;
+    sc_func* target; // TODO: could also be macro
 } expr_call;
 
 typedef struct expr_access {
     ast_node node;
     ast_node* lhs;
     ast_node** args;
+    ureg arg_count;
 } expr_access;
 
 typedef struct expr_literal {
@@ -432,11 +436,13 @@ typedef struct expr_member_access {
 typedef struct expr_tuple {
     ast_node node;
     ast_node** elements;
+    ureg elem_count;
 } expr_tuple;
 
 typedef struct expr_array {
     ast_node node;
     ast_node** elements;
+    ureg elem_count;
 } expr_array;
 
 typedef struct expr_type_array {

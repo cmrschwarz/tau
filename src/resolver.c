@@ -118,6 +118,7 @@ static resolve_error add_ast_node_decls(
             return RE_OK;
             // not doing function bodys because they are stronly ordered
             // add_simple_body_decls(r, st, &((scope*)n)->body);
+            // (therefore also not doing func parameters)
         }
         case STMT_IMPORT:
         case STMT_USING:
@@ -272,6 +273,12 @@ bool operator_func_applicable(
     }
     return true;
 }
+resolve_error
+resolve_func_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
+{
+    // TODO
+    return RE_OK;
+}
 resolve_error choose_binary_operator_overload(
     resolver* r, expr_op_binary* ob, symbol_table* st, ast_elem** ctype)
 {
@@ -329,6 +336,7 @@ resolve_error
 resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
 {
     if (!n) return RE_OK;
+    // PERF: find a way to avoid checking in sub exprs
     bool resolved = ast_node_flags_get_resolved(n->flags);
     if (resolved) {
         if (ctype == NULL) return RE_OK;
@@ -369,10 +377,14 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }
-        case EXPR_CONTINUE:
-        case EXPR_OP_UNARY:
         case EXPR_OP_CALL: {
-            // TODO.
+            expr_call* c = (expr_call*)n;
+            if (resolved) return ret_ctype(c->target->return_ctype, ctype);
+            return resolve_func_call(r, c, st, ctype);
+        }
+        case EXPR_CONTINUE:
+        case EXPR_OP_UNARY: {
+            // TODO
             return RE_OK;
         }
         case EXPR_OP_BINARY: {
@@ -406,7 +418,8 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
 
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
-            // TODO: parameters
+            // parameters are done on the call site
+            // if func is never called -> no no need to resolve the params
             if (ctype) *ctype = (ast_elem*)n;
             if (resolved) return RE_OK;
             re = resolve_body(r, &((scope*)n)->body);

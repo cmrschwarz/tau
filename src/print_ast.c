@@ -113,18 +113,18 @@ void print_sym_params(sym_param* d, ureg indent)
         if (d) p(", ");
     }
 }
-void print_expr_list(ast_node** el, ureg indent)
+void print_expr_list(ast_node** el, ureg count, ureg indent)
 {
     if (!el) return;
-    while (*el) {
+    for (ureg i = 0; i < count; i++) {
         print_ast_node(*el, indent);
         el++;
         if (*el) p(", ");
     }
 }
-void print_compound_decl_list(ast_node** el, ureg indent)
+void print_compound_decl_list(ast_node** el, ureg elem_count, ureg indent)
 {
-    while (*el) {
+    for (ureg i = 0; i < elem_count; i++) {
         if ((**el).kind == SYM_VAR) {
             sym_var* v = (sym_var*)*el;
             if (ast_node_flags_get_const(v->symbol.node.flags)) p("const ");
@@ -137,7 +137,7 @@ void print_compound_decl_list(ast_node** el, ureg indent)
         else if ((**el).kind == EXPR_TUPLE) {
             expr_tuple* t = (expr_tuple*)(*el);
             pc('(');
-            print_compound_decl_list(t->elements, indent);
+            print_compound_decl_list(t->elements, t->elem_count, indent);
             if (t->elements && !t->elements[1]) {
                 pc(',');
             }
@@ -244,10 +244,10 @@ void print_ast_node(ast_node* n, ureg indent)
             pc('(');
             bool colon = ast_node_flags_get_compound_decl(ca->node.flags);
             if (colon) {
-                print_compound_decl_list(ca->elements, indent);
+                print_compound_decl_list(ca->elements, ca->elem_count, indent);
             }
             else {
-                print_expr_list(ca->elements, indent);
+                print_expr_list(ca->elements, ca->elem_count, indent);
             }
             if (ca->elements && !ca->elements[1]) {
                 pc(',');
@@ -438,15 +438,16 @@ void print_ast_node(ast_node* n, ureg indent)
             break;
         }
         case EXPR_ARRAY: {
+            expr_array* a = (expr_array*)n;
             pc('[');
-            print_expr_list(((expr_array*)n)->elements, indent);
+            print_expr_list(a->elements, a->elem_count, indent);
             pc(']');
         } break;
         case EXPR_TUPLE: {
-            ast_node** elements = ((expr_tuple*)n)->elements;
+            expr_tuple* t = (expr_tuple*)n;
             pc('(');
-            print_expr_list(elements, indent);
-            if (elements && !elements[1]) {
+            print_expr_list(t->elements, t->elem_count, indent);
+            if (t->elem_count == 1) {
                 pc(',');
             }
             pc(')');
@@ -455,14 +456,14 @@ void print_ast_node(ast_node* n, ureg indent)
             expr_call* c = (expr_call*)n;
             print_ast_node(c->lhs, indent);
             pc('(');
-            print_expr_list(c->args, indent);
+            print_expr_list(c->args, c->arg_count, indent);
             pc(')');
         } break;
         case EXPR_OP_ACCESS: {
             expr_access* acc = (expr_access*)n;
             print_ast_node(acc->lhs, indent);
             pc('[');
-            print_expr_list(acc->args, indent);
+            print_expr_list(acc->args, acc->arg_count, indent);
             pc(']');
         } break;
         case EXPR_OP_PARENTHESES: {
