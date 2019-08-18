@@ -119,7 +119,7 @@ void print_expr_list(ast_node** el, ureg count, ureg indent)
     for (ureg i = 0; i < count; i++) {
         print_ast_node(*el, indent);
         el++;
-        if (*el) p(", ");
+        if (i < count - 1) p(", ");
     }
 }
 void print_compound_decl_list(ast_node** el, ureg elem_count, ureg indent)
@@ -264,6 +264,11 @@ void print_ast_node(ast_node* n, ureg indent)
             p("(");
             print_sym_params(f->params, indent);
             pc(')');
+            if (f->return_type) {
+                p(" -> ");
+                print_ast_node(f->return_type, indent + 1);
+                pc(' ');
+            }
             print_body_braced(&f->scope.body, indent);
         } break;
         case SC_FUNC_GENERIC: {
@@ -276,6 +281,11 @@ void print_ast_node(ast_node* n, ureg indent)
             p("(");
             print_sym_params(f->params, indent);
             pc(')');
+            if (f->return_type) {
+                p(" -> ");
+                print_ast_node(f->return_type, indent + 1);
+                pc(' ');
+            }
             print_body_braced(&f->scope.body, indent);
         } break;
         case SC_STRUCT: {

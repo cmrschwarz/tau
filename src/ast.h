@@ -305,7 +305,9 @@ typedef struct sym_func_overloaded {
 typedef struct sc_func_generic {
     scope scope;
     sym_param* generic_params;
+    ureg generic_param_count;
     sym_param* params;
+    ureg param_count;
     ast_node* return_type;
 } sc_func_generic;
 
@@ -316,6 +318,7 @@ typedef struct sc_struct {
 typedef struct sc_struct_generic {
     scope scope;
     sym_param* generic_params;
+    ureg generic_param_count;
 } sc_struct_generic;
 
 typedef struct sc_trait {
@@ -325,6 +328,7 @@ typedef struct sc_trait {
 typedef struct sc_trait_generic {
     scope scope;
     sym_param* generic_params;
+    ureg generic_param_count;
 } sc_trait_generic;
 
 typedef struct osc_module {
@@ -334,6 +338,7 @@ typedef struct osc_module {
 typedef struct osc_module_generic {
     open_scope oscope;
     sym_param* generic_params;
+    ureg generic_param_count;
 } osc_module_generic;
 
 typedef struct osc_extend {
@@ -343,6 +348,7 @@ typedef struct osc_extend {
 typedef struct osc_extend_generic {
     open_scope oscope;
     sym_param* generic_params;
+    ureg generic_param_count;
 } osc_extend_generic;
 
 typedef struct sym_var {

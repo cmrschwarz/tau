@@ -1,6 +1,6 @@
-func main(){
+func main(z: int) -> int{
     x:= 1 + 2;
-    y := 3;
+    y := main(3);
     return x + y + 1;
 }
 

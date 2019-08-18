@@ -696,13 +696,14 @@ parse_error parse_expr_node_list(
     if (t->kind == expected_trailer) {
         if (!prefetch) {
             *tgt = NULL;
+            *elem_count = 0;
             return PE_OK;
         }
         else {
-            *tgt = alloc_perm(p, sizeof(ast_node*) * 2);
+            *tgt = alloc_perm(p, sizeof(ast_node*));
             if (!*tgt) return PE_FATAL;
             **tgt = prefetch;
-            *(*tgt + 1) = NULL;
+            *elem_count = 1;
             return PE_OK;
         }
     }
@@ -2015,18 +2016,21 @@ parse_error parse_var_decl(
     return PE_OK;
 }
 parse_error parse_param_list(
-    parser* p, symbol* parent, sym_param** tgt, bool generic, ureg ctx_start,
-    ureg ctx_end, char* msg)
+    parser* p, symbol* parent, sym_param** tgt, ureg* param_count, bool generic,
+    ureg ctx_start, ureg ctx_end, char* msg)
 {
     token* t;
     token_kind end_tok = generic ? TT_BRACKET_CLOSE : TT_PAREN_CLOSE;
     PEEK(p, t);
+    ureg parcnt = 0;
     if (t->kind == end_tok) {
         tk_void(&p->tk);
         *tgt = NULL;
+        *param_count = parcnt;
         return PE_OK;
     }
     do {
+        parcnt++;
         parse_error pe = parse_param_decl(p, tgt, ctx_start, ctx_end, msg);
         if (pe) {
             *tgt = NULL;
@@ -2053,6 +2057,7 @@ parse_error parse_param_list(
     } while (t->kind != end_tok);
     tk_void(&p->tk);
     *tgt = NULL;
+    *param_count = parcnt;
     return PE_OK;
 }
 parse_error parse_func_decl(
@@ -2074,28 +2079,29 @@ parse_error parse_func_decl(
     if (!name) return PE_FATAL;
     tk_void(&p->tk);
     PEEK(p, t);
-    scope* fn;
-    bool generic;
+    symbol* f;
+    sc_func_generic* fng = NULL;
+    sc_func* fnp;
     if (t->kind == TT_BRACKET_OPEN) {
-        generic = true;
-        fn = alloc_perm(p, sizeof(sc_func_generic));
-        if (!fn) return PE_FATAL;
+        fng = alloc_perm(p, sizeof(sc_func_generic));
+        if (!fng) return PE_FATAL;
+        f = (symbol*)fng;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, (symbol*)fn, &((sc_func_generic*)fn)->generic_params, true,
-            start, decl_end, "in this function declaration");
+            p, f, &fng->generic_params, &fng->generic_param_count, true, start,
+            decl_end, "in this function declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
-        generic = false;
-        fn = alloc_perm(p, sizeof(sc_func));
-        if (!fn) return PE_FATAL;
+        fnp = alloc_perm(p, sizeof(sc_func));
+        if (!fnp) return PE_FATAL;
+        f = (symbol*)fnp;
     }
-    fn->symbol.name = name;
-    fn->symbol.node.kind = generic ? SC_FUNC_GENERIC : SC_FUNC;
-    fn->symbol.node.flags = flags;
-    pe = sym_fill_srange(p, (symbol*)fn, start, decl_end);
+    f->name = name;
+    f->node.kind = fng ? SC_FUNC_GENERIC : SC_FUNC;
+    f->node.flags = flags;
+    pe = sym_fill_srange(p, f, start, decl_end);
     if (pe) return pe;
     if (t->kind != TT_PAREN_OPEN) {
         parser_error_2a(
@@ -2105,15 +2111,42 @@ parse_error parse_func_decl(
         return PE_ERROR;
     }
     tk_void(&p->tk);
-    sym_param** pd =
-        generic ? &((sc_func_generic*)fn)->params : &((sc_func*)fn)->params;
     pe = parse_param_list(
-        p, (symbol*)fn, pd, false, start, decl_end,
+        p, f, (fng ? &fng->params : &fnp->params),
+        (fng ? &fng->param_count : &fnp->param_count), false, start, decl_end,
         "in this function declaration");
     if (pe) return pe;
-    *n = (ast_node*)fn;
+    *n = (ast_node*)f;
     curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
-    return parse_scope_body(p, fn);
+    PEEK(p, t);
+    if (t->kind == TT_ARROW) {
+        tk_void(&p->tk);
+        ast_node* ret_type;
+        pe = parse_expression(p, &ret_type);
+        if (pe == PE_EOEX) {
+            parser_error_2a(
+                p, "unexpected end of expression", t->start, t->end,
+                "expected function return type", start, decl_end,
+                "in this function declaration");
+            return PE_ERROR;
+        }
+        if (pe) return pe;
+        if (fng) {
+            fng->return_type = ret_type;
+        }
+        else {
+            fnp->return_type = ret_type;
+        }
+    }
+    else {
+        if (fng) {
+            fng->return_type = NULL;
+        }
+        else {
+            fnp->return_type = NULL;
+        }
+    }
+    return parse_scope_body(p, (scope*)f);
 }
 parse_error parse_struct_decl(
     parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)
@@ -2134,32 +2167,33 @@ parse_error parse_struct_decl(
     if (!name) return PE_FATAL;
     tk_void(&p->tk);
     PEEK(p, t);
-    scope* st;
-    bool generic;
+    symbol* s;
+    sc_struct_generic* sg = NULL;
+    sc_struct* sp;
     if (t->kind == TT_BRACKET_OPEN) {
-        generic = true;
-        st = alloc_perm(p, sizeof(sc_struct_generic));
-        if (!st) return PE_FATAL;
+        sg = alloc_perm(p, sizeof(sc_struct_generic));
+        if (!sg) return PE_FATAL;
+        s = (symbol*)sg;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, (symbol*)st, &((sc_struct_generic*)st)->generic_params, true,
-            start, decl_end, "in this struct declaration");
+            p, s, &sg->generic_params, &sg->generic_param_count, true, start,
+            decl_end, "in this struct declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
     else {
-        generic = false;
-        st = alloc_perm(p, sizeof(sc_struct));
-        if (!st) return PE_FATAL;
+        sp = alloc_perm(p, sizeof(sc_struct));
+        if (!sp) return PE_FATAL;
+        s = (symbol*)sp;
     }
-    st->symbol.name = name;
-    pe = sym_fill_srange(p, (symbol*)st, start, decl_end);
+    s->name = name;
+    pe = sym_fill_srange(p, s, start, decl_end);
     if (pe) return pe;
-    st->symbol.node.kind = generic ? SC_STRUCT_GENERIC : SC_STRUCT;
-    st->symbol.node.flags = flags;
-    *n = (ast_node*)st;
+    s->node.kind = sg ? SC_STRUCT_GENERIC : SC_STRUCT;
+    s->node.flags = flags;
+    *n = (ast_node*)s;
     curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
-    return parse_scope_body(p, st);
+    return parse_scope_body(p, (scope*)s);
 }
 parse_error check_if_first_stmt(
     parser* p, ast_node** tgt, ureg start, ureg end, bool extend)
@@ -2214,12 +2248,14 @@ parse_error parse_module_decl(
     bool generic;
     if (t2->kind == TT_BRACKET_OPEN) {
         generic = true;
-        md = alloc_perm(p, sizeof(osc_module_generic));
+        osc_module_generic* mod_gen = alloc_perm(p, sizeof(osc_module_generic));
+        md = (open_scope*)mod_gen;
         if (!md) return PE_FATAL;
         tk_void_n(&p->tk, 2);
         pe = parse_param_list(
-            p, (symbol*)md, &((osc_module_generic*)md)->generic_params, true,
-            start, decl_end, "in this module declaration");
+            p, (symbol*)md, &mod_gen->generic_params,
+            &mod_gen->generic_param_count, true, start, decl_end,
+            "in this module declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -2284,11 +2320,12 @@ parse_error parse_extend_decl(
     bool generic;
     if (t2->kind == TT_BRACKET_OPEN) {
         generic = true;
-        ex = alloc_perm(p, sizeof(osc_extend_generic));
-        if (!ex) return PE_FATAL;
+        osc_extend_generic* eg = alloc_perm(p, sizeof(osc_extend_generic));
+        if (!eg) return PE_FATAL;
+        ex = (open_scope*)eg;
         tk_void_n(&p->tk, 2);
         pe = parse_param_list(
-            p, (symbol*)ex, &((osc_extend_generic*)ex)->generic_params, true,
+            p, (symbol*)ex, &eg->generic_params, &eg->generic_param_count, true,
             start, decl_end, "in this extend declaration");
         if (pe) return pe;
     }
@@ -2352,11 +2389,12 @@ parse_error parse_trait_decl(
     bool generic;
     if (t->kind == TT_BRACKET_OPEN) {
         generic = true;
-        tr = alloc_perm(p, sizeof(sc_trait_generic));
-        if (!tr) return PE_FATAL;
+        sc_trait_generic* tg = alloc_perm(p, sizeof(sc_trait_generic));
+        if (!tg) return PE_FATAL;
+        tr = (scope*)tg;
         tk_void(&p->tk);
         pe = parse_param_list(
-            p, (symbol*)tr, &((sc_trait_generic*)tr)->generic_params, true,
+            p, (symbol*)tr, &tg->generic_params, &tg->generic_param_count, true,
             start, decl_end, "in this trait declaration");
         if (pe) return pe;
         PEEK(p, t);

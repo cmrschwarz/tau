@@ -57,11 +57,6 @@ static resolve_error add_ast_node_decls(
     resolver* r, symbol_table* st, symbol_table* sst, ast_node* n)
 {
     if (n == NULL) return RE_OK;
-    if (ast_elem_is_scope((ast_elem*)n)) {
-        // these are parts of a module and therefore already handled
-        if (ast_elem_is_open_scope((ast_elem*)n)) return RE_OK;
-        return add_simple_body_decls(r, st, &((scope*)n)->body);
-    }
     switch (n->kind) {
         case OSC_MODULE:
         case OSC_MODULE_GENERIC:
@@ -115,10 +110,14 @@ static resolve_error add_ast_node_decls(
                     return report_redeclaration_error(r, sym, *conflict, tgtst);
                 }
             }
-            return RE_OK;
-            // not doing function bodys because they are stronly ordered
-            // add_simple_body_decls(r, st, &((scope*)n)->body);
+
+            // TODO
+            // we should not be doing function bodys because they are stronly
+            // ordered, this is for debugging
             // (therefore also not doing func parameters)
+            return add_simple_body_decls(r, st, &((scope*)n)->body);
+
+            return RE_OK;
         }
         case STMT_IMPORT:
         case STMT_USING:
@@ -239,8 +238,10 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
 resolve_error
 get_param_ctype(resolver* r, symbol_table* st, sym_param* p, ast_elem** ctype)
 {
-    if (ast_node_flags_get_resolved(p->symbol.node.flags)) {
-        resolve_error re = resolve_ast_node(r, (ast_node*)p, st, ctype);
+    if (!ast_node_flags_get_resolved(p->symbol.node.flags)) {
+        resolve_error re =
+            resolve_ast_node(r, (ast_node*)p->type, st, &p->ctype);
+        *ctype = p->ctype;
         if (re) return re;
     }
     else {
@@ -248,22 +249,30 @@ get_param_ctype(resolver* r, symbol_table* st, sym_param* p, ast_elem** ctype)
     }
     return RE_OK;
 }
-bool operator_func_applicable(
+resolve_error operator_func_applicable(
     resolver* r, symbol_table* op_st, ast_elem* lhs, ast_elem* rhs, sc_func* f,
-    ast_elem** ctype)
+    bool* applicable, ast_elem** ctype)
 {
     // ensure func has exactly 2 parameters
     // [varargs not allowed for operators]
-    if (!f->params || !f->params->symbol.next || f->params->symbol.next->next)
-        return false;
+    if (!f->params || !f->params->symbol.next || f->params->symbol.next->next) {
+        *applicable = false;
+        return RE_OK;
+    }
     resolve_error re;
     ast_elem* fparam;
     re = get_param_ctype(r, op_st, f->params, &fparam);
     if (re) return re;
-    if (!ctypes_unifiable(lhs, fparam)) return false;
+    if (!ctypes_unifiable(lhs, fparam)) {
+        *applicable = false;
+        return RE_OK;
+    }
     re = get_param_ctype(r, op_st, (sym_param*)f->params->symbol.next, &fparam);
     if (re) return re;
-    if (!ctypes_unifiable(rhs, fparam)) return false;
+    if (!ctypes_unifiable(rhs, fparam)) {
+        *applicable = false;
+        return RE_OK;
+    }
     if (ast_node_flags_get_resolved(f->return_type->flags)) {
         re = resolve_ast_node(r, f->return_type, op_st, ctype);
         if (re) return re;
@@ -271,20 +280,27 @@ bool operator_func_applicable(
     else {
         if (ctype) *ctype = f->return_ctype;
     }
-    return true;
+    *applicable = true;
+    return RE_OK;
 }
 bool func_applicable(
     resolver* r, symbol_table* fn_st, ast_elem** call_arg_types, ureg arg_count,
-    sc_func* func, ast_elem** ctype)
+    sc_func* func, bool* applicable, ast_elem** ctype)
 {
     // works cause varags are not in the lang yet
     if (func->param_count != arg_count) return false;
+    sym_param* p = func->params;
     for (ureg i = 0; i < arg_count; i++) {
         ast_elem* param_type;
-        get_param_ctype(r, fn_st, &func->params[i], &param_type);
-        if (!ctypes_unifiable(call_arg_types[i], param_type)) return false;
+        get_param_ctype(r, fn_st, p, &param_type);
+        if (!ctypes_unifiable(call_arg_types[i], param_type)) {
+            *applicable = false;
+            return RE_OK;
+        }
+        p = (sym_param*)p->symbol.next;
     }
-    return true;
+    *applicable = true;
+    return resolve_ast_node(r, func->return_type, fn_st, ctype);
 }
 resolve_error resolve_func_call(
     resolver* r, char* func_name, expr_call* c, symbol_table* st,
@@ -299,24 +315,27 @@ resolve_error resolve_func_call(
     while (lt) {
         symbol_table* fn_st;
         symbol** s = symbol_table_lookup_with_decl(lt, func_name, &fn_st);
-        if (!s) return report_unknown_symbol(r, c->lhs, lt);
+        if (!s) return report_unknown_symbol(r, c->lhs, st);
+        bool applicable;
+        resolve_error re;
         if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
             sym_func_overloaded* sfo = (sym_func_overloaded*)s;
             sc_func* f = sfo->funcs;
             while (f) {
-                if (func_applicable(
-                        r, fn_st, call_arg_types, c->arg_count, f, ctype)) {
-                    return RE_OK;
-                }
+                re = func_applicable(
+                    r, fn_st, call_arg_types, c->arg_count, f, &applicable,
+                    ctype);
+                if (re) return re;
+                if (applicable) return RE_OK;
                 f = (sc_func*)f->scope.symbol.next;
             }
         }
         else if ((**s).node.kind == SC_FUNC) {
-            if (func_applicable(
-                    r, fn_st, call_arg_types, c->arg_count, (sc_func*)(*s),
-                    ctype)) {
-                return RE_OK;
-            }
+            re = func_applicable(
+                r, fn_st, call_arg_types, c->arg_count, (sc_func*)(*s),
+                &applicable, ctype);
+            if (re) return re;
+            if (applicable) return RE_OK;
         }
         else {
             assert(false);
@@ -356,6 +375,7 @@ resolve_error choose_binary_operator_overload(
     }
     symbol_table* lt = st;
     while (lt) {
+        bool applicable;
         symbol_table* op_st;
         symbol** s = symbol_table_lookup_with_decl(
             lt, op_to_str(ob->node.operator_kind), &op_st);
@@ -364,18 +384,19 @@ resolve_error choose_binary_operator_overload(
             sym_func_overloaded* sfo = (sym_func_overloaded*)s;
             sc_func* f = sfo->funcs;
             while (f) {
-                if (operator_func_applicable(
-                        r, op_st, lhs_ctype, rhs_ctype, f, ctype)) {
-                    return RE_OK;
-                }
+                re = operator_func_applicable(
+                    r, op_st, lhs_ctype, rhs_ctype, f, &applicable, ctype);
+                if (re) return re;
+                if (applicable) return RE_OK;
                 f = (sc_func*)f->scope.symbol.next;
             }
         }
         else if ((**s).node.kind == SC_FUNC) {
-            if (operator_func_applicable(
-                    r, op_st, lhs_ctype, rhs_ctype, (sc_func*)*s, ctype)) {
-                return RE_OK;
-            }
+            re = operator_func_applicable(
+                r, op_st, lhs_ctype, rhs_ctype, (sc_func*)*s, &applicable,
+                ctype);
+            if (re) return re;
+            if (applicable) return RE_OK;
         }
         lt = lt->parent;
     }
@@ -509,9 +530,9 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
             sym_var_initialized* vi = (sym_var_initialized*)n;
             if (resolved) return ret_ctype(vi->var.ctype, ctype);
             if (vi->var.type) {
-                re = resolve_ast_node(r, vi->var.type, st, ctype);
+                re = resolve_ast_node(r, vi->var.type, st, &vi->var.ctype);
                 if (re) return re;
-                vi->var.ctype = *ctype;
+                if (ctype) *ctype = vi->var.ctype;
                 ast_elem* val_type;
                 re = resolve_ast_node(r, vi->initial_value, st, &val_type);
                 if (re) return re;
@@ -644,13 +665,8 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
         aseglist_iterator_begin(&asi, &(**i).open_scopes);
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
-            if (osc->scope.body.symtab != NULL) {
-                osc->scope.body.symtab->parent = (**i).symtab;
-            }
-            else {
-                osc->scope.body.symtab = (**i).symtab;
-            }
-            re = add_body_decls(r, NULL, (**i).symtab, &osc->scope.body);
+            re =
+                add_body_decls(r, (**i).symtab, (**i).symtab, &osc->scope.body);
             if (re) return re;
         }
     }
