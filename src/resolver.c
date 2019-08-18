@@ -182,7 +182,7 @@ static resolve_error add_ast_node_decls(
 static resolve_error add_body_decls(
     resolver* r, symbol_table* parent_st, symbol_table* shared_st, body* b)
 {
-    if (b->symtab == &EMPTY_ST) {
+    if (b->symtab == NULL) {
         b->symtab = parent_st;
     }
     else {
@@ -547,15 +547,20 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
             &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
             atomic_ureg_load(&(**i).using_count), true, NULL);
         if (r) return RE_FATAL;
-        (**i).symtab->parent = GLOBAL_SYMTAB;
         if (!(**i).symtab) return RE_FATAL;
+        (**i).symtab->parent = GLOBAL_SYMTAB;
     }
     for (mdg_node** i = start; i != end; i++) {
         aseglist_iterator asi;
         aseglist_iterator_begin(&asi, &(**i).open_scopes);
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
-            osc->scope.body.symtab->parent = (**i).symtab;
+            if (osc->scope.body.symtab != NULL) {
+                osc->scope.body.symtab->parent = (**i).symtab;
+            }
+            else {
+                osc->scope.body.symtab = (**i).symtab;
+            }
             re = add_body_decls(r, NULL, (**i).symtab, &osc->scope.body);
             if (re) return re;
         }

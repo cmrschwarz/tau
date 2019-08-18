@@ -13,7 +13,7 @@ typedef struct symbol_table {
     ast_node* owning_node;
 } symbol_table;
 
-extern symbol_table EMPTY_ST;
+// extern symbol_table EMPTY_ST;
 
 typedef struct symbol_table_with_usings {
     symbol_table** using_ends[AM_ENUM_ELEMENT_COUNT];

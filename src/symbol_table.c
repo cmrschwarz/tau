@@ -11,7 +11,6 @@
 #include <assert.h>
 #include "utils/error.h"
 #define USING_BIT (((ureg)1) << (REG_BITS - 1))
-symbol_table EMPTY_ST = {0, NULL, NULL, NULL, NULL};
 
 symbol_table* GLOBAL_SYMTAB = NULL;
 
@@ -20,7 +19,7 @@ int symbol_table_init(
     ast_node* owning_node)
 {
     if (!force_unique && decl_count == 0 && using_count == 0) {
-        *tgt = &EMPTY_ST;
+        *tgt = NULL;
         return OK;
     }
     symbol_table* st;
@@ -37,7 +36,7 @@ int symbol_table_init(
         st->usings = NULL;
     }
     memset(ptradd(st, sizeof(symbol_table)), 0, decl_count * sizeof(symbol*));
-    st->pp_symtab = &EMPTY_ST;
+    st->pp_symtab = NULL;
     st->decl_count = decl_count;
     st->owning_node = owning_node;
     *tgt = st;
@@ -46,7 +45,7 @@ int symbol_table_init(
 
 void symbol_table_fin(symbol_table* st)
 {
-    if (st != NULL && st != &EMPTY_ST) {
+    if (st != NULL) {
         symbol_table_fin(st->pp_symtab);
         if (st->usings != NULL) {
             tfree(ptrsub(st, offsetof(symbol_table_with_usings, table)));

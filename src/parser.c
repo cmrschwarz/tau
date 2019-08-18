@@ -392,13 +392,13 @@ static inline int pop_bpd(parser* p, parse_error pe)
         else {
             *st = NULL;
         }
-        if (!pe) st = &(**st).pp_symtab;
+        if (*st) st = &(**st).pp_symtab;
         if (!has_pp) break;
         bpd = *bpd2;
         // we don't support shared pp decls for now :(
         assert(bpd.shared_decl_count == 0 && bpd.shared_usings_count == 0);
     }
-    if (!pe) *st = NULL;
+    if (*st) *st = NULL;
     return OK;
 }
 
@@ -472,6 +472,7 @@ curr_scope_add_decls(parser* p, access_modifier am, ureg count)
         }
     }
 }
+
 static inline void
 parser_error_1a_pc(parser* p, char* msg, ureg start, ureg end, char* annot)
 {

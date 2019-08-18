@@ -186,7 +186,7 @@ static void free_body_symtabs(ast_node* node, body* b)
     for (ast_node** n = b->elements; *n != NULL; n++) {
         free_astn_symtabs(*n);
     }
-    if (b->symtab->owning_node == node) {
+    if (b->symtab && b->symtab->owning_node == node) {
         symbol_table_fin(b->symtab);
     }
 }
