@@ -39,13 +39,6 @@ set(TAUC_INCLUDE_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/src"
 )
 
-add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/deps")
-
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR 
-    "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"
-)
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -pedantic")
-endif ()
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     #use prebuild llvm for debug speed
@@ -64,6 +57,14 @@ else()
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -flto")
     set(TAUC_PP_DIRECTIVES ${TAUC_PP_DIRECTIVES} CMAKE_NO_DEBUG)
 endif()
+
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/deps")
+
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR 
+    "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"
+)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -pedantic")
+endif ()
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -flto ${TAU_DEPS_C_FLAGS}")
 
