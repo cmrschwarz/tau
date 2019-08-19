@@ -587,7 +587,7 @@ parse_literal(parser* p, ast_node_kind nk, primitive_kind pk, ast_node** tgt)
     token* t = tk_aquire(&p->tk);
     expr_literal* l = (expr_literal*)alloc_perm(p, sizeof(expr_literal));
     if (!l) return PE_FATAL;
-    l->node.kind = nk;
+    ast_node_init(&l->node, nk);
     l->node.primitive_kind = pk;
     l->value.str = alloc_string_temp(p, t->str);
     if (!l->value.str) return PE_FATAL;
@@ -602,7 +602,7 @@ static inline parse_error parse_identifier(parser* p, ast_node** tgt)
     expr_identifier* ident =
         (expr_identifier*)alloc_perm(p, sizeof(expr_identifier));
     if (!ident) return PE_FATAL;
-    ident->node.kind = EXPR_IDENTIFIER;
+    ast_node_init(&ident->node, EXPR_IDENTIFIER);
     ident->value.str = alloc_string_temp(p, t->str);
     if (!ident->value.str) return PE_FATAL;
     if (ast_node_fill_srange(p, &ident->node, t->start, t->end))
