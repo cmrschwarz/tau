@@ -25,7 +25,7 @@ static inline int tauc_partial_fin(int r, int i)
 }
 int tauc_init()
 {
-    TAUC.worker_threads = NULL;
+    TAUC.worker_threads = 0;
     int r = thread_context_init(&TAUC.main_thread_context);
     if (r) return tauc_partial_fin(r, 0);
     r = mdg_init(&TAUC.mdg);

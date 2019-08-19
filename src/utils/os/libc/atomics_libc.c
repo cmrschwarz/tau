@@ -4,12 +4,12 @@
 // ptr
 int atomic_ptr_init(atomic_ptr* a, void* value)
 {
-    atomic_init(a, value);
+    atomic_init((void**)a, value);
     return 0;
 }
 void* atomic_ptr_load(atomic_ptr* a)
 {
-    return atomic_load(a);
+    return atomic_load((void**)a);
 }
 void* atomic_ptr_load_flat(atomic_ptr* a)
 {
@@ -17,15 +17,15 @@ void* atomic_ptr_load_flat(atomic_ptr* a)
 }
 void atomic_ptr_store(atomic_ptr* a, void* value)
 {
-    atomic_store(a, value);
+    atomic_store((void**)a, value);
 }
 void atomic_ptr_store_flat(atomic_ptr* a, void* value)
 {
-    a = value;
+    *(void**)a = value;
 }
 bool atomic_ptr_cas(atomic_ptr* a, void** oldval, void* newval)
 {
-    return atomic_compare_exchange_weak(a, oldval, newval);
+    return atomic_compare_exchange_weak((void**)a, oldval, newval);
 }
 void atomic_ptr_fin(atomic_ptr* a)
 {

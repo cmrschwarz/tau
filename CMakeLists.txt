@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.7)
-project(tau C)
+cmake_minimum_required(VERSION 3.4.3)
+project(tau C CXX)
 
 set(TAUC_SRCS
     ./src/tokenizer.c
@@ -35,21 +35,51 @@ set(TAUC_SRCS
     ./src/job_queue.c
     ./src/utils/os/linux/plattform.c
 )
+set(TAUC_INCLUDE_DIRS
+    "${CMAKE_CURRENT_LIST_DIR}/src"
+)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -pthread -lm -Wall -pedantic")
-set(TAUC_PP_DIRECTIVES "")
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/deps")
+
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR 
+    "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"
+)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -pedantic")
+endif ()
+
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    #use prebuild llvm for debug speed
+    set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "" FORCE)
+    
+    set(TAUC_TESTS
+        ./test/main_test.c
+        ./test/llvmtest.cpp
+    )
     # add "-pg -no-pie" for profiling with gprof
     message("Creating Debug Buildfiles")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g")
-    set(TAUC_SRCS ${TAUC_SRCS} ./test/main_test.c)
+    set(TAUC_SRCS ${TAUC_SRCS} ${TAUC_TESTS})
 else()
     message("Creating Release Buildfiles")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -flto")
     set(TAUC_PP_DIRECTIVES ${TAUC_PP_DIRECTIVES} CMAKE_NO_DEBUG)
 endif()
 
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -flto ${TAU_DEPS_C_FLAGS}")
+
 add_executable(tauc ${TAUC_SRCS})
-target_include_directories(tauc PUBLIC "./src" "./deps")
-target_compile_definitions(tauc PRIVATE ${TAUC_PP_DIRECTIVES})
-target_compile_options(tauc PUBLIC)
+
+target_compile_definitions(tauc PRIVATE 
+    ${TAUC_PP_DIRECTIVES}
+    ${TAU_DEPS_DEFINITIONS}
+)
+
+target_include_directories(tauc PUBLIC 
+    ${TAUC_INCLUDE_DIRS}
+    ${TAU_DEPS_INCLUDE_DIRS}
+)
+
+target_link_libraries(tauc
+    ${TAU_DEPS_LIBS}
+    #TODO: handle TAU_DEPS_EXTERNAL_LIBS
+)

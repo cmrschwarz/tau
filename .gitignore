@@ -2,3 +2,4 @@
 /.vscode
 /build
 /temp
+/deps/llvm-project-prebuild/**
