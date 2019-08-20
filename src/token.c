@@ -4,105 +4,105 @@
 
 // clang-format off
 const char* token_strings[255] = {
-    [TT_KW_MODULE] = "module",
-    [TT_KW_EXTEND] = "extend",
-    [TT_KW_REQUIRE] = "require",
-    [TT_KW_IMPORT] = "import",
-    [TT_KW_INCLUDE] = "include",
-    [TT_KW_CONST] = "const",
-    [TT_KW_MUT] = "mut",
-    [TT_KW_SEALED] = "sealed",
-    [TT_KW_VIRTUAL] = "virtual",
-    [TT_KW_STATIC] = "static",
-    [TT_KW_AS] = "as",
-    [TT_KW_FUNC] = "func",
-    [TT_KW_STRUCT] = "struct",
-    [TT_KW_TRAIT] = "trait",
-    [TT_KW_AUTO] = "auto",
-    [TT_KW_LOOP] = "loop",
-    [TT_KW_CONTINUE] = "continue",
-    [TT_KW_BREAK] = "break",
-    [TT_KW_RETURN] = "return",
-    [TT_KW_USING] = "using",
-    [TT_KW_IF] = "if",
-    [TT_KW_ELSE] = "else",
-    [TT_KW_MATCH] = "match",
-    [TT_KW_LET] = "let",
-    [TT_KW_CONST] = "const",
-    [TT_KW_PUBLIC] = "public",
-    [TT_KW_PROTECTED] = "protected",
-    [TT_KW_PRIVATE] = "private",
-    [TT_KW_FINALLY] = "finally",
+    [TK_KW_MODULE] = "module",
+    [TK_KW_EXTEND] = "extend",
+    [TK_KW_REQUIRE] = "require",
+    [TK_KW_IMPORT] = "import",
+    [TK_KW_INCLUDE] = "include",
+    [TK_KW_CONST] = "const",
+    [TK_KW_MUT] = "mut",
+    [TK_KW_SEALED] = "sealed",
+    [TK_KW_VIRTUAL] = "virtual",
+    [TK_KW_STATIC] = "static",
+    [TK_KW_AS] = "as",
+    [TK_KW_FUNC] = "func",
+    [TK_KW_STRUCT] = "struct",
+    [TK_KW_TRAIT] = "trait",
+    [TK_KW_AUTO] = "auto",
+    [TK_KW_LOOP] = "loop",
+    [TK_KW_CONTINUE] = "continue",
+    [TK_KW_BREAK] = "break",
+    [TK_KW_RETURN] = "return",
+    [TK_KW_USING] = "using",
+    [TK_KW_IF] = "if",
+    [TK_KW_ELSE] = "else",
+    [TK_KW_MATCH] = "match",
+    [TK_KW_LET] = "let",
+    [TK_KW_CONST] = "const",
+    [TK_KW_PUBLIC] = "public",
+    [TK_KW_PROTECTED] = "protected",
+    [TK_KW_PRIVATE] = "private",
+    [TK_KW_FINALLY] = "finally",
 
-    [TT_MINUS_EQUALS] = "-=",
-    [TT_PLUS_EQUALS] = "+=",
-    [TT_STAR_EQUALS] = "*=",
-    [TT_EQUALS] = "=",
-    [TT_DOUBLE_EQUALS] = "==",
-    [TT_EXCLAMATION_MARK] = "!=",
-    [TT_EXCLAMATION_MARK_EQUALS] = "!=",
-    [TT_PERCENT] = "%",
-    [TT_PERCENT_EQUALS] = "%=",
-    [TT_SLASH] = "/",
-    [TT_SLASH_EQUALS] = "/=",
-    [TT_LESS_THAN] = "<",
-    [TT_LESS_THAN_EQUALS] = "<=",
-    [TT_DOUBLE_LESS_THAN] = "<<",
-    [TT_DOUBLE_LESS_THAN_EQUALS] = "<<=",
-    [TT_GREATER_THAN] = ">",
-    [TT_GREATER_THAN_EQUALS] = ">=",
-    [TT_DOUBLE_GREATER_THAN] = ">>",
-    [TT_DOUBLE_GREATER_THAN_EQUALS] = ">>=",
-    [TT_AND] = "&",
-    [TT_DOUBLE_AND] = "&&",
-    [TT_AND_EQUALS] = "&=",
-    [TT_PIPE] = "|",
-    [TT_DOUBLE_PIPE] = "||",
-    [TT_PIPE_EQUALS] = "|=",
-    [TT_CARET] = "^",
-    [TT_DOUBLE_CARET] = "^^",
-    [TT_CARET_EQUALS] = "^=",
-    [TT_TILDE] = "~",
-    [TT_TILDE_EQUALS] = "~=",
+    [TK_MINUS_EQUALS] = "-=",
+    [TK_PLUS_EQUALS] = "+=",
+    [TK_STAR_EQUALS] = "*=",
+    [TK_EQUALS] = "=",
+    [TK_DOUBLE_EQUALS] = "==",
+    [TK_EXCLAMATION_MARK] = "!=",
+    [TK_EXCLAMATION_MARK_EQUALS] = "!=",
+    [TK_PERCENT] = "%",
+    [TK_PERCENT_EQUALS] = "%=",
+    [TK_SLASH] = "/",
+    [TK_SLASH_EQUALS] = "/=",
+    [TK_LESS_THAN] = "<",
+    [TK_LESS_THAN_EQUALS] = "<=",
+    [TK_DOUBLE_LESS_THAN] = "<<",
+    [TK_DOUBLE_LESS_THAN_EQUALS] = "<<=",
+    [TK_GREATER_THAN] = ">",
+    [TK_GREATER_THAN_EQUALS] = ">=",
+    [TK_DOUBLE_GREATER_THAN] = ">>",
+    [TK_DOUBLE_GREATER_THAN_EQUALS] = ">>=",
+    [TK_AND] = "&",
+    [TK_DOUBLE_AND] = "&&",
+    [TK_AND_EQUALS] = "&=",
+    [TK_PIPE] = "|",
+    [TK_DOUBLE_PIPE] = "||",
+    [TK_PIPE_EQUALS] = "|=",
+    [TK_CARET] = "^",
+    [TK_DOUBLE_CARET] = "^^",
+    [TK_CARET_EQUALS] = "^=",
+    [TK_TILDE] = "~",
+    [TK_TILDE_EQUALS] = "~=",
 
-    [TT_PLUS] = "+",
-    [TT_DOUBLE_PLUS] = "++",
-    [TT_MINUS] = "-",
-    [TT_DOUBLE_MINUS] = "--",
-    [TT_STAR] = "*",
-    [TT_PAREN_OPEN] = "(",
-    [TT_PAREN_CLOSE] = ")",
-    [TT_BRACKET_OPEN] = "[",
-    [TT_BRACKET_CLOSE] = "]",
-    [TT_BRACE_OPEN] = "{",
-    [TT_BRACE_CLOSE] = "}",
+    [TK_PLUS] = "+",
+    [TK_DOUBLE_PLUS] = "++",
+    [TK_MINUS] = "-",
+    [TK_DOUBLE_MINUS] = "--",
+    [TK_STAR] = "*",
+    [TK_PAREN_OPEN] = "(",
+    [TK_PAREN_CLOSE] = ")",
+    [TK_BRACKET_OPEN] = "[",
+    [TK_BRACKET_CLOSE] = "]",
+    [TK_BRACE_OPEN] = "{",
+    [TK_BRACE_CLOSE] = "}",
 
-    [TT_DOLLAR] = "$",
-    [TT_COMMA] = ",",
-    [TT_SEMICOLON] = ";",
-    [TT_HASH] = "#",
-    [TT_DOUBLE_HASH] = "##",
-    [TT_DOT] = ".",
-    [TT_COLON] = ":",
-    [TT_DOUBLE_COLON] = ":",
-    [TT_ARROW] = "->",
-    [TT_FAT_ARROW] = "=>",
+    [TK_DOLLAR] = "$",
+    [TK_COMMA] = ",",
+    [TK_SEMICOLON] = ";",
+    [TK_HASH] = "#",
+    [TK_DOUBLE_HASH] = "##",
+    [TK_DOT] = ".",
+    [TK_COLON] = ":",
+    [TK_DOUBLE_COLON] = ":",
+    [TK_ARROW] = "->",
+    [TK_FAT_ARROW] = "=>",
 
-    [TT_NUMBER] = "expression",
-    [TT_STRING] = "expression",
-    [TT_BINARY_STRING] = "expression",
-    [TT_IDENTIFIER] = "expression",
-    [TT_EOF] = "EOF",
-    [TT_AT] = "@",
+    [TK_NUMBER] = "expression",
+    [TK_STRING] = "expression",
+    [TK_BINARY_STRING] = "expression",
+    [TK_IDENTIFIER] = "expression",
+    [TK_EOF] = "EOF",
+    [TK_AT] = "@",
 };
 // clang-format on
 
 token_kind match_kw(string str)
 {
-    for (ureg kwid = TT_MIN_KW_INDEX; kwid < TT_MAX_KW_INDEX; kwid++) {
+    for (ureg kwid = TK_MIN_KW_INDEX; kwid < TK_MAX_KW_INDEX; kwid++) {
         if (string_eq_cstr(str, token_strings[kwid])) return kwid;
     }
-    return TT_NONE;
+    return TK_NONE;
 }
 
 void token_debug_print(src_file* f, token* t)
@@ -112,16 +112,16 @@ void token_debug_print(src_file* f, token* t)
         return;
     }
     switch (t->kind) {
-        case TT_NUMBER:
-        case TT_IDENTIFIER: {
+        case TK_NUMBER:
+        case TK_IDENTIFIER: {
             string_print(t->str);
         } break;
-        case TT_STRING: {
+        case TK_STRING: {
             putchar('"');
             string_print(t->str);
             putchar('"');
         } break;
-        case TT_BINARY_STRING: {
+        case TK_BINARY_STRING: {
             putchar('\'');
             string_print(t->str);
             putchar('\'');

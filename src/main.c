@@ -1,6 +1,6 @@
 #include "parser.h"
 #include "tauc.h"
-#include "tokenizer.h"
+#include "lexer.h"
 #include "utils/allocator.h"
 #include "utils/debug_utils.h"
 #include "utils/math_utils.h"

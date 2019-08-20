@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.4.3)
 project(tau C CXX)
 
 set(TAUC_SRCS
-    ./src/tokenizer.c
+    ./src/lexer.c
     ./src/ast_node_flags.c
     ./src/parser.c
     ./src/resolver.c

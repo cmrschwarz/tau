@@ -295,8 +295,8 @@ void print_msg(const char* msg, ureg msg_len)
 void printCriticalThreadError(const char* msg)
 {
     pectc(
-        ANSICOLOR_RED ANSICOLOR_BOLD, "critical error in worker thread: ",
-        ANSICOLOR_CLEAR);
+        ANSICOLOR_RED ANSICOLOR_BOLD,
+        "critical error in worker thread: ", ANSICOLOR_CLEAR);
     pe(msg);
     pe("\n");
 }
@@ -480,8 +480,7 @@ int print_src_line(
             ureg after_tab = bpos;
             print_until(&bpos, &next, buffer, &after_tab, &length_diff);
             switch (mode) {
-                case 3:
-                    (ep_pos + 1)->length_diff_start = length_diff;
+                case 3: (ep_pos + 1)->length_diff_start = length_diff;
                 // fallthrough
                 case 0:
                     ep_pos->length_diff_start = length_diff;
@@ -656,7 +655,7 @@ int report_error(error* e)
     static err_point err_points[ERR_POINT_BUFFER_SIZE];
     pec(ANSICOLOR_BOLD);
     switch (e->stage) {
-        case ES_TOKENIZER: pect(ANSICOLOR_GREEN, "tokenizer "); break;
+        case ES_TOKENIZER: pect(ANSICOLOR_GREEN, "lexer "); break;
         case ES_PARSER: pect(ANSICOLOR_CYAN, "parser "); break;
         case ES_RESOLVER: pect(ANSICOLOR_MAGENTA, "resolver "); break;
         default: break;

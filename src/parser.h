@@ -1,6 +1,6 @@
 #pragma once
 #include "ast.h"
-#include "tokenizer.h"
+#include "lexer.h"
 #include "utils/list_builder.h"
 
 typedef enum parse_error {
@@ -9,11 +9,11 @@ typedef enum parse_error {
     PE_NO_STMT,
     PE_ERROR,
     PE_FATAL,
-    PE_TK_ERROR,
+    PE_LX_ERROR,
 } parse_error;
 
 typedef struct parser {
-    tokenizer tk;
+    lexer tk;
     mdg_node* current_module;
     sbuffer body_stack; // sounds kinda morbid :)
 } parser;
