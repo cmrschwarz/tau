@@ -39,7 +39,6 @@ set(TAUC_INCLUDE_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/src"
 )
 
-
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     #use prebuild llvm for debug speed
     set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "" FORCE)
@@ -65,8 +64,6 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR
 )
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -pedantic")
 endif ()
-
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -flto ${TAU_DEPS_C_FLAGS}")
 
 add_executable(tauc ${TAUC_SRCS})
 
