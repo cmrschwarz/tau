@@ -81,6 +81,7 @@ typedef enum PACK_ENUM operator_kind {
 
     // binary ops
     OP_MEMBER_ACCESS,
+    OP_SCOPE_ACCESS,
     OP_CAST,
     OP_ASSIGN,
     OP_ADD,

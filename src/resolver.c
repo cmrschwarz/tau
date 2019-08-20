@@ -416,6 +416,10 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
 resolve_error
 resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
 {
+    if (ast_elem_is_open_scope((ast_elem*)n)) {
+        if (ctype) *ctype = (ast_elem*)n;
+        return RE_OK;
+    }
     if (!n) return RE_OK;
     // PERF: find a way to avoid checking in sub exprs
     bool resolved = ast_node_flags_get_resolved(n->flags);
@@ -431,10 +435,6 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
     }
     resolve_error re;
     switch (n->kind) {
-        case OSC_EXTEND:
-        case OSC_MODULE: {
-            resolve_body(r, &((open_scope*)n)->scope.body);
-        }
         case PRIMITIVE:
         case EXPR_LITERAL: {
             if (ctype) {
@@ -625,10 +625,10 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
-static inline resolve_error report_type_loop(resolver* r)
+static inline void report_type_loop(resolver* r)
 {
     // TODO
-    return RE_OK;
+    assert(false);
 }
 resolve_error resolve_body(resolver* r, body* b)
 {

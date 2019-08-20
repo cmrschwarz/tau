@@ -37,6 +37,7 @@ static const unsigned char op_precedence[] = {
     [OP_POST_DECREMENT] = 15,
     [OP_CALL] = 15,
     [OP_ACCESS] = 15,
+    [OP_SCOPE_ACCESS] = 15,
     [OP_MEMBER_ACCESS] = 15,
 
     [OP_PRE_INCREMENT] = 14,
@@ -168,6 +169,7 @@ static inline operator_kind token_to_binary_op(token* t)
 
         case TT_TILDE_EQUALS: return OP_BITWISE_NOT_ASSIGN;
         case TT_DOT: return OP_MEMBER_ACCESS;
+        case TT_DOUBLE_COLON: return OP_SCOPE_ACCESS;
         default: return OP_NOOP;
     }
 }
@@ -2797,7 +2799,7 @@ parse_error parse_single_import(
             end = t->end;
             tk_void(&p->tk);
             PEEK(p, t);
-            if (t->kind != TT_DOT) break;
+            if (t->kind != TT_DOUBLE_COLON) break;
             tk_void(&p->tk);
             PEEK(p, t);
         }

@@ -1,10 +1,12 @@
+import doo::loo;
 func main(z: int) -> int{
     x := 1 + 2;
     y := main(3);
     return x + y + 1;
 }
 
-/*
-require "test2.tau";
-module doo{}
-*/
+//require "test2.tau";
+module doo{
+    module loo{
+    }
+}

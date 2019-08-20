@@ -159,7 +159,7 @@ void print_mdg_node_until(mdg_node* m, mdg_node* stop)
 {
     if (m->parent != stop) {
         print_mdg_node_until(m->parent, stop);
-        pc('.');
+        p("::");
     }
     p(m->name);
 }
@@ -171,7 +171,7 @@ void print_module_import(module_import* mi, mdg_node* parent, ureg indent)
     }
     if (mi->tgt != parent) {
         print_mdg_node_until(mi->tgt, parent);
-        if (mi->selected_symbols || mi->nested_imports) pc('.');
+        if (mi->selected_symbols || mi->nested_imports) p("::");
     }
     if (mi->selected_symbols && *(void**)mi->selected_symbols == NULL) {
         pc('*');
