@@ -55,7 +55,7 @@ Module* createTestModule(LLVMContext& ctx)
     llvm::FunctionType* printf_type =
         llvm::FunctionType::get(builder.getInt32Ty(), printf_args, true);
 
-    llvm::FunctionCallee printf_func =
+    llvm::Constant* printf_func =
         mod->getOrInsertFunction("printf", printf_type);
 
     Value* add_lhs = ConstantInt::get(Type::getInt32Ty(ctx), 7);

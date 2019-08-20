@@ -71,13 +71,12 @@ target_compile_definitions(tauc PRIVATE
     ${TAUC_PP_DIRECTIVES}
     ${TAU_DEPS_DEFINITIONS}
 )
-
 target_include_directories(tauc PUBLIC 
     ${TAUC_INCLUDE_DIRS}
     ${TAU_DEPS_INCLUDE_DIRS}
 )
 
-target_link_libraries(tauc
+target_link_libraries(tauc LINK_PUBLIC
     ${TAU_DEPS_LIBS}
     #TODO: handle TAU_DEPS_EXTERNAL_LIBS
 )

@@ -16,17 +16,24 @@ set(TAU_LLVM_TARGETS_TO_BUILD "X86;" CACHE BOOL
     "Semocion separated list of Target architectures to build and link" 
 FORCE)
 if(${TAU_LLVM_PRECOMPILED})
+    message("precompiled!")
     set(TAU_LLVM_PROJECT_DIR "${CMAKE_CURRENT_LIST_DIR}/llvm-project-prebuild"
         CACHE STRING 
         "llvm location, used as a basis for default includes etc."
     )
-    set(TAU_LLVM_PRECOMPILED_LIBS_FOLDERS
-        "${TAU_LLVM_PROJECT_DIR}/lib" CACHE STRING 
-        "path to the folder containing the prebuild libs"
+    set(TAU_LLVM_CONFIG_DIR "${TAU_LLVM_PROJECT_DIR}/llvm/bin" CACHE STRING 
+        "directory of the llvm-config utility"
+    )
+    find_program(TAU_LLVM_CONFIG_EXE
+        NAMES llvm-config-8 llvm-config-8.0 llvm-config80 llvm-config
+        PATHS ${TAU_LLVM_CONFIG_DIR}
     )
     link_directories(${TAU_LLVM_PRECOMPILED_LIBS_FOLDER})
     set(TAU_LLVM_INCLUDE_DIRS 
-        "${TAU_LLVM_PROJECT_DIR}/include"
+        "${CMAKE_CURRENT_LIST_DIR}/llvm-project/llvm/include"
+        "${CMAKE_CURRENT_LIST_DIR}/llvm-project/lld/include"
+        "${TAU_LLVM_PROJECT_DIR}/llvm/include"
+        "${TAU_LLVM_PROJECT_DIR}/llvm/tools/lld/include"
         CACHE STRING 
         "Include Directories for LLVM Headers"
     )
@@ -35,48 +42,63 @@ if(${TAU_LLVM_PRECOMPILED})
         CACHE STRING 
         "Preprocessor Definitions for the precompiled LLVM"
     )
-    set(TAU_LLVM_MAIN_LIBS
-        LLVMCore
-        LLVMSupport
-        LLVMTarget
-        LLVMIRReader
-        LLVMBitWriter
-        LLVMCodeGen
-        LLVMAnalysis
-        LLVMAsmPrinter
-        LLVMASmParser
-        LLVMOption
-      
-        lldCOFF
-        lldDriver
-        lldELF
-        lldMinGW
-        lldWasm
-    )
+    execute_process(
+        COMMAND ${TAU_LLVM_CONFIG_EXE} --libfiles --link-static
+        OUTPUT_VARIABLE LLVM_LIBRARIES_SPACES
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    string(REPLACE " " ";" TAU_LLVM_LIBRARIES "${LLVM_LIBRARIES_SPACES}")
+
+    execute_process(
+        COMMAND ${TAU_LLVM_CONFIG_EXE} --system-libs --link-static
+        OUTPUT_VARIABLE LLVM_SYSTEM_LIBS_SPACES
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    string(REPLACE " " ";" TAU_LLVM_SYSTEM_LIBS "${LLVM_SYSTEM_LIBS_SPACES}")
+
+    execute_process(
+        COMMAND ${TAU_LLVM_CONFIG_EXE} --libdir --link-static
+        OUTPUT_VARIABLE LLVM_LIBDIRS_SPACES
+        OUTPUT_STRIP_TRAILING_WHITESPACE)
+    string(REPLACE " " ";" TAU_LLVM_LIBDIRS "${LLVM_LIBDIRS_SPACES}")
+   
+    link_directories("${TAU_LLVM_LIBDIRS}")
     macro(TAU_ADD_LLVM_LIB _libname_)
-        string(TOUPPER ${_libname_} _prettylibname_)
-        find_library(LLD_${_prettylibname_}_LIB NAMES ${_libname_}
-            PATHS ${TAU_LLVM_PRECOMPILED_LIBS_FOLDERS}
+        string(TOUPPER "LLVM_${_libname_}_LIB" _prettylibname_)
+        find_library(${_prettylibname_} NAMES ${_libname_}
+            PATHS ${TAU_LLVM_LIBDIRS}
         )
-        if(LLD_${_prettylibname_}_LIB)
-                set(TAU_LLVM_LIBS ${TAU_LLVM_LIBS} ${LLD_${_prettylibname_}_LIB})
+        if(${_prettylibname_})
+            set(TAU_LLVM_LIBS ${TAU_LLVM_LIBS} ${${_prettylibname_}})
+        else()
+            message("lib not found: ${_libname_}")
         endif()
     endmacro()
-    foreach(lib ${TAU_LLVM_MAIN_LIBS})
+    set (TAU_LLVM_LLD_LIBS
+        lldDriver
+        lldMinGW
+        lldELF
+        lldCOFF
+        lldMachO
+        lldWasm
+        lldReaderWriter
+        lldCore
+        lldYAML
+        lldCommon
+    )
+    foreach(lib ${TAU_LLVM_LLD_LIBS})
         TAU_ADD_LLVM_LIB(${lib})
     endforeach()
-    foreach(tgt ${TAU_LLVM_TARGETS_TO_BUILD})
-        TAU_ADD_LLVM_LIB(LLVM${tgt}Info)
-        TAU_ADD_LLVM_LIB(LLVM${tgt}Utils)
-        TAU_ADD_LLVM_LIB(LLVM${tgt}AsmPrinter)
-        TAU_ADD_LLVM_LIB(LLVM${tgt}AsmParser)
-        TAU_ADD_LLVM_LIB(LLVM${tgt}CodeGen)
-    endforeach()
+    set(TAU_LLVM_LIBS
+        ${TAU_LLVM_LIBS}
+        ${TAU_LLVM_LIBRARIES}
+        ${TAU_LLVM_SYSTEM_LIBS}
+    )
+   
    
 else()
+    option(TAU_LLVM_BUILD_TOOLS "build llvm tools (like llvm-config)" ON)
     set(LLVM_TARGETS_TO_BUILD ${TAU_LLVM_TARGETS_TO_BUILD} CACHE BOOL "" FORCE)
     #disable unneeded LLVM parts
-    set(LLVM_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+    set(LLVM_BUILD_TOOLS ${TAU_LLVM_BUILD_TOOLS} CACHE BOOL "" FORCE)
     #turning this off unfortunately disables lld's library targets
     #set(LLVM_INCLUDE_TOOLS OFF CACHE BOOL "" FORCE)
     set(LLVM_INCLUDE_BENCHMARKS OFF CACHE BOOL "" FORCE)
@@ -96,9 +118,14 @@ else()
     set(CMAKE_BUILD_TYPE_SAVED "${CMAKE_BUILD_TYPE}" CACHE STRING "" FORCE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
     #include llvm
+    if(${TAU_LLVM_BUILD_TOOLS})
+        set(TAU_LLVM_EXCLUDE_FROM_ALL EXCLUDE_FROM_ALL)
+    else()
+        set(TAU_LLVM_EXCLUDE_FROM_ALL "")
+    endif()
     add_subdirectory(
         "${CMAKE_CURRENT_LIST_DIR}/llvm-project/llvm"
-        EXCLUDE_FROM_ALL
+        ${TAU_LLVM_EXCLUDE_FROM_ALL}
     )
     # restore build type, this is a veru ugly hack
     # TODO: find a better way to do this 
@@ -112,7 +139,6 @@ else()
     set(TAU_LLVM_DEFINITIONS
         ${LLVM_DEFINITIONS}
     )
-    message("LLVM DEFS: ${LLVM_DEFINITIONS}")
     llvm_map_components_to_libnames(LLVM_LIBS
         core
         support
