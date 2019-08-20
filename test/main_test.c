@@ -199,11 +199,11 @@ int main_test(int argc, char** argv)
     talloc_init();
     int res = OK;
 
+    // res |= TEST(llvmtest_main);
     res |= TEST(stack_test);
     res |= TEST(list_builder_test);
     res |= TEST(file_map_test);
     res |= TEST(job_queue_test);
-    res |= TEST(llvmtest_main);
     // res |= TEST(mdg_test);
     res |= TEST(release_test);
 

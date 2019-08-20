@@ -1,5 +1,5 @@
 func main(z: int) -> int{
-    x:= 1 + 2;
+    x := 1 + 2;
     y := main(3);
     return x + y + 1;
 }

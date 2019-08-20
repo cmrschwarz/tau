@@ -1665,7 +1665,7 @@ parse_binary_op(parser* p, operator_kind op, ast_node** ex, ast_node* lhs)
     expr_op_binary* ob = (expr_op_binary*)alloc_perm(p, sizeof(expr_op_binary));
     if (!ob) return PE_FATAL;
     if (ast_node_fill_srange(p, &ob->node, t->start, t->end)) return PE_FATAL;
-    ob->node.kind = EXPR_OP_BINARY;
+    ast_node_init((ast_node*)ob, EXPR_OP_BINARY);
     ob->node.operator_kind = op;
     parse_error pe = parse_expression_of_prec(
         p, &ob->rhs, op_precedence[op] + is_left_associative(op));
