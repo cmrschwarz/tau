@@ -608,16 +608,6 @@ static inline void report_type_loop(resolver* r)
 }
 resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
 {
-    resolve_error re;
-    for (ureg i = 0; i < fn->param_count; i++) {
-        // TODO: default args etc.
-        re = resolve_ast_node(
-            r, fn->params[i].type, parent_st, &fn->params[i].ctype);
-        if (re) return re;
-    }
-    re = resolve_ast_node(r, fn->return_type, parent_st, &fn->return_ctype);
-    if (re) return re;
-    ast_node_flags_set_resolved(&fn->scope.symbol.node.flags);
     body* b = &fn->scope.body;
     if (b->symtab == NULL) {
         b->symtab = parent_st;
@@ -626,6 +616,19 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
         b->symtab->parent = parent_st;
     }
     symbol_table* st = b->symtab;
+
+    resolve_error re;
+    for (ureg i = 0; i < fn->param_count; i++) {
+        // TODO: default args etc.
+        re = resolve_ast_node(
+            r, fn->params[i].type, parent_st, &fn->params[i].ctype);
+        if (re) return re;
+        re = add_symbol(r, st, NULL, (symbol*)&fn->params[i]);
+        if (re) return re;
+    }
+    re = resolve_ast_node(r, fn->return_type, parent_st, &fn->return_ctype);
+    if (re) return re;
+    ast_node_flags_set_resolved(&fn->scope.symbol.node.flags);
     for (ast_node** n = b->elements; *n != NULL; n++) {
         re = add_ast_node_decls(r, st, NULL, *n);
         if (re) return re;

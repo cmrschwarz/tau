@@ -642,6 +642,8 @@ parse_error parse_param_decl(
             "expected parameter identifier", ctx_start, ctx_end, msg_context);
         return PE_ERROR;
     }
+    if (ast_node_fill_srange(p, (ast_node*)tgt, t->start, t->end))
+        return PE_FATAL;
     tgt->symbol.name = alloc_string_perm(p, t->str);
     if (!tgt->symbol.name) return PE_FATAL;
     // TODO: flags parsing
@@ -1949,6 +1951,7 @@ parse_error parse_var_decl(
     parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)
 {
     token* t = lx_aquire(&p->tk);
+    ureg end = t->end;
     string ident = t->str;
     lx_void(&p->tk);
     t = lx_aquire(&p->tk);
@@ -2019,8 +2022,8 @@ parse_error parse_var_decl(
     v->symbol.name = alloc_string_perm(p, ident);
     if (!v->symbol.name) return PE_FATAL;
     v->symbol.node.flags = flags;
-    if (sym_fill_srange(p, (symbol*)v, start, t->end)) return PE_FATAL;
     *n = (ast_node*)v;
+    if (sym_fill_srange(p, (symbol*)v, start, end)) return PE_FATAL;
     curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
     return PE_OK;
 }
