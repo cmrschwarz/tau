@@ -11,8 +11,11 @@
         .name = prim_name, .next = NULL                                        \
     }
 symbol PRIMITIVES[] = {
-    mk_prim(PT_INT, "int"),       mk_prim(PT_UINT, "uint"),
-    mk_prim(PT_STRING, "string"), mk_prim(PT_BINARY_STRING, "bstring"),
+    mk_prim(PT_VOID, "void"),
+    mk_prim(PT_INT, "int"),
+    mk_prim(PT_UINT, "uint"),
+    mk_prim(PT_STRING, "string"),
+    mk_prim(PT_BINARY_STRING, "bstring"),
     mk_prim(PT_FLOAT, "float"),
 };
 ureg PRIMITIVE_COUNT = sizeof(PRIMITIVES) / sizeof(symbol);

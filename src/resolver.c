@@ -417,11 +417,14 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
 resolve_error
 resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
 {
+    if (!n) {
+        if (ctype) *ctype = (ast_elem*)&PRIMITIVES[PT_VOID];
+        return RE_OK;
+    }
     if (ast_elem_is_open_scope((ast_elem*)n)) {
         if (ctype) *ctype = (ast_elem*)n;
         return RE_OK;
     }
-    if (!n) return RE_OK;
     // PERF: find a way to avoid checking in sub exprs
     bool resolved = ast_node_flags_get_resolved(n->flags);
     if (resolved) {

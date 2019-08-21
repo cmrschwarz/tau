@@ -4,6 +4,7 @@ module bar;
 import doo::loo;
 //#x := 3;
 func main(args: String[]){    
+    func bar(){}
     func test_compound_assignment(){
         if(3) @label{
             bar();

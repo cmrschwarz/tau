@@ -135,6 +135,7 @@ typedef enum PACK_ENUM operator_kind {
 } operator_kind;
 
 typedef enum PACK_ENUM primitive_kind {
+    PT_VOID,
     PT_INT,
     PT_UINT,
     PT_FLOAT,
