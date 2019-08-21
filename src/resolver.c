@@ -8,7 +8,7 @@ static resolve_error
 add_simple_body_decls(resolver* r, symbol_table* parent_st, body* b);
 resolve_error
 resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype);
-
+resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st);
 static inline resolve_error ret_ctype(ast_elem* type, ast_elem** ctype)
 {
     *ctype = type;
@@ -112,7 +112,7 @@ static resolve_error add_ast_node_decls(
             }
 
             // TODO
-            // we should not be doing function bodys because they are stronly
+            // we should not be doing function bodys because they are strongly
             // ordered, this is for debugging
             // (therefore also not doing func parameters)
             return add_simple_body_decls(r, st, &((scope*)n)->body);
@@ -235,69 +235,47 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
      */
 }
 
-resolve_error
-get_param_ctype(resolver* r, symbol_table* st, sym_param* p, ast_elem** ctype)
-{
-    if (!ast_node_flags_get_resolved(p->symbol.node.flags)) {
-        resolve_error re =
-            resolve_ast_node(r, (ast_node*)p->type, st, &p->ctype);
-        *ctype = p->ctype;
-        if (re) return re;
-    }
-    else {
-        *ctype = p->ctype;
-    }
-    return RE_OK;
-}
 resolve_error operator_func_applicable(
     resolver* r, symbol_table* op_st, ast_elem* lhs, ast_elem* rhs, sc_func* f,
     bool* applicable, ast_elem** ctype)
 {
     // ensure func has exactly 2 parameters
     // [varargs not allowed for operators]
-    if (!f->params || !f->params->symbol.next || f->params->symbol.next->next) {
+    if (f->param_count != 2) {
         *applicable = false;
         return RE_OK;
     }
-    resolve_error re;
-    ast_elem* fparam;
-    re = get_param_ctype(r, op_st, f->params, &fparam);
-    if (re) return re;
-    if (!ctypes_unifiable(lhs, fparam)) {
-        *applicable = false;
-        return RE_OK;
-    }
-    re = get_param_ctype(r, op_st, (sym_param*)f->params->symbol.next, &fparam);
-    if (re) return re;
-    if (!ctypes_unifiable(rhs, fparam)) {
-        *applicable = false;
-        return RE_OK;
-    }
-    if (ast_node_flags_get_resolved(f->return_type->flags)) {
-        re = resolve_ast_node(r, f->return_type, op_st, ctype);
+    if (!ast_node_flags_get_resolved(f->scope.symbol.node.flags)) {
+        resolve_error re = resolve_ast_node(r, (ast_node*)f, op_st, NULL);
         if (re) return re;
     }
-    else {
-        if (ctype) *ctype = f->return_ctype;
+    if (!ctypes_unifiable(lhs, f->params[0].ctype)) {
+        *applicable = false;
+        return RE_OK;
     }
+    if (!ctypes_unifiable(rhs, f->params[1].ctype)) {
+        *applicable = false;
+        return RE_OK;
+    }
+    if (ctype) *ctype = f->return_ctype;
     *applicable = true;
     return RE_OK;
 }
-bool func_applicable(
+resolve_error func_applicable(
     resolver* r, symbol_table* fn_st, ast_elem** call_arg_types, ureg arg_count,
     sc_func* func, bool* applicable, ast_elem** ctype)
 {
     // works cause varags are not in the lang yet
     if (func->param_count != arg_count) return false;
-    sym_param* p = func->params;
+    if (!ast_node_flags_get_resolved(func->scope.symbol.node.flags)) {
+        resolve_error re = resolve_ast_node(r, (ast_node*)func, fn_st, NULL);
+        if (re) return re;
+    }
     for (ureg i = 0; i < arg_count; i++) {
-        ast_elem* param_type;
-        get_param_ctype(r, fn_st, p, &param_type);
-        if (!ctypes_unifiable(call_arg_types[i], param_type)) {
+        if (!ctypes_unifiable(func->params[i].ctype, call_arg_types[i])) {
             *applicable = false;
             return RE_OK;
         }
-        p = (sym_param*)p->symbol.next;
     }
     *applicable = true;
     return resolve_ast_node(r, func->return_type, fn_st, ctype);
@@ -504,11 +482,10 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
 
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
-            // parameters are done on the call site
-            // if func is never called -> no no need to resolve the params
+            // TODO: ctype should actually be some kind of func ptr
             if (ctype) *ctype = (ast_elem*)n;
             if (resolved) return RE_OK;
-            re = resolve_body(r, &((scope*)n)->body);
+            re = resolve_func(r, (sc_func*)n, st);
             if (re) return re;
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
@@ -634,6 +611,34 @@ static inline void report_type_loop(resolver* r)
 {
     // TODO
     assert(false);
+}
+resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
+{
+    resolve_error re;
+    for (ureg i = 0; i < fn->param_count; i++) {
+        // TODO: default args etc.
+        re = resolve_ast_node(
+            r, fn->params[i].type, parent_st, &fn->params[i].ctype);
+        if (re) return re;
+    }
+    re = resolve_ast_node(r, fn->return_type, parent_st, &fn->return_ctype);
+    if (re) return re;
+    ast_node_flags_set_resolved(&fn->scope.symbol.node.flags);
+    body* b = &fn->scope.body;
+    if (b->symtab == NULL) {
+        b->symtab = parent_st;
+    }
+    else {
+        b->symtab->parent = parent_st;
+    }
+    symbol_table* st = b->symtab;
+    for (ast_node** n = b->elements; *n != NULL; n++) {
+        re = add_ast_node_decls(r, st, NULL, *n);
+        if (re) return re;
+        re = resolve_ast_node(r, *n, b->symtab, NULL);
+        if (re) return re;
+    }
+    return RE_OK;
 }
 resolve_error resolve_body(resolver* r, body* b)
 {

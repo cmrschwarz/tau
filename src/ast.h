@@ -242,8 +242,9 @@ typedef struct expr_continue {
 
 typedef struct expr_block {
     ast_node node;
-    char* name; // NULL if no label provided and not in if/else
+    char* name; // NULL if no label provided and not in if/else/etc.
     body body;
+    ast_elem* ctype;
 } expr_block;
 
 typedef struct expr_if {
@@ -251,12 +252,14 @@ typedef struct expr_if {
     ast_node* condition;
     ast_node* if_body;
     ast_node* else_body;
+    ast_elem* ctype;
 } expr_if;
 
 typedef struct expr_loop {
     ast_node node;
     char* name;
     body body;
+    ast_elem* ctype;
 } expr_loop;
 
 typedef struct expr_macro {

@@ -631,7 +631,7 @@ static inline parse_error parse_identifier(parser* p, ast_node** tgt)
     return PE_OK;
 }
 parse_error parse_param_decl(
-    parser* p, sym_param** tgt, ureg ctx_start, ureg ctx_end, char* msg_context)
+    parser* p, sym_param* tgt, ureg ctx_start, ureg ctx_end, char* msg_context)
 {
     parse_error pe;
     token* t;
@@ -642,12 +642,10 @@ parse_error parse_param_decl(
             "expected parameter identifier", ctx_start, ctx_end, msg_context);
         return PE_ERROR;
     }
-    sym_param* d = alloc_perm(p, sizeof(sym_param));
-    if (!d) return PE_FATAL;
-    d->symbol.name = alloc_string_perm(p, t->str);
-    if (!d->symbol.name) return PE_FATAL;
+    tgt->symbol.name = alloc_string_perm(p, t->str);
+    if (!tgt->symbol.name) return PE_FATAL;
     // TODO: flags parsing
-    ast_node_init((ast_node*)d, SYM_PARAM);
+    ast_node_init((ast_node*)tgt, SYM_PARAM);
     lx_void(&p->tk);
     PEEK(p, t);
     if (t->kind != TK_COLON) {
@@ -660,8 +658,8 @@ parse_error parse_param_decl(
     PEEK(p, t);
     if (t->kind == TK_EQUALS) {
         lx_void(&p->tk);
-        d->type = NULL;
-        pe = parse_expression(p, &d->default_value);
+        tgt->type = NULL;
+        pe = parse_expression(p, &tgt->default_value);
         if (pe == PE_EOEX) {
             PEEK(p, t);
             parser_error_2a(
@@ -673,7 +671,8 @@ parse_error parse_param_decl(
         if (pe) return pe;
     }
     else {
-        pe = parse_expression_of_prec(p, &d->type, op_precedence[OP_EQUAL] + 1);
+        pe = parse_expression_of_prec(
+            p, &tgt->type, op_precedence[OP_EQUAL] + 1);
         if (pe == PE_EOEX) {
             PEEK(p, t);
             parser_error_2a(
@@ -686,7 +685,7 @@ parse_error parse_param_decl(
         PEEK(p, t);
         if (t->kind == TK_EQUALS) {
             lx_void(&p->tk);
-            pe = parse_expression(p, &d->default_value);
+            pe = parse_expression(p, &tgt->default_value);
             if (pe == PE_EOEX) {
                 PEEK(p, t);
                 parser_error_2a(
@@ -698,10 +697,9 @@ parse_error parse_param_decl(
             if (pe) return pe;
         }
         else {
-            d->default_value = NULL;
+            tgt->default_value = NULL;
         }
     }
-    *tgt = d;
     curr_scope_add_decls(p, AM_UNSPECIFIED, 1);
     return PE_OK;
 }
@@ -2033,24 +2031,24 @@ parse_error parse_param_list(
     token* t;
     token_kind end_tok = generic ? TK_BRACKET_CLOSE : TK_PAREN_CLOSE;
     PEEK(p, t);
-    ureg parcnt = 0;
     if (t->kind == end_tok) {
         lx_void(&p->tk);
-        *tgt = NULL;
-        *param_count = parcnt;
+        *tgt = NULL; // kinda uneccessary, but helps with debugging
+        *param_count = 0;
         return PE_OK;
     }
+    void** param_list = list_builder_start_blocklist(&p->tk.tc->list_builder2);
+    parse_error pe;
     do {
-        parcnt++;
-        parse_error pe = parse_param_decl(p, tgt, ctx_start, ctx_end, msg);
-        if (pe) {
-            *tgt = NULL;
-            return pe;
-        }
-        tgt = (sym_param**)&(*tgt)->symbol.next;
+        sym_param param;
+        pe = parse_param_decl(p, &param, ctx_start, ctx_end, msg);
+        if (pe) break;
+        list_builder_add_block(
+            &p->tk.tc->list_builder2, &param, sizeof(sym_param));
         t = lx_peek(&p->tk);
         if (!t) {
-            return PE_LX_ERROR;
+            pe = PE_LX_ERROR;
+            break;
         }
         if (t->kind == TK_COMMA) {
             lx_void(&p->tk);
@@ -2063,12 +2061,19 @@ parse_error parse_param_list(
             error_log_report_annotated_twice(
                 &p->tk.tc->error_log, ES_PARSER, false, e1, p->tk.file,
                 t->start, t->end, e2, p->tk.file, ctx_start, ctx_end, msg);
-            return PE_ERROR;
+            pe = PE_ERROR;
+            break;
         }
     } while (t->kind != end_tok);
+    if (pe) {
+        list_builder_drop_list(&p->tk.tc->list_builder2, param_list);
+        return pe;
+    }
     lx_void(&p->tk);
-    *tgt = NULL;
-    *param_count = parcnt;
+    *tgt = (sym_param*)list_builder_pop_block_list(
+        &p->tk.tc->list_builder2, param_list, &p->tk.tc->permmem, param_count,
+        0, 0);
+    *param_count = *param_count / sizeof(sym_param);
     return PE_OK;
 }
 parse_error parse_func_decl(

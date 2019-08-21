@@ -95,22 +95,21 @@ void print_namable_braced_body(body* body, char* name, ureg indent)
     }
     print_body_braced(body, indent);
 }
-void print_sym_params(sym_param* d, ureg indent)
+void print_sym_params(sym_param* params, ureg param_count, ureg indent)
 {
-    while (d != NULL) {
-        pu(d->symbol.name);
+    for (ureg i = 0; i < param_count; i++) {
+        pu(params[i].symbol.name);
         pc(':');
-        if (d->type != NULL) {
+        if (params[i].type != NULL) {
             pc(' ');
-            print_ast_node(d->type, indent);
-            if (d->default_value != NULL) pc(' ');
+            print_ast_node(params[i].type, indent);
+            if (params[i].default_value != NULL) pc(' ');
         }
-        if (d->default_value != NULL) {
+        if (params[i].default_value != NULL) {
             p("= ");
-            print_ast_node(d->default_value, indent);
+            print_ast_node(params[i].default_value, indent);
         }
-        d = (sym_param*)d->symbol.next;
-        if (d) p(", ");
+        if (i < param_count - 1) p(", ");
     }
 }
 void print_expr_list(ast_node** el, ureg count, ureg indent)
@@ -262,7 +261,7 @@ void print_ast_node(ast_node* n, ureg indent)
             p("func ");
             pu(f->scope.symbol.name);
             p("(");
-            print_sym_params(f->params, indent);
+            print_sym_params(f->params, f->param_count, indent);
             pc(')');
             if (f->return_type) {
                 p(" -> ");
@@ -276,10 +275,10 @@ void print_ast_node(ast_node* n, ureg indent)
             p("func ");
             pu(f->scope.symbol.name);
             p("[");
-            print_sym_params(f->generic_params, indent);
+            print_sym_params(f->generic_params, f->generic_param_count, indent);
             pc(']');
             p("(");
-            print_sym_params(f->params, indent);
+            print_sym_params(f->params, f->param_count, indent);
             pc(')');
             if (f->return_type) {
                 p(" -> ");
@@ -299,7 +298,7 @@ void print_ast_node(ast_node* n, ureg indent)
             p("struct ");
             pinn(s->scope.symbol.name);
             p("[");
-            print_sym_params(s->generic_params, indent);
+            print_sym_params(s->generic_params, s->generic_param_count, indent);
             pc(']');
             print_body_braced(&s->scope.body, indent);
         } break;
@@ -314,7 +313,7 @@ void print_ast_node(ast_node* n, ureg indent)
             p("trait ");
             pinn(t->scope.symbol.name);
             p("[");
-            print_sym_params(t->generic_params, indent);
+            print_sym_params(t->generic_params, t->generic_param_count, indent);
             pc(']');
             print_body_braced(&t->scope.body, indent);
         } break;
@@ -329,7 +328,7 @@ void print_ast_node(ast_node* n, ureg indent)
             p("module ");
             pinn(m->oscope.scope.symbol.name);
             p("[");
-            print_sym_params(m->generic_params, indent);
+            print_sym_params(m->generic_params, m->generic_param_count, indent);
             pc(']');
             print_open_scope_body(&m->oscope, indent);
         } break;
@@ -344,7 +343,7 @@ void print_ast_node(ast_node* n, ureg indent)
             p("extend ");
             pinn(e->oscope.scope.symbol.name);
             p("[");
-            print_sym_params(e->generic_params, indent);
+            print_sym_params(e->generic_params, e->generic_param_count, indent);
             pc(']');
             print_open_scope_body(&e->oscope, indent);
         } break;

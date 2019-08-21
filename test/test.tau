@@ -5,7 +5,7 @@ func main(z: int) -> int{
     return x + y + 1;
 }
 
-require "test2.tau";
+//require "test2.tau";
 module doo{
     module loo{
     }
