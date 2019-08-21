@@ -110,13 +110,7 @@ static resolve_error add_ast_node_decls(
                     return report_redeclaration_error(r, sym, *conflict, tgtst);
                 }
             }
-
-            // TODO
-            // we should not be doing function bodys because they are strongly
-            // ordered, this is for debugging
-            // (therefore also not doing func parameters)
-            return add_simple_body_decls(r, st, &((scope*)n)->body);
-
+            // we don't do function bodys here because they are strongly ordered
             return RE_OK;
         }
         case STMT_IMPORT:
