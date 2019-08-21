@@ -39,6 +39,7 @@ int symbol_table_init(
     st->pp_symtab = NULL;
     st->decl_count = decl_count;
     st->owning_node = owning_node;
+    st->parent = NULL;
     *tgt = st;
     return OK;
 }

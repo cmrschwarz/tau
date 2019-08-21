@@ -312,12 +312,15 @@ resolve_error resolve_func_call(
         resolve_ast_node(r, c->args[i], st, &call_arg_types[i]);
     }
     symbol_table* lt = st;
+    resolve_error re = RE_OK;
     while (lt) {
         symbol_table* fn_st;
         symbol** s = symbol_table_lookup_with_decl(lt, func_name, &fn_st);
-        if (!s) return report_unknown_symbol(r, c->lhs, st);
+        if (!s) {
+            re = report_unknown_symbol(r, c->lhs, st);
+            break;
+        }
         bool applicable;
-        resolve_error re;
         if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
             sym_func_overloaded* sfo = (sym_func_overloaded*)s;
             sc_func* f = sfo->funcs;
@@ -325,8 +328,7 @@ resolve_error resolve_func_call(
                 re = func_applicable(
                     r, fn_st, call_arg_types, c->arg_count, f, &applicable,
                     ctype);
-                if (re) return re;
-                if (applicable) return RE_OK;
+                if (re || applicable) break;
                 f = (sc_func*)f->scope.symbol.next;
             }
         }
@@ -334,8 +336,7 @@ resolve_error resolve_func_call(
             re = func_applicable(
                 r, fn_st, call_arg_types, c->arg_count, (sc_func*)(*s),
                 &applicable, ctype);
-            if (re) return re;
-            if (applicable) return RE_OK;
+            if (re || applicable) break;
         }
         else {
             assert(false);
@@ -343,8 +344,7 @@ resolve_error resolve_func_call(
         lt = lt->parent;
     }
     dbuffer_pop(&r->call_types, c->arg_count * sizeof(ast_elem*));
-    // TODO
-    return RE_OK;
+    return re;
 }
 resolve_error
 resolve_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
@@ -657,7 +657,7 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
     for (mdg_node** i = start; i != end; i++) {
         int r = symbol_table_init(
             &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
-            atomic_ureg_load(&(**i).using_count), true, NULL);
+            atomic_ureg_load(&(**i).using_count), true, (ast_node*)*i);
         if (r) return RE_FATAL;
         if (!(**i).symtab) return RE_FATAL;
         (**i).symtab->parent = GLOBAL_SYMTAB;
