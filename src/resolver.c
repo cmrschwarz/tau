@@ -2,6 +2,7 @@
 #include "thread_context.h"
 #include "utils/error.h"
 #include "utils/panic.h"
+#include "utils/zero.h"
 
 resolve_error resolve_body(resolver* r, body* b);
 static resolve_error
@@ -9,6 +10,8 @@ add_simple_body_decls(resolver* r, symbol_table* parent_st, body* b);
 resolve_error
 resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype);
 resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st);
+resolve_error resolve_expr_body(
+    resolver* r, ast_node* expr, body* b, symbol_table* parent_st);
 static inline resolve_error ret_ctype(ast_elem* type, ast_elem** ctype)
 {
     *ctype = type;
@@ -125,8 +128,6 @@ static resolve_error add_ast_node_decls(
         }
 
         case EXPR_RETURN:
-            return add_ast_node_decls(r, st, sst, ((expr_return*)n)->value);
-
         case EXPR_BREAK:
             return add_ast_node_decls(r, st, sst, ((expr_break*)n)->value);
 
@@ -384,10 +385,11 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
         default: return (ast_elem*)s;
     }
 }
+
 // the symbol table is not the one that contains the symbol, but the one
 // where it was declared and where the type name loopup should start
-resolve_error
-resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
+resolve_error resolve_ast_node_raw(
+    resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
 {
     if (!n) {
         if (ctype) *ctype = (ast_elem*)&PRIMITIVES[PT_VOID];
@@ -404,7 +406,12 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
     }
     else {
         if (ast_node_flags_get_resolving(n->flags)) {
-            stack_push(&r->error_stack, n);
+            bool labelable;
+            ast_elem_get_label((ast_elem*)n, &labelable);
+            // AST_NODE_KIND_ERROR means we explicitly intend to
+            // trigger the type loop error here
+            if (labelable && n->kind != AST_NODE_KIND_ERROR)
+                return RE_REQUIRES_BODY_TYPE;
             assert(false);
             return RE_TYPE_LOOP;
         }
@@ -523,30 +530,47 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
             return RE_OK;
         }
 
-        case EXPR_RETURN: {
-            // TODO ctype on resolved
-            re = resolve_ast_node(r, ((expr_return*)n)->value, st, NULL);
-            if (re) return re;
-            ast_node_flags_set_resolved(&n->flags);
-            return RE_OK;
-        }
+        case EXPR_RETURN:
         case EXPR_BREAK: {
-            // TODO ctype
-            if (ctype) *ctype = NULL;
+            if (ctype) *ctype = (ast_elem*)&PRIMITIVES[PT_VOID];
             if (resolved) return RE_OK;
-            re = resolve_ast_node(r, ((expr_return*)n)->value, st, NULL);
+            expr_break* b = (expr_break*)n;
+            re = resolve_ast_node(r, b->value, st, &b->value_ctype);
             if (re) return re;
             ast_node_flags_set_resolved(&n->flags);
+            ast_elem* tgt_type;
+            if (n->kind == EXPR_BREAK) {
+                re = resolve_ast_node(r, b->target, st, &tgt_type);
+                if (re) return re;
+            }
+            else if (b->target->kind == SC_FUNC) {
+                // must already be resolved since parenting function
+                tgt_type = ((sc_func*)b->target)->return_ctype;
+            }
+            else {
+                tgt_type = ((sc_func_generic*)b->target)->return_ctype;
+            }
+            if (!ctypes_unifiable(b->value_ctype, tgt_type)) {
+                ureg vstart, vend;
+                ast_node_get_bounds(b->value, &vstart, &vend);
+                error_log_report_annotated_twice(
+                    &r->tc->error_log, ES_RESOLVER, false, "type missmatch",
+                    ast_node_get_file((ast_node*)b, st), vstart, vend,
+                    "the type returned from here doesn't match the target "
+                    "scope's",
+                    // TODO: st is kinda wrong here
+                    ast_node_get_file((ast_node*)b->target, st),
+                    src_range_get_start(b->target->srange),
+                    src_range_get_end(b->target->srange), "target scope here");
+                return RE_TYPE_MISSMATCH;
+            }
             return RE_OK;
         }
         case EXPR_BLOCK: {
-            // TODO ctype
-            if (ctype) *ctype = NULL;
+            expr_block* b = (expr_block*)n;
+            if (ctype) *ctype = b->ctype;
             if (resolved) return RE_OK;
-            re = resolve_body(r, &((expr_block*)n)->body);
-            if (re) return re;
-            ast_node_flags_set_resolved(&n->flags);
-            return RE_OK;
+            return resolve_expr_body(r, (ast_node*)b, &b->body, st);
         }
 
         case EXPR_IF: {
@@ -601,10 +625,50 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
+resolve_error
+resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
+{
+    resolve_error re = resolve_ast_node_raw(r, n, st, ctype);
+    if (re == RE_OK) return RE_OK;
+    if (re == RE_TYPE_LOOP) {
+        stack_push(&r->error_stack, n);
+    }
+    else if (re == RE_REQUIRES_BODY_TYPE) {
+        ast_node_flags_clear_resolving(&n->flags);
+    }
+    return re;
+}
 static inline void report_type_loop(resolver* r)
 {
     // TODO
     assert(false);
+}
+resolve_error
+resolve_expr_body(resolver* r, ast_node* expr, body* b, symbol_table* parent_st)
+{
+    resolve_error re;
+    bool second_pass = false;
+    for (ast_node** n = b->elements; *n != NULL; n++) {
+        re = resolve_ast_node(r, *n, b->symtab, NULL);
+        if (re == RE_REQUIRES_BODY_TYPE) {
+            second_pass = true;
+            continue;
+        }
+        if (re) return re;
+    }
+    if (ast_node_flags_get_resolved(expr->flags)) {
+        // TODO: error msg
+        if (!second_pass) assert(false);
+        // will cause resolve to trigger type loop error on first loop
+        expr->kind = AST_NODE_KIND_ERROR;
+    }
+    if (second_pass) {
+        for (ast_node** n = b->elements; *n != NULL; n++) {
+            re = resolve_ast_node(r, *n, b->symtab, NULL);
+            if (re) return re;
+        }
+    }
+    return RE_OK;
 }
 resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
 {

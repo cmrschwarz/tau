@@ -144,9 +144,8 @@ static void free_astn_symtabs(ast_node* n)
         }
     }
     switch (n->kind) {
-        case EXPR_RETURN: free_astn_symtabs(((expr_return*)n)->value); break;
-
-        case EXPR_BREAK: free_astn_symtabs(((expr_break*)n)->value); break;
+        case EXPR_BREAK:
+        case EXPR_RETURN: free_astn_symtabs(((expr_break*)n)->value); break;
 
         case EXPR_BLOCK: free_body_symtabs(n, &((expr_block*)n)->body); break;
 

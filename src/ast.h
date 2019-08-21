@@ -68,6 +68,7 @@ typedef enum PACK_ENUM ast_node_kind {
     TYPE_ARRAY,
     TYPE_TUPLE,
     TYPE_MODIFIERS,
+    AST_NODE_KIND_ERROR,
 
 } ast_node_kind;
 
@@ -224,15 +225,12 @@ typedef struct stmt_import {
     module_import module_import;
 } stmt_import;
 
-typedef struct expr_return {
-    ast_node node;
-    ast_node* value; // NULL if no value provided
-} expr_return;
-
+// expr_return also uses this struct
 typedef struct expr_break {
     ast_node node;
     ast_node* target;
     ast_node* value; // NULL if no value provided
+    ast_elem* value_ctype; // void if value not provided
 } expr_break;
 
 typedef struct expr_continue {
@@ -314,6 +312,7 @@ typedef struct sc_func_generic {
     sym_param* params;
     ureg param_count;
     ast_node* return_type;
+    ast_elem* return_ctype;
 } sc_func_generic;
 
 typedef struct sc_struct {
@@ -521,6 +520,7 @@ bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
 bool ast_elem_is_expr(ast_elem* s);
 bool ast_elem_is_stmt(ast_elem* s);
+char* ast_elem_get_label(ast_elem* n, bool* lbl);
 src_file* open_scope_get_file(open_scope* s);
 src_file* ast_node_get_file(ast_node* n, symbol_table* st);
 

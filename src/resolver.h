@@ -10,6 +10,7 @@ typedef enum resolve_error {
     RE_SYMBOL_REDECLARATION,
     RE_UNKNOWN_SYMBOL,
     RE_TYPE_LOOP,
+    RE_REQUIRES_BODY_TYPE,
     RE_OVERLOADED,
 } resolve_error;
 

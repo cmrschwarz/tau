@@ -32,6 +32,25 @@ src_file* ast_node_get_file(ast_node* n, symbol_table* st)
     assert(f);
     return f;
 }
+char* ast_elem_get_label(ast_elem* n, bool* lbl)
+{
+    char* name;
+    switch (n->kind) {
+        case EXPR_BLOCK: {
+            name = ((expr_block*)n)->name;
+            if (lbl) *lbl = true;
+        } break;
+        case EXPR_MATCH: {
+            name = ((expr_match*)n)->name;
+            if (lbl) *lbl = true;
+        } break;
+        default: {
+            name = NULL;
+            if (lbl) *lbl = false;
+        } break;
+    }
+    return name;
+}
 bool ast_elem_is_open_scope(ast_elem* s)
 {
     return s->kind <= OSC_LAST_OSC_ID;

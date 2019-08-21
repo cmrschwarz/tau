@@ -502,7 +502,7 @@ void print_ast_node(ast_node* n, ureg indent)
             }
         } break;
         case EXPR_RETURN: {
-            expr_return* r = (expr_return*)n;
+            expr_break* r = (expr_break*)n;
             p("return");
             if (r->value != NULL) {
                 pc(' ');

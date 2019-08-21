@@ -1150,23 +1150,6 @@ parse_prefix_unary_op(parser* p, ast_node_kind op, ast_node** ex)
     *ex = (ast_node*)ou;
     return PE_OK;
 }
-char* ast_node_get_name(ast_node* n, bool* lbl)
-{
-    char* name;
-    switch (n->kind) {
-        case EXPR_BLOCK: {
-            name = ((expr_block*)n)->name;
-        } break;
-        case EXPR_MATCH: {
-            name = ((expr_match*)n)->name;
-        } break;
-        default: {
-            name = NULL;
-        } break;
-    }
-    if (lbl) *lbl = (name == NULL);
-    return name;
-}
 parse_error get_label_target(
     parser* p, ast_node* requiring, ureg req_start, ureg req_end,
     ast_node** target, ureg* lbl_end)
@@ -1188,7 +1171,7 @@ parse_error get_label_target(
                         req_end, get_context_msg(p, (ast_node*)requiring));
                     return PE_ERROR;
                 }
-                char* n = ast_node_get_name(bpd->node, NULL);
+                char* n = ast_elem_get_label((ast_elem*)bpd->node, NULL);
                 if (n && string_eq_cstr(t2->str, n)) {
                     *target = bpd->node;
                     break;
@@ -1207,7 +1190,7 @@ parse_error get_label_target(
                 }
                 if (strcmp(
                         token_strings[t->kind],
-                        ast_node_get_name(bpd->node, NULL)) == 0) {
+                        ast_elem_get_label((ast_elem*)bpd->node, NULL)) == 0) {
                     *target = bpd->node;
                     break;
                 }
@@ -1252,7 +1235,7 @@ parse_error parse_return(parser* p, ast_node** tgt)
     ureg start = t->start;
     ureg end = t->end;
     lx_void(&p->tk);
-    expr_return* r = alloc_perm(p, sizeof(expr_return));
+    expr_break* r = alloc_perm(p, sizeof(expr_break));
     if (!r) return PE_FATAL;
     ast_node_init((ast_node*)r, EXPR_RETURN);
     PEEK(p, t);
@@ -1278,6 +1261,24 @@ parse_error parse_return(parser* p, ast_node** tgt)
     }
     if (r->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     *tgt = (ast_node*)r;
+    sbi it;
+    r->target = NULL;
+    sbi_begin_at_end(&it, &p->body_stack);
+    for (body_parse_data* bpd = sbi_previous(&it, sizeof(body_parse_data));
+         bpd != NULL; bpd = sbi_previous(&it, sizeof(body_parse_data))) {
+        if (bpd->node && (bpd->node->kind == SC_FUNC ||
+                          bpd->node->kind == SC_FUNC_GENERIC)) {
+            r->target = bpd->node;
+            break;
+        }
+    }
+    if (!r->target) {
+        parser_error_1a(
+            p, "can't return when not in a function", start,
+            src_range_get_end(r->node.srange),
+            "this return statement is not in a function");
+        return PE_ERROR;
+    }
     return PE_OK;
 }
 parse_error parse_break(parser* p, ast_node** tgt)

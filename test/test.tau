@@ -1,5 +1,5 @@
 import doo::loo;
-func main(z: int) -> int{
+func main(z: int) -> void{
     x := 1 + 2;
     y := main(3);
     return x + y + 1;
