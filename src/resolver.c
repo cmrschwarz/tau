@@ -407,7 +407,8 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
     switch (s->node.kind) {
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
-        case SYM_NAMED_USING: return NULL; // TODO
+        case SYM_NAMED_USING:
+            return NULL; // TODO
         default: return (ast_elem*)s;
     }
 }
@@ -429,6 +430,7 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
     else {
         if (ast_node_flags_get_resolving(n->flags)) {
             stack_push(&r->error_stack, n);
+            assert(false);
             return RE_TYPE_LOOP;
         }
         ast_node_flags_set_resolving(&n->flags);
