@@ -60,6 +60,7 @@ static resolve_error add_ast_node_decls(
     resolver* r, symbol_table* st, symbol_table* sst, ast_node* n)
 {
     if (n == NULL) return RE_OK;
+    resolve_error re;
     switch (n->kind) {
         case OSC_MODULE:
         case OSC_MODULE_GENERIC:
@@ -73,7 +74,7 @@ static resolve_error add_ast_node_decls(
         case SC_STRUCT_GENERIC:
         case SC_TRAIT:
         case SC_TRAIT_GENERIC: {
-            resolve_error re = add_symbol(r, st, sst, (symbol*)n);
+            re = add_symbol(r, st, sst, (symbol*)n);
             if (re) return re;
             return add_simple_body_decls(r, st, &((scope*)n)->body);
         }
@@ -114,6 +115,7 @@ static resolve_error add_ast_node_decls(
                 }
             }
             // we don't do function bodys here because they are strongly ordered
+            // (vars can't be used before declaration)
             return RE_OK;
         }
         case STMT_IMPORT:
@@ -121,10 +123,19 @@ static resolve_error add_ast_node_decls(
         case STMT_COMPOUND_ASSIGN:
             // TODO
             return RE_OK;
-        case SYM_NAMED_USING:
-        case SYM_VAR:
+
+        case SYM_VAR: return add_symbol(r, st, sst, (symbol*)n);
+        case SYM_NAMED_USING: {
+            re = add_symbol(r, st, sst, (symbol*)n);
+            if (re) return re;
+            return add_ast_node_decls(
+                r, st, sst, ((sym_named_using*)n)->target);
+        }
         case SYM_VAR_INITIALIZED: {
-            return add_symbol(r, st, sst, (symbol*)n);
+            re = add_symbol(r, st, sst, (symbol*)n);
+            if (re) return re;
+            return add_ast_node_decls(
+                r, st, sst, ((sym_var_initialized*)n)->initial_value);
         }
 
         case EXPR_RETURN:
@@ -136,7 +147,7 @@ static resolve_error add_ast_node_decls(
 
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
-            resolve_error re = add_ast_node_decls(r, st, sst, ei->condition);
+            re = add_ast_node_decls(r, st, sst, ei->condition);
             if (re) return re;
             re = add_ast_node_decls(r, st, sst, ei->if_body);
             if (re) return re;
@@ -148,7 +159,7 @@ static resolve_error add_ast_node_decls(
 
         case EXPR_MACRO: {
             expr_macro* em = (expr_macro*)n;
-            resolve_error re = add_simple_body_decls(r, st, &em->body);
+            re = add_simple_body_decls(r, st, &em->body);
             if (re) return re;
             return add_ast_node_decls(r, st, sst, (ast_node*)em->next);
         }
@@ -160,7 +171,7 @@ static resolve_error add_ast_node_decls(
         }
         case EXPR_MATCH: {
             expr_match* em = (expr_match*)n;
-            resolve_error re = add_ast_node_decls(r, st, sst, em->match_expr);
+            re = add_ast_node_decls(r, st, sst, em->match_expr);
             if (re) return re;
             for (match_arm** ma = (match_arm**)em->body.elements; *ma != NULL;
                  ma++) {
@@ -170,6 +181,37 @@ static resolve_error add_ast_node_decls(
                 if (re) return re;
             }
             return RE_OK;
+        }
+        case EXPR_OP_BINARY: {
+            re = add_ast_node_decls(r, st, sst, ((expr_op_binary*)n)->lhs);
+            if (re) return re;
+            return add_ast_node_decls(r, st, sst, ((expr_op_binary*)n)->rhs);
+        }
+        case EXPR_OP_ACCESS: {
+            expr_access* a = (expr_access*)n;
+            re = add_ast_node_decls(r, st, sst, a->lhs);
+            if (re) return re;
+            for (ureg i = 0; i < a->arg_count; i++) {
+                re = add_ast_node_decls(r, st, sst, a->args[i]);
+                if (re) return re;
+            }
+            // we could make this tail recursive by moving lhs down here
+            // but this way we traverse as declared ->better cache usage
+            return RE_OK;
+        }
+        case EXPR_OP_CALL: {
+            expr_call* c = (expr_call*)n;
+            re = add_ast_node_decls(r, st, sst, c->lhs);
+            if (re) return re;
+            for (ureg i = 0; i < c->arg_count; i++) {
+                re = add_ast_node_decls(r, st, sst, c->args[i]);
+                if (re) return re;
+            }
+            return RE_OK;
+        }
+        case EXPR_OP_PARENTHESES:
+        case EXPR_OP_UNARY: {
+            return add_ast_node_decls(r, st, sst, ((expr_op_unary*)n)->child);
         }
         default:
             return RE_OK; // TODO

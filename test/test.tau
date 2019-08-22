@@ -1,8 +1,11 @@
 import doo::loo;
-func main(z: int) -> void{
+func main(z: int) -> int{
     x := 1 + 2;
     y := main(3);
-    return x + y + 1;
+    w:= {
+        break 17;
+    };
+    return x + y + 1 + w;
 }
 
 //require "test2.tau";
