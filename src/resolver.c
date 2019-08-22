@@ -427,7 +427,16 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
         default: return (ast_elem*)s;
     }
 }
-
+void set_break_target_ctype(ast_node* n, ast_elem* ctype)
+{
+    switch (n->kind) {
+        case EXPR_BLOCK: ((expr_block*)n)->ctype = ctype; break;
+        case EXPR_IF: ((expr_if*)n)->ctype = ctype; break;
+        case EXPR_LOOP: ((expr_loop*)n)->ctype = ctype; break;
+        default: assert(false);
+    }
+    ast_node_flags_set_resolved(&n->flags);
+}
 // the symbol table is not the one that contains the symbol, but the one
 // where it was declared and where the type name loopup should start
 resolve_error resolve_ast_node_raw(
@@ -578,12 +587,23 @@ resolve_error resolve_ast_node_raw(
             if (resolved) return RE_OK;
             expr_break* b = (expr_break*)n;
             re = resolve_ast_node(r, b->value, st, &b->value_ctype);
-            if (re) return re;
-            ast_node_flags_set_resolved(&n->flags);
+            if (re) {
+                if (re != RE_REQUIRES_BODY_TYPE) return re;
+                b->value_ctype = NULL;
+            }
+            else {
+                ast_node_flags_set_resolved(&n->flags);
+            }
+
             ast_elem* tgt_type;
             if (n->kind == EXPR_BREAK) {
                 re = resolve_ast_node(r, b->target, st, &tgt_type);
-                if (re) return re;
+                if (re) {
+                    if (re != RE_REQUIRES_BODY_TYPE) return re;
+                    if (b->value_ctype == NULL) return RE_REQUIRES_BODY_TYPE;
+                    set_break_target_ctype(b->target, b->value_ctype);
+                    return RE_OK;
+                }
             }
             else if (b->target->kind == SC_FUNC) {
                 // must already be resolved since parenting function
@@ -610,9 +630,12 @@ resolve_error resolve_ast_node_raw(
         }
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
+            if (!resolved) {
+                re = resolve_expr_body(r, (ast_node*)b, &b->body, st);
+                if (re) return re;
+            }
             if (ctype) *ctype = b->ctype;
-            if (resolved) return RE_OK;
-            return resolve_expr_body(r, (ast_node*)b, &b->body, st);
+            return RE_OK;
         }
 
         case EXPR_IF: {
@@ -698,7 +721,7 @@ resolve_expr_body(resolver* r, ast_node* expr, body* b, symbol_table* parent_st)
         }
         if (re) return re;
     }
-    if (ast_node_flags_get_resolved(expr->flags)) {
+    if (!ast_node_flags_get_resolved(expr->flags)) {
         // TODO: error msg
         if (!second_pass) assert(false);
         // will cause resolve to trigger type loop error on first loop

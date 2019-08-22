@@ -1150,10 +1150,11 @@ parse_prefix_unary_op(parser* p, ast_node_kind op, ast_node** ex)
     *ex = (ast_node*)ou;
     return PE_OK;
 }
-parse_error get_label_target(
+parse_error get_breaking_target(
     parser* p, ast_node* requiring, ureg req_start, ureg req_end,
-    ast_node** target, ureg* lbl_end)
+    ast_node** target, ureg* lbl_end, ast_node_kind break_kind)
 {
+    // TODO: break targets might be hidden due to macros
     token* t;
     PEEK(p, t);
     sbi it;
@@ -1209,7 +1210,29 @@ parse_error get_label_target(
         *lbl_end = t2->end;
     }
     else {
-        *target = NULL;
+        while (true) {
+            if (!bpd) {
+                parser_error_1a(
+                    p, "invalid break", req_start, req_end,
+                    "no suitable parent expression");
+                return PE_ERROR;
+            }
+            ast_node_kind k = bpd->node->kind;
+            if (break_kind == EXPR_CONTINUE) {
+                if (k == EXPR_LOOP || k == EXPR_MATCH) {
+                    *target = bpd->node;
+                    break;
+                }
+            }
+            else {
+                if (k == EXPR_LOOP || k == EXPR_MATCH || k == EXPR_BLOCK ||
+                    k == EXPR_IF) {
+                    *target = bpd->node;
+                    break;
+                }
+            }
+            bpd = sbi_previous(&it, sizeof(body_parse_data));
+        }
     }
     return PE_OK;
 }
@@ -1222,8 +1245,8 @@ parse_error parse_continue(parser* p, ast_node** tgt)
     expr_continue* c = alloc_perm(p, sizeof(expr_continue));
     if (!c) return PE_FATAL;
     ast_node_init((ast_node*)c, EXPR_CONTINUE);
-    parse_error pe =
-        get_label_target(p, (ast_node*)c, start, end, &c->target, &end);
+    parse_error pe = get_breaking_target(
+        p, (ast_node*)c, start, end, &c->target, &end, EXPR_CONTINUE);
     if (pe) return pe;
     if (ast_node_fill_srange(p, (ast_node*)c, start, end)) return PE_FATAL;
     *tgt = (ast_node*)c;
@@ -1291,8 +1314,8 @@ parse_error parse_break(parser* p, ast_node** tgt)
     expr_break* g = alloc_perm(p, sizeof(expr_break));
     if (!g) return PE_FATAL;
     ast_node_init((ast_node*)g, EXPR_BREAK);
-    parse_error pe =
-        get_label_target(p, (ast_node*)g, start, end, &g->target, &end);
+    parse_error pe = get_breaking_target(
+        p, (ast_node*)g, start, end, &g->target, &end, EXPR_BREAK);
     if (pe) return pe;
     pe = parse_expression(p, &g->value);
     if (pe == PE_EOEX) {

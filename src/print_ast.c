@@ -483,9 +483,12 @@ void print_ast_node(ast_node* n, ureg indent)
             expr_break* b = (expr_break*)n;
             p("break");
             if (b->target) {
-                pc(' ');
-                pc('@');
-                p(get_expr_name(b->target));
+                char* n = get_expr_name(b->target);
+                if (n) {
+                    pc(' ');
+                    pc('@');
+                    p(n);
+                }
             }
             if (b->value) {
                 pc(' ');
