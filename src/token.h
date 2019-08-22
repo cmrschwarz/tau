@@ -21,6 +21,7 @@ typedef enum PACK_ENUM {
     TK_KW_CONST,
     TK_KW_MUT,
     TK_KW_SEALED,
+    TK_KW_SELF,
     TK_KW_VIRTUAL,
     TK_KW_PUBLIC,
     TK_KW_PROTECTED,

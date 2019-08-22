@@ -275,22 +275,24 @@ static inline char* alloc_string_perm(parser* p, string s)
 {
     return alloc_string_ppool(p, s, &p->tk.tc->permmem);
 }
-static inline void
+static inline parse_error
 parser_error_1a(parser* p, char* msg, ureg start, ureg end, char* annot)
 {
     error_log_report_annotated(
         &p->tk.tc->error_log, ES_PARSER, false, msg, p->tk.file, start, end,
         annot);
+    return PE_ERROR;
 }
-static inline void parser_error_2a(
+static inline parse_error parser_error_2a(
     parser* p, char* msg, ureg start, ureg end, char* annot, ureg start2,
     ureg end2, char* annot2)
 {
     error_log_report_annotated_twice(
         &p->tk.tc->error_log, ES_PARSER, false, msg, p->tk.file, start, end,
         annot, p->tk.file, start2, end2, annot2);
+    return PE_ERROR;
 }
-static inline void parser_error_3a(
+static inline parse_error parser_error_3a(
     parser* p, char* msg, ureg start, ureg end, char* annot, ureg start2,
     ureg end2, char* annot2, ureg start3, ureg end3, char* annot3)
 {
@@ -298,6 +300,7 @@ static inline void parser_error_3a(
         &p->tk.tc->error_log, ES_PARSER, false, msg, p->tk.file, start, end,
         annot, p->tk.file, start2, end2, annot2, p->tk.file, start3, end3,
         annot3);
+    return PE_ERROR;
 }
 static inline body_parse_data* get_bpd(parser* p)
 {
@@ -2631,250 +2634,77 @@ parse_error parse_using(
     curr_scope_add_usings(p, ast_node_flags_get_access_mod(flags), 1);
     return pe;
 }
-parse_error parse_symbol_imports(parser* p, module_import* mi)
+parse_error parse_import_with_parent(
+    parser* p, ast_node_flags flags, ureg start, ureg kw_end, mdg_node** parent,
+    ast_node** tgt)
 {
-    mi->selected_symbols =
-        (symbol_import*)list_builder_start_blocklist(&p->tk.tc->list_builder);
-    token *t, *t2;
-    t = lx_aquire(&p->tk);
-    ureg start = t->start;
-    ureg end;
-    lx_void(&p->tk);
-    t = lx_peek(&p->tk);
-    if (!t) {
-        list_builder_drop_list(&p->tk.tc->list_builder, mi->selected_symbols);
-        return PE_LX_ERROR;
-    }
-    if (t->kind == TK_PAREN_CLOSE) {
-        parser_error_1a(
-            p, "empty parenthesized import list not allowed", start, t->end,
-            "at least one item required");
-        list_builder_drop_list(&p->tk.tc->list_builder, mi->selected_symbols);
-        return PE_ERROR;
-    }
-    while (true) {
-        t2 = lx_peek_2nd(&p->tk);
-        if (!t2) return PE_LX_ERROR;
-        symbol_import si;
-        if (t2->kind == TK_EQUALS) {
-            si.alias = alloc_string_perm(p, t->str);
-            if (!si.alias) {
-                list_builder_drop_list(
-                    &p->tk.tc->list_builder, mi->selected_symbols);
-                return PE_FATAL;
-            }
-            lx_void_n(&p->tk, 2);
-            t = lx_peek(&p->tk);
-            if (!t) {
-                list_builder_drop_list(
-                    &p->tk.tc->list_builder, mi->selected_symbols);
-                return PE_LX_ERROR;
-            }
-        }
-        else {
-            si.alias = NULL;
-        }
-        if (t->kind != TK_IDENTIFIER) {
-            parser_error_2a(
-                p, "invalid identifier for named import", t->start, t->end,
-                "identifier must be a string", t2->start, t2->end,
-                "named import begins here");
-            list_builder_drop_list(
-                &p->tk.tc->list_builder, mi->selected_symbols);
-            return PE_ERROR;
-        }
-        si.symbol_name = alloc_string_perm(p, t->str);
-        if (!si.symbol_name) return PE_FATAL;
-        list_builder_add_block(&p->tk.tc->list_builder, &si, sizeof(si));
-        curr_scope_add_decls(
-            p, ast_node_flags_get_access_mod(mi->statement->node.flags), 1);
-        end = t->end;
-        lx_void(&p->tk);
-        t = lx_peek(&p->tk);
-        if (!t) {
-            list_builder_drop_list(
-                &p->tk.tc->list_builder, mi->selected_symbols);
-            return PE_LX_ERROR;
-        }
-        if (t->kind == TK_PAREN_CLOSE) break;
-        if (t->kind != TK_COMMA) {
-            parser_error_2a(
-                p, "unexpected token in parenthesized import list", t->start,
-                t->end, "expected ',' or ')'", start, end,
-                "in this parenthesized import list");
-            list_builder_drop_list(
-                &p->tk.tc->list_builder, mi->selected_symbols);
-            return PE_ERROR;
-        }
-        lx_void(&p->tk);
-        t = lx_peek(&p->tk);
-        if (!t) {
-            list_builder_drop_list(
-                &p->tk.tc->list_builder, mi->selected_symbols);
-            return PE_LX_ERROR;
-        }
-        if (t->kind == TK_PAREN_CLOSE) break;
-    }
-    lx_void(&p->tk);
-    mi->selected_symbols = (symbol_import*)list_builder_pop_block_list_zt(
-        &p->tk.tc->list_builder, mi->selected_symbols, &p->tk.tc->permmem);
-    if (!mi->selected_symbols) return PE_FATAL;
-    if (mdg_node_add_dependency(p->current_module, mi->tgt, p->tk.tc)) {
-        return PE_FATAL;
-    }
-    return PE_OK;
-}
-parse_error parse_single_import(
-    parser* p, mdg_node* parent, stmt_import* stmt, module_import* mi);
-parse_error parse_braced_imports(
-    parser* p, stmt_import* stmt, module_import* mi, ureg start)
-{
-    mi->nested_imports =
-        (module_import*)list_builder_start_blocklist(&p->tk.tc->list_builder);
-    parse_error pe;
-    lx_void(&p->tk);
-    token* t = lx_peek(&p->tk);
-    if (!t) {
-        list_builder_drop_list(&p->tk.tc->list_builder, mi->nested_imports);
-        return PE_LX_ERROR;
-    }
-    if (t->kind == TK_BRACE_CLOSE) {
-        parser_error_1a(
-            p, "empty braced import list not allowed", start, t->end,
-            "at least one item required");
-        list_builder_drop_list(&p->tk.tc->list_builder, mi->nested_imports);
-        return PE_ERROR;
-    }
-    while (true) {
-        module_import m;
-        pe = parse_single_import(p, mi->tgt, stmt, &m);
-        if (pe) return pe;
-        list_builder_add_block(&p->tk.tc->list_builder, &m, sizeof(m));
-        t = lx_peek(&p->tk);
-        if (!t) {
-            list_builder_drop_list(&p->tk.tc->list_builder, mi->nested_imports);
-            return PE_LX_ERROR;
-        }
-        if (t->kind == TK_BRACE_CLOSE) break;
-        if (t->kind != TK_COMMA) {
-            parser_error_1a(
-                p, "unexpected token in braced import list", start, t->end,
-                "expected ',' or '}'");
-            list_builder_drop_list(&p->tk.tc->list_builder, mi->nested_imports);
-            return PE_ERROR;
-        }
-        lx_void(&p->tk);
-        t = lx_peek(&p->tk);
-        if (!t) {
-            list_builder_drop_list(&p->tk.tc->list_builder, mi->nested_imports);
-            return PE_LX_ERROR;
-        }
-        if (t->kind == TK_BRACE_CLOSE) break;
-    }
-    mi->nested_imports = (module_import*)list_builder_pop_block_list_zt(
-        &p->tk.tc->list_builder, mi->nested_imports, &p->tk.tc->permmem);
-    if (!mi->nested_imports) return PE_FATAL;
-    mi->srange = src_range_pack_lines(p->tk.tc, start, t->end);
-    if (mi->srange == SRC_RANGE_INVALID) return PE_FATAL;
-    lx_void(&p->tk);
-    /*if (mdg_node_add_dependency(p->current_module, mi->tgt, p->tk.tc)) {
-        return PE_FATAL;
-    }
-    */
-    return PE_OK;
-}
-parse_error parse_single_import(
-    parser* p, mdg_node* parent, stmt_import* stmt, module_import* mi)
-{
-    token *t, *t2;
-    mi->statement = stmt;
-    mi->selected_symbols = NULL;
-    mi->nested_imports = NULL;
     PEEK(p, t);
-    ureg start = t->start;
-    ureg end = t->end;
-    t2 = lx_peek_2nd(&p->tk);
-    if (!t2) return PE_LX_ERROR;
-    if (t2->kind == TK_EQUALS) {
-        if (t->kind != TK_IDENTIFIER) {
-            parser_error_2a(
-                p, "invalid import syntax", t->start, t->end,
-                "expected identifier", start, end, "in this import statement");
-            return PE_ERROR;
-        }
-        mi->name = alloc_string_perm(p, t->str);
-        if (!mi->name) return PE_FATAL;
+    ureg istart = t->start;
+    token* t2;
+    PEEK_SND(p, t2);
+    char* name = NULL;
+    if (t->kind == TK_IDENTIFIER && t2->kind == TK_EQUALS) {
+        name = alloc_string_perm(p, t->str);
+        if (!name) return PE_FATAL;
         lx_void_n(&p->tk, 2);
         PEEK(p, t);
     }
-    else {
-        mi->name = NULL;
-    }
-    mi->tgt = parent;
-    while (true) {
-        if (t->kind == TK_BRACE_OPEN) {
-            if (mi->name != NULL) {
-                parser_error_1a(
-                    p, "invalid import syntax", start, t->end,
-                    "named import can't be braced import");
-                return PE_ERROR;
-            }
-            return parse_braced_imports(p, stmt, mi, start);
-        }
-        else if (t->kind == TK_PAREN_OPEN) {
-            return parse_symbol_imports(p, mi);
-        }
-        else if (t->kind == TK_STAR) {
-            mi->selected_symbols = (symbol_import*)NULL_PTR_PTR;
-            end = t->end;
-            lx_void(&p->tk);
-            break;
-        }
-        else if (t->kind == TK_IDENTIFIER) {
-            mi->tgt = mdg_get_node(&TAUC.mdg, mi->tgt, t->str);
-            if (!mi->tgt) return PE_FATAL;
-            end = t->end;
-            lx_void(&p->tk);
-            PEEK(p, t);
-            if (t->kind != TK_DOUBLE_COLON) break;
+    if (t->kind == TK_KW_SELF && parent == TAUC.mdg.root_node) {
+        parent = p->current_module;
+        if (t2->kind == TK_DOUBLE_COLON) {
             lx_void(&p->tk);
             PEEK(p, t);
         }
         else {
-            char* expected =
-                mi->name ? "expected module identifier"
-                         : " expected module identifier or '{' or '(' or '*' ";
-            parser_error_2a(
-                p, "invalid import syntax", t->start, t->end, expected, start,
-                end, "in this import statement");
-            return PE_ERROR;
+            return parser_error_2a(
+                p, "invalid import syntax", t->start, t->end, "expected ::",
+                start, kw_end, "in this import statement");
         }
     }
-    t = lx_peek(&p->tk);
-    mi->srange = src_range_pack_lines(p->tk.tc, start, end);
-    if (mi->srange == SRC_RANGE_INVALID) return PE_FATAL;
-    if (mdg_node_add_dependency(p->current_module, mi->tgt, p->tk.tc)) {
-        return PE_FATAL;
+    while (t->kind == TK_IDENTIFIER) {
+        parent = mdg_get_node(&TAUC.mdg, parent, t->str);
+        // if the node doesn't exist it gets created here,
+        // we will find out (and report) once all required files are parsed if
+        // it is actually missing. NULL just means allocation failiure
+        if (!parent) return PE_FATAL;
+        lx_void(&p->tk);
+        PEEK(p, t);
+        if (t->kind == TK_SEMICOLON) {
+            // TODO: create simple
+        }
+        else if (t->kind == TK_DOUBLE_COLON) {
+            lx_void(&p->tk);
+            PEEK(p, t);
+        }
+        else {
+            return parser_error_2a(
+                p, "invalid import syntax", t->start, t->end,
+                "expected :: or ;", start, kw_end, "in this import statement");
+        }
     }
-    curr_scope_add_decls(
-        p, ast_node_flags_get_access_mod(mi->statement->node.flags), 1);
-    return PE_OK;
+    char* expected;
+    if (parent != TAUC.mdg.root_node) {
+        if (t->kind == TK_PAREN_OPEN) {
+        }
+        if (t->kind == TK_BRACE_OPEN) {
+        }
+        expected = "expected identifier or ( or {";
+    }
+    else {
+        expected = "expected identifier";
+    }
+    return parser_error_2a(
+        p, "invalid import syntax", t->start, t->end, expected, start, kw_end,
+        "in this import statement");
 }
 parse_error parse_import(
     parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** tgt)
 {
-    lx_void(&p->tk);
-    stmt_import* si = alloc_perm(p, sizeof(stmt_import));
-    if (!si) return PE_FATAL;
-    ast_node_init((ast_node*)si, STMT_IMPORT);
-    parse_error pe =
-        parse_single_import(p, TAUC.mdg.root_node, si, &si->module_import);
-    if (pe) return pe;
-    ureg end = src_range_get_end(si->module_import.srange);
-    pe = ast_node_fill_srange(p, (ast_node*)si, start, end);
-    if (pe) return PE_FATAL;
-    *tgt = (ast_node*)si;
-    return PE_OK;
+    token* t = lx_aquire(&p->tk);
+    ureg kw_end = t->end;
+    tk_void(&p->tk);
+    return parse_import_with_parent(
+        p, flags, start, kw_end, TAUC.mdg.root_node, tgt);
 }
 parse_error
 parse_require(parser* p, ast_node_flags flags, ureg start, ureg flags_end)

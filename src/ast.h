@@ -201,29 +201,30 @@ typedef struct stmt_using {
     ast_node* target;
 } stmt_using;
 
-typedef struct symbol_import {
-    // always non NULL, so list of these can be terminated by a NULL
-    char* symbol_name;
-    char* alias;
-    src_range srange;
-} symbol_import;
-
-typedef struct stmt_import stmt_import;
 typedef struct mdg_node mdg_node;
-typedef struct module_import {
-    // always non NULL, so list of these can be terminated by a NULL
-    stmt_import* statement;
-    mdg_node* tgt; // can't be first, since possibly NULL
-    char* name;
-    struct module_import* nested_imports;
-    symbol_import* selected_symbols; // points to a zero if .*
-    src_range srange;
-} module_import;
+typedef struct sym_import_symbol {
+    symbol symbol;
+    union target {
+        char* name;
+        symbol* symbol;
+    } target;
+} sym_import_symbol;
 
-typedef struct stmt_import {
-    ast_node node;
-    module_import module_import;
-} stmt_import;
+typedef struct sym_import_module {
+    symbol symbol;
+    union target {
+        mdg_node* mdg_node;
+        symbol_table* symtab;
+    } target;
+} sym_import_module;
+
+typedef struct sym_import_group {
+    symbol symbol; // name is NULL for an unnamed import group
+    union parent {
+        mdg_node* mdg_node;
+        symbol_table* symtab;
+    } parent;
+} sym_import_group;
 
 // expr_return also uses this struct
 typedef struct expr_break {
