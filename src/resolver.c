@@ -18,13 +18,18 @@ static inline resolve_error ret_ctype(ast_elem* type, ast_elem** ctype)
     return RE_OK;
 }
 static inline resolve_error
-report_unknown_symbol(resolver* r, ast_node* n, symbol_table* st)
+report_unknown_symbol_raw(resolver* r, src_file* f, src_range range)
 {
     error_log_report_annotated(
-        &r->tc->error_log, ES_RESOLVER, false, "unknown symbol",
-        ast_node_get_file(n, st), src_range_get_start(n->srange),
-        src_range_get_end(n->srange), "use of an undefined symbol");
+        &r->tc->error_log, ES_RESOLVER, false, "unknown symbol", f,
+        src_range_get_start(range), src_range_get_end(range),
+        "use of an undefined symbol");
     return RE_UNKNOWN_SYMBOL;
+}
+static inline resolve_error
+report_unknown_symbol(resolver* r, ast_node* n, symbol_table* st)
+{
+    return report_unknown_symbol_raw(r, ast_node_get_file(n, st), n->srange);
 }
 static resolve_error report_redeclaration_error_raw(
     thread_context* tc, symbol* redecl, src_file* redecl_file, symbol* prev,
@@ -315,7 +320,9 @@ resolve_error add_import_group_decls(
         symbol** cf = symbol_table_insert(st, s);
         if (cf) return report_redeclaration_error_raw(tc, s, f, *cf, f);
     }
-    ast_node_flags_set_resolved(&ig->symbol.node.flags);
+    // we use the resolved state to detect if the symbol was used,
+    // so we don't set it here
+    // ast_node_flags_set_resolved(&ig->symbol.node.flags);
     ig->children.symtab = st;
     return RE_OK;
 }
@@ -484,6 +491,27 @@ void set_break_target_ctype(ast_node* n, ast_elem* ctype)
     }
     ast_node_flags_set_resolved(&n->flags);
 }
+resolve_error
+get_resolved_symbol_symtab(resolver* r, symbol* s, symbol_table** tgt_st)
+{
+    if (ast_elem_is_scope((ast_elem*)s)) {
+        *tgt_st = ((scope*)s)->body.symtab;
+    }
+    else if (s->node.kind == SYM_IMPORT_GROUP) {
+        *tgt_st = ((sym_import_group*)s)->children.symtab;
+    }
+    else if (s->node.kind == SYM_IMPORT_MODULE) {
+        *tgt_st = ((sym_import_module*)s)->target.mdg_node->symtab;
+    }
+    else if (s->node.kind == SYM_IMPORT_SYMBOL) {
+        return get_resolved_symbol_symtab(
+            r, ((sym_import_symbol*)s)->target.symbol, tgt_st);
+    }
+    else {
+        assert(false); // TODO: error
+    }
+    return RE_OK;
+}
 // the symbol table is not the one that contains the symbol, but the one
 // where it was declared and where the type name loopup should start
 resolve_error resolve_ast_node_raw(
@@ -577,7 +605,25 @@ resolve_error resolve_ast_node_raw(
                 return ret_ctype(
                     get_resolved_symbol_ctype(esa->target.symbol), ctype);
             }
-            assert(false);
+            re = resolve_ast_node(r, esa->lhs, st, NULL);
+            if (re) return re;
+            if (esa->lhs->kind != EXPR_IDENTIFIER) {
+                assert(false); // TODO: error
+            }
+            symbol* lhs_sym = ((expr_identifier*)esa->lhs)->value.symbol;
+            symbol_table* lhs_st;
+            re = get_resolved_symbol_symtab(r, lhs_sym, &lhs_st);
+            if (re) return re;
+            symbol** s = symbol_table_lookup(lhs_st, esa->target.name);
+            if (!s) {
+                return report_unknown_symbol_raw(
+                    r, ast_node_get_file((ast_node*)esa, st),
+                    esa->target_srange);
+            }
+            esa->target.symbol = *s;
+            ast_node_flags_set_resolved(&n->flags);
+            if (ctype) *ctype = get_resolved_symbol_ctype(*s);
+            return RE_OK;
         }
         case SC_STRUCT:
         case SC_STRUCT_GENERIC:
@@ -601,8 +647,34 @@ resolve_error resolve_ast_node_raw(
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }
-        case SYM_IMPORT_GROUP:
-        case SYM_IMPORT_MODULE:
+        case SYM_IMPORT_GROUP: {
+            if (ctype) *ctype = (ast_elem*)n;
+            if (!resolved) ast_node_flags_set_resolved(&n->flags);
+            return RE_OK;
+        }
+        case SYM_IMPORT_MODULE: {
+            // TODO: switch from ast_node to symtab here
+            // TODO: fix ctype
+            // if (ctype) *ctype = ((sym_import_module*)n)->target.mdg_node;
+            if (!resolved) ast_node_flags_set_resolved(&n->flags);
+            return RE_OK;
+        }
+        case SYM_IMPORT_SYMBOL: {
+            sym_import_symbol* is = (sym_import_symbol*)n;
+            if (resolved) {
+                return ret_ctype(
+                    get_resolved_symbol_ctype(is->target.symbol), ctype);
+            }
+            symbol_table* sym_st;
+            symbol** s =
+                symbol_table_lookup_with_decl(st, is->target.name, &sym_st);
+            if (!s) return report_unknown_symbol(r, n, st);
+            is->target.symbol = *s;
+            re = resolve_ast_node(r, (ast_node*)*s, sym_st, ctype);
+            if (re) return re;
+            ast_node_flags_set_resolved(&n->flags);
+            return RE_OK;
+        }
         case STMT_USING:
         case SYM_NAMED_USING:
         case STMT_COMPOUND_ASSIGN: {

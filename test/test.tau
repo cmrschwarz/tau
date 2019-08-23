@@ -1,15 +1,17 @@
-import doo::{boo, (a,b,c)};
+//require "test2.tau";
+module doo{
+    public x: int = 5;
+    module boo{
+        x: int = 5;
+    }
+}
+
 func main(z: int) -> int{
-    x := 1 + 2;
+    import doo;
+    x := 1 + 2 + doo::x;
     y := main(3);
     w:= {
         break 17;
     };
     return x + y + 1 + w;
-}
-
-//require "test2.tau";
-module doo{
-    module boo{
-    }
 }

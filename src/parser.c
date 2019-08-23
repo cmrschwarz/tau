@@ -1723,6 +1723,8 @@ parse_scope_access(parser* p, ast_node** ex, ast_node* lhs, bool member)
     }
     esa->target.name = alloc_string_perm(p, t->str);
     if (!esa->target.name) return PE_FATAL;
+    esa->target_srange = src_range_pack_lines(p->lx.tc, t->start, t->end);
+    if (esa->target_srange == SRC_RANGE_INVALID) return PE_FATAL;
     *ex = (ast_node*)esa;
     lx_void(&p->lx);
     return PE_OK;

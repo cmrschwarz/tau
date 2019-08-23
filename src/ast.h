@@ -401,6 +401,7 @@ typedef struct expr_scope_access {
         char* name;
         symbol* symbol;
     } target;
+    src_range target_srange;
 } expr_scope_access;
 typedef struct expr_scope_access expr_member_access;
 
