@@ -2748,7 +2748,7 @@ parse_error parse_import_with_parent(
 {
     token *t, *t2;
     PEEK(p, t);
-    ureg istart = t->start;
+    ureg istart = (parent == TAUC.mdg.root_node) ? start : t->start;
     ureg end;
     PEEK_SND(p, t2);
     char* name = NULL;
@@ -2797,7 +2797,9 @@ parse_error parse_import_with_parent(
             else {
                 im->symbol.name = parent->name;
             }
-            // TODO: add to mdg
+            if (mdg_node_add_dependency(p->current_module, parent, p->tk.tc)) {
+                return PE_FATAL;
+            }
             *tgt = (symbol*)im;
             return PE_OK;
         }

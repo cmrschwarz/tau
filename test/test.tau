@@ -10,6 +10,6 @@ func main(z: int) -> int{
 
 //require "test2.tau";
 module doo{
-    module loo{
+    module boo{
     }
 }
