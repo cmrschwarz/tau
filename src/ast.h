@@ -27,7 +27,9 @@ typedef enum PACK_ENUM ast_node_kind {
     SYM_PARAM,
     SYM_LAST_SYM_ID = SYM_PARAM,
 
-    STMT_IMPORT,
+    SYM_IMPORT_MODULE,
+    SYM_IMPORT_SYMBOL,
+    SYM_IMPORT_GROUP,
     STMT_USING,
 
     STMT_COMPOUND_ASSIGN,
@@ -204,7 +206,7 @@ typedef struct stmt_using {
 typedef struct mdg_node mdg_node;
 typedef struct sym_import_symbol {
     symbol symbol;
-    union target {
+    union {
         char* name;
         symbol* symbol;
     } target;
@@ -212,7 +214,7 @@ typedef struct sym_import_symbol {
 
 typedef struct sym_import_module {
     symbol symbol;
-    union target {
+    union {
         mdg_node* mdg_node;
         symbol_table* symtab;
     } target;
@@ -220,10 +222,14 @@ typedef struct sym_import_module {
 
 typedef struct sym_import_group {
     symbol symbol; // name is NULL for an unnamed import group
-    union parent {
+    union {
         mdg_node* mdg_node;
         symbol_table* symtab;
     } parent;
+    union {
+        symbol_table* symtab;
+        symbol* symbols;
+    } children;
 } sym_import_group;
 
 // expr_return also uses this struct

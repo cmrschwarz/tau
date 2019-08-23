@@ -118,7 +118,6 @@ static resolve_error add_ast_node_decls(
             // (vars can't be used before declaration)
             return RE_OK;
         }
-        case STMT_IMPORT:
         case STMT_USING:
         case STMT_COMPOUND_ASSIGN:
             // TODO
@@ -542,7 +541,8 @@ resolve_error resolve_ast_node_raw(
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }
-        case STMT_IMPORT:
+        case SYM_IMPORT_GROUP:
+        case SYM_IMPORT_MODULE:
         case STMT_USING:
         case SYM_NAMED_USING:
         case STMT_COMPOUND_ASSIGN: {

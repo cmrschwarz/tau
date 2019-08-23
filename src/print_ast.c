@@ -154,53 +154,12 @@ void print_ast_node_nl(ast_node* n, ureg indent)
     print_ast_node(n, indent);
     pc('\n');
 }
-void print_mdg_node_until(mdg_node* m, mdg_node* stop)
+bool print_mdg_node_until(mdg_node* m, mdg_node* stop)
 {
-    if (m->parent != stop) {
-        print_mdg_node_until(m->parent, stop);
-        p("::");
-    }
+    if (m == stop) return false;
+    if (print_mdg_node_until(m->parent, stop)) p("::");
     p(m->name);
-}
-void print_module_import(module_import* mi, mdg_node* parent, ureg indent)
-{
-    if (mi->name != NULL) {
-        p(mi->name);
-        p(" = ");
-    }
-    if (mi->tgt != parent) {
-        print_mdg_node_until(mi->tgt, parent);
-        if (mi->selected_symbols || mi->nested_imports) p("::");
-    }
-    if (mi->selected_symbols && *(void**)mi->selected_symbols == NULL) {
-        pc('*');
-    }
-    else if (mi->selected_symbols) {
-        p("(");
-        symbol_import* si = mi->selected_symbols;
-        while (true) {
-            if (si->alias) {
-                p(si->alias);
-                p(" = ");
-            }
-            p(si->symbol_name);
-            si++;
-            if (!*(void**)si) break;
-            p(", ");
-        }
-        pc(')');
-    }
-    else if (mi->nested_imports) {
-        p("{");
-        module_import* si = mi->nested_imports;
-        while (true) {
-            print_module_import(si, mi->tgt, indent);
-            si++;
-            if (!*(void**)si) break;
-            p(", ");
-        }
-        pc('}');
-    }
+    return true;
 }
 void print_expr_in_parens(ast_node* ex, ureg indent)
 {
@@ -229,14 +188,61 @@ void print_ast_elem_name(ast_elem* n)
         pu("<unknown node>");
     }
 }
+void print_import_group(
+    sym_import_group* g, mdg_node* block_parent, ureg indent)
+{
+    if (print_mdg_node_until(g->parent.mdg_node, block_parent)) p("::");
+    symbol* c = g->children.symbols;
+    assert(c);
+    bool syms = (c->node.kind == SYM_IMPORT_SYMBOL);
+    p(syms ? "(" : "{\n");
+    while (c) {
+        if (!syms) print_indent(indent + 1);
+        if (c->node.kind == SYM_IMPORT_GROUP) {
+            print_import_group(
+                (sym_import_group*)c, g->parent.mdg_node, indent + 1);
+        }
+        else if (c->node.kind == SYM_IMPORT_MODULE) {
+            print_mdg_node_until(
+                ((sym_import_module*)c)->target.mdg_node, g->parent.mdg_node);
+        }
+        else if (c->node.kind == SYM_IMPORT_SYMBOL) {
+            sym_import_symbol* sym = (sym_import_symbol*)c;
+            // equals is fine here since we alloc only once
+            if (sym->symbol.name != sym->target.name) {
+                p(sym->symbol.name);
+                p(" = ");
+            }
+            p(sym->target.name);
+        }
+        else {
+            assert(false);
+        }
+        c = c->next;
+        if (c) p(", ");
+        if (!syms) pc('\n');
+    }
+    if (!syms) {
+        print_indent(indent);
+        pc('}');
+    }
+    else {
+        pc(')');
+    }
+}
 void print_ast_node(ast_node* n, ureg indent)
 {
     // TODO: print access modifiers
     switch (n->kind) {
-        case STMT_IMPORT: {
-            stmt_import* si = (stmt_import*)n;
+        case SYM_IMPORT_MODULE: {
             p("import ");
-            print_module_import(&si->module_import, TAUC.mdg.root_node, indent);
+            print_mdg_node_until(
+                ((sym_import_module*)n)->target.mdg_node, TAUC.mdg.root_node);
+        } break;
+        case SYM_IMPORT_GROUP: {
+            p("import ");
+            print_import_group(
+                (sym_import_group*)n, TAUC.mdg.root_node, indent);
         } break;
         case STMT_COMPOUND_ASSIGN: {
             stmt_compound_assignment* ca = (stmt_compound_assignment*)n;

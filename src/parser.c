@@ -434,7 +434,9 @@ char* get_context_msg(parser* p, ast_node* node)
         case EXPR_LAMBDA: return "in this lambda";
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return "in this variable declaration";
-        case STMT_IMPORT: return "in this import statement";
+        case SYM_IMPORT_SYMBOL:
+        case SYM_IMPORT_GROUP:
+        case SYM_IMPORT_MODULE: return "in this import statement";
         case SYM_NAMED_USING:
         case STMT_USING: return "in this using statement";
         case STMT_COMPOUND_ASSIGN:
@@ -2261,7 +2263,8 @@ parse_error check_if_first_stmt(
     *tgt = NULL;
     ast_node* last_culprit = NULL;
     for (ast_node** n = curr_scope->body.elements; *n; n++) {
-        if ((**n).kind != STMT_IMPORT) {
+        if ((**n).kind != SYM_IMPORT_GROUP && (**n).kind != SYM_IMPORT_MODULE &&
+            (**n).kind != SYM_IMPORT_SYMBOL) {
             last_culprit = *n;
         }
     }
@@ -2582,6 +2585,9 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
     *tgt = ex;
     return pe;
 }
+parse_error parse_import_with_parent(
+    parser* p, ast_node_flags flags, ureg start, ureg kw_end, mdg_node* parent,
+    symbol** tgt);
 parse_error parse_using(
     parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** tgt)
 {
@@ -2634,13 +2640,116 @@ parse_error parse_using(
     curr_scope_add_usings(p, ast_node_flags_get_access_mod(flags), 1);
     return pe;
 }
-parse_error parse_import_with_parent(
-    parser* p, ast_node_flags flags, ureg start, ureg kw_end, mdg_node** parent,
-    ast_node** tgt)
+parse_error parse_braced_imports(
+    parser* p, ast_node_flags flags, ureg start, ureg kw_end, mdg_node* parent,
+    ureg* end, symbol** tgt)
 {
+    lx_void(&p->tk);
+    while (true) {
+        parse_error pe =
+            parse_import_with_parent(p, flags, start, kw_end, parent, tgt);
+        if (pe) return pe;
+        tgt = &(**tgt).next;
+        token* t;
+        PEEK(p, t);
+        if (t->kind == TK_COMMA || t->kind == TK_BRACE_CLOSE) {
+            if (t->kind == TK_COMMA) {
+                lx_void(&p->tk);
+            }
+            if (t->kind == TK_BRACE_CLOSE) {
+                *end = t->end;
+                lx_void(&p->tk);
+                *tgt = NULL;
+                return PE_OK;
+            }
+        }
+        else {
+            return parser_error_2a(
+                p, "invalid import syntax", t->start, t->end, "expected , or }",
+                start, kw_end, "in this import statement");
+        }
+    }
+}
+parse_error parse_symbol_imports(
+    parser* p, ast_node_flags flags, ureg start, ureg kw_end, ureg* end,
+    symbol** tgt)
+{
+    lx_void(&p->tk);
+    token* t;
+    PEEK(p, t);
+    ureg symstart = 0;
+    ureg symend;
+    char* id1_str;
+    char* symname;
+    while (true) {
+        if (t->kind != TK_IDENTIFIER) {
+            return parser_error_2a(
+                p, "invalid import syntax", t->start, t->end,
+                symstart ? "expected identifier or )" : "expected identifier",
+                start, kw_end, "in this import statement");
+        }
+        symstart = t->start;
+        symend = t->end;
+        id1_str = alloc_string_perm(p, t->str);
+        if (!id1_str) return PE_FATAL;
+        lx_void(&p->tk);
+        PEEK(p, t);
+        if (t->kind == TK_EQUALS) {
+            lx_void(&p->tk);
+            PEEK(p, t);
+            if (t->kind != TK_IDENTIFIER) {
+                return parser_error_2a(
+                    p, "invalid import syntax", t->start, t->end,
+                    "expected symbol identifier", start, kw_end,
+                    "in this import statement");
+            }
+            symname = alloc_string_perm(p, t->str);
+            if (!symname) return PE_FATAL;
+            symend = t->end;
+            lx_void(&p->tk);
+            PEEK(p, t);
+        }
+        else {
+            symname = id1_str;
+        }
+        if (t->kind == TK_COMMA || t->kind == TK_PAREN_CLOSE) {
+            if (t->kind == TK_COMMA) {
+                sym_import_symbol* im =
+                    alloc_perm(p, sizeof(sym_import_symbol));
+                if (!im) return PE_FATAL;
+                ast_node_init_with_flags(
+                    (ast_node*)im, SYM_IMPORT_SYMBOL, flags);
+                ast_node_fill_srange(p, (ast_node*)im, symstart, symend);
+                im->symbol.name = id1_str;
+                im->target.name = symname;
+                *tgt = (symbol*)im;
+                tgt = &im->symbol.next;
+                lx_void(&p->tk);
+                PEEK(p, t);
+                // fallthrough to allow trailing comma
+            }
+            if (t->kind == TK_PAREN_CLOSE) {
+                *end = t->end;
+                lx_void(&p->tk);
+                *tgt = NULL;
+                return PE_OK;
+            }
+        }
+        else {
+            return parser_error_2a(
+                p, "invalid import syntax", t->start, t->end, "expected , or )",
+                start, kw_end, "in this import statement");
+        }
+    }
+}
+parse_error parse_import_with_parent(
+    parser* p, ast_node_flags flags, ureg start, ureg kw_end, mdg_node* parent,
+    symbol** tgt)
+{
+    token *t, *t2;
     PEEK(p, t);
     ureg istart = t->start;
-    token* t2;
+    ureg end;
     PEEK_SND(p, t2);
     char* name = NULL;
     if (t->kind == TK_IDENTIFIER && t2->kind == TK_EQUALS) {
@@ -2649,7 +2758,7 @@ parse_error parse_import_with_parent(
         lx_void_n(&p->tk, 2);
         PEEK(p, t);
     }
-    if (t->kind == TK_KW_SELF && parent == TAUC.mdg.root_node) {
+    if (t->kind == TK_KW_SELF && TAUC.mdg.root_node == parent) {
         parent = p->current_module;
         if (t2->kind == TK_DOUBLE_COLON) {
             lx_void(&p->tk);
@@ -2661,38 +2770,74 @@ parse_error parse_import_with_parent(
                 start, kw_end, "in this import statement");
         }
     }
+    bool has_ident = false;
     while (t->kind == TK_IDENTIFIER) {
+        has_ident = true;
         parent = mdg_get_node(&TAUC.mdg, parent, t->str);
         // if the node doesn't exist it gets created here,
         // we will find out (and report) once all required files are parsed if
         // it is actually missing. NULL just means allocation failiure
         if (!parent) return PE_FATAL;
+        end = t->end;
         lx_void(&p->tk);
         PEEK(p, t);
-        if (t->kind == TK_SEMICOLON) {
-            // TODO: create simple
-        }
-        else if (t->kind == TK_DOUBLE_COLON) {
+        if (t->kind == TK_DOUBLE_COLON) {
             lx_void(&p->tk);
             PEEK(p, t);
         }
         else {
-            return parser_error_2a(
-                p, "invalid import syntax", t->start, t->end,
-                "expected :: or ;", start, kw_end, "in this import statement");
+            sym_import_module* im = alloc_perm(p, sizeof(sym_import_module));
+            if (!im) return PE_FATAL;
+            ast_node_init_with_flags((ast_node*)im, SYM_IMPORT_MODULE, flags);
+            ast_node_fill_srange(p, (ast_node*)im, istart, end);
+            im->target.mdg_node = parent;
+            if (name) {
+                im->symbol.name = name;
+            }
+            else {
+                im->symbol.name = parent->name;
+            }
+            // TODO: add to mdg
+            *tgt = (symbol*)im;
+            return PE_OK;
+        }
+    }
+    // TODO: also select this branch if we want unnamed groups
+    // for better ast printing
+    if (t->kind == TK_PAREN_OPEN || t->kind == TK_BRACE_OPEN) {
+        sym_import_group* ig;
+        // if (name) {
+        ig = alloc_perm(p, sizeof(sym_import_group));
+        if (!ig) return PE_FATAL;
+        ast_node_init_with_flags((ast_node*)ig, SYM_IMPORT_GROUP, flags);
+        ig->parent.mdg_node = parent;
+        ig->symbol.name = name;
+        *tgt = (symbol*)ig;
+        tgt = &ig->children.symbols;
+        // }
+        parse_error re;
+        if (has_ident || t->kind != TK_BRACE_OPEN) {
+            if (t->kind == TK_PAREN_OPEN) {
+                re = parse_symbol_imports(p, flags, start, kw_end, &end, tgt);
+            }
+            else {
+                re = parse_braced_imports(
+                    p, flags, start, kw_end, parent, &end, tgt);
+            }
+            if (re) return re;
+            if (ig) {
+                ast_node_fill_srange(p, (ast_node*)ig, start, end);
+            }
+            return re;
         }
     }
     char* expected;
-    if (parent != TAUC.mdg.root_node) {
-        if (t->kind == TK_PAREN_OPEN) {
-        }
-        if (t->kind == TK_BRACE_OPEN) {
-        }
-        expected = "expected identifier or ( or {";
-    }
-    else {
+    if (parent == TAUC.mdg.root_node)
         expected = "expected identifier";
-    }
+    else if (has_ident)
+        expected = "expected identifier or ( or {";
+    else
+        expected = "expected identifier or (";
     return parser_error_2a(
         p, "invalid import syntax", t->start, t->end, expected, start, kw_end,
         "in this import statement");
@@ -2702,9 +2847,9 @@ parse_error parse_import(
 {
     token* t = lx_aquire(&p->tk);
     ureg kw_end = t->end;
-    tk_void(&p->tk);
+    lx_void(&p->tk);
     return parse_import_with_parent(
-        p, flags, start, kw_end, TAUC.mdg.root_node, tgt);
+        p, flags, start, kw_end, TAUC.mdg.root_node, (symbol**)tgt);
 }
 parse_error
 parse_require(parser* p, ast_node_flags flags, ureg start, ureg flags_end)

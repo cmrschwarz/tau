@@ -347,9 +347,10 @@ int compare_mdg_nodes(const mdg_node* fst, const mdg_node* snd)
 #define SCCD_MISSING_IMPORT STATUS_2
 #define SCCD_HANDLED STATUS_3
 
-bool module_import_find_import(
-    module_import* mi, mdg_node* import, module_import** tgt)
+bool module_import_find_import(symbol* mi, mdg_node* import, symbol** tgt)
 {
+    // TODO fix
+    /*
     if (mi->tgt == import) {
         *tgt = mi;
         return true;
@@ -360,11 +361,14 @@ bool module_import_find_import(
         if (module_import_find_import(ni, import, tgt)) return true;
         ni++;
     }
+    */
     return false;
 }
 bool scope_find_import(
-    scope* s, mdg_node* import, stmt_import** tgt, module_import** tgt_sym)
+    scope* s, mdg_node* import, symbol** tgt, symbol** tgt_sym)
 {
+    // TODO fix
+    /*
     for (ast_node** n = s->body.elements; *n; n++) {
         if (ast_elem_is_scope((ast_elem*)*n)) {
             if (scope_find_import((scope*)*n, import, tgt, tgt_sym))
@@ -378,12 +382,15 @@ bool scope_find_import(
             }
         }
     }
+    */
     return false;
 }
 void mdg_node_find_import(
-    mdg_node* m, mdg_node* import, stmt_import** tgt, module_import** tgt_sym,
+    mdg_node* m, mdg_node* import, symbol** tgt, symbol** tgt_sym,
     src_file** file)
 {
+    // TODO fix
+    /*
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &m->open_scopes);
     while (true) {
@@ -396,21 +403,25 @@ void mdg_node_find_import(
         osc = (open_scope*)osc->scope.symbol.next;
     }
     panic("failed to find import!");
+    */
 }
 void mdg_node_report_missing_import(
     thread_context* tc, mdg_node* m, mdg_node* import)
 {
-    stmt_import* tgt;
-    module_import* tgt_sym;
-    src_file* f;
-    mdg_node_find_import(m, import, &tgt, &tgt_sym, &f);
-    src_range_large tgt_srl, tgt_sym_srl;
-    src_range_unpack(tgt->node.srange, &tgt_srl);
-    src_range_unpack(tgt_sym->srange, &tgt_sym_srl);
-    error_log_report_annotated_twice(
-        &tc->error_log, ES_RESOLVER, false,
-        "missing definition for imported module", f, tgt_sym_srl.start,
-        tgt_sym_srl.end, "imported here", f, tgt_srl.start, tgt_srl.end, NULL);
+    // TODO fix
+    /*  stmt_import* tgt;
+      module_import* tgt_sym;
+      src_file* f;
+      mdg_node_find_import(m, import, &tgt, &tgt_sym, &f);
+      src_range_large tgt_srl, tgt_sym_srl;
+      src_range_unpack(tgt->node.srange, &tgt_srl);
+      src_range_unpack(tgt_sym->srange, &tgt_sym_srl);
+      error_log_report_annotated_twice(
+          &tc->error_log, ES_RESOLVER, false,
+          "missing definition for imported module", f, tgt_sym_srl.start,
+          tgt_sym_srl.end, "imported here", f, tgt_srl.start, tgt_srl.end,
+      NULL);
+          */
 }
 int scc_detector_strongconnect(
     thread_context* tc, mdg_node* n, sccd_node* sn, mdg_node* caller)

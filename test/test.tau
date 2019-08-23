@@ -1,4 +1,4 @@
-import doo::loo;
+import doo::{loo, (a,b,c)};
 func main(z: int) -> int{
     x := 1 + 2;
     y := main(3);

@@ -41,6 +41,7 @@ typedef struct mdg_deps_list {
 } mdg_deps_list;
 
 typedef struct mdg_node {
+    // TODO: make this an ast node/element for the symtab owning node to work
     mdg_node* parent;
     char* name;
     atomic_ureg unparsed_files;

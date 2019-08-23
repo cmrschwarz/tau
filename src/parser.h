@@ -32,6 +32,5 @@ int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
 typedef struct job_parse job_parse;
 parse_error parser_parse_file(parser* p, job_parse* j);
-module_import* imports;
 
 bool ast_node_may_drop_semicolon(ast_node* n);
