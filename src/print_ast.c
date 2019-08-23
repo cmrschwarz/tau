@@ -206,7 +206,8 @@ void print_import_group(
             print_mdg_node_until(
                 ((sym_import_module*)c)->target.mdg_node, g->parent.mdg_node);
         }
-        else if (c->node.kind == SYM_IMPORT_SYMBOL) {
+        else {
+            assert(c->node.kind == SYM_IMPORT_SYMBOL);
             sym_import_symbol* sym = (sym_import_symbol*)c;
             // equals is fine here since we alloc only once
             if (sym->symbol.name != sym->target.name) {
@@ -214,9 +215,6 @@ void print_import_group(
                 p(" = ");
             }
             p(sym->target.name);
-        }
-        else {
-            assert(false);
         }
         c = c->next;
         if (c) p(", ");

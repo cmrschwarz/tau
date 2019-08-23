@@ -27,10 +27,10 @@ report_unknown_symbol(resolver* r, ast_node* n, symbol_table* st)
     return RE_UNKNOWN_SYMBOL;
 }
 static resolve_error report_redeclaration_error(
-    resolver* r, symbol* redecl, symbol* first, symbol_table* st)
+    thread_context* tc, symbol* redecl, symbol* first, symbol_table* st)
 {
     error_log_report_annotated_twice(
-        &r->tc->error_log, ES_RESOLVER, false, "symbol redeclaration",
+        &tc->error_log, ES_RESOLVER, false, "symbol redeclaration",
         ast_node_get_file((ast_node*)redecl, st),
         src_range_get_start(redecl->node.srange),
         src_range_get_end(redecl->node.srange),
@@ -52,7 +52,7 @@ add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
     symbol** conflict;
     conflict = symbol_table_insert(tgtst, sym);
     if (conflict) {
-        return report_redeclaration_error(r, sym, *conflict, tgtst);
+        return report_redeclaration_error(r->tc, sym, *conflict, tgtst);
     }
     return RE_OK;
 }
@@ -270,7 +270,22 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
     }
      */
 }
-
+resolve_error
+resolve_import_group(thread_context* tc, sym_import_group* ig, symbol_table* st)
+{
+    for (symbol* s = ig->children.symbols; s != NULL; s = s->next) {
+        if (s->node.kind == SYM_IMPORT_GROUP) {
+            sym_import_group* nig = (sym_import_group*)s;
+            if (!nig->symbol.name) {
+                resolve_error re = resolve_import_group(tc, nig, st);
+                if (re) return re;
+                continue;
+            }
+        }
+        symbol** cf = symbol_table_insert(st, s);
+        if (cf) return report_redeclaration_error(tc, s, *cf, st);
+    }
+}
 resolve_error operator_func_applicable(
     resolver* r, symbol_table* op_st, ast_elem* lhs, ast_elem* rhs, sc_func* f,
     bool* applicable, ast_elem** ctype)

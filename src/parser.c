@@ -7,6 +7,7 @@
 #include "utils/math_utils.h"
 #include "utils/panic.h"
 #include "utils/zero.h"
+#include "resolver.h"
 #include <stddef.h>
 
 #define PEEK(p, t)                                                             \
@@ -2587,7 +2588,7 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
 }
 parse_error parse_import_with_parent(
     parser* p, ast_node_flags flags, ureg start, ureg kw_end, mdg_node* parent,
-    symbol** tgt);
+    ureg* decl_cnt, symbol** tgt);
 parse_error parse_using(
     parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** tgt)
 {
@@ -2642,12 +2643,12 @@ parse_error parse_using(
 }
 parse_error parse_braced_imports(
     parser* p, ast_node_flags flags, ureg start, ureg kw_end, mdg_node* parent,
-    ureg* end, symbol** tgt)
+    ureg* end, ureg* decl_cnt, symbol** tgt)
 {
     lx_void(&p->tk);
     while (true) {
-        parse_error pe =
-            parse_import_with_parent(p, flags, start, kw_end, parent, tgt);
+        parse_error pe = parse_import_with_parent(
+            p, flags, start, kw_end, parent, decl_cnt, tgt);
         if (pe) return pe;
         tgt = &(**tgt).next;
         token* t;
@@ -2672,7 +2673,7 @@ parse_error parse_braced_imports(
 }
 parse_error parse_symbol_imports(
     parser* p, ast_node_flags flags, ureg start, ureg kw_end, ureg* end,
-    symbol** tgt)
+    ureg* decl_cnt, symbol** tgt)
 {
     lx_void(&p->tk);
     token* t;
@@ -2724,6 +2725,7 @@ parse_error parse_symbol_imports(
                 im->target.name = symname;
                 *tgt = (symbol*)im;
                 tgt = &im->symbol.next;
+                *decl_cnt = *decl_cnt + 1;
                 lx_void(&p->tk);
                 PEEK(p, t);
                 // fallthrough to allow trailing comma
@@ -2744,7 +2746,7 @@ parse_error parse_symbol_imports(
 }
 parse_error parse_import_with_parent(
     parser* p, ast_node_flags flags, ureg start, ureg kw_end, mdg_node* parent,
-    symbol** tgt)
+    ureg* decl_cnt, symbol** tgt)
 {
     token *t, *t2;
     PEEK(p, t);
@@ -2793,6 +2795,8 @@ parse_error parse_import_with_parent(
             im->target.mdg_node = parent;
             if (name) {
                 im->symbol.name = name;
+                curr_scope_add_decls(
+                    p, ast_node_flags_get_access_mod(flags), 1);
             }
             else {
                 im->symbol.name = parent->name;
@@ -2808,7 +2812,7 @@ parse_error parse_import_with_parent(
     // for better ast printing
     if (t->kind == TK_PAREN_OPEN || t->kind == TK_BRACE_OPEN) {
         sym_import_group* ig;
-        // if (name) {
+        // if (name) { // we even create unnamed groups for better printing
         ig = alloc_perm(p, sizeof(sym_import_group));
         if (!ig) return PE_FATAL;
         ast_node_init_with_flags((ast_node*)ig, SYM_IMPORT_GROUP, flags);
@@ -2817,20 +2821,36 @@ parse_error parse_import_with_parent(
         *tgt = (symbol*)ig;
         tgt = &ig->children.symbols;
         // }
-        parse_error re;
-        if (has_ident || t->kind != TK_BRACE_OPEN) {
+        if (has_ident || name || t->kind != TK_BRACE_OPEN) {
+            ureg ndecl_cnt = 0;
+            if (name) {
+                *decl_cnt = *decl_cnt + 1;
+                decl_cnt = &ndecl_cnt;
+            }
+            parse_error re;
             if (t->kind == TK_PAREN_OPEN) {
-                re = parse_symbol_imports(p, flags, start, kw_end, &end, tgt);
+                re = parse_symbol_imports(
+                    p, flags, start, kw_end, &end, decl_cnt, tgt);
             }
             else {
                 re = parse_braced_imports(
-                    p, flags, start, kw_end, parent, &end, tgt);
+                    p, flags, start, kw_end, parent, &end, decl_cnt, tgt);
             }
             if (re) return re;
             if (ig) {
                 ast_node_fill_srange(p, (ast_node*)ig, start, end);
             }
-            return re;
+            if (name) {
+                symbol_table* st;
+                if (symbol_table_init(
+                        &st, ndecl_cnt, 0, false, (ast_node*)ig)) {
+                    return RE_FATAL;
+                }
+                resolve_error re = resolve_import_group(p->tk.tc, ig, st);
+                if (re) return PE_ERROR;
+                ig->children.symtab = st;
+            }
+            return RE_OK;
         }
     }
     char* expected;
@@ -2850,8 +2870,12 @@ parse_error parse_import(
     token* t = lx_aquire(&p->tk);
     ureg kw_end = t->end;
     lx_void(&p->tk);
-    return parse_import_with_parent(
-        p, flags, start, kw_end, TAUC.mdg.root_node, (symbol**)tgt);
+    ureg decl_cnt = 0;
+    parse_error pe = parse_import_with_parent(
+        p, flags, start, kw_end, TAUC.mdg.root_node, &decl_cnt, (symbol**)tgt);
+    if (pe) return pe;
+    curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), decl_cnt);
+    return PE_OK;
 }
 parse_error
 parse_require(parser* p, ast_node_flags flags, ureg start, ureg flags_end)
