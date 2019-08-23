@@ -191,6 +191,7 @@ void print_ast_elem_name(ast_elem* n)
 void print_import_group(
     sym_import_group* g, mdg_node* block_parent, ureg indent)
 {
+    // TODO: improve this mess
     if (print_mdg_node_until(g->parent.mdg_node, block_parent)) p("::");
     symbol** c;
     symbol** cend;

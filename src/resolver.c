@@ -124,6 +124,19 @@ static resolve_error add_ast_node_decls(
             // (vars can't be used before declaration)
             return RE_OK;
         }
+        case SYM_IMPORT_GROUP: {
+            sym_import_group* ig = (sym_import_group*)n;
+            if (ig->symbol.name) {
+                return add_symbol(r, st, sst, (symbol*)ig);
+            }
+            else {
+                return add_import_group_decls(
+                    r->tc, ast_node_get_file((ast_node*)ig, st), ig, st);
+            }
+        }
+        case SYM_IMPORT_MODULE: {
+            return add_symbol(r, st, sst, (symbol*)n);
+        }
         case STMT_USING:
         case STMT_COMPOUND_ASSIGN:
             // TODO
@@ -276,7 +289,7 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
     }
      */
 }
-resolve_error resolve_import_group(
+resolve_error add_import_group_decls(
     thread_context* tc, src_file* f, sym_import_group* ig, symbol_table* st)
 {
     symbol* next = ig->children.symbols;
@@ -287,7 +300,7 @@ resolve_error resolve_import_group(
         if (s->node.kind == SYM_IMPORT_GROUP) {
             sym_import_group* nig = (sym_import_group*)s;
             if (!nig->symbol.name) {
-                resolve_error re = resolve_import_group(tc, f, nig, st);
+                resolve_error re = add_import_group_decls(tc, f, nig, st);
                 if (re) return re;
                 continue;
             }

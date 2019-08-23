@@ -27,5 +27,5 @@ int resolver_init(resolver* r, thread_context* tc);
 void resolver_fin(resolver* r);
 int resolver_resolve_single(resolver* r, mdg_node* node);
 int resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end);
-resolve_error resolve_import_group(
+resolve_error add_import_group_decls(
     thread_context* tc, src_file* f, sym_import_group* ig, symbol_table* st);

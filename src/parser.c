@@ -2846,7 +2846,7 @@ parse_error parse_import_with_parent(
                     return RE_FATAL;
                 }
                 resolve_error re =
-                    resolve_import_group(p->tk.tc, p->tk.file, ig, st);
+                    add_import_group_decls(p->tk.tc, p->tk.file, ig, st);
                 if (re) return PE_ERROR;
                 ig->children.symtab = st;
             }
