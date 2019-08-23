@@ -13,7 +13,7 @@ typedef enum parse_error {
 } parse_error;
 
 typedef struct parser {
-    lexer tk;
+    lexer lx;
     mdg_node* current_module;
     sbuffer body_stack; // sounds kinda morbid :)
 } parser;
