@@ -28,4 +28,4 @@ void resolver_fin(resolver* r);
 int resolver_resolve_single(resolver* r, mdg_node* node);
 int resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end);
 resolve_error resolve_import_group(
-    thread_context* tc, sym_import_group* ig, symbol_table* st);
+    thread_context* tc, src_file* f, sym_import_group* ig, symbol_table* st);

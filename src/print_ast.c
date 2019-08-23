@@ -192,23 +192,38 @@ void print_import_group(
     sym_import_group* g, mdg_node* block_parent, ureg indent)
 {
     if (print_mdg_node_until(g->parent.mdg_node, block_parent)) p("::");
-    symbol* c = g->children.symbols;
-    assert(c);
-    bool syms = (c->node.kind == SYM_IMPORT_SYMBOL);
+    symbol** c;
+    symbol** cend;
+    if (ast_node_flags_get_resolved(g->symbol.node.flags)) {
+        c = (symbol**)(g->children.symtab + 1);
+        cend = c + g->children.symtab->decl_count;
+        while (c != cend && !*c) c++; // skip initial blanks
+    }
+    else {
+        c = &g->children.symbols;
+        cend = NULL;
+    }
+    bool syms = ((**c).node.kind == SYM_IMPORT_SYMBOL);
     p(syms ? "(" : "{\n");
-    while (c) {
-        if (!syms) print_indent(indent + 1);
-        if (c->node.kind == SYM_IMPORT_GROUP) {
-            print_import_group(
-                (sym_import_group*)c, g->parent.mdg_node, indent + 1);
+    while (true) {
+        if (c == cend) break;
+        if (*c == NULL) {
+            if (!cend) break;
+            c++;
+            continue;
         }
-        else if (c->node.kind == SYM_IMPORT_MODULE) {
+        if (!syms) print_indent(indent + 1);
+        if ((**c).node.kind == SYM_IMPORT_GROUP) {
+            print_import_group(
+                (sym_import_group*)*c, g->parent.mdg_node, indent + 1);
+        }
+        else if ((**c).node.kind == SYM_IMPORT_MODULE) {
             print_mdg_node_until(
-                ((sym_import_module*)c)->target.mdg_node, g->parent.mdg_node);
+                ((sym_import_module*)*c)->target.mdg_node, g->parent.mdg_node);
         }
         else {
-            assert(c->node.kind == SYM_IMPORT_SYMBOL);
-            sym_import_symbol* sym = (sym_import_symbol*)c;
+            assert((**c).node.kind == SYM_IMPORT_SYMBOL);
+            sym_import_symbol* sym = (sym_import_symbol*)*c;
             // equals is fine here since we alloc only once
             if (sym->symbol.name != sym->target.name) {
                 p(sym->symbol.name);
@@ -216,8 +231,14 @@ void print_import_group(
             }
             p(sym->target.name);
         }
-        c = c->next;
-        if (c) p(", ");
+        if (cend) {
+            c++;
+            if (c != cend) p(", ");
+        }
+        else {
+            c = &(**c).next;
+            if (*c) p(", ");
+        }
         if (!syms) pc('\n');
     }
     if (!syms) {

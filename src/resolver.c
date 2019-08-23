@@ -26,20 +26,26 @@ report_unknown_symbol(resolver* r, ast_node* n, symbol_table* st)
         src_range_get_end(n->srange), "use of an undefined symbol");
     return RE_UNKNOWN_SYMBOL;
 }
-static resolve_error report_redeclaration_error(
-    thread_context* tc, symbol* redecl, symbol* first, symbol_table* st)
+static resolve_error report_redeclaration_error_raw(
+    thread_context* tc, symbol* redecl, src_file* redecl_file, symbol* prev,
+    src_file* prev_file)
 {
     error_log_report_annotated_twice(
-        &tc->error_log, ES_RESOLVER, false, "symbol redeclaration",
-        ast_node_get_file((ast_node*)redecl, st),
+        &tc->error_log, ES_RESOLVER, false, "symbol redeclaration", redecl_file,
         src_range_get_start(redecl->node.srange),
         src_range_get_end(redecl->node.srange),
         "a symbol of this name is already defined in this "
         "scope",
-        ast_node_get_file((ast_node*)first, st),
-        src_range_get_start(first->node.srange),
-        src_range_get_end(first->node.srange), "previous definition here");
+        prev_file, src_range_get_start(prev->node.srange),
+        src_range_get_end(prev->node.srange), "previous definition here");
     return RE_SYMBOL_REDECLARATION;
+}
+static resolve_error report_redeclaration_error(
+    resolver* r, symbol* redecl, symbol* prev, symbol_table* st)
+{
+    return report_redeclaration_error_raw(
+        r->tc, redecl, ast_node_get_file((ast_node*)redecl, st), prev,
+        ast_node_get_file((ast_node*)prev, st));
 }
 static resolve_error
 add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
@@ -52,7 +58,7 @@ add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
     symbol** conflict;
     conflict = symbol_table_insert(tgtst, sym);
     if (conflict) {
-        return report_redeclaration_error(r->tc, sym, *conflict, tgtst);
+        return report_redeclaration_error(r, sym, *conflict, tgtst);
     }
     return RE_OK;
 }
@@ -270,21 +276,27 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
     }
      */
 }
-resolve_error
-resolve_import_group(thread_context* tc, sym_import_group* ig, symbol_table* st)
+resolve_error resolve_import_group(
+    thread_context* tc, src_file* f, sym_import_group* ig, symbol_table* st)
 {
-    for (symbol* s = ig->children.symbols; s != NULL; s = s->next) {
+    symbol* next = ig->children.symbols;
+    symbol* s;
+    while (next != NULL) {
+        s = next;
+        next = s->next;
         if (s->node.kind == SYM_IMPORT_GROUP) {
             sym_import_group* nig = (sym_import_group*)s;
             if (!nig->symbol.name) {
-                resolve_error re = resolve_import_group(tc, nig, st);
+                resolve_error re = resolve_import_group(tc, f, nig, st);
                 if (re) return re;
                 continue;
             }
         }
         symbol** cf = symbol_table_insert(st, s);
-        if (cf) return report_redeclaration_error(tc, s, *cf, st);
+        if (cf) return report_redeclaration_error_raw(tc, s, f, *cf, f);
     }
+    ast_node_flags_set_resolved(&ig->symbol.node.flags);
+    return RE_OK;
 }
 resolve_error operator_func_applicable(
     resolver* r, symbol_table* op_st, ast_elem* lhs, ast_elem* rhs, sc_func* f,

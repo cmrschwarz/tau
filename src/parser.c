@@ -2715,21 +2715,19 @@ parse_error parse_symbol_imports(
         }
         if (t->kind == TK_COMMA || t->kind == TK_PAREN_CLOSE) {
             if (t->kind == TK_COMMA) {
-                sym_import_symbol* im =
-                    alloc_perm(p, sizeof(sym_import_symbol));
-                if (!im) return PE_FATAL;
-                ast_node_init_with_flags(
-                    (ast_node*)im, SYM_IMPORT_SYMBOL, flags);
-                ast_node_fill_srange(p, (ast_node*)im, symstart, symend);
-                im->symbol.name = id1_str;
-                im->target.name = symname;
-                *tgt = (symbol*)im;
-                tgt = &im->symbol.next;
-                *decl_cnt = *decl_cnt + 1;
                 lx_void(&p->tk);
                 PEEK(p, t);
-                // fallthrough to allow trailing comma
             }
+            sym_import_symbol* im = alloc_perm(p, sizeof(sym_import_symbol));
+            if (!im) return PE_FATAL;
+            ast_node_init_with_flags((ast_node*)im, SYM_IMPORT_SYMBOL, flags);
+            ast_node_fill_srange(p, (ast_node*)im, symstart, symend);
+            im->symbol.name = id1_str;
+            im->target.name = symname;
+            *tgt = (symbol*)im;
+            tgt = &im->symbol.next;
+            *decl_cnt = *decl_cnt + 1;
+            // fallthrough to allow trailing comma
             if (t->kind == TK_PAREN_CLOSE) {
                 *end = t->end;
                 lx_void(&p->tk);
@@ -2805,6 +2803,7 @@ parse_error parse_import_with_parent(
                 return PE_FATAL;
             }
             *tgt = (symbol*)im;
+            *decl_cnt = *decl_cnt + 1;
             return PE_OK;
         }
     }
@@ -2846,7 +2845,8 @@ parse_error parse_import_with_parent(
                         &st, ndecl_cnt, 0, false, (ast_node*)ig)) {
                     return RE_FATAL;
                 }
-                resolve_error re = resolve_import_group(p->tk.tc, ig, st);
+                resolve_error re =
+                    resolve_import_group(p->tk.tc, p->tk.file, ig, st);
                 if (re) return PE_ERROR;
                 ig->children.symtab = st;
             }
