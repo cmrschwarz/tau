@@ -205,7 +205,7 @@ static resolve_error add_ast_node_decls(
             if (re) return re;
             return add_ast_node_decls(r, st, sst, ((expr_op_binary*)n)->rhs);
         }
-        case EXPR_OP_ACCESS: {
+        case EXPR_ACCESS: {
             expr_access* a = (expr_access*)n;
             re = add_ast_node_decls(r, st, sst, a->lhs);
             if (re) return re;
@@ -217,7 +217,7 @@ static resolve_error add_ast_node_decls(
             // but this way we traverse as declared ->better cache usage
             return RE_OK;
         }
-        case EXPR_OP_CALL: {
+        case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
             re = add_ast_node_decls(r, st, sst, c->lhs);
             if (re) return re;
@@ -227,7 +227,14 @@ static resolve_error add_ast_node_decls(
             }
             return RE_OK;
         }
-        case EXPR_OP_PARENTHESES:
+        case EXPR_SCOPE_ACCESS:
+        case EXPR_MEMBER_ACCESS: {
+            return add_ast_node_decls(r, st, sst, ((expr_scope_access*)n)->lhs);
+        }
+        case EXPR_PARENTHESES: {
+            return add_ast_node_decls(
+                r, st, sst, ((expr_parentheses*)n)->child);
+        }
         case EXPR_OP_UNARY: {
             return add_ast_node_decls(r, st, sst, ((expr_op_unary*)n)->child);
         }
@@ -309,6 +316,7 @@ resolve_error add_import_group_decls(
         if (cf) return report_redeclaration_error_raw(tc, s, f, *cf, f);
     }
     ast_node_flags_set_resolved(&ig->symbol.node.flags);
+    ig->children.symtab = st;
     return RE_OK;
 }
 resolve_error operator_func_applicable(
@@ -532,7 +540,7 @@ resolve_error resolve_ast_node_raw(
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }
-        case EXPR_OP_CALL: {
+        case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
             if (resolved) return ret_ctype(c->target->return_ctype, ctype);
             return resolve_call(r, c, st, ctype);
@@ -541,6 +549,10 @@ resolve_error resolve_ast_node_raw(
         case EXPR_OP_UNARY: {
             // TODO
             return RE_OK;
+        }
+        case EXPR_PARENTHESES: {
+            return resolve_ast_node(
+                r, ((expr_parentheses*)n)->child, st, ctype);
         }
         case EXPR_OP_BINARY: {
             expr_op_binary* ob = (expr_op_binary*)n;
@@ -558,6 +570,14 @@ resolve_error resolve_ast_node_raw(
             if (re) return re;
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
+        }
+        case EXPR_SCOPE_ACCESS: {
+            expr_scope_access* esa = (expr_scope_access*)n;
+            if (resolved) {
+                return ret_ctype(
+                    get_resolved_symbol_ctype(esa->target.symbol), ctype);
+            }
+            assert(false);
         }
         case SC_STRUCT:
         case SC_STRUCT_GENERIC:

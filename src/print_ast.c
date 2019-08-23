@@ -222,7 +222,9 @@ void print_import_group(
             print_mdg_node_until(
                 ((sym_import_module*)*c)->target.mdg_node, g->parent.mdg_node);
         }
-        else {
+        else if ((**c).node.kind == SYM_IMPORT_SYMBOL) {
+            // TODO: remove if aboce by fixing unnamed group containing parent
+            // st
             assert((**c).node.kind == SYM_IMPORT_SYMBOL);
             sym_import_symbol* sym = (sym_import_symbol*)*c;
             // equals is fine here since we alloc only once
@@ -231,6 +233,10 @@ void print_import_group(
                 p(" = ");
             }
             p(sym->target.name);
+        }
+        else {
+            c++;
+            continue;
         }
         if (cend) {
             c++;
@@ -487,21 +493,21 @@ void print_ast_node(ast_node* n, ureg indent)
             }
             pc(')');
         } break;
-        case EXPR_OP_CALL: {
+        case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
             print_ast_node(c->lhs, indent);
             pc('(');
             print_expr_list(c->args, c->arg_count, indent);
             pc(')');
         } break;
-        case EXPR_OP_ACCESS: {
+        case EXPR_ACCESS: {
             expr_access* acc = (expr_access*)n;
             print_ast_node(acc->lhs, indent);
             pc('[');
             print_expr_list(acc->args, acc->arg_count, indent);
             pc(']');
         } break;
-        case EXPR_OP_PARENTHESES: {
+        case EXPR_PARENTHESES: {
             expr_parentheses* pr = (expr_parentheses*)n;
             print_expr_in_parens(pr->child, indent);
         } break;

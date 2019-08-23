@@ -59,9 +59,11 @@ typedef enum PACK_ENUM ast_node_kind {
     EXPR_TYPE_ARRAY,
     EXPR_TYPE_SLICE,
 
-    EXPR_OP_CALL,
-    EXPR_OP_ACCESS,
-    EXPR_OP_PARENTHESES,
+    EXPR_CALL,
+    EXPR_ACCESS,
+    EXPR_PARENTHESES,
+    EXPR_SCOPE_ACCESS,
+    EXPR_MEMBER_ACCESS,
 
     EXPR_OP_UNARY,
     EXPR_OP_BINARY,
@@ -75,17 +77,16 @@ typedef enum PACK_ENUM ast_node_kind {
 } ast_node_kind;
 
 typedef enum PACK_ENUM operator_kind {
-    // special ops
     OP_NOOP, // invalid op, used for return values
-
+    // special ops, these have their own node types but have a precedence
     OP_CALL,
     OP_ACCESS,
     OP_PARENTHESES,
-
-    // binary ops
     OP_MEMBER_ACCESS,
     OP_SCOPE_ACCESS,
     OP_CAST,
+
+    // binary ops
     OP_ASSIGN,
     OP_ADD,
     OP_ADD_ASSIGN,
@@ -393,6 +394,16 @@ typedef struct expr_op_binary {
     ast_elem* op;
 } expr_op_binary;
 
+typedef struct expr_scope_access {
+    ast_node node;
+    ast_node* lhs;
+    union {
+        char* name;
+        symbol* symbol;
+    } target;
+} expr_scope_access;
+typedef struct expr_scope_access expr_member_access;
+
 typedef struct expr_op_unary {
     ast_node node;
     ast_node* child;
@@ -437,18 +448,6 @@ typedef struct expr_cast {
     ast_node* value;
     ast_node* target_type;
 } expr_cast;
-
-typedef struct expr_scope_access {
-    ast_node node;
-    ast_node* lhs;
-    ast_node* rhs;
-} expr_scope_access;
-
-typedef struct expr_member_access {
-    ast_node node;
-    ast_node* lhs;
-    ast_node* rhs;
-} expr_member_access;
 
 typedef struct expr_tuple {
     ast_node node;

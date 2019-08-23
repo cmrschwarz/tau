@@ -857,7 +857,7 @@ build_expr_parentheses(parser* p, ureg t_start, ureg t_end, ast_node** ex)
     expr_parentheses* pr =
         (expr_parentheses*)alloc_perm(p, sizeof(expr_parentheses));
     if (!pr) return PE_FATAL;
-    ast_node_init((ast_node*)pr, EXPR_OP_PARENTHESES);
+    ast_node_init((ast_node*)pr, EXPR_PARENTHESES);
     pr->child = *ex;
     if (ast_node_fill_srange(p, &pr->node, t_start, t->end)) return PE_FATAL;
     *ex = (ast_node*)pr;
@@ -1645,7 +1645,7 @@ static inline parse_error parse_call(parser* p, ast_node** ex, ast_node* lhs)
     PEEK(p, t);
     if (ast_node_fill_srange(p, &call->node, t_start, t->end)) return PE_FATAL;
     lx_void(&p->lx);
-    ast_node_init_with_op((ast_node*)call, EXPR_OP_CALL, OP_CALL);
+    ast_node_init_with_op((ast_node*)call, EXPR_CALL, OP_CALL);
     call->lhs = lhs;
     *ex = (ast_node*)call;
     return PE_OK;
@@ -1673,7 +1673,7 @@ static inline parse_error parse_access(parser* p, ast_node** ex, ast_node* lhs)
     PEEK(p, t);
     if (ast_node_fill_srange(p, &acc->node, t_start, t->end)) return PE_FATAL;
     lx_void(&p->lx);
-    ast_node_init_with_op((ast_node*)acc, EXPR_OP_ACCESS, OP_ACCESS);
+    ast_node_init_with_op((ast_node*)acc, EXPR_ACCESS, OP_ACCESS);
     acc->lhs = lhs;
     *ex = (ast_node*)acc;
     return PE_OK;
@@ -1702,8 +1702,37 @@ static inline parse_error parse_postfix_unary_op(
     }
 }
 static inline parse_error
+parse_scope_access(parser* p, ast_node** ex, ast_node* lhs, bool member)
+{
+    token* t = lx_aquire(&p->lx);
+    lx_void(&p->lx);
+    expr_scope_access* esa =
+        (expr_scope_access*)alloc_perm(p, sizeof(expr_scope_access));
+    if (!esa) return PE_FATAL;
+    if (ast_node_fill_srange(p, &esa->node, t->start, t->end)) return PE_FATAL;
+    ast_node_init_with_op(
+        (ast_node*)esa, member ? EXPR_MEMBER_ACCESS : EXPR_SCOPE_ACCESS,
+        member ? OP_MEMBER_ACCESS : OP_SCOPE_ACCESS);
+    esa->lhs = lhs;
+    PEEK(p, t);
+    if (t->kind != TK_IDENTIFIER) {
+        return parser_error_1a(
+            p, member ? "invalid operand for the member access operator"
+                      : "invalid operand for the scope access operator",
+            t->start, t->end, "expected an identifier");
+    }
+    esa->target.name = alloc_string_perm(p, t->str);
+    if (!esa->target.name) return PE_FATAL;
+    *ex = (ast_node*)esa;
+    lx_void(&p->lx);
+    return PE_OK;
+}
+static inline parse_error
 parse_binary_op(parser* p, operator_kind op, ast_node** ex, ast_node* lhs)
 {
+
+    if (op == OP_SCOPE_ACCESS || op == OP_MEMBER_ACCESS)
+        return parse_scope_access(p, ex, lhs, (op == OP_MEMBER_ACCESS));
     token* t = lx_aquire(&p->lx);
     lx_void(&p->lx);
     expr_op_binary* ob = (expr_op_binary*)alloc_perm(p, sizeof(expr_op_binary));
@@ -2848,7 +2877,6 @@ parse_error parse_import_with_parent(
                 resolve_error re =
                     add_import_group_decls(p->lx.tc, p->lx.file, ig, st);
                 if (re) return PE_ERROR;
-                ig->children.symtab = st;
             }
             return RE_OK;
         }
