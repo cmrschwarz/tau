@@ -11,6 +11,7 @@ module foo{
 func main(z: int) -> int{
     import foo;
     import foo::bar;
-    x:= foo::my_struct::x;
+   // x:= foo::my_struct::x;
+      y:= foo::bar::x;
     return foo::bar::x;
 }

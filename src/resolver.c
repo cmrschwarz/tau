@@ -647,7 +647,7 @@ get_resolved_symbol_symtab(resolver* r, symbol* s, symbol_table** tgt_st)
         *tgt_st = ((sym_import_parent*)s)->children.symtab;
     }
     else if (s->node.kind == SYM_IMPORT_MODULE) {
-        *tgt_st = ((sym_import_module*)s)->target.mdg_node->symtab;
+        *tgt_st = ((sym_import_module*)s)->target.symtab;
     }
     else if (s->node.kind == SYM_IMPORT_SYMBOL) {
         return get_resolved_symbol_symtab(
@@ -855,10 +855,14 @@ resolve_error resolve_ast_node_raw(
             return RE_OK;
         }
         case SYM_IMPORT_MODULE: {
-            // TODO: switch from ast_node to symtab here
-            if (!resolved) ast_node_flags_set_resolved(&n->flags);
-            if (ctype)
-                *ctype = (ast_elem*)((sym_import_module*)n)->target.mdg_node;
+            sym_import_module* im = (sym_import_module*)n;
+            if (!resolved) {
+                im->target.symtab = im->target.mdg_node->symtab;
+                ast_node_flags_set_resolved(&n->flags);
+            }
+            if (ctype) {
+                *ctype = ((sym_import_module*)n)->target.symtab->owning_node;
+            }
             return RE_OK;
         }
         case SYM_IMPORT_SYMBOL: {

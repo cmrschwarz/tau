@@ -288,17 +288,21 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
     switch (n->kind) {
         case SYM_IMPORT_MODULE: {
             p("import ");
-            if (ast_node_flags_get_relative_import(n->flags)) {
-                p("self::");
-                print_mdg_node_until(
-                    ((sym_import_module*)n)->target.mdg_node, cmdg);
+            sym_import_module* im = (sym_import_module*)n;
+            mdg_node* import;
+            if (ast_node_flags_get_resolved(n->flags)) {
+                import = (mdg_node*)im->target.symtab->owning_node;
             }
             else {
-                print_mdg_node_until(
-                    ((sym_import_module*)n)->target.mdg_node,
-                    TAUC.mdg.root_node);
+                import = im->target.mdg_node;
             }
-
+            if (ast_node_flags_get_relative_import(n->flags)) {
+                p("self::");
+                print_mdg_node_until(import, cmdg);
+            }
+            else {
+                print_mdg_node_until(import, TAUC.mdg.root_node);
+            }
         } break;
         case SYM_IMPORT_GROUP: {
             p("import ");
