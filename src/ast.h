@@ -24,12 +24,12 @@ typedef enum PACK_ENUM ast_node_kind {
     // TODO: reverse this and make var_decl_initialized contain var_decl
     SYM_VAR,
     SYM_VAR_INITIALIZED,
-    SYM_PARAM,
-    SYM_LAST_SYM_ID = SYM_PARAM,
-
     SYM_IMPORT_MODULE,
     SYM_IMPORT_SYMBOL,
     SYM_IMPORT_GROUP,
+    SYM_PARAM,
+    SYM_LAST_SYM_ID = SYM_PARAM,
+
     STMT_USING,
 
     STMT_COMPOUND_ASSIGN,
@@ -72,6 +72,7 @@ typedef enum PACK_ENUM ast_node_kind {
     TYPE_ARRAY,
     TYPE_TUPLE,
     TYPE_MODIFIERS,
+    ELEM_MDG_NODE,
     AST_NODE_KIND_ERROR,
 
 } ast_node_kind;

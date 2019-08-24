@@ -394,7 +394,8 @@ static inline int pop_bpd(parser* p, parse_error pe)
         bool has_pp = (bpd2 && bpd2->node == NULL);
         if (!pe) {
             if (symbol_table_init(
-                    st, bpd.decl_count, bpd.usings_count, has_pp, bpd.node))
+                    st, bpd.decl_count, bpd.usings_count, has_pp,
+                    (ast_elem*)bpd.node))
                 return ERR;
         }
         else {
@@ -2008,6 +2009,7 @@ static inline parse_error ast_node_flags_from_kw_set_access_mod(
         }
         return PE_ERROR;
     }
+    ast_node_flags_set_access_mod(f, am);
     return PE_OK;
 }
 parse_error parse_var_decl(
@@ -2873,7 +2875,7 @@ parse_error parse_import_with_parent(
             if (name) {
                 symbol_table* st;
                 if (symbol_table_init(
-                        &st, ndecl_cnt, 0, false, (ast_node*)ig)) {
+                        &st, ndecl_cnt, 0, false, (ast_elem*)ig)) {
                     return RE_FATAL;
                 }
                 resolve_error re =

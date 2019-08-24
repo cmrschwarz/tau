@@ -592,6 +592,18 @@ void print_ast_node(ast_node* n, ureg indent)
                 print_ast_node(i->else_body, indent);
             }
         } break;
+        case EXPR_MEMBER_ACCESS:
+        case EXPR_SCOPE_ACCESS: {
+            expr_scope_access* esa = (expr_scope_access*)n;
+            print_ast_node(esa->lhs, indent);
+            p(n->kind == EXPR_MEMBER_ACCESS ? "." : "::");
+            if (!ast_node_flags_get_resolved(n->flags)) {
+                pu(esa->target.name);
+            }
+            else {
+                pu(esa->target.symbol->name);
+            }
+        } break;
         default: {
             p("<unknown expression>");
         } break;

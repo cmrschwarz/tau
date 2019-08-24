@@ -36,7 +36,7 @@ static inline void bitmask_clear_range(u16* data, ureg mask)
 }
 static inline u16 bitmask_get_range(u16 data, ureg offs, ureg mask)
 {
-    return (data >> offs) & mask;
+    return (data & mask) >> offs;
 }
 
 void ast_node_flags_set_access_mod(ast_node_flags* f, access_modifier m)

@@ -923,7 +923,7 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
     for (mdg_node** i = start; i != end; i++) {
         int r = symbol_table_init(
             &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
-            atomic_ureg_load(&(**i).using_count), true, (ast_node*)*i);
+            atomic_ureg_load(&(**i).using_count), true, (ast_elem*)*i);
         if (r) return RE_FATAL;
         if (!(**i).symtab) return RE_FATAL;
         (**i).symtab->parent = GLOBAL_SYMTAB;
@@ -943,7 +943,6 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
         aseglist_iterator_begin(&asi, &(**i).open_scopes);
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
-            osc->scope.body.symtab->parent = (**i).symtab;
             re = resolve_body_reporting_loops(r, &osc->scope.body);
             if (re) return re;
         }

@@ -26,7 +26,6 @@ int mdg_fin_partial(mdg* m, int i, int r)
 mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent);
 int mdg_init(mdg* m)
 {
-
     int r = atomic_ureg_init(&m->node_ids, 0);
     if (r) return r;
     r = pool_init(&m->ident_pool);
@@ -105,6 +104,7 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
 {
     mdg_node* n = pool_alloc(&m->node_pool, sizeof(mdg_node));
     if (!n) return NULL;
+    n->elem.kind = ELEM_MDG_NODE;
     ureg identlen = string_len(ident);
     n->name = pool_alloc(&m->ident_pool, identlen + 1);
     n->id = atomic_ureg_inc(&m->node_ids);
@@ -185,7 +185,7 @@ static void free_body_symtabs(ast_node* node, body* b)
     for (ast_node** n = b->elements; *n != NULL; n++) {
         free_astn_symtabs(*n);
     }
-    if (b->symtab && b->symtab->owning_node == node) {
+    if (b->symtab && b->symtab->owning_node == (ast_elem*)node) {
         symbol_table_fin(b->symtab);
     }
 }

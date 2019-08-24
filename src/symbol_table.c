@@ -16,7 +16,7 @@ symbol_table* GLOBAL_SYMTAB = NULL;
 
 int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
-    ast_node* owning_node)
+    ast_elem* owning_node)
 {
     if (!force_unique && decl_count == 0 && using_count == 0) {
         *tgt = NULL;
@@ -99,7 +99,8 @@ symbol** symbol_table_lookup(symbol_table* st, const char* s)
 }
 src_file* symbol_table_get_file(symbol_table* st)
 {
-    src_file* f = src_range_get_file(st->owning_node->srange);
+    assert(st->owning_node->kind != ELEM_MDG_NODE);
+    src_file* f = src_range_get_file(((ast_node*)st->owning_node)->srange);
     if (f) return f;
     if (st->parent) return symbol_table_get_file(st->parent);
     return NULL;
