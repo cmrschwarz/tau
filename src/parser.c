@@ -2795,7 +2795,7 @@ parse_error parse_import_with_parent(
         parent = p->current_module;
         ast_node_flags_set_relative_import(&flags);
         if (t2->kind == TK_DOUBLE_COLON) {
-            lx_void(&p->lx);
+            lx_void_n(&p->lx, 2);
             PEEK(p, t);
         }
         else {
