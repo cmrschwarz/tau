@@ -6,6 +6,6 @@ module doo{
 }
 
 func main(z: int) -> int{
-    import self::doo::boo;
+    import doo::boo;
     return doo::boo::x;
 }

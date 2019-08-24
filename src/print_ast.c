@@ -259,6 +259,29 @@ void print_import_group(
         pc(')');
     }
 }
+void print_ast_node_modifiers(ast_node_flags flags)
+{
+    access_modifier am = ast_node_flags_get_access_mod(flags);
+    switch (am) {
+        case AM_PRIVATE: p(token_strings[TK_KW_PRIVATE]); break;
+        case AM_PROTECTED: p(token_strings[TK_KW_PROTECTED]); break;
+        case AM_PUBLIC: p(token_strings[TK_KW_PUBLIC]); break;
+        default: break;
+    };
+    if (am) pc(' ');
+    if (ast_node_flags_get_virtual(flags)) {
+        p(token_strings[TK_KW_VIRTUAL]);
+        pc(' ');
+    }
+    if (ast_node_flags_get_const(flags)) {
+        p(token_strings[TK_KW_CONST]);
+        pc(' ');
+    }
+    if (ast_node_flags_get_sealed(flags)) {
+        p(token_strings[TK_KW_SEALED]);
+        pc(' ');
+    }
+}
 void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
 {
     // TODO: print access modifiers
@@ -409,7 +432,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_NAMED_USING: {
             sym_named_using* nu = (sym_named_using*)n;
-            if (ast_node_flags_get_const(nu->symbol.node.flags)) p("const ");
+            print_ast_node_modifiers(nu->symbol.node.flags);
             p("using ");
             p(nu->symbol.name);
             p(" = ");
@@ -417,7 +440,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case STMT_USING: {
             stmt_using* u = (stmt_using*)n;
-            if (ast_node_flags_get_const(u->node.flags)) p("const ");
+            print_ast_node_modifiers(u->node.flags);
             p("using ");
             print_ast_node(u->target, cmdg, indent);
         } break;
@@ -457,7 +480,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_VAR: {
             sym_var* v = (sym_var*)n;
-            if (ast_node_flags_get_const(v->symbol.node.flags)) p("const ");
+            print_ast_node_modifiers(v->symbol.node.flags);
             pu(v->symbol.name);
             if (v->type != NULL) {
                 p(": ");
@@ -466,7 +489,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_VAR_INITIALIZED: {
             sym_var_initialized* v = (sym_var_initialized*)n;
-            if (ast_node_flags_get_const(v->var.symbol.node.flags)) p("const ");
+            print_ast_node_modifiers(v->var.symbol.node.flags);
             pu(v->var.symbol.name);
             if (v->var.type != NULL) {
                 p(": ");
