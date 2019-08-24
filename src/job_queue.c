@@ -58,13 +58,13 @@ int job_queue_pop(job_queue* jq, job* j)
     mutex_lock(&jq->lock);
     if (jq->head == jq->tail) {
         jq->waiters++;
-        assert(jq->waiters < atomic_ureg_load(&TAUC.thread_count));
         do {
             if (jq->jobs == UREG_MAX) {
                 jq->waiters--;
                 mutex_unlock(&jq->lock);
                 return JQ_DONE;
             }
+            assert(jq->waiters < atomic_ureg_load(&TAUC.thread_count));
             cond_var_wait(&jq->has_jobs, &jq->lock);
         } while (jq->head == jq->tail);
         jq->waiters--;

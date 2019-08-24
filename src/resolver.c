@@ -633,6 +633,9 @@ get_resolved_symbol_symtab(resolver* r, symbol* s, symbol_table** tgt_st)
     else if (s->node.kind == SYM_IMPORT_GROUP) {
         *tgt_st = ((sym_import_group*)s)->children.symtab;
     }
+    else if (s->node.kind == SYM_IMPORT_PARENT) {
+        *tgt_st = ((sym_import_parent*)s)->children.symtab;
+    }
     else if (s->node.kind == SYM_IMPORT_MODULE) {
         *tgt_st = ((sym_import_module*)s)->target.mdg_node->symtab;
     }
@@ -648,8 +651,33 @@ get_resolved_symbol_symtab(resolver* r, symbol* s, symbol_table** tgt_st)
 resolve_error resolve_import_parent(
     resolver* r, sym_import_parent* ip, symbol_table* st, ast_elem** ctype)
 {
-    // TODO
-    assert(false);
+    ureg children_count = 0;
+    ureg use = 0;
+    symbol* s = ip->children.symbols;
+    assert(s); // if there's no child we would not created a parent
+    do {
+        // meaning is empty string
+        if (*s->name == '\0') {
+            assert(use == 0); // we would have complained earlier about a redecl
+            use = 1;
+        }
+        else {
+            children_count++;
+        }
+        s = s->next;
+    } while (s);
+    assert(children_count > 0);
+    symbol_table* pst;
+    if (symbol_table_init(&pst, children_count, use, true, (ast_elem*)ip)) {
+        return RE_FATAL;
+    }
+    s = ip->children.symbols;
+    do {
+        symbol** res = symbol_table_insert(pst, s);
+        assert(!res);
+        s = s->next;
+    } while (s);
+    ip->children.symtab = pst;
     ast_node_flags_set_resolved(&ip->symbol.node.flags);
     return RE_OK;
 }
