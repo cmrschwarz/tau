@@ -1,11 +1,16 @@
 //require "test2.tau";
-module doo{
-    module boo{
+module foo{
+    module bar{
         public x: int = 5;
+    }
+    public struct my_struct{
+        x: int;
     }
 }
 
 func main(z: int) -> int{
-    import doo::boo;
-    return doo::boo::x;
+    import foo;
+    import foo::bar;
+    x:= foo::my_struct::x;
+    return foo::bar::x;
 }

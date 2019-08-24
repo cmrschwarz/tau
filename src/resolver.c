@@ -97,6 +97,13 @@ resolve_error add_sym_import_module_decl(
                     p = (sym_import_parent*)*tgt;
                 }
             }
+            else if (tgt_parent && (*tgt)->node.kind == SYM_IMPORT_MODULE) {
+                p = NULL;
+                (**tgt).name = "";
+                next = (**tgt).next;
+                (**tgt).next = NULL;
+                children = *tgt;
+            }
             else {
                 if (!f) f = ast_node_get_file((ast_node*)im, st);
                 return report_redeclaration_error_raw(
@@ -113,13 +120,16 @@ resolve_error add_sym_import_module_decl(
     if (p) {
         symbol* c = p->children.symbols;
         while (c) {
-            if (strcmp(c->name, start->name) != 0) continue;
+            if (strcmp(c->name, start->name) != 0) {
+                c = c->next;
+                continue;
+            }
             if (c->node.kind == SYM_IMPORT_MODULE) {
                 if (tgt_parent) {
                     // becomes the end of our new parent's children
+                    next = c->next;
                     c->next = NULL;
                     children = c;
-                    next = NULL;
                     break;
                 }
                 else {
