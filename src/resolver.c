@@ -69,6 +69,143 @@ add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
     }
     return RE_OK;
 }
+resolve_error add_sym_import_module_decl(
+    thread_context* tc, src_file* f, symbol_table* st, sym_import_module* im,
+    mdg_node* stop, mdg_node* start, sym_import_parent** tgt_parent)
+{
+    symbol** tgt;
+    symbol* next;
+    symbol* children;
+    sym_import_parent* p;
+    if (start->parent != stop) {
+        resolve_error re =
+            add_sym_import_module_decl(tc, f, st, im, stop, start->parent, &p);
+        if (re) return re;
+        tgt = &p->children.symbols;
+        next = p->children.symbols;
+        children = NULL;
+    }
+    else {
+        tgt = symbol_table_find_insert_position(st, start->name);
+        if (*tgt) {
+            if ((*tgt)->node.kind == SYM_IMPORT_PARENT) {
+                if (tgt_parent) {
+                    *tgt_parent = (sym_import_parent*)*tgt;
+                    return RE_OK;
+                }
+                else {
+                    p = (sym_import_parent*)*tgt;
+                }
+            }
+            else {
+                if (!f) f = ast_node_get_file((ast_node*)im, st);
+                return report_redeclaration_error_raw(
+                    tc, (symbol*)im, f, *tgt, f);
+            }
+        }
+        else {
+            p = NULL;
+            next = NULL;
+            children = NULL;
+        }
+    }
+    // PERF: this is O(n^2) over imports with the same prefix TODO: fix
+    if (p) {
+        symbol* c = p->children.symbols;
+        while (c) {
+            if (strcmp(c->name, start->name) != 0) continue;
+            if (c->node.kind == SYM_IMPORT_MODULE) {
+                if (tgt_parent) {
+                    // becomes the end of our new parent's children
+                    c->next = NULL;
+                    children = c;
+                    next = NULL;
+                    break;
+                }
+                else {
+                    // TODO: maybe only warn about import redecl
+                    if (!f) f = ast_node_get_file((ast_node*)im, st);
+                    return report_redeclaration_error_raw(
+                        tc, (symbol*)im, f, *tgt, f);
+                }
+            }
+            else {
+                assert((**tgt).node.kind == SYM_IMPORT_PARENT);
+                if (tgt_parent) {
+                    *tgt_parent = (sym_import_parent*)c;
+                    return RE_OK;
+                }
+                else {
+                    p = (sym_import_parent*)*tgt;
+                    im->symbol.name = "";
+                    c = p->children.symbols;
+                    tgt = &p->children.symbols;
+                    next = p->children.symbols;
+                    continue;
+                }
+            }
+        }
+    }
+    if (tgt_parent) {
+        sym_import_parent* p =
+            pool_alloc(&tc->permmem, sizeof(sym_import_parent));
+        if (!p) return RE_FATAL;
+        p->symbol.node.kind = SYM_IMPORT_PARENT;
+        p->symbol.node.flags = AST_NODE_FLAGS_DEFAULT;
+        p->symbol.name = start->name;
+        p->symbol.next = next;
+        p->children.symbols = children;
+        *tgt = (symbol*)p;
+        *tgt_parent = p;
+    }
+    else {
+        *tgt = (symbol*)im;
+        im->symbol.next = next;
+    }
+    return RE_OK;
+}
+resolve_error add_import_group_decls(
+    thread_context* tc, mdg_node* curr_mdg_node, src_file* f,
+    sym_import_group* ig, symbol_table* st)
+{
+    symbol* next = ig->children.symbols;
+    symbol* s;
+    resolve_error re;
+    while (next != NULL) {
+        s = next;
+        next = s->next;
+        if (s->node.kind == SYM_IMPORT_GROUP) {
+            sym_import_group* nig = (sym_import_group*)s;
+            if (!nig->symbol.name) {
+                re = add_import_group_decls(tc, curr_mdg_node, f, nig, st);
+                if (re) return re;
+                continue;
+            }
+        }
+        else if (s->node.kind == SYM_IMPORT_SYMBOL) {
+            symbol** cf = symbol_table_insert(st, s);
+            if (cf) {
+                if (!f) f = ast_node_get_file((ast_node*)ig, st);
+                return report_redeclaration_error_raw(tc, s, f, *cf, f);
+            }
+        }
+        else {
+            assert(s->node.kind == SYM_IMPORT_MODULE);
+            sym_import_module* im = (sym_import_module*)s;
+            if (ast_node_flags_get_relative_import(s->node.flags)) {
+                re = add_sym_import_module_decl(
+                    tc, f, st, im, curr_mdg_node, im->target.mdg_node, NULL);
+            }
+            else {
+                re = add_sym_import_module_decl(
+                    tc, f, st, im, TAUC.mdg.root_node, im->target.mdg_node,
+                    NULL);
+            }
+            if (re) return re;
+        }
+    }
+    return RE_OK;
+}
 static resolve_error add_ast_node_decls(
     resolver* r, symbol_table* st, symbol_table* sst, ast_node* n)
 {
@@ -147,7 +284,21 @@ static resolve_error add_ast_node_decls(
             }
         }
         case SYM_IMPORT_MODULE: {
-            return add_symbol(r, st, sst, (symbol*)n);
+            sym_import_module* im = (sym_import_module*)n;
+            mdg_node* stop;
+            if (ast_node_flags_get_relative_import(n->flags)) {
+                symbol_table* pst = st;
+                while (pst->owning_node->kind != ELEM_MDG_NODE) {
+                    pst = pst->parent;
+                    assert(pst);
+                }
+                stop = (mdg_node*)pst->owning_node;
+            }
+            else {
+                stop = TAUC.mdg.root_node;
+            }
+            return add_sym_import_module_decl(
+                r->tc, NULL, st, im, stop, im->target.mdg_node, NULL);
         }
         case STMT_USING:
         case STMT_COMPOUND_ASSIGN:
@@ -307,141 +458,6 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
         case TYPE_MODIFIERS:
     }
      */
-}
-resolve_error add_parent_import_decls(
-    thread_context* tc, src_file* f, symbol_table* st, sym_import_module* im,
-    mdg_node* stop, mdg_node* start, sym_import_parent** tgt_parent)
-{
-    symbol** tgt;
-    symbol* next;
-    symbol* children;
-    sym_import_parent* p;
-    if (start->parent != stop) {
-        resolve_error re =
-            add_parent_import_decls(tc, f, st, im, stop, start->parent, &p);
-        if (re) return re;
-        tgt = &p->children.symbols;
-        next = p->children.symbols;
-        children = NULL;
-    }
-    else {
-        tgt = symbol_table_find_insert_position(st, start->name);
-        if (*tgt) {
-            if ((*tgt)->node.kind == SYM_IMPORT_PARENT) {
-                if (tgt_parent) {
-                    *tgt_parent = (sym_import_parent*)*tgt;
-                    return RE_OK;
-                }
-                else {
-                    p = (sym_import_parent*)*tgt;
-                }
-            }
-            else {
-                if (!f) f = ast_node_get_file((ast_node*)im, st);
-                return report_redeclaration_error_raw(
-                    tc, (symbol*)im, f, *tgt, f);
-            }
-        }
-        else {
-            p = NULL;
-            next = NULL;
-            children = NULL;
-        }
-    }
-    if (p) {
-        symbol* c = p->children.symbols;
-        while (!c) {
-            if (strcmp(c->name, start->name) != 0) continue;
-            if (c->node.kind == SYM_IMPORT_MODULE) {
-                if (tgt_parent) {
-                    // becomes the end of our new parent's children
-                    c->next = NULL;
-                    children = c;
-                    next = NULL;
-                    break;
-                }
-                else {
-                    // TODO: maybe only warn about import redecl
-                    if (!f) f = ast_node_get_file((ast_node*)im, st);
-                    return report_redeclaration_error_raw(
-                        tc, (symbol*)im, f, *tgt, f);
-                }
-            }
-            else {
-                assert((**tgt).node.kind == SYM_IMPORT_PARENT);
-                if (tgt_parent) {
-                    *tgt_parent = (sym_import_parent*)c;
-                    return RE_OK;
-                }
-                else {
-                    p = (sym_import_parent*)*tgt;
-                    im->symbol.name = "";
-                    c = p->children.symbols;
-                    tgt = &p->children.symbols;
-                    next = p->children.symbols;
-                    continue;
-                }
-            }
-        }
-    }
-    if (tgt_parent) {
-        sym_import_parent* p =
-            pool_alloc(&tc->permmem, sizeof(sym_import_parent));
-        if (!p) return RE_FATAL;
-        p->symbol.node.kind = SYM_IMPORT_PARENT;
-        p->symbol.node.flags = AST_NODE_FLAGS_DEFAULT;
-        p->symbol.name = start->name;
-        p->symbol.next = next;
-        p->children.symbols = children;
-        *tgt = (symbol*)p;
-        *tgt_parent = p;
-    }
-    else {
-        *tgt = (symbol*)im;
-        im->symbol.next = next;
-    }
-    return RE_OK;
-}
-resolve_error add_import_group_decls(
-    thread_context* tc, mdg_node* curr_mdg_node, src_file* f,
-    sym_import_group* ig, symbol_table* st)
-{
-    symbol* next = ig->children.symbols;
-    symbol* s;
-    resolve_error re;
-    while (next != NULL) {
-        s = next;
-        next = s->next;
-        if (s->node.kind == SYM_IMPORT_GROUP) {
-            sym_import_group* nig = (sym_import_group*)s;
-            if (!nig->symbol.name) {
-                re = add_import_group_decls(tc, curr_mdg_node, f, nig, st);
-                if (re) return re;
-                continue;
-            }
-        }
-        else if (s->node.kind == SYM_IMPORT_SYMBOL) {
-            symbol** cf = symbol_table_insert(st, s);
-            if (cf) {
-                if (!f) f = ast_node_get_file((ast_node*)ig, st);
-                return report_redeclaration_error_raw(tc, s, f, *cf, f);
-            }
-        }
-        else {
-            assert(s->node.kind == SYM_IMPORT_MODULE);
-            sym_import_module* im = (sym_import_module*)s;
-            if (ast_node_flags_get_relative_import(s->node.flags)) {
-                re = add_parent_import_decls(
-                    tc, f, st, im, curr_mdg_node, im->target.mdg_node, NULL);
-            }
-            else {
-                re = add_parent_import_decls(
-                    tc, f, st, im, curr_mdg_node, TAUC.mdg.root_node, NULL);
-            }
-            if (re) return re;
-        }
-    }
-    return RE_OK;
 }
 resolve_error operator_func_applicable(
     resolver* r, symbol_table* op_st, ast_elem* lhs, ast_elem* rhs, sc_func* f,
@@ -629,6 +645,48 @@ get_resolved_symbol_symtab(resolver* r, symbol* s, symbol_table** tgt_st)
     }
     return RE_OK;
 }
+resolve_error resolve_import_parent(
+    resolver* r, sym_import_parent* ip, symbol_table* st, ast_elem** ctype)
+{
+    // TODO
+    assert(false);
+    ast_node_flags_set_resolved(&ip->symbol.node.flags);
+    return RE_OK;
+}
+resolve_error resolve_expr_scope_access(
+    resolver* r, expr_scope_access* esa, symbol_table* st, symbol** res,
+    ast_elem** ctype)
+{
+    resolve_error re;
+    symbol* lhs_sym;
+    if (esa->lhs->kind == EXPR_SCOPE_ACCESS) {
+        // TODO: is this a problem for loop reporting?
+        re = resolve_expr_scope_access(
+            r, (expr_scope_access*)esa->lhs, st, &lhs_sym, NULL);
+        if (re) return re;
+    }
+    else if (esa->lhs->kind == EXPR_IDENTIFIER) {
+        re = resolve_ast_node(r, esa->lhs, st, NULL);
+        if (re) return re;
+        lhs_sym = ((expr_identifier*)esa->lhs)->value.symbol;
+    }
+    else {
+        assert(false); // TODO: error
+    }
+    symbol_table* lhs_st;
+    re = get_resolved_symbol_symtab(r, lhs_sym, &lhs_st);
+    if (re) return re;
+    symbol** s = symbol_table_lookup(lhs_st, esa->target.name);
+    if (!s) {
+        return report_unknown_symbol_raw(
+            r, ast_node_get_file((ast_node*)esa, st), esa->target_srange);
+    }
+    esa->target.symbol = *s;
+    ast_node_flags_set_resolved(&esa->node.flags);
+    if (ctype) *ctype = get_resolved_symbol_ctype(*s);
+    if (res) *res = *s;
+    return RE_OK;
+}
 // the symbol table is not the one that contains the symbol, but the one
 // where it was declared and where the type name loopup should start
 resolve_error resolve_ast_node_raw(
@@ -717,30 +775,14 @@ resolve_error resolve_ast_node_raw(
             return RE_OK;
         }
         case EXPR_SCOPE_ACCESS: {
-            expr_scope_access* esa = (expr_scope_access*)n;
             if (resolved) {
                 return ret_ctype(
-                    get_resolved_symbol_ctype(esa->target.symbol), ctype);
+                    get_resolved_symbol_ctype(
+                        ((expr_scope_access*)n)->target.symbol),
+                    ctype);
             }
-            re = resolve_ast_node(r, esa->lhs, st, NULL);
-            if (re) return re;
-            if (esa->lhs->kind != EXPR_IDENTIFIER) {
-                assert(false); // TODO: error
-            }
-            symbol* lhs_sym = ((expr_identifier*)esa->lhs)->value.symbol;
-            symbol_table* lhs_st;
-            re = get_resolved_symbol_symtab(r, lhs_sym, &lhs_st);
-            if (re) return re;
-            symbol** s = symbol_table_lookup(lhs_st, esa->target.name);
-            if (!s) {
-                return report_unknown_symbol_raw(
-                    r, ast_node_get_file((ast_node*)esa, st),
-                    esa->target_srange);
-            }
-            esa->target.symbol = *s;
-            ast_node_flags_set_resolved(&n->flags);
-            if (ctype) *ctype = get_resolved_symbol_ctype(*s);
-            return RE_OK;
+            return resolve_expr_scope_access(
+                r, (expr_scope_access*)n, st, NULL, ctype);
         }
         case SC_STRUCT:
         case SC_STRUCT_GENERIC:
@@ -764,6 +806,11 @@ resolve_error resolve_ast_node_raw(
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }
+        case SYM_IMPORT_PARENT: {
+            // TODO: fix the ctype
+            if (resolved) return ret_ctype(NULL, ctype);
+            return resolve_import_parent(r, (sym_import_parent*)n, st, ctype);
+        }
         case SYM_IMPORT_GROUP: {
             if (ctype) *ctype = (ast_elem*)n;
             if (!resolved) ast_node_flags_set_resolved(&n->flags);
@@ -771,9 +818,9 @@ resolve_error resolve_ast_node_raw(
         }
         case SYM_IMPORT_MODULE: {
             // TODO: switch from ast_node to symtab here
-            // TODO: fix ctype
-            // if (ctype) *ctype = ((sym_import_module*)n)->target.mdg_node;
             if (!resolved) ast_node_flags_set_resolved(&n->flags);
+            if (ctype)
+                *ctype = (ast_elem*)((sym_import_module*)n)->target.mdg_node;
             return RE_OK;
         }
         case SYM_IMPORT_SYMBOL: {
