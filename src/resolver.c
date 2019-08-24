@@ -527,7 +527,8 @@ resolve_error resolve_func_call(
     resolve_error re = RE_OK;
     while (lt) {
         symbol_table* fn_st;
-        symbol** s = symbol_table_lookup_with_decl(lt, func_name, &fn_st);
+        symbol** s = symbol_table_lookup_with_decl(
+            lt, AM_UNSPECIFIED, func_name, &fn_st);
         if (!s) {
             re = report_unknown_symbol(r, c->lhs, st);
             break;
@@ -590,7 +591,7 @@ resolve_error choose_binary_operator_overload(
         bool applicable;
         symbol_table* op_st;
         symbol** s = symbol_table_lookup_with_decl(
-            lt, op_to_str(ob->node.operator_kind), &op_st);
+            lt, AM_UNSPECIFIED, op_to_str(ob->node.operator_kind), &op_st);
         if (!s) return report_unknown_symbol(r, (ast_node*)ob, lt);
         if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
             sym_func_overloaded* sfo = (sym_func_overloaded*)s;
@@ -634,13 +635,14 @@ void set_break_target_ctype(ast_node* n, ast_elem* ctype)
     }
     ast_node_flags_set_resolved(&n->flags);
 }
-resolve_error
-get_resolved_symbol_symtab(resolver* r, symbol* s, symbol_table** tgt_st)
+resolve_error get_resolved_symbol_symtab(
+    resolver* r, symbol* s, bool* left_scope, symbol_table** tgt_st)
 {
     if (ast_elem_is_scope((ast_elem*)s)) {
         *tgt_st = ((scope*)s)->body.symtab;
     }
-    else if (s->node.kind == SYM_IMPORT_GROUP) {
+    *left_scope = true;
+    if (s->node.kind == SYM_IMPORT_GROUP) {
         *tgt_st = ((sym_import_group*)s)->children.symtab;
     }
     else if (s->node.kind == SYM_IMPORT_PARENT) {
@@ -651,7 +653,7 @@ get_resolved_symbol_symtab(resolver* r, symbol* s, symbol_table** tgt_st)
     }
     else if (s->node.kind == SYM_IMPORT_SYMBOL) {
         return get_resolved_symbol_symtab(
-            r, ((sym_import_symbol*)s)->target.symbol, tgt_st);
+            r, ((sym_import_symbol*)s)->target.symbol, left_scope, tgt_st);
     }
     else {
         assert(false); // TODO: error
@@ -681,26 +683,36 @@ resolve_error resolve_import_parent(
     if (symbol_table_init(&pst, children_count, use, true, (ast_elem*)ip)) {
         return RE_FATAL;
     }
-    s = ip->children.symbols;
+    symbol* next = ip->children.symbols;
     do {
-        symbol** res = symbol_table_insert(pst, s);
-        assert(!res);
-        s = s->next;
-    } while (s);
+        s = next;
+        next = next->next;
+        if (*s->name != '\0') {
+            symbol** res = symbol_table_insert(pst, s);
+            assert(!res);
+        }
+        else {
+            symbol_table_insert_using(
+                pst, AM_PUBLIC, (ast_node*)s,
+                ((sym_import_module*)s)->target.mdg_node->symtab);
+        }
+    } while (next);
     ip->children.symtab = pst;
     ast_node_flags_set_resolved(&ip->symbol.node.flags);
     return RE_OK;
 }
 resolve_error resolve_expr_scope_access(
-    resolver* r, expr_scope_access* esa, symbol_table* st, symbol** res,
-    ast_elem** ctype)
+    resolver* r, expr_scope_access* esa, symbol_table* st, bool* left_scope,
+    symbol** res, ast_elem** ctype)
 {
     resolve_error re;
     symbol* lhs_sym;
     if (esa->lhs->kind == EXPR_SCOPE_ACCESS) {
         // TODO: is this a problem for loop reporting?
         re = resolve_expr_scope_access(
-            r, (expr_scope_access*)esa->lhs, st, &lhs_sym, NULL);
+            r, (expr_scope_access*)esa->lhs, st, left_scope, &lhs_sym, NULL);
+        if (re) return re;
+        re = resolve_ast_node(r, lhs_sym, st, NULL);
         if (re) return re;
     }
     else if (esa->lhs->kind == EXPR_IDENTIFIER) {
@@ -712,9 +724,10 @@ resolve_error resolve_expr_scope_access(
         assert(false); // TODO: error
     }
     symbol_table* lhs_st;
-    re = get_resolved_symbol_symtab(r, lhs_sym, &lhs_st);
+    re = get_resolved_symbol_symtab(r, lhs_sym, left_scope, &lhs_st);
     if (re) return re;
-    symbol** s = symbol_table_lookup(lhs_st, esa->target.name);
+    symbol** s = symbol_table_lookup(
+        lhs_st, *left_scope ? AM_PUBLIC : AM_UNSPECIFIED, esa->target.name);
     if (!s) {
         return report_unknown_symbol_raw(
             r, ast_node_get_file((ast_node*)esa, st), esa->target_srange);
@@ -772,8 +785,8 @@ resolve_error resolve_ast_node_raw(
                     get_resolved_symbol_ctype(e->value.symbol), ctype);
             }
             symbol_table* sym_st;
-            symbol** s =
-                symbol_table_lookup_with_decl(st, e->value.str, &sym_st);
+            symbol** s = symbol_table_lookup_with_decl(
+                st, AM_UNSPECIFIED, e->value.str, &sym_st);
             if (!s) return report_unknown_symbol(r, n, st);
             e->value.symbol = *s;
             re = resolve_ast_node(r, (ast_node*)*s, sym_st, ctype);
@@ -819,8 +832,9 @@ resolve_error resolve_ast_node_raw(
                         ((expr_scope_access*)n)->target.symbol),
                     ctype);
             }
+            bool left_scope = false;
             return resolve_expr_scope_access(
-                r, (expr_scope_access*)n, st, NULL, ctype);
+                r, (expr_scope_access*)n, st, &left_scope, NULL, ctype);
         }
         case SC_STRUCT:
         case SC_STRUCT_GENERIC:
@@ -872,8 +886,8 @@ resolve_error resolve_ast_node_raw(
                     get_resolved_symbol_ctype(is->target.symbol), ctype);
             }
             symbol_table* sym_st;
-            symbol** s =
-                symbol_table_lookup_with_decl(st, is->target.name, &sym_st);
+            symbol** s = symbol_table_lookup_with_decl(
+                st, AM_PROTECTED, is->target.name, &sym_st);
             if (!s) return report_unknown_symbol(r, n, st);
             is->target.symbol = *s;
             re = resolve_ast_node(r, (ast_node*)*s, sym_st, ctype);

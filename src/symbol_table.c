@@ -13,27 +13,43 @@
 #define USING_BIT (((ureg)1) << (REG_BITS - 1))
 
 symbol_table* GLOBAL_SYMTAB = NULL;
-
+static inline symbol_table_with_usings* get_stwu(symbol_table* st)
+{
+    assert(st->usings_start);
+    return (symbol_table_with_usings*)ptrsub(
+        st, offsetof(symbol_table_with_usings, table));
+}
 int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
     ast_elem* owning_node)
 {
+    // we don't worry about ceiling the size to a power of two since
+    // we will eventually pool allocate the symtabs which removes this
+    // size constraint
     if (!force_unique && decl_count == 0 && using_count == 0) {
         *tgt = NULL;
         return OK;
     }
     symbol_table* st;
     if (using_count != 0) {
-        symbol_table_with_usings* stwu = tmalloc(
-            decl_count * sizeof(symbol*) + sizeof(symbol_table_with_usings));
-        if (!stwu) return ERR;
+        ureg usings_size =
+            using_count * (sizeof(symbol_table*) + sizeof(ast_node*));
+        ureg table_size = decl_count * sizeof(symbol*);
+        void* alloc = tmalloc(
+            sizeof(symbol_table_with_usings) + usings_size + table_size);
+        if (!alloc) return ERR;
+        symbol_table_with_usings* stwu = ptradd(alloc, usings_size);
         st = &stwu->table;
-        st->usings = (stmt*)NULL_PTR_PTR;
+        st->usings_start =
+            (symbol_table**)ptradd(alloc, using_count * sizeof(ast_node*));
+        for (ureg i = 0; i < AM_ENUM_ELEMENT_COUNT; i++) {
+            stwu->using_ends[i] = st->usings_start;
+        }
     }
     else {
         st = tmalloc(decl_count * sizeof(symbol*) + sizeof(symbol_table));
         if (!st) return ERR;
-        st->usings = NULL;
+        st->usings_start = NULL;
     }
     memset(ptradd(st, sizeof(symbol_table)), 0, decl_count * sizeof(symbol*));
     st->pp_symtab = NULL;
@@ -44,12 +60,34 @@ int symbol_table_init(
     return OK;
 }
 
+void symbol_table_insert_using(
+    symbol_table* st, access_modifier am, ast_node* u, symbol_table* ust)
+{
+    // reverse the am so it goes from public to unspecified upwars in memory
+    am = AM_ENUM_ELEMENT_COUNT - am;
+    symbol_table_with_usings* stwu = get_stwu(st);
+    ureg usings_size = ptrdiff(st->usings_start, stwu);
+    for (int i = AM_ENUM_ELEMENT_COUNT - 1; i != am; i--) {
+        *stwu->using_ends[i] = *stwu->using_ends[i - 1];
+        *(ast_node**)ptrsub(stwu->using_ends[i], usings_size) =
+            *(ast_node**)ptrsub(stwu->using_ends[i - 1], usings_size);
+        stwu->using_ends[i]++;
+    }
+    *stwu->using_ends[am] = ust;
+    *(ast_node**)ptrsub(stwu->using_ends[am], usings_size) = u;
+    stwu->using_ends[am]++;
+}
+
 void symbol_table_fin(symbol_table* st)
 {
     if (st != NULL) {
         symbol_table_fin(st->pp_symtab);
-        if (st->usings != NULL) {
-            tfree(ptrsub(st, offsetof(symbol_table_with_usings, table)));
+        if (st->usings_start != NULL) {
+            symbol_table_with_usings* stwu = get_stwu(st);
+            ureg usings_size = ptrdiff(stwu, st->usings_start) *
+                               ((sizeof(symbol_table*) + sizeof(ast_node*)) /
+                                sizeof(symbol_table*));
+            tfree(ptrsub(stwu, usings_size));
         }
         else {
             tfree(st);
@@ -79,33 +117,50 @@ symbol** symbol_table_insert(symbol_table* st, symbol* s)
     return NULL;
 }
 symbol** symbol_table_lookup_with_decl(
-    symbol_table* st, const char* s, symbol_table** decl_st)
+    symbol_table* st, access_modifier am, const char* s, symbol_table** decl_st)
 {
     ureg hash = fnv_hash_str(FNV_START_HASH, s);
     do {
         // PERF: get rid of this check somehow
-        if (st->decl_count == 0) {
-            st = st->parent;
-            continue;
-        }
-        ureg idx = hash % st->decl_count;
-        symbol** tgt =
-            (symbol**)ptradd(st, sizeof(symbol_table) + idx * sizeof(symbol*));
-        while (*tgt) {
-            if (strcmp((**tgt).name, s) == 0) {
-                *decl_st = (**tgt).declaring_st;
-                return tgt;
+        if (st->decl_count != 0) {
+            ureg idx = hash % st->decl_count;
+            symbol** tgt = (symbol**)ptradd(
+                st, sizeof(symbol_table) + idx * sizeof(symbol*));
+            while (*tgt) {
+                if (strcmp((**tgt).name, s) == 0) {
+                    *decl_st = (**tgt).declaring_st;
+                    return tgt;
+                }
+                tgt = (symbol**)&(**tgt).next;
             }
-            tgt = (symbol**)&(**tgt).next;
+        }
+        if (st->usings_start) {
+            symbol_table** i = st->usings_start;
+            symbol_table** end =
+                get_stwu(st)->using_ends[AM_ENUM_ELEMENT_COUNT - am];
+            // for pub usings we can look at their pub and prot symbols
+            symbol** res =
+                symbol_table_lookup_with_decl(*i, AM_PROTECTED, s, decl_st);
+            if (res) return res;
+            i++;
+            // for prot to unspecified usings we can look at their pub symbols
+            // and if they are used directly by us at ther protected symbols
+            access_modifier tgt_am =
+                (am < AM_PROTECTED) ? AM_PROTECTED : AM_PUBLIC;
+            while (i != end) {
+                res = symbol_table_lookup_with_decl(*i, tgt_am, s, decl_st);
+                if (res) return res;
+            }
         }
         st = st->parent;
     } while (st);
     return NULL;
 }
-symbol** symbol_table_lookup(symbol_table* st, const char* s)
+symbol**
+symbol_table_lookup(symbol_table* st, access_modifier am, const char* s)
 {
     symbol_table* lst;
-    return symbol_table_lookup_with_decl(st, s, &lst);
+    return symbol_table_lookup_with_decl(st, am, s, &lst);
 }
 
 src_file* symbol_table_get_file(symbol_table* st)
