@@ -18,25 +18,23 @@ typedef enum PACK_ENUM ast_node_kind {
     SC_FUNC,
     SC_FUNC_GENERIC,
     SC_LAST_SC_ID = SC_FUNC_GENERIC,
-    SYM_FUNC_OVERLOADED,
 
-    SYM_NAMED_USING,
-    // TODO: reverse this and make var_decl_initialized contain var_decl
     SYM_VAR,
     SYM_VAR_INITIALIZED,
+    SYM_PARAM,
+    SYM_NAMED_USING,
     SYM_IMPORT_MODULE,
     SYM_IMPORT_SYMBOL,
     SYM_IMPORT_GROUP,
-    SYM_PARAM,
-    SYM_LAST_SYM_ID = SYM_PARAM,
+    SYM_IMPORT_PARENT,
+    SYM_FUNC_OVERLOADED,
+    SYM_LAST_SYM_ID = SYM_FUNC_OVERLOADED,
 
     STMT_USING,
-
     STMT_COMPOUND_ASSIGN,
     STMT_LAST_STMT_ID = STMT_COMPOUND_ASSIGN,
 
     EXPR_BLOCK,
-
     EXPR_PP,
     EXPR_RETURN,
     EXPR_CONTINUE,
@@ -48,7 +46,6 @@ typedef enum PACK_ENUM ast_node_kind {
     EXPR_DO,
     EXPR_LOOP,
     EXPR_MACRO, // TODO
-
     EXPR_LITERAL,
     EXPR_IDENTIFIER,
     EXPR_VARIABLE,
@@ -58,15 +55,14 @@ typedef enum PACK_ENUM ast_node_kind {
     EXPR_LAMBDA,
     EXPR_TYPE_ARRAY,
     EXPR_TYPE_SLICE,
-
     EXPR_CALL,
     EXPR_ACCESS,
     EXPR_PARENTHESES,
     EXPR_SCOPE_ACCESS,
     EXPR_MEMBER_ACCESS,
-
     EXPR_OP_UNARY,
     EXPR_OP_BINARY,
+    EXPR_LAST_EXPR_ID = EXPR_OP_BINARY,
 
     PRIMITIVE,
     TYPE_ARRAY,
@@ -213,6 +209,14 @@ typedef struct sym_import_symbol {
         symbol* symbol;
     } target;
 } sym_import_symbol;
+
+typedef struct sym_import_parent {
+    symbol symbol;
+    union {
+        symbol_table* symtab;
+        symbol* symbols;
+    } children;
+} sym_import_parent;
 
 typedef struct sym_import_module {
     symbol symbol;

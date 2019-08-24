@@ -1,5 +1,6 @@
 #pragma once
 #include "mdg.h"
+#include "ast.h"
 #include "utils/sbuffer.h"
 #include "utils/stack.h"
 typedef enum resolve_error {
@@ -28,4 +29,5 @@ void resolver_fin(resolver* r);
 int resolver_resolve_single(resolver* r, mdg_node* node);
 int resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end);
 resolve_error add_import_group_decls(
-    thread_context* tc, src_file* f, sym_import_group* ig, symbol_table* st);
+    thread_context* tc, mdg_node* curr_mdg_node, src_file* f,
+    sym_import_group* ig, symbol_table* st);

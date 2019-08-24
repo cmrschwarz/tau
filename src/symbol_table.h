@@ -28,6 +28,13 @@ void symbol_table_fin(symbol_table* st);
 // if a symbol of that name already exists returns pointer to that entry
 // otherwise inserts and returns NULL
 symbol** symbol_table_insert(symbol_table* st, symbol* s);
+
+// returns the positon to insert. if a symbol of that name is already present,
+// the current symbol pointer at that position is not NULL
+// when inserting by assigning to the returned pointer, remember to set
+// the inserted symbol's next pointer to NULL!
+symbol** symbol_table_find_insert_position(symbol_table* st, char* name);
+
 // returns the symbol found or NULL if nonexistant
 symbol** symbol_table_lookup(symbol_table* st, const char* s);
 symbol** symbol_table_lookup_with_decl(

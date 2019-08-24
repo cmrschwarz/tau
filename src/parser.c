@@ -2793,6 +2793,7 @@ parse_error parse_import_with_parent(
     }
     if (t->kind == TK_KW_SELF && TAUC.mdg.root_node == parent) {
         parent = p->current_module;
+        ast_node_flags_set_relative_import(&flags);
         if (t2->kind == TK_DOUBLE_COLON) {
             lx_void(&p->lx);
             PEEK(p, t);
@@ -2878,8 +2879,9 @@ parse_error parse_import_with_parent(
                         &st, ndecl_cnt, 0, false, (ast_elem*)ig)) {
                     return RE_FATAL;
                 }
-                resolve_error re =
-                    add_import_group_decls(p->lx.tc, p->lx.file, ig, st);
+                resolve_error re = add_import_group_decls(
+                    p->lx.tc, p->current_module, p->lx.file, ig, st);
+                ig->children.symtab = st;
                 if (re) return PE_ERROR;
             }
             return RE_OK;
@@ -3220,4 +3222,5 @@ parse_braced_namable_body(parser* p, ast_node* parent, body* b, char** name)
             get_context_msg(p, (ast_node*)parent));
         return PE_ERROR;
     }
+    assert(false);
 }

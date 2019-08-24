@@ -3,6 +3,7 @@
 #define USED_IN_PP_OFFSET 12
 #define DEFINED_IN_PP_OFFSET 11
 #define COMPUND_DECL_OFFSET 10
+#define RELATIVE_IMPORT_OFFSET 10
 #define REDECLARATION_OFFSET 9
 #define PARSE_ERROR_OFFSET 8
 #define ACCESS_MODIFIER_OFFSET 6
@@ -92,6 +93,14 @@ void ast_node_flags_set_compound_decl(ast_node_flags* f)
 bool ast_node_flags_get_compound_decl(ast_node_flags f)
 {
     return bitmask_get_bit(f, COMPUND_DECL_OFFSET);
+}
+void ast_node_flags_set_relative_import(ast_node_flags* f)
+{
+    bitmask_set_bit(f, RELATIVE_IMPORT_OFFSET);
+}
+bool ast_node_flags_get_relative_import(ast_node_flags f)
+{
+    return bitmask_get_bit(f, RELATIVE_IMPORT_OFFSET);
 }
 void err_flags_set_parse_error(ast_node_flags* f)
 {

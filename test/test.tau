@@ -1,19 +1,20 @@
 //require "test2.tau";
 module doo{
     public x: int = 5;
-    /*module boo{
-        x: int = 5;
-    }*/
+    module boo{
+        public x: int = 5;
+    }
 }
 
 func main(z: int) -> int{
     import doo;
-   /* x := 1 + 2 + doo::x;
+    import boo::doo;
+   /* x := 1 + 2 + boo::doo::x;
     y := main(3);
     w:= {
         break 17;
     };
     return x + y + 1 + w;
     */
-    return doo::x;
+    return boo::doo::x;
 }

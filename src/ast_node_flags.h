@@ -27,6 +27,8 @@ typedef enum ast_node_flag_values {
     ASTF_PARSE_ERROR = 0x100,
     ASTF_REDECLARATION = 0x200,
     ASTF_COMPUND_DECL = 0x400,
+    // never needed simultaneous with compund decl, so we share the bit
+    ASTF_RELATIVE_IMPORT = 0x400,
     ASTF_DEFINED_IN_PP = 0x800,
 } ast_node_flag_values;
 
@@ -47,6 +49,9 @@ bool ast_node_flags_get_static(ast_node_flags f);
 
 void ast_node_flags_set_compound_decl(ast_node_flags* f);
 bool ast_node_flags_get_compound_decl(ast_node_flags f);
+
+void ast_node_flags_set_relative_import(ast_node_flags* f);
+bool ast_node_flags_get_relative_import(ast_node_flags f);
 
 void ast_node_flags_set_resolved(ast_node_flags* f);
 bool ast_node_flags_get_resolved(ast_node_flags f);

@@ -56,7 +56,16 @@ void symbol_table_fin(symbol_table* st)
         }
     }
 }
-
+symbol** symbol_table_find_insert_position(symbol_table* st, char* name)
+{
+    ureg hash = fnv_hash_str(FNV_START_HASH, name) % st->decl_count;
+    symbol** tgt = ptradd(st, sizeof(symbol_table) + hash * sizeof(symbol*));
+    while (*tgt) {
+        if (strcmp((**tgt).name, name) == 0) return tgt;
+        tgt = (symbol**)&(**tgt).next;
+    }
+    return tgt;
+}
 symbol** symbol_table_insert(symbol_table* st, symbol* s)
 {
     ureg hash = fnv_hash_str(FNV_START_HASH, s->name) % st->decl_count;
@@ -74,6 +83,7 @@ symbol** symbol_table_lookup_with_decl(
 {
     ureg hash = fnv_hash_str(FNV_START_HASH, s);
     do {
+        // PERF: get rid of this check somehow
         if (st->decl_count == 0) {
             st = st->parent;
             continue;
@@ -97,6 +107,7 @@ symbol** symbol_table_lookup(symbol_table* st, const char* s)
     symbol_table* lst;
     return symbol_table_lookup_with_decl(st, s, &lst);
 }
+
 src_file* symbol_table_get_file(symbol_table* st)
 {
     assert(st->owning_node->kind != ELEM_MDG_NODE);
