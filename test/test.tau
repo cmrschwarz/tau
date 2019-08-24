@@ -8,7 +8,7 @@ module doo{
 
 func main(z: int) -> int{
     import doo;
-    import boo::doo;
+    import doo::boo;
    /* x := 1 + 2 + boo::doo::x;
     y := main(3);
     w:= {
@@ -16,5 +16,5 @@ func main(z: int) -> int{
     };
     return x + y + 1 + w;
     */
-    return boo::doo::x;
+    return doo::boo::x;
 }

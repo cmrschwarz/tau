@@ -1,6 +1,6 @@
 #include "job_queue.h"
 #include "tauc.h"
-
+#include "assert.h"
 #define JOB_QUEUE_INITIAL_CAPACITY 1
 
 int job_queue_init(job_queue* jq)
@@ -58,6 +58,7 @@ int job_queue_pop(job_queue* jq, job* j)
     mutex_lock(&jq->lock);
     if (jq->head == jq->tail) {
         jq->waiters++;
+        assert(jq->waiters < atomic_ureg_load(&TAUC.thread_count));
         do {
             if (jq->jobs == UREG_MAX) {
                 jq->waiters--;
