@@ -50,3 +50,13 @@ src_file* symbol_table_get_file(symbol_table* st);
 extern symbol_table* GLOBAL_SYMTAB;
 int init_global_symtab();
 void fin_global_symtab();
+
+typedef struct symtab_it {
+    symbol** pos;
+    symbol* subpos;
+    symbol** end;
+} symtab_it;
+
+void symtab_it_begin(symtab_it* stit, symbol_table* st);
+symtab_it symtab_it_make(symbol_table* st);
+symbol* symtab_it_next(symtab_it* stit);

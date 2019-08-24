@@ -188,3 +188,34 @@ void fin_global_symtab()
 {
     symbol_table_fin(GLOBAL_SYMTAB);
 }
+void symtab_it_begin(symtab_it* stit, symbol_table* st)
+{
+    stit->pos = (symbol**)(st + 1);
+    stit->subpos = *stit->pos;
+    stit->end = stit->pos + st->decl_count;
+    if (stit->pos == stit->end) stit->subpos = NULL;
+}
+symtab_it symtab_it_make(symbol_table* st)
+{
+    symtab_it it;
+    symtab_it_begin(&it, st);
+    return it;
+}
+symbol* symtab_it_next(symtab_it* stit)
+{
+    while (true) {
+        if (stit->subpos) {
+            symbol* res = stit->subpos;
+            stit->subpos = stit->subpos->next;
+            return res;
+        }
+        else {
+            stit->pos++;
+            if (stit->pos == stit->end) {
+                stit->pos--;
+                return NULL;
+            }
+            stit->subpos = *stit->pos;
+        }
+    }
+}

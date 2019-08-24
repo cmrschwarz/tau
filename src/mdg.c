@@ -149,6 +149,22 @@ static void free_astn_symtabs(ast_node* n)
 
         case EXPR_BLOCK: free_body_symtabs(n, &((expr_block*)n)->body); break;
 
+        case SYM_IMPORT_PARENT:
+        case SYM_IMPORT_GROUP: {
+            // skip unnamed groups
+            if (((symbol*)n)->name == NULL) break;
+            // TODO: handle non resolved case
+            symbol_table* st = (n->kind == SYM_IMPORT_PARENT)
+                                   ? (((sym_import_parent*)n)->children.symtab)
+                                   : (((sym_import_group*)n)->children.symtab);
+            symtab_it it = symtab_it_make(st);
+            for (symbol* s = symtab_it_next(&it); s != NULL;
+                 s = symtab_it_next(&it)) {
+                free_astn_symtabs((ast_node*)s);
+            }
+            symbol_table_fin(st);
+        } break;
+
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
             free_astn_symtabs(ei->condition);
@@ -181,11 +197,19 @@ static void free_astn_symtabs(ast_node* n)
 }
 static void free_body_symtabs(ast_node* node, body* b)
 {
-    // delete children first since children might contain parent symtab pointer
+    // delete children first since children might contain parent symtab
+    // pointer
     for (ast_node** n = b->elements; *n != NULL; n++) {
         free_astn_symtabs(*n);
     }
     if (b->symtab && b->symtab->owning_node == (ast_elem*)node) {
+        symtab_it it = symtab_it_make(b->symtab);
+        for (symbol* s = symtab_it_next(&it); s != NULL;
+             s = symtab_it_next(&it)) {
+            if (s->node.kind == SYM_IMPORT_PARENT) {
+                free_astn_symtabs((ast_node*)s);
+            }
+        }
         symbol_table_fin(b->symtab);
     }
 }
@@ -748,7 +772,8 @@ int mdg_node_add_dependency(
 }
 int mdg_final_sanity_check(mdg* m, thread_context* tc)
 {
-    // write is necessary since we aren't satisfied with eventual consistency
+    // write is necessary since we aren't satisfied with eventual
+    // consistency
     mdght* h = mdg_start_write(m);
     mdght_iterator it;
     mdght_iterator_begin(&it, h);
@@ -775,7 +800,8 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
                         src_range_large srl_mod;
                         src_range_unpack(
                             mod->scope.symbol.node.srange, &srl_mod);
-                        // since aseglist iterates backwards we reverse, so if
+                        // since aseglist iterates backwards we reverse, so
+                        // if
                         // it's in the same file the redeclaration is always
                         // below
                         error_log_report_annotated_twice(
