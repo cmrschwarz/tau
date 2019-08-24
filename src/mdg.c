@@ -361,7 +361,7 @@ bool module_import_group_find_import(
         }
         else {
             assert(c->node.kind == SYM_IMPORT_MODULE);
-            if (((sym_import_module*)c)->target.mdg_node == import) {
+            if (((sym_import_module*)c)->target == import) {
                 *tgt_sym = (sym_import_module*)c;
                 return true;
             }
@@ -386,7 +386,7 @@ bool scope_find_import(
             }
         }
         else if ((**n).kind == SYM_IMPORT_MODULE) {
-            if (((sym_import_module*)*n)->target.mdg_node == import) {
+            if (((sym_import_module*)*n)->target == import) {
                 *tgt_group = NULL;
                 *tgt_sym = (sym_import_module*)*n;
             }

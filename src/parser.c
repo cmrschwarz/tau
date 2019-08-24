@@ -2824,7 +2824,7 @@ parse_error parse_import_with_parent(
             if (!im) return PE_FATAL;
             ast_node_init_with_flags((ast_node*)im, SYM_IMPORT_MODULE, flags);
             ast_node_fill_srange(p, (ast_node*)im, istart, end);
-            im->target.mdg_node = parent;
+            im->target = parent;
             if (name) {
                 im->symbol.name = name;
                 curr_scope_add_decls(

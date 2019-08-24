@@ -223,7 +223,7 @@ void print_import_group(
         }
         else if ((**c).node.kind == SYM_IMPORT_MODULE) {
             print_mdg_node_until(
-                ((sym_import_module*)*c)->target.mdg_node, g->parent.mdg_node);
+                ((sym_import_module*)*c)->target, g->parent.mdg_node);
         }
         else if ((**c).node.kind == SYM_IMPORT_SYMBOL) {
             // TODO: remove if aboce by fixing unnamed group containing parent
@@ -289,19 +289,12 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case SYM_IMPORT_MODULE: {
             p("import ");
             sym_import_module* im = (sym_import_module*)n;
-            mdg_node* import;
-            if (ast_node_flags_get_resolved(n->flags)) {
-                import = (mdg_node*)im->target.symtab->owning_node;
-            }
-            else {
-                import = im->target.mdg_node;
-            }
             if (ast_node_flags_get_relative_import(n->flags)) {
                 p("self::");
-                print_mdg_node_until(import, cmdg);
+                print_mdg_node_until(im->target, cmdg);
             }
             else {
-                print_mdg_node_until(import, TAUC.mdg.root_node);
+                print_mdg_node_until(im->target, TAUC.mdg.root_node);
             }
         } break;
         case SYM_IMPORT_GROUP: {

@@ -220,10 +220,7 @@ typedef struct sym_import_parent {
 
 typedef struct sym_import_module {
     symbol symbol;
-    union {
-        mdg_node* mdg_node;
-        symbol_table* symtab;
-    } target;
+    mdg_node* target;
 } sym_import_module;
 
 typedef struct sym_import_group {

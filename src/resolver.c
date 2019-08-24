@@ -204,12 +204,11 @@ resolve_error add_import_group_decls(
             sym_import_module* im = (sym_import_module*)s;
             if (ast_node_flags_get_relative_import(s->node.flags)) {
                 re = add_sym_import_module_decl(
-                    tc, f, st, im, curr_mdg_node, im->target.mdg_node, NULL);
+                    tc, f, st, im, curr_mdg_node, im->target, NULL);
             }
             else {
                 re = add_sym_import_module_decl(
-                    tc, f, st, im, TAUC.mdg.root_node, im->target.mdg_node,
-                    NULL);
+                    tc, f, st, im, TAUC.mdg.root_node, im->target, NULL);
             }
             if (re) return re;
         }
@@ -308,7 +307,7 @@ static resolve_error add_ast_node_decls(
                 stop = TAUC.mdg.root_node;
             }
             return add_sym_import_module_decl(
-                r->tc, NULL, st, im, stop, im->target.mdg_node, NULL);
+                r->tc, NULL, st, im, stop, im->target, NULL);
         }
         case STMT_USING:
         case STMT_COMPOUND_ASSIGN:
@@ -640,6 +639,7 @@ resolve_error get_resolved_symbol_symtab(
 {
     if (ast_elem_is_scope((ast_elem*)s)) {
         *tgt_st = ((scope*)s)->body.symtab;
+        return RE_OK;
     }
     *left_scope = true;
     if (s->node.kind == SYM_IMPORT_GROUP) {
@@ -649,7 +649,7 @@ resolve_error get_resolved_symbol_symtab(
         *tgt_st = ((sym_import_parent*)s)->children.symtab;
     }
     else if (s->node.kind == SYM_IMPORT_MODULE) {
-        *tgt_st = ((sym_import_module*)s)->target.symtab;
+        *tgt_st = ((sym_import_module*)s)->target->symtab;
     }
     else if (s->node.kind == SYM_IMPORT_SYMBOL) {
         return get_resolved_symbol_symtab(
@@ -694,7 +694,7 @@ resolve_error resolve_import_parent(
         else {
             symbol_table_insert_using(
                 pst, AM_PUBLIC, (ast_node*)s,
-                ((sym_import_module*)s)->target.mdg_node->symtab);
+                ((sym_import_module*)s)->target->symtab);
         }
     } while (next);
     ip->children.symtab = pst;
@@ -712,7 +712,7 @@ resolve_error resolve_expr_scope_access(
         re = resolve_expr_scope_access(
             r, (expr_scope_access*)esa->lhs, st, left_scope, &lhs_sym, NULL);
         if (re) return re;
-        re = resolve_ast_node(r, lhs_sym, st, NULL);
+        re = resolve_ast_node(r, (ast_node*)lhs_sym, st, NULL);
         if (re) return re;
     }
     else if (esa->lhs->kind == EXPR_IDENTIFIER) {
@@ -869,14 +869,10 @@ resolve_error resolve_ast_node_raw(
             return RE_OK;
         }
         case SYM_IMPORT_MODULE: {
-            sym_import_module* im = (sym_import_module*)n;
-            if (!resolved) {
-                im->target.symtab = im->target.mdg_node->symtab;
-                ast_node_flags_set_resolved(&n->flags);
-            }
             if (ctype) {
-                *ctype = ((sym_import_module*)n)->target.symtab->owning_node;
+                *ctype = ((sym_import_module*)n)->target->symtab->owning_node;
             }
+            if (!resolved) ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }
         case SYM_IMPORT_SYMBOL: {
