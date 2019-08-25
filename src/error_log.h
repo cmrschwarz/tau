@@ -37,7 +37,7 @@ typedef struct error_s {
 } error;
 
 typedef struct error_annotated_s {
-    error error;
+    error err;
     ureg end;
     const char* annotation;
 } error_annotated;

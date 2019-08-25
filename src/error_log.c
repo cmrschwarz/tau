@@ -146,7 +146,7 @@ void error_log_report_annotated_twice(
         el, sizeof(error_multi_annotated) + sizeof(error_annotated));
     if (!e) return;
     error_fill(
-        &e->err_annot.error, stage, warn, ET_MULTI_ANNOT, message, file, start);
+        &e->err_annot.err, stage, warn, ET_MULTI_ANNOT, message, file, start);
     e->annot_count = 1;
     e->err_annot.annotation = annotation;
     e->err_annot.end = end;
@@ -164,7 +164,7 @@ void error_log_report_annotated_thrice(
         el, sizeof(error_multi_annotated) + 2 * sizeof(error_annotated));
     if (!e) return;
     error_fill(
-        &e->err_annot.error, stage, warn, ET_MULTI_ANNOT, message, file, start);
+        &e->err_annot.err, stage, warn, ET_MULTI_ANNOT, message, file, start);
     e->annot_count = 2;
     e->err_annot.annotation = annotation;
     e->err_annot.end = end;
@@ -295,8 +295,8 @@ void print_msg(const char* msg, ureg msg_len)
 void printCriticalThreadError(const char* msg)
 {
     pectc(
-        ANSICOLOR_RED ANSICOLOR_BOLD,
-        "critical error in worker thread: ", ANSICOLOR_CLEAR);
+        ANSICOLOR_RED ANSICOLOR_BOLD, "critical error in worker thread: ",
+        ANSICOLOR_CLEAR);
     pe(msg);
     pe("\n");
 }
@@ -480,7 +480,8 @@ int print_src_line(
             ureg after_tab = bpos;
             print_until(&bpos, &next, buffer, &after_tab, &length_diff);
             switch (mode) {
-                case 3: (ep_pos + 1)->length_diff_start = length_diff;
+                case 3:
+                    (ep_pos + 1)->length_diff_start = length_diff;
                 // fallthrough
                 case 0:
                     ep_pos->length_diff_start = length_diff;

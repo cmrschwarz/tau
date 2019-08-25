@@ -130,7 +130,7 @@ mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
     n->symtab = NULL;
     return n;
 }
-static void free_body_symtabs(ast_node* node, body* b);
+static void free_body_symtabs(ast_node* node, ast_body* b);
 static void free_astn_symtabs(ast_node* n)
 {
     if (!n) return;
@@ -195,7 +195,7 @@ static void free_astn_symtabs(ast_node* n)
         default: break;
     }
 }
-static void free_body_symtabs(ast_node* node, body* b)
+static void free_body_symtabs(ast_node* node, ast_body* b)
 {
     // delete children first since children might contain parent symtab
     // pointer
@@ -221,7 +221,7 @@ void mdg_node_fin(mdg_node* n)
     while (true) {
         open_scope* osc = aseglist_iterator_next(&it);
         if (!osc) break;
-        free_body_symtabs((ast_node*)osc, &osc->scope.body);
+        free_body_symtabs((ast_node*)osc, &osc->scp.body);
     }
     mdg_node_partial_fin(n, 0);
 }
@@ -269,7 +269,7 @@ mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident)
         rwslock_end_write(&n->stage_lock);
     }
     aseglist_add(&n->open_scopes, osc);
-    osc->scope.sym.name = n->name;
+    osc->scp.sym.name = n->name;
     return n;
 }
 
@@ -427,11 +427,11 @@ void mdg_node_find_import(
     while (true) {
         open_scope* osc = aseglist_iterator_next(&it);
         if (!osc) break;
-        if (scope_find_import(&osc->scope, import, tgt_group, tgt_sym)) {
+        if (scope_find_import(&osc->scp, import, tgt_group, tgt_sym)) {
             *file = open_scope_get_file(osc);
             return;
         }
-        osc = (open_scope*)osc->scope.sym.next;
+        osc = (open_scope*)osc->scp.sym.next;
     }
     panic("failed to find the source location of a missing import!");
 }
@@ -446,7 +446,7 @@ void mdg_node_report_missing_import(
     src_range_unpack(tgt_group->sym.node.srange, &tgt_group_srl);
     src_range_unpack(tgt_sym->sym.node.srange, &tgt_sym_srl);
     error_log_report_annotated_twice(
-        &tc->error_log, ES_RESOLVER, false,
+        &tc->err_log, ES_RESOLVER, false,
         "missing definition for imported module", f, tgt_sym_srl.start,
         tgt_sym_srl.end, "imported here", f, tgt_group_srl.start,
         tgt_group_srl.end, NULL);
@@ -505,7 +505,7 @@ int scc_detector_strongconnect(
     sn->lowlink = tc->sccd.dfs_index;
     sn->index = tc->sccd.dfs_index;
     tc->sccd.dfs_index++;
-    stack_push(&tc->stack, n);
+    stack_push(&tc->tempstack, n);
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &n->dependencies);
     while (true) {
@@ -544,8 +544,8 @@ int scc_detector_strongconnect(
         rwslock_end_read(&n->stage_lock);
         bool success = false;
 
-        if (stack_peek(&tc->stack) == n) {
-            stack_pop(&tc->stack);
+        if (stack_peek(&tc->tempstack) == n) {
+            stack_pop(&tc->tempstack);
             rwslock_write(&n->stage_lock);
             if (n->stage == MS_AWAITING_DEPENDENCIES) {
                 n->stage = MS_RESOLVING;
@@ -560,19 +560,19 @@ int scc_detector_strongconnect(
         }
         else {
             stack_state ss_end, ss_start;
-            stack_state_save(&ss_end, &tc->stack);
-            mdg_node* stack_mdgn = stack_pop(&tc->stack);
+            stack_state_save(&ss_end, &tc->tempstack);
+            mdg_node* stack_mdgn = stack_pop(&tc->tempstack);
             ureg node_count = 1;
             do {
-                stack_mdgn = stack_pop(&tc->stack);
+                stack_mdgn = stack_pop(&tc->tempstack);
                 node_count++;
             } while (stack_mdgn != n);
-            stack_state_save(&ss_start, &tc->stack);
+            stack_state_save(&ss_start, &tc->tempstack);
             ureg list_size = node_count * sizeof(mdg_node*);
             mdg_node** node_list = tmalloc(list_size);
             if (!node_list) return ERR;
             stack_pop_to_list(
-                &tc->stack, &ss_start, &ss_end, (void**)node_list);
+                &tc->tempstack, &ss_start, &ss_end, (void**)node_list);
             mdg_nodes_quick_sort(node_list, node_count);
             for (mdg_node** i = node_list; i != node_list + node_count; i++) {
                 rwslock_write(&(**i).stage_lock);
@@ -628,9 +628,9 @@ int scc_detector_run(thread_context* tc, mdg_node* n)
     sccd_node* sn = scc_detector_get(&tc->sccd, n->id);
     if (!sn) return ERR;
     stack_state ss;
-    stack_state_save(&ss, &tc->stack);
+    stack_state_save(&ss, &tc->tempstack);
     int r = scc_detector_strongconnect(tc, n, sn, n);
-    if (r) stack_state_apply(&ss, &tc->stack);
+    if (r) stack_state_apply(&ss, &tc->tempstack);
     if (r == SCCD_ADDED_NOTIFICATION) return OK;
     return r;
 }
@@ -692,7 +692,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
     tc->sccd.dfs_start_index = tc->sccd.dfs_index;
     tc->sccd.dfs_index++;
     aseglist* oscs;
-    void** stack_head = tc->stack.head;
+    void** stack_head = tc->tempstack.head;
     while (true) {
         rwslock_write(&n->stage_lock);
         if (n->stage == MS_UNNEEDED) {
@@ -726,7 +726,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
                     return ERR;
                 }
                 if (sn->index != tc->sccd.dfs_start_index) {
-                    stack_push(&tc->stack, i);
+                    stack_push(&tc->tempstack, i);
                     sn->index = tc->sccd.dfs_start_index;
                 }
             }
@@ -747,11 +747,11 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
             }
         }
         while (true) {
-            if (tc->stack.head == stack_head) {
+            if (tc->tempstack.head == stack_head) {
                 if (run_scc) return scc_detector_run(tc, start_node);
                 return OK;
             }
-            n = stack_pop(&tc->stack);
+            n = stack_pop(&tc->tempstack);
             rwslock_read(&n->stage_lock);
             bool needed = module_stage_needed(n->stage);
             rwslock_end_read(&n->stage_lock);
@@ -792,19 +792,19 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
             open_scope* i = aseglist_iterator_next(&it);
             first_target = i;
             while (i) {
-                if (i->scope.sym.node.kind == OSC_MODULE ||
-                    i->scope.sym.node.kind == OSC_MODULE_GENERIC) {
+                if (i->scp.sym.node.kind == OSC_MODULE ||
+                    i->scp.sym.node.kind == OSC_MODULE_GENERIC) {
                     if (mod != NULL) {
                         src_range_large srl;
-                        src_range_unpack(i->scope.sym.node.srange, &srl);
+                        src_range_unpack(i->scp.sym.node.srange, &srl);
                         src_range_large srl_mod;
-                        src_range_unpack(mod->scope.sym.node.srange, &srl_mod);
+                        src_range_unpack(mod->scp.sym.node.srange, &srl_mod);
                         // since aseglist iterates backwards we reverse, so
                         // if
                         // it's in the same file the redeclaration is always
                         // below
                         error_log_report_annotated_twice(
-                            &tc->error_log, ES_RESOLVER, false,
+                            &tc->err_log, ES_RESOLVER, false,
                             "module redeclared", srl_mod.file, srl_mod.start,
                             srl_mod.end, "redeclaration here", srl.file,
                             srl.start, srl.end, "already declared here");
@@ -817,10 +817,10 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
             }
             if (mod == NULL && first_target != NULL) {
                 src_range_large srl;
-                src_range_unpack(first_target->scope.sym.node.srange, &srl);
+                src_range_unpack(first_target->scp.sym.node.srange, &srl);
                 // THINK: maybe report extend count here or report all
                 error_log_report_annotated(
-                    &tc->error_log, ES_RESOLVER, false,
+                    &tc->err_log, ES_RESOLVER, false,
                     "extend without module declaration", srl.file, srl.start,
                     srl.end, "extend here");
                 res = ERR;

@@ -26,13 +26,13 @@ parse_error parse_statement(parser* p, ast_node** tgt);
 parse_error parse_scope_body(parser* p, scope* s, ureg param_count);
 parse_error
 parse_open_scope_body(parser* p, open_scope* s, mdg_node* n, ureg param_count);
-parse_error parse_body(parser* p, body* b, ast_node* parent);
+parse_error parse_body(parser* p, ast_body* b, ast_node* parent);
 parse_error parse_expression(parser* p, ast_node** tgt);
 parse_error parse_expression_of_prec(parser* p, ast_node** ex, ureg prec);
 parse_error parse_brace_delimited_body(
-    parser* p, body* b, ast_node* parent, ureg param_count);
-parse_error
-parse_braced_namable_body(parser* p, ast_node* parent, body* b, char** name);
+    parser* p, ast_body* b, ast_node* parent, ureg param_count);
+parse_error parse_braced_namable_body(
+    parser* p, ast_node* parent, ast_body* b, char** name);
 parse_error parse_expr_in_parens(
     parser* p, ast_node* parent, ureg start, ureg end, ast_node** tgt);
 static const unsigned char op_precedence[] = {
@@ -247,7 +247,7 @@ static inline bool is_kw_valid_label(token_kind t)
 static inline void* alloc_ppool(parser* p, ureg size, pool* pool)
 {
     void* mem = pool_alloc(pool, size);
-    if (!mem) error_log_report_allocation_failiure(&p->lx.tc->error_log);
+    if (!mem) error_log_report_allocation_failiure(&p->lx.tc->err_log);
     return mem;
 }
 static inline void* alloc_temp(parser* p, ureg size)
@@ -280,7 +280,7 @@ static inline parse_error
 parser_error_1a(parser* p, char* msg, ureg start, ureg end, char* annot)
 {
     error_log_report_annotated(
-        &p->lx.tc->error_log, ES_PARSER, false, msg, p->lx.file, start, end,
+        &p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.file, start, end,
         annot);
     return PE_ERROR;
 }
@@ -289,7 +289,7 @@ static inline parse_error parser_error_2a(
     ureg end2, char* annot2)
 {
     error_log_report_annotated_twice(
-        &p->lx.tc->error_log, ES_PARSER, false, msg, p->lx.file, start, end,
+        &p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.file, start, end,
         annot, p->lx.file, start2, end2, annot2);
     return PE_ERROR;
 }
@@ -298,7 +298,7 @@ static inline parse_error parser_error_3a(
     ureg end2, char* annot2, ureg start3, ureg end3, char* annot3)
 {
     error_log_report_annotated_thrice(
-        &p->lx.tc->error_log, ES_PARSER, false, msg, p->lx.file, start, end,
+        &p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.file, start, end,
         annot, p->lx.file, start2, end2, annot2, p->lx.file, start3, end3,
         annot3);
     return PE_ERROR;
@@ -309,7 +309,8 @@ static inline body_parse_data* get_bpd(parser* p)
     sbi_begin_at_end(&i, &p->body_stack);
     return sbi_previous(&i, sizeof(body_parse_data));
 }
-static inline void init_bpd(body_parse_data* bpd, ast_node* node, body* body)
+static inline void
+init_bpd(body_parse_data* bpd, ast_node* node, ast_body* body)
 {
     bpd->node = node;
     bpd->body = body;
@@ -318,7 +319,7 @@ static inline void init_bpd(body_parse_data* bpd, ast_node* node, body* body)
     bpd->shared_decl_count = 0;
     bpd->shared_usings_count = 0;
 }
-static inline int push_bpd(parser* p, ast_node* n, body* b)
+static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
 {
     body_parse_data* bpd =
         sbuffer_append(&p->body_stack, sizeof(body_parse_data));
@@ -385,7 +386,7 @@ static inline int pop_bpd(parser* p, parse_error pe)
         atomic_ureg_add(
             &p->current_module->using_count, bpd.shared_usings_count);
     }
-    body* bd = bpd.body;
+    ast_body* bd = bpd.body;
     symbol_table** st = &bd->symtab;
     while (true) {
         sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
@@ -447,7 +448,7 @@ char* get_context_msg(parser* p, ast_node* node)
     }
     return NULL;
 }
-body* get_current_body(parser* p)
+ast_body* get_current_body(parser* p)
 {
     return get_bpd(p)->body;
 }
@@ -526,8 +527,7 @@ static inline void parser_error_unexpected_token(
     char* expstr = "expected ";
     ureg explen = strlen(expstr);
     ureg toklen = strlen(token_strings[exp_tt]);
-    char* ann =
-        (char*)error_log_alloc(&p->lx.tc->error_log, explen + toklen + 3);
+    char* ann = (char*)error_log_alloc(&p->lx.tc->err_log, explen + toklen + 3);
     if (!ann) return;
     memcpy(ann, expstr, explen);
     ann[explen] = '\'';
@@ -546,20 +546,20 @@ static inline void
 ast_node_init_with_op(ast_node* n, ast_node_kind kind, operator_kind opk)
 {
     ast_node_init_with_flags(n, kind, AST_NODE_FLAGS_DEFAULT);
-    n->operator_kind = opk;
+    n->op_kind = opk;
 }
 static inline void
 ast_node_init_with_pk(ast_node* n, ast_node_kind kind, primitive_kind pk)
 {
     ast_node_init_with_flags(n, kind, AST_NODE_FLAGS_DEFAULT);
-    n->primitive_kind = pk;
+    n->pt_kind = pk;
 }
 static inline void ast_node_init(ast_node* n, ast_node_kind kind)
 {
     ast_node_init_with_flags(n, kind, AST_NODE_FLAGS_DEFAULT);
 }
 
-static inline void body_init_empty(body* b)
+static inline void body_init_empty(ast_body* b)
 {
     b->elements = (ast_node**)NULL_PTR_PTR;
     b->symtab = NULL;
@@ -742,7 +742,7 @@ parse_error parse_expr_node_list(
         if (pe == PE_EOEX) {
             PEEK(p, t);
             char* msg = error_log_cat_strings_3(
-                &p->lx.tc->error_log, "invalid ", type, " syntax");
+                &p->lx.tc->err_log, "invalid ", type, " syntax");
             if (!msg) return PE_FATAL;
             parser_error_1a(
                 p, msg, t->start, t->end, "expected expression after ','");
@@ -878,7 +878,7 @@ static inline parse_error require_default_flags(
 {
     if (flags == AST_NODE_FLAGS_DEFAULT) return PE_OK;
     char* loc_msg = error_log_cat_strings_2(
-        &p->lx.tc->error_log, token_strings[t->kind],
+        &p->lx.tc->err_log, token_strings[t->kind],
         " does not accept any modifiers");
     if (!loc_msg) return PE_FATAL;
     parser_error_2a(
@@ -1875,7 +1875,7 @@ parse_error handle_semicolon_after_statement(parser* p, ast_node* s)
 static inline parse_error parse_delimited_open_scope(
     parser* p, open_scope* osc, token_kind delimiter_1, token_kind delimiter_2)
 {
-    if (push_bpd(p, (ast_node*)osc, &osc->scope.body)) return PE_FATAL;
+    if (push_bpd(p, (ast_node*)osc, &osc->scp.body)) return PE_FATAL;
 
     void* requires_list_start = list_builder_start_blocklist(&p->lx.tc->listb);
     void** element_list_start = list_builder_start(&p->lx.tc->listb2);
@@ -1911,19 +1911,19 @@ static inline parse_error parse_delimited_open_scope(
             break;
         }
     }
-    osc->scope.body.elements = (ast_node**)list_builder_pop_list_zt(
+    osc->scp.body.elements = (ast_node**)list_builder_pop_list_zt(
         &p->lx.tc->listb2, element_list_start, &p->lx.tc->permmem);
     osc->requires = (file_require*)list_builder_pop_block_list_zt(
         &p->lx.tc->listb, requires_list_start, &p->lx.tc->permmem);
     if (pop_bpd(p, pe)) return PE_FATAL;
-    if (!osc->scope.body.elements) return PE_FATAL;
+    if (!osc->scp.body.elements) return PE_FATAL;
     if (!osc->requires) return PE_FATAL;
     src_range_large srl;
     srl.start = start;
     srl.end = t->end;
     srl.file = p->lx.file;
-    osc->scope.sym.node.srange = src_range_large_pack(p->lx.tc, &srl);
-    if (osc->scope.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
+    osc->scp.sym.node.srange = src_range_large_pack(p->lx.tc, &srl);
+    if (osc->scp.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     if (!osc->requires) return PE_FATAL;
     return pe;
 }
@@ -1939,7 +1939,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
             src_range_large srl;
             src_range_unpack(j->requiring_srange, &srl);
             error_log_report_annotated(
-                &p->lx.tc->error_log, ES_TOKENIZER, false,
+                &p->lx.tc->err_log, ES_TOKENIZER, false,
                 "required file doesn't exist", j->requiring_file, srl.start,
                 srl.end, "required here");
         }
@@ -1948,15 +1948,15 @@ parse_error parser_parse_file(parser* p, job_parse* j)
             if (!file_path) return PE_FATAL;
             src_file_write_path(j->file, file_path);
             char* msg = error_log_cat_strings_3(
-                &p->lx.tc->error_log, "the requirested file \"", file_path,
+                &p->lx.tc->err_log, "the requirested file \"", file_path,
                 "\" doesn't exist");
             tfree(file_path);
-            error_log_report_critical_failiure(&p->lx.tc->error_log, msg);
+            error_log_report_critical_failiure(&p->lx.tc->err_log, msg);
         }
         return PE_LX_ERROR;
     }
     p->current_module = TAUC.mdg.root_node;
-    j->file->root.oscope.scope.sym.name = TAUC.mdg.root_node->name;
+    j->file->root.oscope.scp.sym.name = TAUC.mdg.root_node->name;
     ast_node_init((ast_node*)&j->file->root, OSC_EXTEND);
     parse_error pe = parse_eof_delimited_open_scope(p, &j->file->root.oscope);
     lx_close_file(&p->lx);
@@ -1976,7 +1976,7 @@ static inline int
 report_redundant_specifier(parser* p, const char* spec, ureg start, ureg end)
 {
     char* msg = error_log_cat_strings_3(
-        &p->lx.tc->error_log, "redundant ", spec, " specifier");
+        &p->lx.tc->err_log, "redundant ", spec, " specifier");
     if (!msg) return ERR;
     parser_error_1a(p, "redundant access modifiers specified", start, end, msg);
     return OK;
@@ -1997,10 +1997,10 @@ static inline parse_error ast_node_flags_from_kw_set_access_mod(
             msgstrs[2] = "' conflicts with previous '";
             msgstrs[3] = access_modifier_string(old_am);
             msgstrs[4] = "'";
-            char* msg = error_log_cat_strings(&p->lx.tc->error_log, 4, msgstrs);
+            char* msg = error_log_cat_strings(&p->lx.tc->err_log, 4, msgstrs);
             if (!msg) return PE_FATAL;
             error_log_report_annotated(
-                &p->lx.tc->error_log, ES_PARSER, false,
+                &p->lx.tc->err_log, ES_PARSER, false,
                 "conflicting access modifiers specified", p->lx.file, start,
                 end, msg);
         }
@@ -2123,8 +2123,8 @@ parse_error parse_param_list(
             char* e2 = generic ? "expected ',' or ']' in generic parameter list"
                                : "expected ',' or ')' in parameter list";
             error_log_report_annotated_twice(
-                &p->lx.tc->error_log, ES_PARSER, false, e1, p->lx.file,
-                t->start, t->end, e2, p->lx.file, ctx_start, ctx_end, msg);
+                &p->lx.tc->err_log, ES_PARSER, false, e1, p->lx.file, t->start,
+                t->end, e2, p->lx.file, ctx_start, ctx_end, msg);
             pe = PE_ERROR;
             break;
         }
@@ -2282,7 +2282,7 @@ parse_error check_if_first_stmt(
     return PE_OK;
     // TODO: use extend bool to be more precise than "scope" in the err msg
     scope* curr_scope = (scope*)get_bpd(p)->node;
-    if (curr_scope != &p->lx.file->root.oscope.scope) {
+    if (curr_scope != &p->lx.file->root.oscope.scp) {
         parser_error_1a_pc(
             p, "block free scope statement not allowed here", start, end,
             "this statement type is only allowed at file scope");
@@ -2349,9 +2349,9 @@ parse_error parse_module_decl(
     if (mdgn == NULL) return PE_FATAL;
     ast_node_init_with_flags(
         (ast_node*)md, mod_gen ? OSC_MODULE_GENERIC : OSC_MODULE, flags);
-    md->scope.sym.node.srange =
+    md->scp.sym.node.srange =
         src_range_pack(p->lx.tc, start, decl_end, p->lx.file);
-    if (md->scope.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
+    if (md->scp.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     PEEK(p, t);
     mdg_node* parent = p->current_module;
     p->current_module = mdgn;
@@ -2416,9 +2416,9 @@ parse_error parse_extend_decl(
     mdg_node* mdgn =
         mdg_add_open_scope(&TAUC.mdg, p->current_module, ex, t->str);
     if (mdgn == NULL) return PE_FATAL;
-    ex->scope.sym.node.srange =
+    ex->scp.sym.node.srange =
         src_range_pack(p->lx.tc, start, decl_end, p->lx.file);
-    if (ex->scope.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
+    if (ex->scp.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     ast_node_init_with_flags(
         (ast_node*)ex, eg ? OSC_EXTEND_GENERIC : OSC_EXTEND, flags);
     PEEK(p, t);
@@ -3103,7 +3103,7 @@ parse_error parse_statement(parser* p, ast_node** tgt)
     }
 }
 parse_error parse_brace_delimited_body(
-    parser* p, body* b, ast_node* parent, ureg param_count)
+    parser* p, ast_body* b, ast_node* parent, ureg param_count)
 {
     token* t = lx_aquire(&p->lx);
     ureg bstart = t->start;
@@ -3187,7 +3187,7 @@ parse_open_scope_body(parser* p, open_scope* s, mdg_node* m, ureg param_count)
     return pe;
 }
 parse_error
-parse_braced_namable_body(parser* p, ast_node* parent, body* b, char** name)
+parse_braced_namable_body(parser* p, ast_node* parent, ast_body* b, char** name)
 {
     token* t;
     PEEK(p, t);

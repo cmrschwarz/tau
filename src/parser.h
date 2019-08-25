@@ -25,7 +25,7 @@ typedef struct parser_s {
 // pp scopes sit below the rt scope, node and body are repeated
 typedef struct body_parse_data_s {
     ast_node* node;
-    body* body;
+    ast_body* body;
     ureg decl_count;
     ureg usings_count;
     ureg shared_decl_count;

@@ -47,14 +47,14 @@ typedef struct src_pos_s {
     ureg column;
 } src_pos;
 
-int src_map_init(src_map* m, thread_context* tc);
-int src_map_fin(src_map* m);
-int src_map_add_line(src_map* m, thread_context* tc, ureg line_start);
+int src_map_init(source_map* m, thread_context* tc);
+int src_map_fin(source_map* m);
+int src_map_add_line(source_map* m, thread_context* tc, ureg line_start);
 // this can't fail without programmer's error as the storage is already
 // allocated
-src_pos src_map_get_pos(src_map* m, ureg pos);
+src_pos src_map_get_pos(source_map* m, ureg pos);
 int src_pos_get_line_bounds(
-    src_map* m, ureg line, ureg* start_pos, ureg* length);
+    source_map* m, ureg line, ureg* start_pos, ureg* length);
 
 // TODO: find a better name for this
 src_range src_range_pack_lines(thread_context* tc, ureg start, ureg end);

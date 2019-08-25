@@ -5,7 +5,7 @@
 #define mk_prim(prim_kind, prim_name)                                          \
     {                                                                          \
         .node = {.kind = PRIMITIVE,                                            \
-                 .primitive_kind = prim_kind,                                  \
+                 .pt_kind = prim_kind,                                         \
                  .flags = ASTF_RESOLVED,                                       \
                  .srange = SRC_RANGE_INVALID},                                 \
         .name = prim_name, .next = NULL                                        \
@@ -22,7 +22,7 @@ ureg PRIMITIVE_COUNT = sizeof(PRIMITIVES) / sizeof(symbol);
 
 src_file* open_scope_get_file(open_scope* s)
 {
-    return src_range_get_file(s->scope.sym.node.srange);
+    return src_range_get_file(s->scp.sym.node.srange);
 }
 src_file* ast_node_get_file(ast_node* n, symbol_table* st)
 {
@@ -71,7 +71,7 @@ bool ast_elem_is_expr(ast_elem* s)
 {
     return (s->kind > STMT_LAST_STMT_ID);
 }
-bool body_is_braced(body* b)
+bool ast_body_is_braced(ast_body* b)
 {
     if (b->elements[0] && !b->elements[1]) {
         return (b->srange != b->elements[0]->srange);
@@ -102,7 +102,7 @@ void ast_node_get_bounds(ast_node* n, ureg* start, ureg* end)
         }
         case EXPR_OP_UNARY: {
             expr_op_unary* u = (expr_op_unary*)n;
-            if (!is_unary_op_postfix(u->node.operator_kind)) {
+            if (!is_unary_op_postfix(u->node.op_kind)) {
                 if (start) {
                     src_range_large r;
                     src_range_unpack(u->node.srange, &r);

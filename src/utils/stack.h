@@ -13,7 +13,7 @@ typedef struct stack_s {
     stack_segment* curr_seg;
     void** curr_seg_start;
     void** head;
-    pool* pool;
+    pool* mempool;
 } stack;
 
 typedef struct stack_state_s {
@@ -40,7 +40,7 @@ static inline stack_segment*
 stack_alloc_segment(stack* s, ureg size, stack_segment* prev)
 {
     size = sizeof(void*) * size;
-    stack_segment* seg = pool_alloc(s->pool, size);
+    stack_segment* seg = pool_alloc(s->mempool, size);
     if (!s) return NULL;
     seg->end = ptradd(seg, size);
     seg->prev = prev;
@@ -52,9 +52,9 @@ static inline void stack_set_curr_seg(stack* s, stack_segment* seg)
     s->curr_seg = seg;
     s->curr_seg_start = ptradd(seg, sizeof(stack_segment));
 }
-static inline int stack_init(stack* s, pool* pool)
+static inline int stack_init(stack* s, pool* mempool)
 {
-    s->pool = pool;
+    s->mempool = mempool;
     s->curr_seg = stack_alloc_segment(s, 16, NULL);
     if (!s->curr_seg) return ERR;
     stack_set_curr_seg(s, s->curr_seg);

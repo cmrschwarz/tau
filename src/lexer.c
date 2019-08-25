@@ -113,7 +113,7 @@ static inline int lx_load_file_buffer(lexer* tk, char** holding)
         old_buff = tk->file_buffer_start;
         tk->file_buffer_start = tmalloc(buff_size);
         if (!tk->file_buffer_start) {
-            error_log_report_allocation_failiure(&tk->tc->error_log);
+            error_log_report_allocation_failiure(&tk->tc->err_log);
             return -1;
         }
         tk->file_buffer_end = ptradd(tk->file_buffer_start, buff_size);
@@ -144,15 +144,14 @@ static inline int lx_load_file_buffer(lexer* tk, char** holding)
     if (siz == 0) {
         if (ferror(tk->file->file_stream)) {
             tk->status = LX_STATUS_IO_ERROR;
-            error* e =
-                (error*)error_log_alloc(&tk->tc->error_log, sizeof(error));
+            error* e = (error*)error_log_alloc(&tk->tc->err_log, sizeof(error));
             if (!e) return ERR;
             e->file = tk->file;
             e->stage = ES_TOKENIZER;
             e->kind = ET_ERROR;
             e->position = tk->loaded_tokens_head->start;
             e->message = "file io error";
-            error_log_report(&tk->tc->error_log, e);
+            error_log_report(&tk->tc->err_log, e);
             return ERR;
         }
         if (tk->status == LX_STATUS_EOF) return 0;
@@ -269,10 +268,9 @@ lx_unterminated_string_error(lexer* tk, char* string_start, ureg tok_pos)
     ureg start1 = tok_pos + ptrdiff(tk->file_buffer_pos, string_start) - 1;
     ureg start2 = tok_pos;
     error_log_report_annotated_twice(
-        &tk->tc->error_log, ES_TOKENIZER, false, "unterminated string",
-        tk->file, start1, start1 + 1,
-        "reached eof before the string was closed", tk->file, start2,
-        start2 + 1, "string starts here");
+        &tk->tc->err_log, ES_TOKENIZER, false, "unterminated string", tk->file,
+        start1, start1 + 1, "reached eof before the string was closed",
+        tk->file, start2, start2 + 1, "string starts here");
     tk->status = LX_STATUS_TOKENIZATION_ERROR;
     return NULL;
 }
@@ -534,7 +532,7 @@ static token* lx_load(lexer* tk)
                             case '\0': {
                                 tok->start--;
                                 error_log_report_annotated_twice(
-                                    &tk->tc->error_log, ES_TOKENIZER, false,
+                                    &tk->tc->err_log, ES_TOKENIZER, false,
                                     "unterminated block comment", tk->file,
                                     tok->start, tok->start + 1,
                                     "reached eof before the comment was closed",
@@ -797,7 +795,7 @@ static token* lx_load(lexer* tk)
                 }
                 */
                 error_log_report_annotated(
-                    &tk->tc->error_log, ES_TOKENIZER, false, "unknown token",
+                    &tk->tc->err_log, ES_TOKENIZER, false, "unknown token",
                     tk->file, tok->start, tok->start + 1,
                     "not the start for any valid token");
                 return NULL;

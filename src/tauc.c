@@ -121,7 +121,7 @@ int tauc_add_worker_thread()
         // succeeded
         thread_context_fin(&wt->tc);
         error_log_report_critical_failiure(
-            &wt->tc.error_log, "failed to spawn additional worker thread");
+            &wt->tc.err_log, "failed to spawn additional worker thread");
         atomic_ureg_store(&wt->status, WTS_FAILED);
         return OK; // this is intentional, see above
     }

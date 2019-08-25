@@ -158,8 +158,8 @@ typedef struct ast_elem_s {
 typedef struct ast_node_s {
     ast_node_kind kind;
     ANONYMOUS_UNION_START
-    primitive_kind primitive_kind;
-    operator_kind operator_kind;
+    primitive_kind pt_kind;
+    operator_kind op_kind;
     ANONYMOUS_UNION_END
     ast_node_flags flags;
     src_range srange;
@@ -180,19 +180,19 @@ typedef struct symbol_s {
     symbol_table* declaring_st;
 } symbol;
 
-typedef struct body_s {
+typedef struct ast_body_s {
     ast_node** elements;
     symbol_table* symtab;
     src_range srange;
-} body;
+} ast_body;
 
 typedef struct scope_s {
     symbol sym;
-    body body;
+    ast_body body;
 } scope;
 
 typedef struct open_scope_s {
-    struct scope_s scope;
+    scope scp;
     file_require* requires;
 } open_scope;
 
@@ -211,7 +211,7 @@ typedef struct sym_import_symbol_s {
     symbol sym;
     union {
         char* name;
-        symbol* symbol;
+        symbol* sym;
     } target;
 } sym_import_symbol;
 
@@ -256,7 +256,7 @@ typedef struct expr_continue_s {
 typedef struct expr_block_s {
     ast_node node;
     char* name; // NULL if no label provided and not in if/else/etc.
-    body body;
+    ast_body body;
     ast_elem* ctype;
 } expr_block;
 
@@ -271,7 +271,7 @@ typedef struct expr_if_s {
 typedef struct expr_loop_s {
     ast_node node;
     char* name;
-    body body;
+    ast_body body;
     ast_elem* ctype;
 } expr_loop;
 
@@ -279,7 +279,7 @@ typedef struct expr_macro_s {
     ast_node node;
     ast_node** args;
     char* name;
-    body body;
+    ast_body body;
     struct expr_macro_s* next;
 } expr_macro;
 
@@ -297,7 +297,7 @@ typedef struct expr_match_s {
     ast_node node;
     char* name;
     ast_node* match_expr;
-    body body;
+    ast_body body;
 } expr_match;
 
 typedef struct sym_param_s {
@@ -308,7 +308,7 @@ typedef struct sym_param_s {
 } sym_param;
 
 typedef struct sc_func_s {
-    scope scope;
+    scope scp;
     sym_param* params;
     ureg param_count;
     ast_node* return_type;
@@ -321,7 +321,7 @@ typedef struct sym_func_overloaded_s {
 } sym_func_overloaded;
 
 typedef struct sc_func_generic_s {
-    scope scope;
+    scope scp;
     sym_param* generic_params;
     ureg generic_param_count;
     sym_param* params;
@@ -331,21 +331,21 @@ typedef struct sc_func_generic_s {
 } sc_func_generic;
 
 typedef struct sc_struct_s {
-    scope scope;
+    scope scp;
 } sc_struct;
 
 typedef struct sc_struct_generic_s {
-    scope scope;
+    scope scp;
     sym_param* generic_params;
     ureg generic_param_count;
 } sc_struct_generic;
 
 typedef struct sc_trait_s {
-    scope scope;
+    scope scp;
 } sc_trait;
 
 typedef struct sc_trait_generic_s {
-    scope scope;
+    scope scp;
     sym_param* generic_params;
     ureg generic_param_count;
 } sc_trait_generic;
@@ -406,7 +406,7 @@ typedef struct expr_scope_access_s {
     ast_node* lhs;
     union {
         char* name;
-        symbol* symbol;
+        symbol* sym;
     } target;
     src_range target_srange;
 } expr_scope_access;
@@ -447,7 +447,7 @@ typedef struct expr_identifier_s {
     ast_node node;
     union {
         char* str;
-        symbol* symbol;
+        symbol* sym;
     } value;
 } expr_identifier;
 
@@ -483,7 +483,7 @@ typedef struct expr_type_slice_s {
 typedef struct expr_lambda_s {
     ast_node node;
     sym_param* params;
-    body body;
+    ast_body body;
 } expr_lambda;
 
 typedef enum ast_type_mod_s {
@@ -538,7 +538,7 @@ char* ast_elem_get_label(ast_elem* n, bool* lbl);
 src_file* open_scope_get_file(open_scope* s);
 src_file* ast_node_get_file(ast_node* n, symbol_table* st);
 
-bool body_is_braced(body* b);
+bool ast_body_is_braced(ast_body* b);
 
 bool is_unary_op_postfix(operator_kind t);
 ast_node* get_parent_body(scope* parent);

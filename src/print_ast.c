@@ -52,7 +52,7 @@ void print_requires(file_require* r, ureg indent)
         r++;
     }
 }
-void print_body_elements(body* body, mdg_node* cmdg, ureg indent)
+void print_body_elements(ast_body* body, mdg_node* cmdg, ureg indent)
 {
     for (ast_node** n = body->elements; *n; n++) {
         print_indent(indent);
@@ -66,21 +66,21 @@ void print_open_scope_body(open_scope* osc, mdg_node* cmdg, ureg indent)
     p("{\n");
     indent++;
     print_requires(osc->requires, indent);
-    print_body_elements(&osc->scope.body, cmdg, indent);
+    print_body_elements(&osc->scp.body, cmdg, indent);
     indent--;
     print_indent(indent);
     p("}");
 }
-void print_body_braced(body* body, mdg_node* cmdg, ureg indent)
+void print_body_braced(ast_body* body, mdg_node* cmdg, ureg indent)
 {
     p("{\n");
     print_body_elements(body, cmdg, indent + 1);
     print_indent(indent);
     p("}");
 }
-void print_body(body* body, mdg_node* cmdg, ureg indent)
+void print_body(ast_body* body, mdg_node* cmdg, ureg indent)
 {
-    if (!body_is_braced(body) && body->elements[0] && !body->elements[1]) {
+    if (!ast_body_is_braced(body) && body->elements[0] && !body->elements[1]) {
         print_ast_node(body->elements[0], cmdg, indent);
     }
     else {
@@ -88,7 +88,7 @@ void print_body(body* body, mdg_node* cmdg, ureg indent)
     }
 }
 void print_namable_braced_body(
-    body* body, char* name, mdg_node* cmdg, ureg indent)
+    ast_body* body, char* name, mdg_node* cmdg, ureg indent)
 {
     if (name) {
         p(name);
@@ -185,7 +185,7 @@ void print_ast_elem_name(ast_elem* n)
         pu(((symbol*)n)->name);
     }
     else if (n->kind == PRIMITIVE) {
-        pu(PRIMITIVES[((ast_node*)n)->primitive_kind].name);
+        pu(PRIMITIVES[((ast_node*)n)->pt_kind].name);
     }
     else {
         pu("<unknown node>");
@@ -330,7 +330,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case SC_FUNC: {
             sc_func* f = (sc_func*)n;
             p("func ");
-            pu(f->scope.sym.name);
+            pu(f->scp.sym.name);
             p("(");
             print_sym_params(f->params, f->param_count, cmdg, indent);
             pc(')');
@@ -339,12 +339,12 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
                 print_ast_node(f->return_type, cmdg, indent + 1);
                 pc(' ');
             }
-            print_body_braced(&f->scope.body, cmdg, indent);
+            print_body_braced(&f->scp.body, cmdg, indent);
         } break;
         case SC_FUNC_GENERIC: {
             sc_func_generic* f = (sc_func_generic*)n;
             p("func ");
-            pu(f->scope.sym.name);
+            pu(f->scp.sym.name);
             p("[");
             print_sym_params(
                 f->generic_params, f->generic_param_count, cmdg, indent);
@@ -357,50 +357,50 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
                 print_ast_node(f->return_type, cmdg, indent + 1);
                 pc(' ');
             }
-            print_body_braced(&f->scope.body, cmdg, indent);
+            print_body_braced(&f->scp.body, cmdg, indent);
         } break;
         case SC_STRUCT: {
             sc_struct* s = (sc_struct*)n;
             p("struct ");
-            pinn(s->scope.sym.name);
-            print_body_braced(&s->scope.body, cmdg, indent);
+            pinn(s->scp.sym.name);
+            print_body_braced(&s->scp.body, cmdg, indent);
         } break;
         case SC_STRUCT_GENERIC: {
             sc_struct_generic* s = (sc_struct_generic*)n;
             p("struct ");
-            pinn(s->scope.sym.name);
+            pinn(s->scp.sym.name);
             p("[");
             print_sym_params(
                 s->generic_params, s->generic_param_count, cmdg, indent);
             pc(']');
-            print_body_braced(&s->scope.body, cmdg, indent);
+            print_body_braced(&s->scp.body, cmdg, indent);
         } break;
         case SC_TRAIT: {
             sc_trait* t = (sc_trait*)n;
             p("trait ");
-            pinn(t->scope.sym.name);
-            print_body_braced(&t->scope.body, cmdg, indent);
+            pinn(t->scp.sym.name);
+            print_body_braced(&t->scp.body, cmdg, indent);
         } break;
         case SC_TRAIT_GENERIC: {
             sc_trait_generic* t = (sc_trait_generic*)n;
             p("trait ");
-            pinn(t->scope.sym.name);
+            pinn(t->scp.sym.name);
             p("[");
             print_sym_params(
                 t->generic_params, t->generic_param_count, cmdg, indent);
             pc(']');
-            print_body_braced(&t->scope.body, cmdg, indent);
+            print_body_braced(&t->scp.body, cmdg, indent);
         } break;
         case OSC_MODULE: {
             osc_module* m = (osc_module*)n;
             p("module ");
-            pinn(m->oscope.scope.sym.name);
+            pinn(m->oscope.scp.sym.name);
             print_open_scope_body(&m->oscope, cmdg, indent);
         } break;
         case OSC_MODULE_GENERIC: {
             osc_module_generic* m = (osc_module_generic*)n;
             p("module ");
-            pinn(m->oscope.scope.sym.name);
+            pinn(m->oscope.scp.sym.name);
             p("[");
             print_sym_params(
                 m->generic_params, m->generic_param_count, cmdg, indent);
@@ -410,13 +410,13 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case OSC_EXTEND: {
             osc_extend* e = (osc_extend*)n;
             p("extend ");
-            pinn(e->oscope.scope.sym.name);
+            pinn(e->oscope.scp.sym.name);
             print_open_scope_body(&e->oscope, cmdg, indent);
         } break;
         case OSC_EXTEND_GENERIC: {
             osc_extend_generic* e = (osc_extend_generic*)n;
             p("extend ");
-            pinn(e->oscope.scope.sym.name);
+            pinn(e->oscope.scp.sym.name);
             p("[");
             print_sym_params(
                 e->generic_params, e->generic_param_count, cmdg, indent);
@@ -444,7 +444,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case EXPR_IDENTIFIER: {
             expr_identifier* i = (expr_identifier*)n;
             if (ast_node_flags_get_resolved(n->flags)) {
-                print_ast_elem_name((ast_elem*)i->value.symbol);
+                print_ast_elem_name((ast_elem*)i->value.sym);
             }
             else {
                 pu(i->value.str);
@@ -452,7 +452,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case EXPR_LITERAL: {
             expr_literal* l = (expr_literal*)n;
-            switch (n->primitive_kind) {
+            switch (n->pt_kind) {
                 case PT_BINARY_STRING:
                     pc('\'');
                     pu(l->value.str);
@@ -505,19 +505,19 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             expr_op_binary* b = (expr_op_binary*)n;
             print_ast_node(b->lhs, cmdg, indent);
             pc(' ');
-            p(op_to_str(b->node.operator_kind));
+            p(op_to_str(b->node.op_kind));
             pc(' ');
             print_ast_node(b->rhs, cmdg, indent);
             break;
         }
         case EXPR_OP_UNARY: {
             expr_op_unary* u = (expr_op_unary*)n;
-            if (is_unary_op_postfix(u->node.operator_kind)) {
+            if (is_unary_op_postfix(u->node.op_kind)) {
                 print_ast_node(u->child, cmdg, indent);
-                p(op_to_str(u->node.operator_kind));
+                p(op_to_str(u->node.op_kind));
             }
             else {
-                p(op_to_str(u->node.operator_kind));
+                p(op_to_str(u->node.op_kind));
                 print_ast_node(u->child, cmdg, indent);
             }
             break;
@@ -645,7 +645,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
                 pu(esa->target.name);
             }
             else {
-                pu(esa->target.symbol->name);
+                pu(esa->target.sym->name);
             }
         } break;
         default: {
@@ -670,7 +670,7 @@ void print_mdg_node(mdg_node* mdg, ureg indent)
     aseglist_iterator_begin(&it, &mdg->open_scopes);
     for (open_scope* osc = aseglist_iterator_next(&it); osc != NULL;
          osc = aseglist_iterator_next(&it)) {
-        print_body_elements(&osc->scope.body, mdg, indent + 1);
+        print_body_elements(&osc->scp.body, mdg, indent + 1);
     }
     print_indent(indent);
     p("}");

@@ -10,16 +10,16 @@
 #include "llvm_backend_api.h"
 
 typedef struct thread_context_s {
-    error_log error_log;
+    error_log err_log;
     pool permmem;
     pool tempmem;
     list_builder listb;
     list_builder listb2;
-    parser parser;
-    resolver resolver;
+    parser p;
+    resolver r;
     scc_detector sccd;
-    stack stack;
-    llvm_backend* llvm_backend;
+    stack tempstack;
+    llvm_backend* llvmb;
 } thread_context;
 
 int thread_context_init(thread_context* tc);
