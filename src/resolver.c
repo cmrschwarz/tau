@@ -569,6 +569,7 @@ resolve_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
     else {
         assert(false); // TODO
     }
+    return RE_OK;
 }
 resolve_error choose_binary_operator_overload(
     resolver* r, expr_op_binary* ob, symbol_table* st, ast_elem** ctype)
@@ -689,6 +690,7 @@ resolve_error resolve_import_parent(
         next = next->next;
         if (*s->name != '\0') {
             symbol** res = symbol_table_insert(pst, s);
+            // we checked for collisions during insert into the linked list
             assert(!res);
         }
         else {

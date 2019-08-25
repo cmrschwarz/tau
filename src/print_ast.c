@@ -176,7 +176,7 @@ char* get_expr_name(ast_node* n)
         case EXPR_BLOCK: return ((expr_block*)n)->name;
         case EXPR_MACRO: return ((expr_macro*)n)->name;
         case EXPR_MATCH: return ((expr_match*)n)->name;
-        default: assert(false);
+        default: assert(false); return NULL;
     }
 }
 void print_ast_elem_name(ast_elem* n)
