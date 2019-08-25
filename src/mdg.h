@@ -1,6 +1,9 @@
-#pragma once
 #include "ast.h"
 #include "mdght.h"
+
+#ifndef TAUC_MDG_H
+#define TAUC_MDG_H
+
 #include "symbol_table.h"
 #include "utils/aseglist.h"
 #include "utils/atomic_pool.h"
@@ -8,10 +11,10 @@
 #include "utils/rwslock.h"
 #include "utils/threading.h"
 // mdg: module dependency graph
-typedef struct mdg_deps_list mdg_deps_list;
-typedef struct mdg_node mdg_node;
+typedef struct mdg_deps_list_s mdg_deps_list;
+typedef struct thread_context_s thread_context;
 
-typedef enum module_stage {
+typedef enum module_stage_e {
     MS_UNNEEDED, // partially parsed, but unneded
     MS_AWAITING_NEED, // fully parsed, but unneded
     MS_NOT_FOUND, // required but not found in src
@@ -26,24 +29,11 @@ static inline bool module_stage_needed(module_stage ms)
 {
     return ms != MS_UNNEEDED && ms != MS_AWAITING_NEED;
 }
-typedef struct mdg_new_node {
-    ureg pos;
-    mdg_node* node;
-} mdg_new_node;
 
-#define MDG_DEPS_LIST_CAPACITY                                                 \
-    ((sizeof(mdg_new_node) - sizeof(mdg_deps_list*)) / sizeof(mdg_node*))
-
-typedef struct mdg_deps_list {
-    struct mdg_deps_list* next;
-    atomic_ureg count;
-    mdg_node* deps[MDG_DEPS_LIST_CAPACITY];
-} mdg_deps_list;
-
-typedef struct mdg_node {
+typedef struct mdg_node_s {
     // TODO: make this an ast node/element for the symtab owning node to work
     ast_elem elem;
-    mdg_node* parent;
+    struct mdg_node_s* parent;
     char* name;
     atomic_ureg unparsed_files;
     aseglist dependencies;
@@ -57,9 +47,23 @@ typedef struct mdg_node {
     module_stage stage;
 } mdg_node;
 
+typedef struct mdg_new_node_s {
+    ureg pos;
+    mdg_node* node;
+} mdg_new_node;
+
+#define MDG_DEPS_LIST_CAPACITY                                                 \
+    ((sizeof(mdg_new_node) - sizeof(mdg_deps_list*)) / sizeof(mdg_node*))
+
+typedef struct mdg_deps_list_s {
+    mdg_deps_list* next;
+    atomic_ureg count;
+    mdg_node* deps[MDG_DEPS_LIST_CAPACITY];
+} mdg_deps_list;
+
 #define MDG_MAX_CHANGES 16
 #define MDG_MAX_CHANGES_PER_WRITE 2
-typedef struct mdg {
+typedef struct mdg_s {
     evmap2 evm;
     pool node_pool;
     pool ident_pool;
@@ -84,12 +88,12 @@ mdg_node*
 mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident);
 mdg_node* mdg_get_node(mdg* m, mdg_node* parent, string ident);
 
-typedef struct sccd_node {
+typedef struct sccd_node_s {
     ureg index;
     ureg lowlink;
 } sccd_node;
 
-typedef struct scc_detector {
+typedef struct scc_detector_s {
     ureg allocated_node_count;
     ureg dfs_index;
     ureg dfs_start_index;
@@ -110,3 +114,5 @@ int scc_detector_run(thread_context* tc, mdg_node* n);
 void scc_detector_fin(scc_detector* d);
 
 int mdg_final_sanity_check(mdg* m, thread_context* tc);
+
+#endif

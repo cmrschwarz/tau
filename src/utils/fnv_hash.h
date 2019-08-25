@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TAUC_UTILS_FNV_HASH_H
+#define TAUC_UTILS_FNV_HASH_H
+
 #include "types.h"
 // the FNV-1a hash algorithm
 
@@ -49,3 +51,5 @@ static inline ureg fnv_fold(ureg hash, ureg bitcount, ureg bitmask)
     // www.isthe.com/chongo/tech/comp/fnv/index.html
     return ((hash >> bitcount) ^ hash) & bitmask;
 }
+
+#endif

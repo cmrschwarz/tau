@@ -1,12 +1,16 @@
-#pragma once
+#ifndef TAUC_SYMBOL_TABLE_H
+#define TAUC_SYMBOL_TABLE_H
+
 #include "ast_node_flags.h"
 #include "utils/string.h"
-typedef struct symbol symbol;
-typedef struct stmt stmt;
-typedef struct symbol_table symbol_table;
-typedef struct ast_elem ast_elem;
-typedef struct ast_node ast_node;
-typedef struct symbol_table {
+typedef struct symbol_s symbol;
+typedef struct stmt_s stmt;
+typedef struct symbol_table_s symbol_table;
+typedef struct ast_elem_s ast_elem;
+typedef struct ast_node_s ast_node;
+typedef struct src_file_s src_file;
+
+typedef struct symbol_table_s {
     symbol_table* pp_symtab;
     ast_elem* owning_node;
     symbol_table* parent;
@@ -25,7 +29,7 @@ int symbol_table_init(
 void symbol_table_fin(symbol_table* st);
 
 void symbol_table_insert_using(
-    symbol_table* st, access_modifier am, ast_node* using, symbol_table* ust);
+    symbol_table* st, access_modifier am, ast_node* use, symbol_table* ust);
 
 // if a symbol of that name already exists returns pointer to that entry
 // otherwise inserts and returns NULL
@@ -42,7 +46,6 @@ symbol_table_lookup(symbol_table* st, access_modifier am, const char* s);
 symbol** symbol_table_lookup_with_decl(
     symbol_table* st, access_modifier am, const char* s,
     symbol_table** decl_st);
-typedef struct src_file src_file;
 
 // might return NULL, for example for mdg_node symbol tables
 src_file* symbol_table_get_file(symbol_table* st);
@@ -60,3 +63,5 @@ typedef struct symtab_it {
 void symtab_it_begin(symtab_it* stit, symbol_table* st);
 symtab_it symtab_it_make(symbol_table* st);
 symbol* symtab_it_next(symtab_it* stit);
+
+#endif

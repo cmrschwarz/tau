@@ -1,20 +1,22 @@
-#pragma once
+#ifndef TAUC_UTILS_STACK_H
+#define TAUC_UTILS_STACK_H
+
 #include "allocator.h"
 
-typedef struct stack_segment {
-    struct stack_segment* prev;
-    struct stack_segment* next;
+typedef struct stack_segment_s {
+    struct stack_segment_s* prev;
+    struct stack_segment_s* next;
     void** end;
 } stack_segment;
 
-typedef struct stack {
+typedef struct stack_s {
     stack_segment* curr_seg;
     void** curr_seg_start;
     void** head;
     pool* pool;
 } stack;
 
-typedef struct stack_state {
+typedef struct stack_state_s {
     stack_segment* curr_seg;
     void** head;
 } stack_state;
@@ -135,3 +137,5 @@ stack_pop_to_list(stack* s, stack_state* start, stack_state* end, void** tgt)
         tgt++;
     }
 }
+
+#endif

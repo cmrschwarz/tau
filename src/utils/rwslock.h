@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TAUC_UTILS_RWSLOCK_H
+#define TAUC_UTILS_RWSLOCK_H
+
 #include "threading.h"
 typedef atomic_sreg rwslock;
 
@@ -41,3 +43,4 @@ static inline void rwslock_end_write(rwslock* l)
 {
     atomic_sreg_add(l, SREG_MAX);
 }
+#endif

@@ -100,7 +100,7 @@ void print_sym_params(
     sym_param* params, ureg param_count, mdg_node* cmdg, ureg indent)
 {
     for (ureg i = 0; i < param_count; i++) {
-        pu(params[i].symbol.name);
+        pu(params[i].sym.name);
         pc(':');
         if (params[i].type != NULL) {
             pc(' ');
@@ -129,8 +129,8 @@ void print_compound_decl_list(
     for (ureg i = 0; i < elem_count; i++) {
         if ((**el).kind == SYM_VAR) {
             sym_var* v = (sym_var*)*el;
-            if (ast_node_flags_get_const(v->symbol.node.flags)) p("const ");
-            pu(v->symbol.name);
+            if (ast_node_flags_get_const(v->sym.node.flags)) p("const ");
+            pu(v->sym.name);
             if (v->type != NULL) {
                 p(": ");
                 print_ast_node(v->type, cmdg, indent);
@@ -195,10 +195,10 @@ void print_import_group(
     sym_import_group* g, mdg_node* block_parent, ureg indent)
 {
     // TODO: improve this mess
-    if (print_mdg_node_until(g->parent.mdg_node, block_parent)) p("::");
+    if (print_mdg_node_until(g->parent.mdgn, block_parent)) p("::");
     symbol** c;
     symbol** cend;
-    if (ast_node_flags_get_resolved(g->symbol.node.flags)) {
+    if (ast_node_flags_get_resolved(g->sym.node.flags)) {
         c = (symbol**)(g->children.symtab + 1);
         cend = c + g->children.symtab->decl_count;
         while (c != cend && !*c) c++; // skip initial blanks
@@ -219,11 +219,11 @@ void print_import_group(
         if (!syms) print_indent(indent + 1);
         if ((**c).node.kind == SYM_IMPORT_GROUP) {
             print_import_group(
-                (sym_import_group*)*c, g->parent.mdg_node, indent + 1);
+                (sym_import_group*)*c, g->parent.mdgn, indent + 1);
         }
         else if ((**c).node.kind == SYM_IMPORT_MODULE) {
             print_mdg_node_until(
-                ((sym_import_module*)*c)->target, g->parent.mdg_node);
+                ((sym_import_module*)*c)->target, g->parent.mdgn);
         }
         else if ((**c).node.kind == SYM_IMPORT_SYMBOL) {
             // TODO: remove if aboce by fixing unnamed group containing parent
@@ -231,8 +231,8 @@ void print_import_group(
             assert((**c).node.kind == SYM_IMPORT_SYMBOL);
             sym_import_symbol* sym = (sym_import_symbol*)*c;
             // equals is fine here since we alloc only once
-            if (sym->symbol.name != sym->target.name) {
-                p(sym->symbol.name);
+            if (sym->sym.name != sym->target.name) {
+                p(sym->sym.name);
                 p(" = ");
             }
             p(sym->target.name);
@@ -330,7 +330,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case SC_FUNC: {
             sc_func* f = (sc_func*)n;
             p("func ");
-            pu(f->scope.symbol.name);
+            pu(f->scope.sym.name);
             p("(");
             print_sym_params(f->params, f->param_count, cmdg, indent);
             pc(')');
@@ -344,7 +344,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case SC_FUNC_GENERIC: {
             sc_func_generic* f = (sc_func_generic*)n;
             p("func ");
-            pu(f->scope.symbol.name);
+            pu(f->scope.sym.name);
             p("[");
             print_sym_params(
                 f->generic_params, f->generic_param_count, cmdg, indent);
@@ -362,13 +362,13 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case SC_STRUCT: {
             sc_struct* s = (sc_struct*)n;
             p("struct ");
-            pinn(s->scope.symbol.name);
+            pinn(s->scope.sym.name);
             print_body_braced(&s->scope.body, cmdg, indent);
         } break;
         case SC_STRUCT_GENERIC: {
             sc_struct_generic* s = (sc_struct_generic*)n;
             p("struct ");
-            pinn(s->scope.symbol.name);
+            pinn(s->scope.sym.name);
             p("[");
             print_sym_params(
                 s->generic_params, s->generic_param_count, cmdg, indent);
@@ -378,13 +378,13 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case SC_TRAIT: {
             sc_trait* t = (sc_trait*)n;
             p("trait ");
-            pinn(t->scope.symbol.name);
+            pinn(t->scope.sym.name);
             print_body_braced(&t->scope.body, cmdg, indent);
         } break;
         case SC_TRAIT_GENERIC: {
             sc_trait_generic* t = (sc_trait_generic*)n;
             p("trait ");
-            pinn(t->scope.symbol.name);
+            pinn(t->scope.sym.name);
             p("[");
             print_sym_params(
                 t->generic_params, t->generic_param_count, cmdg, indent);
@@ -394,13 +394,13 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case OSC_MODULE: {
             osc_module* m = (osc_module*)n;
             p("module ");
-            pinn(m->oscope.scope.symbol.name);
+            pinn(m->oscope.scope.sym.name);
             print_open_scope_body(&m->oscope, cmdg, indent);
         } break;
         case OSC_MODULE_GENERIC: {
             osc_module_generic* m = (osc_module_generic*)n;
             p("module ");
-            pinn(m->oscope.scope.symbol.name);
+            pinn(m->oscope.scope.sym.name);
             p("[");
             print_sym_params(
                 m->generic_params, m->generic_param_count, cmdg, indent);
@@ -410,13 +410,13 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case OSC_EXTEND: {
             osc_extend* e = (osc_extend*)n;
             p("extend ");
-            pinn(e->oscope.scope.symbol.name);
+            pinn(e->oscope.scope.sym.name);
             print_open_scope_body(&e->oscope, cmdg, indent);
         } break;
         case OSC_EXTEND_GENERIC: {
             osc_extend_generic* e = (osc_extend_generic*)n;
             p("extend ");
-            pinn(e->oscope.scope.symbol.name);
+            pinn(e->oscope.scope.sym.name);
             p("[");
             print_sym_params(
                 e->generic_params, e->generic_param_count, cmdg, indent);
@@ -429,9 +429,9 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_NAMED_USING: {
             sym_named_using* nu = (sym_named_using*)n;
-            print_ast_node_modifiers(nu->symbol.node.flags);
+            print_ast_node_modifiers(nu->sym.node.flags);
             p("using ");
-            p(nu->symbol.name);
+            p(nu->sym.name);
             p(" = ");
             print_ast_node(nu->target, cmdg, indent);
         } break;
@@ -477,8 +477,8 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_VAR: {
             sym_var* v = (sym_var*)n;
-            print_ast_node_modifiers(v->symbol.node.flags);
-            pu(v->symbol.name);
+            print_ast_node_modifiers(v->sym.node.flags);
+            pu(v->sym.name);
             if (v->type != NULL) {
                 p(": ");
                 print_ast_node(v->type, cmdg, indent);
@@ -486,8 +486,8 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_VAR_INITIALIZED: {
             sym_var_initialized* v = (sym_var_initialized*)n;
-            print_ast_node_modifiers(v->var.symbol.node.flags);
-            pu(v->var.symbol.name);
+            print_ast_node_modifiers(v->var.sym.node.flags);
+            pu(v->var.sym.name);
             if (v->var.type != NULL) {
                 p(": ");
                 print_ast_node(v->var.type, cmdg, indent);

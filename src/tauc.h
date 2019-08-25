@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TAUC_TAUC_H
+#define TAUC_TAUC_H
 #include "file_map.h"
 #include "job_queue.h"
 #include "thread_context.h"
@@ -36,3 +37,4 @@ int tauc_request_resolve_single(mdg_node* node);
 int tauc_request_resolve_multiple(mdg_node** start, mdg_node** end);
 int tauc_request_end();
 void tauc_fin();
+#endif

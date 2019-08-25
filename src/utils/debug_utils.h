@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TAUC_UTILS_DEBUG_UTILS_H
+#define TAUC_UTILS_DEBUG_UTILS_H
+
 #include "timing.h"
 #include <stdio.h>
 
@@ -27,7 +29,10 @@ void pretty_print_timespan(timespan* ts)
         puts("INITIATE TIMING " name);                                         \
         timer ____timer_reserved_name_for_bench_macro;                         \
         timer_init(&____timer_reserved_name_for_bench_macro);                  \
-        {code} timer_stop(&____timer_reserved_name_for_bench_macro);           \
+        {                                                                      \
+            code                                                               \
+        }                                                                      \
+        timer_stop(&____timer_reserved_name_for_bench_macro);                  \
         fputs("FINISHED TIMING " name ", ", stdout);                           \
         timespan ____timespan_reserved_name_for_bench_macro;                   \
         timer_get_elapsed(                                                     \
@@ -36,3 +41,5 @@ void pretty_print_timespan(timespan* ts)
         pretty_print_timespan(&____timespan_reserved_name_for_bench_macro);    \
         puts(" elapsed");                                                      \
     } while (false)
+
+#endif

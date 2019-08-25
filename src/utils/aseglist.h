@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TAUC_UTILS_ASEGLIST_H
+#define TAUC_UTILS_ASEGLIST_H
+
 #include "atomic_pool.h"
 #include "error_log.h"
 #include "math_utils.h"
@@ -6,8 +8,8 @@
 
 typedef atomic_ptr aseglist;
 
-typedef struct aseglist_node {
-    struct aseglist_node* prev;
+typedef struct aseglist_node_s {
+    struct aseglist_node_s* prev;
     atomic_sreg space;
 } aseglist_node;
 
@@ -17,7 +19,7 @@ typedef struct aseglist_node {
 // must be larger  than ASEGLIST_ELEM_OFFSET
 #define ASEGLIST_INITIAL_SIZE (8 * sizeof(void*))
 
-typedef struct aseglist_iterator {
+typedef struct aseglist_iterator_s {
     void** pos;
     void** end;
     aseglist_node* node;
@@ -127,3 +129,5 @@ static inline int aseglist_add(aseglist* l, void* data)
         }
     }
 }
+
+#endif

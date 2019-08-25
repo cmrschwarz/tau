@@ -1,13 +1,14 @@
-#pragma once
+#ifndef TAUC_UTILS_LIST_BUILDER_H
+#define TAUC_UTILS_LIST_BUILDER_H
 #include "pool.h"
 
-typedef struct list_build_segment {
-    struct list_build_segment* next;
-    struct list_build_segment* prev;
+typedef struct list_build_segment_s {
+    struct list_build_segment_s* next;
+    struct list_build_segment_s* prev;
     void* end;
 } list_build_segment;
 
-typedef struct list_builder {
+typedef struct list_builder_s {
     pool* memsrc;
     list_build_segment* head_segment;
     void* head;
@@ -38,3 +39,5 @@ void* list_builder_pop_block_list_zt(
     list_builder* b, void* list_start, pool* tgtmem);
 
 void list_builder_drop_list(list_builder* b, void* list_start);
+
+#endif

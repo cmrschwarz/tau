@@ -61,7 +61,7 @@ int symbol_table_init(
 }
 
 void symbol_table_insert_using(
-    symbol_table* st, access_modifier am, ast_node* u, symbol_table* ust)
+    symbol_table* st, access_modifier am, ast_node* use, symbol_table* ust)
 {
     // reverse the am so it goes from public to unspecified upwars in memory
     am = AM_ENUM_ELEMENT_COUNT - am;
@@ -74,7 +74,7 @@ void symbol_table_insert_using(
         stwu->using_ends[i]++;
     }
     *stwu->using_ends[am] = ust;
-    *(ast_node**)ptrsub(stwu->using_ends[am], usings_size) = u;
+    *(ast_node**)ptrsub(stwu->using_ends[am], usings_size) = use;
     stwu->using_ends[am]++;
 }
 

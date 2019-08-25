@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TAUC_ERROR_LOG_H
+#define TAUC_ERROR_LOG_H
+
 #include "src_map.h"
 #include "utils/allocator.h"
 #include "utils/c_extensions.h"
@@ -6,8 +8,10 @@
 #include "utils/pool.h"
 #include "utils/threading.h"
 
+typedef struct src_file_s src_file;
+
 #define TAUC_MAX_GLOBAL_ERRORS 16
-typedef enum PACK_ENUM error_stage {
+typedef enum PACK_ENUM error_stage_e {
     ES_TOKENIZER,
     ES_PARSER,
     ES_RESOLVER,
@@ -15,15 +19,15 @@ typedef enum PACK_ENUM error_stage {
     //...
 } error_stage;
 
-typedef enum error_kind {
+typedef enum error_kind_e {
     ET_ERROR,
     ET_BUG,
     ET_1_ANNOT,
     ET_MULTI_ANNOT,
 } error_kind;
 
-typedef struct error {
-    struct error* previous;
+typedef struct error_s {
+    struct error_s* previous;
     bool warn;
     error_stage stage;
     error_kind kind;
@@ -32,35 +36,35 @@ typedef struct error {
     const char* message;
 } error;
 
-typedef struct error_annotated {
+typedef struct error_annotated_s {
     error error;
     ureg end;
     const char* annotation;
 } error_annotated;
 
-typedef struct error_multi_annotated {
+typedef struct error_multi_annotated_s {
     error_annotated err_annot;
     ureg annot_count;
 } error_multi_annotated;
 
-typedef struct error_annotation {
+typedef struct error_annotation_s {
     ureg start;
     ureg end;
     const char* annotation;
     src_file* file;
 } error_annotation;
 
-typedef struct master_error_log master_error_log;
+typedef struct master_error_log_s master_error_log;
 
-typedef struct error_log {
-    struct error_log* next;
+typedef struct error_log_s {
+    struct error_log_s* next;
     error* errors;
     error* critical_failiure_point;
     const char* critical_failiure_msg;
     pool* error_mem_pool;
 } error_log;
 
-typedef struct master_error_log {
+typedef struct master_error_log_s {
     error_log* error_logs;
     char* global_errors[TAUC_MAX_GLOBAL_ERRORS];
     ureg global_error_count;
@@ -108,3 +112,5 @@ void error_log_report(error_log* el, error* e);
 void error_log_report_allocation_failiure(error_log* el);
 void error_log_report_synchronization_failiure(error_log* el);
 void error_log_report_critical_failiure(error_log* el, const char* msg);
+
+#endif

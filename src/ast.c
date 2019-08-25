@@ -22,7 +22,7 @@ ureg PRIMITIVE_COUNT = sizeof(PRIMITIVES) / sizeof(symbol);
 
 src_file* open_scope_get_file(open_scope* s)
 {
-    return src_range_get_file(s->scope.symbol.node.srange);
+    return src_range_get_file(s->scope.sym.node.srange);
 }
 src_file* ast_node_get_file(ast_node* n, symbol_table* st)
 {

@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TAUC_UTILS_PLATTFORM_H
+#define TAUC_UTILS_PLATTFORM_H
+
 #include "types.h"
 
 #define OS_POSIX 1
@@ -6,7 +8,7 @@
 #define OS_OSX 0
 #define OS_WINDOWS 0
 
-#define USE_LIBC 0
+#define USE_LIBC 1
 
 #define ARCH_X86 1
 #define ARCH_ARM 0
@@ -23,4 +25,6 @@ ureg plattform_get_virt_core_count();
 #define DEBUG 0
 #else
 #define DEBUG 1
+#endif
+
 #endif

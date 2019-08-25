@@ -1,42 +1,44 @@
-#pragma once
+#ifndef TAUC_JOB_QUEUE_H
+#define TAUC_JOB_QUEUE_H
+
 #include "file_map.h"
 #include "mdg.h"
 #include "utils/c_extensions.h"
 #include "utils/error.h"
 #include "utils/threading.h"
 
-typedef enum PACK_ENUM job_kind {
+typedef enum PACK_ENUM job_kind_s {
     JOB_PARSE,
     JOB_RESOLVE_SINGLE,
     JOB_RESOLVE_MULTIPLE,
     JOB_FINALIZE,
 } job_kind;
 
-typedef struct job_parse {
+typedef struct job_parse_s {
     src_file* file;
     src_file* requiring_file;
     src_range requiring_srange;
 } job_parse;
 
-typedef struct job_resolve_single {
+typedef struct job_resolve_single_s {
     mdg_node* node;
 } job_resolve_single;
 
-typedef struct job_resolve_multiple {
+typedef struct job_resolve_multiple_s {
     mdg_node** start;
     mdg_node** end;
 } job_resolve_multiple;
 
-typedef struct job {
+typedef struct job_s {
     job_kind kind;
-    union concrete {
+    union {
         job_parse parse;
         job_resolve_single resolve_single;
         job_resolve_multiple resolve_multiple;
     } concrete;
 } job;
 
-typedef struct job_queue {
+typedef struct job_queue_s {
     job* buffer;
     job* buffer_end;
     job* head;
@@ -58,3 +60,4 @@ int job_queue_pop(job_queue* jq, job* j);
 int job_queue_try_pop(job_queue* jq, job* j);
 
 void job_queue_stop(job_queue* jq);
+#endif

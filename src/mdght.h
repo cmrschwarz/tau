@@ -1,10 +1,14 @@
-#pragma once
+#ifndef TAUC_MDGHT_H
+#define TAUC_MDGHT_H
+
 #include "ast.h"
 #include "utils/allocator.h"
 #include "utils/string.h"
 #include "utils/types.h"
 
-typedef struct mdg_node mdg_node;
+#ifndef TAUC_MDG_H
+typedef struct mdg_node_s mdg_node;
+#endif
 
 // mdght: mdg hash table
 // TODO: use closed hashing to improve get performance on nonexisting entries
@@ -52,3 +56,4 @@ mdg_node* mdght_remove_node(mdght* h, mdg_node* n);
 mdg_node* mdght_remove_node_ph(mdght* h, ureg phash, mdg_node* n);
 
 int mdght_grow(mdght* h);
+#endif

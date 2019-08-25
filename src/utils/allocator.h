@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TAUC_UTILS_ALLOCATOR_H
+#define TAUC_UTILS_ALLOCATOR_H
+
 #include "threading.h"
 #include "types.h"
 
@@ -12,4 +14,6 @@ void tfree(void* mem);
 
 #if OS_LINUX
 #define USE_LIBC_ALLOCATOR
+#endif
+
 #endif

@@ -1,22 +1,24 @@
-#pragma once
+#ifndef TAUC_UTILS_SBUFFER_H
+#define TAUC_UTILS_SBUFFER_H
+
 #include "allocator.h"
 #include "math_utils.h"
 #include "types.h"
 
-typedef struct sbuffer_segment {
+typedef struct sbuffer_segment_s {
     u8* start; // needed for efficient removal
     u8* head;
     u8* end;
-    struct sbuffer_segment* next;
-    struct sbuffer_segment* prev;
+    struct sbuffer_segment_s* next;
+    struct sbuffer_segment_s* prev;
 } sbuffer_segment;
 
-typedef struct sbuffer {
+typedef struct sbuffer_s {
     sbuffer_segment* first;
     sbuffer_segment* last;
 } sbuffer;
 
-typedef struct sbi {
+typedef struct sbi_s {
     sbuffer_segment* seg;
     u8* pos;
 } sbi;
@@ -72,3 +74,5 @@ static inline void* sbi_previous(sbi* sbi, ureg size)
         sbi->pos = sbi->seg->head;
     }
 }
+
+#endif

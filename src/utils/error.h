@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TAUC_UTILS_ERROR_H
+#define TAUC_UTILS_ERROR_H
+
 #define ERR -1
 #define OK 0 // zero to allow error handling like if(res){errorhandling}
 // general purpose status return codes guaranteed not to conflict with OK and
@@ -8,3 +10,5 @@
 #define STATUS_3 3
 #define STATUS_4 4
 #define STATUS_5 5
+
+#endif

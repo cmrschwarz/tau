@@ -1,11 +1,13 @@
-#pragma once
+#ifndef TAUC_UTILS_FREELIST_H
+#define TAUC_UTILS_FREELIST_H
+
 #include "pool.h"
 
-typedef struct freelist_node {
+typedef struct freelist_node_s {
     struct freelist_node* next;
 } freelist_node;
 
-typedef struct freelist {
+typedef struct freelist_s {
     freelist_node* free_nodes;
     ureg node_size;
     pool* p;
@@ -39,3 +41,4 @@ static inline void freelist_free(freelist* f, void* n)
 static inline void freelist_fin(freelist* p)
 {
 }
+#endif

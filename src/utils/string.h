@@ -1,11 +1,13 @@
-#pragma once
+#ifndef TAUC_UTILS_STRING_H
+#define TAUC_UTILS_STRING_H
+
 #include "stdio.h"
 #include "types.h"
 #include "utils/allocator.h"
 #include <stdio.h>
 #include <string.h>
 
-typedef struct {
+typedef struct string_s {
     char* start;
     char* end;
 } string;
@@ -151,3 +153,5 @@ static inline int get_utf8_seq_len_from_head(char c)
     }
     return r;
 }
+
+#endif

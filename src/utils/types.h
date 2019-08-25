@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TAUC_UTILS_TYPES_H
+#define TAUC_UTILS_TYPES_H
 
 #ifndef __cplusplus
 #include <float.h>
@@ -89,4 +90,6 @@ typedef f64 freg;
 #define REG_WIDTH_64 1
 #else
 #error "Environment not 32 or 64-bit."
+#endif
+
 #endif

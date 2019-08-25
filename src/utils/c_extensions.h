@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TAUC_UTILS_C_EXTENSIONS_H
+#define TAUC_UTILS_C_EXTENSIONS_H
+
 #include "plattform.h"
 
 #if CMPLR_GCC || CMPLR_CLANG
@@ -18,3 +20,5 @@
 #define STRINGIFY(s) #s
 #define CONCAT_RAW(a, b) a##b
 #define CONCAT(a, b) CONCAT_RAW(a, b)
+
+#endif

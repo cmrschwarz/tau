@@ -1,8 +1,10 @@
-#pragma once
+#ifndef TAUC_UTILS_DBUFFER_H
+#define TAUC_UTILS_DBUFFER_H
+
 #include "allocator.h"
 #include "types.h"
 
-typedef struct dbuffer {
+typedef struct dbuffer_s {
     u8* start;
     u8* end;
     u8* head;
@@ -51,3 +53,5 @@ int dbuffer_append(dbuffer* db, const void* data, ureg size);
     do {                                                                       \
         (*(typeof(val)*)dbuffer_claim_small(db, sizeof(val))) = (val);         \
     } while (0)
+
+#endif

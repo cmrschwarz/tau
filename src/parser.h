@@ -1,9 +1,13 @@
-#pragma once
+#ifndef TAUC_PARSER_H
+#define TAUC_PARSER_H
 #include "ast.h"
 #include "lexer.h"
 #include "utils/list_builder.h"
 
-typedef enum parse_error {
+typedef struct thread_context_s thread_context;
+typedef struct job_parse_s job_parse;
+
+typedef enum parse_error_e {
     PE_OK = 0,
     PE_EOEX,
     PE_NO_STMT,
@@ -12,14 +16,14 @@ typedef enum parse_error {
     PE_LX_ERROR,
 } parse_error;
 
-typedef struct parser {
+typedef struct parser_s {
     lexer lx;
     mdg_node* current_module;
     sbuffer body_stack; // sounds kinda morbid :)
 } parser;
 
 // pp scopes sit below the rt scope, node and body are repeated
-typedef struct body_parse_data {
+typedef struct body_parse_data_s {
     ast_node* node;
     body* body;
     ureg decl_count;
@@ -30,7 +34,7 @@ typedef struct body_parse_data {
 
 int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
-typedef struct job_parse job_parse;
 parse_error parser_parse_file(parser* p, job_parse* j);
 
 bool ast_node_may_drop_semicolon(ast_node* n);
+#endif

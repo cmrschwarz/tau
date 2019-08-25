@@ -147,7 +147,7 @@ resolve_error add_sym_import_module_decl(
                 }
                 else {
                     p = (sym_import_parent*)*tgt;
-                    im->symbol.name = "";
+                    im->sym.name = "";
                     c = p->children.symbols;
                     tgt = &p->children.symbols;
                     next = p->children.symbols;
@@ -160,17 +160,17 @@ resolve_error add_sym_import_module_decl(
         sym_import_parent* p =
             pool_alloc(&tc->permmem, sizeof(sym_import_parent));
         if (!p) return RE_FATAL;
-        p->symbol.node.kind = SYM_IMPORT_PARENT;
-        p->symbol.node.flags = AST_NODE_FLAGS_DEFAULT;
-        p->symbol.name = start->name;
-        p->symbol.next = next;
+        p->sym.node.kind = SYM_IMPORT_PARENT;
+        p->sym.node.flags = AST_NODE_FLAGS_DEFAULT;
+        p->sym.name = start->name;
+        p->sym.next = next;
         p->children.symbols = children;
         *tgt = (symbol*)p;
         *tgt_parent = p;
     }
     else {
         *tgt = (symbol*)im;
-        im->symbol.next = next;
+        im->sym.next = next;
     }
     return RE_OK;
 }
@@ -186,7 +186,7 @@ resolve_error add_import_group_decls(
         next = s->next;
         if (s->node.kind == SYM_IMPORT_GROUP) {
             sym_import_group* nig = (sym_import_group*)s;
-            if (!nig->symbol.name) {
+            if (!nig->sym.name) {
                 re = add_import_group_decls(tc, curr_mdg_node, f, nig, st);
                 if (re) return re;
                 continue;
@@ -254,11 +254,11 @@ static resolve_error add_ast_node_decls(
                     sfo = (sym_func_overloaded*)pool_alloc(
                         &r->tc->permmem, sizeof(sym_func_overloaded));
                     if (!sfo) return RE_FATAL;
-                    sfo->symbol.node.kind = SYM_FUNC_OVERLOADED;
-                    sfo->symbol.node.flags = AST_NODE_FLAGS_DEFAULT;
-                    sfo->symbol.node.srange = SRC_RANGE_INVALID;
-                    sfo->symbol.next = (**conflict).next;
-                    sfo->symbol.name = (**conflict).name;
+                    sfo->sym.node.kind = SYM_FUNC_OVERLOADED;
+                    sfo->sym.node.flags = AST_NODE_FLAGS_DEFAULT;
+                    sfo->sym.node.srange = SRC_RANGE_INVALID;
+                    sfo->sym.next = (**conflict).next;
+                    sfo->sym.name = (**conflict).name;
                     sfo->funcs = (sc_func*)*conflict;
                     (**conflict).next = sym;
                     sym->next = NULL;
@@ -279,7 +279,7 @@ static resolve_error add_ast_node_decls(
         }
         case SYM_IMPORT_GROUP: {
             sym_import_group* ig = (sym_import_group*)n;
-            if (ig->symbol.name) {
+            if (ig->sym.name) {
                 return add_symbol(r, st, sst, (symbol*)ig);
             }
             else {
@@ -478,7 +478,7 @@ resolve_error operator_func_applicable(
         *applicable = false;
         return RE_OK;
     }
-    if (!ast_node_flags_get_resolved(f->scope.symbol.node.flags)) {
+    if (!ast_node_flags_get_resolved(f->scope.sym.node.flags)) {
         resolve_error re = resolve_ast_node(r, (ast_node*)f, op_st, NULL);
         if (re) return re;
     }
@@ -500,7 +500,7 @@ resolve_error func_applicable(
 {
     // works cause varags are not in the lang yet
     if (func->param_count != arg_count) return false;
-    if (!ast_node_flags_get_resolved(func->scope.symbol.node.flags)) {
+    if (!ast_node_flags_get_resolved(func->scope.sym.node.flags)) {
         resolve_error re = resolve_ast_node(r, (ast_node*)func, fn_st, NULL);
         if (re) return re;
     }
@@ -541,7 +541,7 @@ resolve_error resolve_func_call(
                     r, fn_st, call_arg_types, c->arg_count, f, &applicable,
                     ctype);
                 if (re || applicable) break;
-                f = (sc_func*)f->scope.symbol.next;
+                f = (sc_func*)f->scope.sym.next;
             }
         }
         else if ((**s).node.kind == SC_FUNC) {
@@ -601,7 +601,7 @@ resolve_error choose_binary_operator_overload(
                     r, op_st, lhs_ctype, rhs_ctype, f, &applicable, ctype);
                 if (re) return re;
                 if (applicable) return RE_OK;
-                f = (sc_func*)f->scope.symbol.next;
+                f = (sc_func*)f->scope.sym.next;
             }
         }
         else if ((**s).node.kind == SC_FUNC) {
@@ -700,7 +700,7 @@ resolve_error resolve_import_parent(
         }
     } while (next);
     ip->children.symtab = pst;
-    ast_node_flags_set_resolved(&ip->symbol.node.flags);
+    ast_node_flags_set_resolved(&ip->sym.node.flags);
     return RE_OK;
 }
 resolve_error resolve_expr_scope_access(
@@ -1107,7 +1107,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
     }
     re = resolve_ast_node(r, fn->return_type, parent_st, &fn->return_ctype);
     if (re) return re;
-    ast_node_flags_set_resolved(&fn->scope.symbol.node.flags);
+    ast_node_flags_set_resolved(&fn->scope.sym.node.flags);
     for (ast_node** n = b->elements; *n != NULL; n++) {
         re = add_ast_node_decls(r, st, NULL, *n);
         if (re) return re;

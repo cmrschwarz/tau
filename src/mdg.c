@@ -269,7 +269,7 @@ mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident)
         rwslock_end_write(&n->stage_lock);
     }
     aseglist_add(&n->open_scopes, osc);
-    osc->scope.symbol.name = n->name;
+    osc->scope.sym.name = n->name;
     return n;
 }
 
@@ -431,7 +431,7 @@ void mdg_node_find_import(
             *file = open_scope_get_file(osc);
             return;
         }
-        osc = (open_scope*)osc->scope.symbol.next;
+        osc = (open_scope*)osc->scope.sym.next;
     }
     panic("failed to find the source location of a missing import!");
 }
@@ -443,8 +443,8 @@ void mdg_node_report_missing_import(
     src_file* f;
     mdg_node_find_import(m, import, &tgt_group, &tgt_sym, &f);
     src_range_large tgt_group_srl, tgt_sym_srl;
-    src_range_unpack(tgt_group->symbol.node.srange, &tgt_group_srl);
-    src_range_unpack(tgt_sym->symbol.node.srange, &tgt_sym_srl);
+    src_range_unpack(tgt_group->sym.node.srange, &tgt_group_srl);
+    src_range_unpack(tgt_sym->sym.node.srange, &tgt_sym_srl);
     error_log_report_annotated_twice(
         &tc->error_log, ES_RESOLVER, false,
         "missing definition for imported module", f, tgt_sym_srl.start,
@@ -792,14 +792,13 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
             open_scope* i = aseglist_iterator_next(&it);
             first_target = i;
             while (i) {
-                if (i->scope.symbol.node.kind == OSC_MODULE ||
-                    i->scope.symbol.node.kind == OSC_MODULE_GENERIC) {
+                if (i->scope.sym.node.kind == OSC_MODULE ||
+                    i->scope.sym.node.kind == OSC_MODULE_GENERIC) {
                     if (mod != NULL) {
                         src_range_large srl;
-                        src_range_unpack(i->scope.symbol.node.srange, &srl);
+                        src_range_unpack(i->scope.sym.node.srange, &srl);
                         src_range_large srl_mod;
-                        src_range_unpack(
-                            mod->scope.symbol.node.srange, &srl_mod);
+                        src_range_unpack(mod->scope.sym.node.srange, &srl_mod);
                         // since aseglist iterates backwards we reverse, so
                         // if
                         // it's in the same file the redeclaration is always
@@ -818,7 +817,7 @@ int mdg_final_sanity_check(mdg* m, thread_context* tc)
             }
             if (mod == NULL && first_target != NULL) {
                 src_range_large srl;
-                src_range_unpack(first_target->scope.symbol.node.srange, &srl);
+                src_range_unpack(first_target->scope.sym.node.srange, &srl);
                 // THINK: maybe report extend count here or report all
                 error_log_report_annotated(
                     &tc->error_log, ES_RESOLVER, false,

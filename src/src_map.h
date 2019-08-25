@@ -1,42 +1,48 @@
-#pragma once
+#ifndef TAUC_SRC_MAP_H
+#define TAUC_SRC_MAP_H
 #include "utils/allocator.h"
 #include "utils/dbuffer.h"
 #include "utils/string.h"
-typedef struct thread_context thread_context;
 // LAYOUT EXTERNAL: [1, change src_map(1 bit), pointer to external
 // src_range shifted right by 2 bits ] LAYOUT INTERNAL: [0, start
 // (UREG_BITS - 8 bits), length (7 bits)]
 // TODO: better would be :
 // LAYOUT EXTERNAL: [pointer to external src_range_large, change src_map(1 bit),
 // 1] LAYOUT INTERNAL: [start (UREG_BITS - 8 bits), length (7 bits), 1]
+
 typedef ureg src_range;
 #define SRC_RANGE_INVALID (((ureg)0x1) << (REG_BITS - 1))
 
-typedef struct src_file src_file;
+#ifndef TAUC_FILE_MAP_H
+typedef struct src_file_s src_file;
+#endif
+#ifndef TAUC_THREAD_CONTEXT_H
+typedef struct thread_context_s thread_context;
+#endif
 
-typedef struct line_store {
-    struct line_store* prev;
+typedef struct line_store_s {
+    struct line_store_s* prev;
     ureg* end;
     ureg first_line;
 } line_store;
 
-typedef struct src_map {
+typedef struct source_map_s {
     ureg* last_line;
     line_store* last_line_store;
-} src_map;
+} source_map;
 
-typedef struct src_range_large {
+typedef struct src_range_large_s {
     src_file* file;
     ureg start;
     ureg end;
 } src_range_large;
 
-typedef struct paste_area {
-    src_map src_map;
+typedef struct paste_area_s {
+    source_map src_map;
     src_range_large pasted_from;
 } paste_area;
 
-typedef struct src_pos {
+typedef struct src_pos_s {
     ureg line;
     ureg column;
 } src_pos;
@@ -60,3 +66,5 @@ ureg src_range_get_start(src_range r);
 src_file* src_range_get_file(src_range r);
 ureg src_range_get_end(src_range r);
 void src_range_set_end(thread_context* tc, src_range* old, ureg end);
+
+#endif

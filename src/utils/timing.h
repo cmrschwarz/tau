@@ -1,13 +1,15 @@
-#pragma once
+#ifndef TAUC_UTILS_TIMING_H
+#define TAUC_UTILS_TIMING_H
+
 #include "plattform.h"
 #include "types.h"
 #if OS_LINUX
-#    include "os/linux/timing_linux.h"
+#include "os/linux/timing_linux.h"
 #else
-#    error no timing backend for configured plattform
+#error no timing backend for configured plattform
 #endif
 
-typedef struct timespan {
+typedef struct timespan_s {
     ureg nanos;
     ureg seconds;
 } timespan;
@@ -70,3 +72,5 @@ freg timespan_get_fseconds(timespan* t);
 freg timespan_get_fminutes(timespan* t);
 freg timespan_get_fhours(timespan* t);
 freg timespan_get_fdays(timespan* t);
+
+#endif

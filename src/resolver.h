@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TAUC_RESOLVER_H
+#define TAUC_RESOLVER_H
+
 #include "mdg.h"
 #include "ast.h"
 #include "utils/sbuffer.h"
@@ -15,7 +17,7 @@ typedef enum resolve_error {
     RE_OVERLOADED,
 } resolve_error;
 
-typedef struct thread_context thread_context;
+typedef struct thread_context_s thread_context;
 typedef struct resolver {
     stack error_stack;
     dbuffer call_types;
@@ -31,3 +33,4 @@ int resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end);
 resolve_error add_import_group_decls(
     thread_context* tc, mdg_node* curr_mdg_node, src_file* f,
     sym_import_group* ig, symbol_table* st);
+#endif

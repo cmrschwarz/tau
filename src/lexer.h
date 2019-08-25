@@ -1,4 +1,6 @@
-#pragma once
+#ifndef TAUC_LEXER_H
+#define TAUC_LEXER_H
+
 #include "src_map.h"
 #include "token.h"
 #include "utils/c_extensions.h"
@@ -6,6 +8,9 @@
 #include "utils/sbuffer.h"
 #include "utils/string.h"
 #include <stdio.h>
+
+typedef struct thread_context_s thread_context;
+typedef struct src_file_s src_file;
 
 typedef enum PACK_ENUM lx_status {
     LX_STATUS_OK,
@@ -16,7 +21,7 @@ typedef enum PACK_ENUM lx_status {
 
 #define LX_TOKEN_BUFFER_SIZE 32
 #define LX_MIN_FILE_READ_SIZE 4096
-typedef struct {
+typedef struct lexer_s {
     src_file* file;
     token token_buffer[LX_TOKEN_BUFFER_SIZE];
     token* token_buffer_end;
@@ -53,3 +58,4 @@ static inline token* lx_aquire(lexer* tk)
 {
     return tk->loaded_tokens_start;
 }
+#endif
