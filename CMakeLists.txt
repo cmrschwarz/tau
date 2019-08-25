@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.4.3)
 project(tau C CXX)
 
-set(TAUC_SRCS
+set(TAUC_C_SRCS
     ./src/lexer.c
     ./src/ast_node_flags.c
     ./src/parser.c
@@ -35,6 +35,9 @@ set(TAUC_SRCS
     ./src/job_queue.c
     ./src/utils/os/linux/plattform.c
 )
+set (TAU_CPP_SRCS
+    ./src/llvm_backend.cpp
+)
 set(TAUC_INCLUDE_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/src"
 )
@@ -45,14 +48,20 @@ set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "" FORCE)
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/deps")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(TAUC_TESTS
+    #use prebuild llvm for debug speed
+    set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "" FORCE)
+    
+    set(TAUC_C_TESTS
         ./test/main_test.c
+    )
+    set(TAUC_CPP_TESTS
         ./test/llvmtest.cpp
     )
     # add "-pg -no-pie" for profiling with gprof
     message("Creating Debug Buildfiles")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g")
-    set(TAUC_SRCS ${TAUC_SRCS} ${TAUC_TESTS})
+    set(TAUC_C_SRCS ${TAUC_C_SRCS} ${TAUC_C_TESTS})
+    set(TAUC_CPP_SRCS ${TAUC_CPP_SRCS} ${TAUC_CPP_TESTS})
 else()
     message("Creating Release Buildfiles")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -flto")
@@ -66,7 +75,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -pedantic")
 endif ()
 
-add_executable(tauc ${TAUC_SRCS})
+add_executable(tauc ${TAUC_C_SRCS} ${TAUC_CPP_SRCS})
 
 target_compile_definitions(tauc PRIVATE 
     ${TAUC_PP_DIRECTIVES}
