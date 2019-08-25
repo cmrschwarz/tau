@@ -11,13 +11,13 @@ static inline int tauc_partial_fin(int r, int i)
 {
     switch (i) {
         case -1:
-        case 7: fin_global_symtab();
-        case 6: atomic_ureg_fin(&TAUC.thread_count);
-        case 5: aseglist_fin(&TAUC.worker_threads);
-        case 4: job_queue_fin(&TAUC.job_queue);
-        case 3: file_map_fin(&TAUC.file_map);
-        case 2: mdg_fin(&TAUC.mdg);
-        case 1: thread_context_fin(&TAUC.main_thread_context);
+        case 7: mdg_fin(&TAUC.mdg);
+        case 6: thread_context_fin(&TAUC.main_thread_context);
+        case 5: fin_global_symtab();
+        case 4: atomic_ureg_fin(&TAUC.thread_count);
+        case 3: aseglist_fin(&TAUC.worker_threads);
+        case 2: job_queue_fin(&TAUC.job_queue);
+        case 1: file_map_fin(&TAUC.file_map);
         case 0: break;
     }
     if (r) master_error_log_report("memory allocation failed");
@@ -26,19 +26,19 @@ static inline int tauc_partial_fin(int r, int i)
 int tauc_init()
 {
     TAUC.worker_threads = 0;
-    int r = thread_context_init(&TAUC.main_thread_context);
+    int r = file_map_init(&TAUC.file_map);
     if (r) return tauc_partial_fin(r, 0);
-    r = mdg_init(&TAUC.mdg);
-    if (r) return tauc_partial_fin(r, 1);
-    r = file_map_init(&TAUC.file_map);
-    if (r) return tauc_partial_fin(r, 2);
     r = job_queue_init(&TAUC.job_queue);
-    if (r) return tauc_partial_fin(r, 3);
+    if (r) return tauc_partial_fin(r, 1);
     r = aseglist_init(&TAUC.worker_threads);
-    if (r) return tauc_partial_fin(r, 4);
+    if (r) return tauc_partial_fin(r, 2);
     r = atomic_ureg_init(&TAUC.thread_count, 1);
-    if (r) return tauc_partial_fin(r, 5);
+    if (r) return tauc_partial_fin(r, 3);
     r = init_global_symtab();
+    if (r) return tauc_partial_fin(r, 4);
+    r = thread_context_init(&TAUC.main_thread_context);
+    if (r) return tauc_partial_fin(r, 5);
+    r = mdg_init(&TAUC.mdg);
     if (r) return tauc_partial_fin(r, 6);
     return OK;
 }
@@ -54,9 +54,6 @@ int tauc_request_end()
 }
 void tauc_fin()
 {
-    // this needs the parsers mem pools to figure out where the osc's symtabs
-    // are, therefore it needs to be freed first
-    mdg_fin(&TAUC.mdg);
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &TAUC.worker_threads);
     worker_thread* wt;
@@ -72,12 +69,7 @@ void tauc_fin()
         thread_context_fin(&wt->tc);
         tfree(wt);
     }
-    fin_global_symtab();
-    atomic_ureg_fin(&TAUC.thread_count);
-    aseglist_fin(&TAUC.worker_threads);
-    job_queue_fin(&TAUC.job_queue);
-    file_map_fin(&TAUC.file_map);
-    thread_context_fin(&TAUC.main_thread_context);
+    tauc_partial_fin(0, -1);
 }
 
 int tauc_run(int argc, char** argv)
