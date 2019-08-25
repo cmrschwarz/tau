@@ -6,9 +6,7 @@
 #include "symbol_table.h"
 #include "utils/c_extensions.h"
 
-#ifndef TAUC_MDG_H
 typedef struct mdg_node_s mdg_node;
-#endif
 
 typedef enum PACK_ENUM ast_node_kind_e {
     OSC_MODULE,

@@ -29,12 +29,12 @@ static inline void aseglist_iterator_begin(aseglist_iterator* it, aseglist* l)
 {
     aseglist_node* n;
     do {
-        n = atomic_ptr_load(l);
+        n = (aseglist_node*)atomic_ptr_load(l);
     } while (!n);
-    it->pos = ptradd(
+    it->pos = (void**)ptradd(
         n, ASEGLIST_ELEM_OFFSET + atomic_sreg_load(&n->space) * sizeof(void*));
     ureg size = *(ureg*)ptradd(n, ASEGLIST_ELEM_OFFSET);
-    it->end = ptradd(n, size);
+    it->end = (void**)ptradd(n, size);
     it->node = n;
 }
 
@@ -54,15 +54,15 @@ static inline void* aseglist_iterator_next(aseglist_iterator* it)
         aseglist_node* prev = it->node->prev;
         if (prev == NULL) return NULL;
         ureg size_old = ptrdiff(it->end, it->node) / 2;
-        it->pos = ptradd(prev, sizeof(aseglist_node));
-        it->end = ptradd(prev, size_old);
+        it->pos = (void**)ptradd(prev, sizeof(aseglist_node));
+        it->end = (void**)ptradd(prev, size_old);
         it->node = prev;
     };
     return *it->pos++;
 }
 static inline aseglist_node* aseglist_node_new(ureg size)
 {
-    aseglist_node* n = tmalloc(size);
+    aseglist_node* n = (aseglist_node*)tmalloc(size);
     if (!n) return NULL;
     int r = atomic_sreg_init(
         &n->space, (size - sizeof(aseglist_node)) / sizeof(void*));
@@ -95,7 +95,7 @@ static inline int aseglist_init(aseglist* l)
 static inline void aseglist_fin(aseglist* l)
 {
 
-    aseglist_node* n = atomic_ptr_load(l);
+    aseglist_node* n = (aseglist_node*)atomic_ptr_load(l);
     aseglist_node* ntemp;
     do {
         ntemp = n;
@@ -107,7 +107,7 @@ static inline void aseglist_fin(aseglist* l)
 static inline int aseglist_add(aseglist* l, void* data)
 {
     while (true) {
-        aseglist_node* node = atomic_ptr_load(l);
+        aseglist_node* node = (aseglist_node*)atomic_ptr_load(l);
         if (!node) continue;
         sreg space = atomic_sreg_dec(&node->space) - 1;
         if (space > 0) {

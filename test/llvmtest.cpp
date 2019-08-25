@@ -124,7 +124,7 @@ int link_obj_to_executable(const char* obj_path, const char* exe_path)
 }
 int delete_file(const char* filepath)
 {
-    unlink(filepath);
+    return unlink(filepath);
 }
 extern "C" {
 int llvmtest_main()

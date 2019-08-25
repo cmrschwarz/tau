@@ -40,9 +40,9 @@ static inline stack_segment*
 stack_alloc_segment(stack* s, ureg size, stack_segment* prev)
 {
     size = sizeof(void*) * size;
-    stack_segment* seg = pool_alloc(s->mempool, size);
+    stack_segment* seg = (stack_segment*)pool_alloc(s->mempool, size);
     if (!s) return NULL;
-    seg->end = ptradd(seg, size);
+    seg->end = (void**)ptradd(seg, size);
     seg->prev = prev;
     seg->next = NULL;
     return seg;
@@ -50,7 +50,7 @@ stack_alloc_segment(stack* s, ureg size, stack_segment* prev)
 static inline void stack_set_curr_seg(stack* s, stack_segment* seg)
 {
     s->curr_seg = seg;
-    s->curr_seg_start = ptradd(seg, sizeof(stack_segment));
+    s->curr_seg_start = (void**)ptradd(seg, sizeof(stack_segment));
 }
 static inline int stack_init(stack* s, pool* mempool)
 {

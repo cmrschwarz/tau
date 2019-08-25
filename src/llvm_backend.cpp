@@ -3,7 +3,7 @@
 extern "C" {
 llvm_backend* llvm_backend_new(thread_context* tc)
 {
-    return 1;
+    return (llvm_backend*)1;
 }
 
 void llvm_backend_delete(llvm_backend* l)

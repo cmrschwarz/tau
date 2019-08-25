@@ -1,9 +1,8 @@
-#include "ast.h"
-#include "mdght.h"
-
 #ifndef TAUC_MDG_H
 #define TAUC_MDG_H
 
+#include "ast.h"
+#include "mdght.h"
 #include "symbol_table.h"
 #include "utils/aseglist.h"
 #include "utils/atomic_pool.h"

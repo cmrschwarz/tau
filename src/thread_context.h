@@ -1,10 +1,10 @@
+#ifndef TAUC_THREAD_CONTEXT_H
+#define TAUC_THREAD_CONTEXT_H
 #include "error_log.h"
 #include "job_queue.h"
 #include "mdg.h"
 #include "parser.h"
 #include "resolver.h"
-#ifndef TAUC_THREAD_CONTEXT_H
-#define TAUC_THREAD_CONTEXT_H
 #include "utils/pool.h"
 #include "utils/stack.h"
 #include "llvm_backend_api.h"

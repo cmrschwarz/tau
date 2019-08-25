@@ -13,12 +13,8 @@
 typedef ureg src_range;
 #define SRC_RANGE_INVALID (((ureg)0x1) << (REG_BITS - 1))
 
-#ifndef TAUC_FILE_MAP_H
 typedef struct src_file_s src_file;
-#endif
-#ifndef TAUC_THREAD_CONTEXT_H
 typedef struct thread_context_s thread_context;
-#endif
 
 typedef struct line_store_s {
     struct line_store_s* prev;
