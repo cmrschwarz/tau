@@ -39,10 +39,12 @@ set(TAUC_INCLUDE_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/src"
 )
 
+#use prebuild llvm for debug speed
+set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "" FORCE)
+
+add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/deps")
+
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    #use prebuild llvm for debug speed
-    set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "" FORCE)
-    
     set(TAUC_TESTS
         ./test/main_test.c
         ./test/llvmtest.cpp
@@ -57,7 +59,6 @@ else()
     set(TAUC_PP_DIRECTIVES ${TAUC_PP_DIRECTIVES} CMAKE_NO_DEBUG)
 endif()
 
-add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/deps")
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR 
     "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"
@@ -80,3 +81,6 @@ target_link_libraries(tauc LINK_PUBLIC
     ${TAU_DEPS_LIBS}
     #TODO: handle TAU_DEPS_EXTERNAL_LIBS
 )
+
+add_dependencies(tauc ${TAU_DEPS_DEPS})
+

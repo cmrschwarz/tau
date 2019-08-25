@@ -92,13 +92,15 @@ if(${TAU_LLVM_PRECOMPILED})
         ${TAU_LLVM_LIBRARIES}
         ${TAU_LLVM_SYSTEM_LIBS}
     )
-   
+    add_custom_target(TAU_DEPS_DUMMY_TARGET)
+    set(TAU_LLVM_DEPS
+        TAU_DEPS_DUMMY_TARGET  #so this isn't empty
+    )
    
 else()
-    option(TAU_LLVM_BUILD_TOOLS "build llvm tools (like llvm-config)" ON)
     set(LLVM_TARGETS_TO_BUILD ${TAU_LLVM_TARGETS_TO_BUILD} CACHE BOOL "" FORCE)
     #disable unneeded LLVM parts
-    set(LLVM_BUILD_TOOLS ${TAU_LLVM_BUILD_TOOLS} CACHE BOOL "" FORCE)
+    set(LLVM_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
     #turning this off unfortunately disables lld's library targets
     #set(LLVM_INCLUDE_TOOLS OFF CACHE BOOL "" FORCE)
     set(LLVM_INCLUDE_BENCHMARKS OFF CACHE BOOL "" FORCE)
@@ -118,14 +120,9 @@ else()
     set(CMAKE_BUILD_TYPE_SAVED "${CMAKE_BUILD_TYPE}" CACHE STRING "" FORCE)
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
     #include llvm
-    if(${TAU_LLVM_BUILD_TOOLS})
-        set(TAU_LLVM_EXCLUDE_FROM_ALL EXCLUDE_FROM_ALL)
-    else()
-        set(TAU_LLVM_EXCLUDE_FROM_ALL "")
-    endif()
     add_subdirectory(
         "${CMAKE_CURRENT_LIST_DIR}/llvm-project/llvm"
-        ${TAU_LLVM_EXCLUDE_FROM_ALL}
+        EXCLUDE_FROM_ALL
     )
     # restore build type, this is a veru ugly hack
     # TODO: find a better way to do this 
@@ -162,6 +159,9 @@ else()
     set(TAU_LLVM_LIBS
         ${TAU_LLVM_MAIN_LIBS}
         ${TAU_LLVM_LLD_LIBS}
+    )
+    set(TAU_LLVM_DEPS
+        llvm-config
     )
 endif()
 
@@ -215,5 +215,9 @@ set(TAU_DEPS_LIBS
 )
 set(TAU_DEPS_EXTERNAL_LIBS
     ${TAU_LLVM_PRECOMPILED_LIB_PATHES}
+    PARENT_SCOPE
+)
+set(TAU_DEPS_DEPS
+    ${TAU_LLVM_DEPS}
     PARENT_SCOPE
 )
