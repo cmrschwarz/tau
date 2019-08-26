@@ -61,28 +61,26 @@ int thread_context_do_job(thread_context* tc, job* j)
     else if (j->kind == JOB_RESOLVE) {
         bool can_link = false;
         int r;
+        mdg_node **start, **end;
         if (j->concrete.resolve.single_store) {
-            r = resolver_resolve(
-                &tc->r, &j->concrete.resolve.single_store,
-                &j->concrete.resolve.single_store + 1);
+            start = &j->concrete.resolve.single_store;
+            end = &j->concrete.resolve.single_store + 1;
         }
         else {
-            r = resolver_resolve(
-                &tc->r, j->concrete.resolve.start, j->concrete.resolve.end);
+            start = j->concrete.resolve.start;
+            end = j->concrete.resolve.end;
         }
-
+        r = resolver_resolve(&tc->r, start, end);
         if (!r) {
             llvm_module* mod;
-            r = llvm_backend_emit_module(
-                tc->llvmb, j->concrete.resolve.start, j->concrete.resolve.end,
-                &mod);
+            r = llvm_backend_emit_module(tc->llvmb, start, end, &mod);
             if (!r) {
                 llvm_module** tgt =
                     sbuffer_append(&tc->modules, sizeof(llvm_module*));
                 if (tgt) {
                     *tgt = mod;
                     ureg lh = atomic_ureg_dec(&TAUC.linking_holdups);
-                    if (lh == 0) can_link = true;
+                    if (lh == 1) can_link = true;
                 }
                 else {
                     r = ERR;
@@ -99,7 +97,12 @@ int thread_context_do_job(thread_context* tc, job* j)
         // DEBUG:
         print_mdg_node(TAUC.mdg.root_node, 0);
         puts("");
-        return mdg_final_sanity_check(&TAUC.mdg, tc);
+        int r = mdg_final_sanity_check(&TAUC.mdg, tc);
+        if (!r) {
+            ureg lh = atomic_ureg_dec(&TAUC.linking_holdups);
+            if (lh == 1) return tauc_link();
+        }
+        return r;
     }
     else {
         error_log_report_critical_failiure(&tc->err_log, "unknown job type");

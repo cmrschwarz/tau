@@ -1,0 +1,144 @@
+------------------------------Executing Unit Tests------------------------------
+alloc 55b7b8d2e450
+free 55b7b8d2e450
+stack_test passed
+list_builder_test passed
+alloc 55b7b8d2e450
+alloc 55b7b8d2f460
+alloc 55b7b8d30470
+alloc 55b7b8d20610
+free 55b7b8d20610
+free 55b7b8d2f460
+free 55b7b8d2e450
+free 55b7b8d30470
+file_map_test passed
+alloc 55b7b8d20660
+alloc 55b7b8d20610
+free 55b7b8d20660
+alloc 55b7b8d23210
+free 55b7b8d20610
+alloc 55b7b8d14440
+free 55b7b8d23210
+alloc 55b7b8d20690
+free 55b7b8d14440
+alloc 55b7b8d208a0
+free 55b7b8d20690
+alloc 55b7b8d2e450
+free 55b7b8d208a0
+alloc 55b7b8d2ec60
+free 55b7b8d2e450
+alloc 55b7b8d2fc70
+free 55b7b8d2ec60
+alloc 55b7b8d31c80
+free 55b7b8d2fc70
+alloc 55b7b8d35c90
+free 55b7b8d31c80
+free 55b7b8d35c90
+job_queue_test passed
+alloc 55b7b8d2e450
+alloc 55b7b8d2f460
+alloc 55b7b8d30470
+alloc 55b7b8d20660
+alloc 55b7b8d20610
+alloc 55b7b8d20cb0
+alloc 55b7b8d31480
+alloc 55b7b8d20d10
+alloc 55b7b8d32490
+alloc 55b7b8d334a0
+alloc 55b7b8d20690
+alloc 55b7b8d3b4b0
+alloc 55b7b8d3c4c0
+alloc 55b7b8d3d4d0
+alloc 55b7b8d3e4e0
+alloc 55b7b8d3f4f0
+alloc 55b7b8d20d60
+alloc 55b7b8d20db0
+alloc 55b7b8d20e00
+alloc 55b7b8d20e50
+alloc 55b7b8d20ea0
+free 55b7b8d20660
+alloc 55b7b8d20ef0
+alloc 55b7b8d41740
+alloc 55b7b8d41790
+alloc 55b7b8d417e0
+alloc 55b7b8d41830
+alloc 55b7b8d41880
+alloc 55b7b8d20f40
+alloc 55b7b8d418d0
+alloc 55b7b8d23210
+free 55b7b8d20ea0
+alloc 55b7b8d41910
+alloc 55b7b8d20ea0
+resolving {foo}
+alloc 55b7b8d40730
+generating {foo}
+alloc 55b7b8d40770
+resolving {bar}
+alloc 55b7b8d40790
+generating {bar}
+alloc 55b7b8d407d0
+resolving {_}
+alloc 55b7b8d20660
+alloc 55b7b8d407f0
+generating {_}
+alloc 55b7b8d40860
+module _{
+    module foo{
+        module bar{
+            public x: int = 5;
+        }
+        struct my_struct{
+            x: int;
+        }
+    }
+    func main(z: int) -> int {
+        import foo;
+        import foo::bar;
+        x := foo::my_struct::x;
+        y := foo::bar::x;
+        return foo::bar::x;
+    }
+}
+alloc 55b7b8d40880
+linking {foo, free 55b7b8d40770
+bar, free 55b7b8d407d0
+_free 55b7b8d40860
+}
+free 55b7b8d20660
+free 55b7b8d407f0
+free 55b7b8d41910
+free 55b7b8d20ea0
+free 55b7b8d20e00
+free 55b7b8d20db0
+free 55b7b8d20d60
+free 55b7b8d40790
+free 55b7b8d41880
+free 55b7b8d41830
+free 55b7b8d417e0
+free 55b7b8d40730
+free 55b7b8d20f40
+free 55b7b8d418d0
+free 55b7b8d41790
+free 55b7b8d41740
+free 55b7b8d20ef0
+free 55b7b8d3f4f0
+free 55b7b8d3e4e0
+free 55b7b8d3d4d0
+free 55b7b8d3c4c0
+free 55b7b8d3b4b0
+free 55b7b8d20690
+free 55b7b8d334a0
+free 55b7b8d32490
+free 55b7b8d20d10
+free 55b7b8d31480
+free 55b7b8d20cb0
+free 55b7b8d20610
+free 55b7b8d23210
+free 55b7b8d20e50
+free 55b7b8d2f460
+free 55b7b8d2e450
+free 55b7b8d30470
+release_test passed
+-------------------------------------PASSED-------------------------------------
+
+MEMORY LEAK! (allocs - frees) = 1
