@@ -1131,14 +1131,18 @@ resolve_error resolve_body_reporting_loops(resolver* r, ast_body* b)
     if (re == RE_TYPE_LOOP) report_type_loop(r);
     return re;
 }
-resolve_error
-resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
+resolve_error resolver_resolve(resolver* r, mdg_node** start, mdg_node** end)
 {
     r->start = start;
     r->end = end;
     resolve_error re;
     print_debug_info(r);
+    bool contains_root = false;
     for (mdg_node** i = start; i != end; i++) {
+        if (*i == TAUC.mdg.root_node) {
+            tauc_request_end();
+            contains_root = true;
+        }
         int r = symbol_table_init(
             &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
             atomic_ureg_load(&(**i).using_count), true, (ast_elem*)*i);
@@ -1146,6 +1150,7 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
         if (!(**i).symtab) return RE_FATAL;
         (**i).symtab->parent = GLOBAL_SYMTAB;
     }
+    if (!contains_root) atomic_ureg_inc(&TAUC.linking_holdups);
     for (mdg_node** i = start; i != end; i++) {
         aseglist_iterator asi;
         aseglist_iterator_begin(&asi, &(**i).open_scopes);
@@ -1165,14 +1170,6 @@ resolver_resolve_multiple(resolver* r, mdg_node** start, mdg_node** end)
         }
     }
     return mark_mdg_nodes_resolved(r);
-}
-
-int resolver_resolve_single(resolver* r, mdg_node* node)
-{
-    mdg_node* node_buff[2];
-    node_buff[0] = node;
-    node_buff[1] = NULL;
-    return resolver_resolve_multiple(r, node_buff, &node_buff[1]);
 }
 void resolver_fin(resolver* r)
 {

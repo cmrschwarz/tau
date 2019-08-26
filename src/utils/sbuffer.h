@@ -29,6 +29,8 @@ void* sbuffer_append(sbuffer* sb, ureg size);
 void sbuffer_remove(sbuffer* sb, sbi* sbi, ureg size);
 void* sbuffer_insert(sbuffer* sb, sbi* sbi, ureg size);
 void sbuffer_clear(sbuffer* sb);
+ureg sbuffer_get_capacity(sbuffer* sb);
+ureg sbuffer_get_curr_segment_free_space(sbuffer* sb);
 
 static inline void sbi_begin(sbi* sbi, sbuffer* sb)
 {

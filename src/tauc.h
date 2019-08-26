@@ -21,6 +21,9 @@ typedef struct tauc {
     thread_context main_thread_context;
     aseglist worker_threads;
     atomic_ureg thread_count;
+    // number of task that need to be completed before linking can start. the
+    // task that changes this to 0 does the linking.
+    atomic_ureg linking_holdups;
     mdg mdg;
     file_map file_map;
     job_queue job_queue;
@@ -36,5 +39,6 @@ int tauc_request_parse(
 int tauc_request_resolve_single(mdg_node* node);
 int tauc_request_resolve_multiple(mdg_node** start, mdg_node** end);
 int tauc_request_end();
+int tauc_link();
 void tauc_fin();
 #endif

@@ -4,6 +4,7 @@
 #include "thread_context.h"
 #include "utils/allocator.h"
 #include "symbol_table.h"
+#include "assert.h"
 
 struct tauc TAUC;
 
@@ -11,9 +12,10 @@ static inline int tauc_partial_fin(int r, int i)
 {
     switch (i) {
         case -1:
-        case 7: mdg_fin(&TAUC.mdg);
-        case 6: thread_context_fin(&TAUC.main_thread_context);
-        case 5: fin_global_symtab();
+        case 8: mdg_fin(&TAUC.mdg);
+        case 7: thread_context_fin(&TAUC.main_thread_context);
+        case 6: fin_global_symtab();
+        case 5: atomic_ureg_fin(&TAUC.thread_count);
         case 4: atomic_ureg_fin(&TAUC.thread_count);
         case 3: aseglist_fin(&TAUC.worker_threads);
         case 2: job_queue_fin(&TAUC.job_queue);
@@ -25,7 +27,6 @@ static inline int tauc_partial_fin(int r, int i)
 }
 int tauc_init()
 {
-    TAUC.worker_threads = 0;
     int r = file_map_init(&TAUC.file_map);
     if (r) return tauc_partial_fin(r, 0);
     r = job_queue_init(&TAUC.job_queue);
@@ -34,12 +35,15 @@ int tauc_init()
     if (r) return tauc_partial_fin(r, 2);
     r = atomic_ureg_init(&TAUC.thread_count, 1);
     if (r) return tauc_partial_fin(r, 3);
-    r = init_global_symtab();
+    // 1 for release generation, one for final sanity check
+    r = atomic_ureg_init(&TAUC.linking_holdups, 2);
     if (r) return tauc_partial_fin(r, 4);
-    r = thread_context_init(&TAUC.main_thread_context);
+    r = init_global_symtab();
     if (r) return tauc_partial_fin(r, 5);
-    r = mdg_init(&TAUC.mdg);
+    r = thread_context_init(&TAUC.main_thread_context);
     if (r) return tauc_partial_fin(r, 6);
+    r = mdg_init(&TAUC.mdg);
+    if (r) return tauc_partial_fin(r, 7);
     return OK;
 }
 int tauc_request_end()
@@ -93,6 +97,7 @@ void worker_thread_fn(void* ctx)
 }
 int tauc_add_worker_thread()
 {
+    // TODO: better mem management
     worker_thread* wt = tmalloc(sizeof(worker_thread));
     if (!wt) return ERR;
     int r = thread_context_init(&wt->tc);
@@ -160,15 +165,52 @@ int tauc_request_parse(
 int tauc_request_resolve_multiple(mdg_node** start, mdg_node** end)
 {
     job j;
-    j.kind = JOB_RESOLVE_MULTIPLE;
-    j.concrete.resolve_multiple.start = start;
-    j.concrete.resolve_multiple.end = end;
+    j.kind = JOB_RESOLVE;
+    j.concrete.resolve.single_store = NULL;
+    j.concrete.resolve.start = start;
+    j.concrete.resolve.end = end;
     return tauc_add_job(&j);
 }
 int tauc_request_resolve_single(mdg_node* node)
 {
     job j;
-    j.kind = JOB_RESOLVE_SINGLE;
-    j.concrete.resolve_single.node = node;
+    j.kind = JOB_RESOLVE;
+    j.concrete.resolve.single_store = node;
     return tauc_add_job(&j);
+}
+int tauc_link()
+{
+    ureg mod_count = 0;
+
+    aseglist_iterator it;
+    aseglist_iterator_begin(&it, &TAUC.worker_threads);
+    thread_context* tc = &TAUC.main_thread_context;
+    // tauc_request_end();
+    // thread_context_run(&TAUC.main_thread_context);
+    while (true) {
+        mod_count += (sbuffer_get_capacity(&tc->modules) -
+                      sbuffer_get_curr_segment_free_space(&tc->modules)) /
+                     sizeof(llvm_module*);
+        worker_thread* wt = (worker_thread*)aseglist_iterator_next(&it);
+        if (!wt) break;
+        tc = &wt->tc;
+    }
+    llvm_module** mods = tmalloc(mod_count * sizeof(llvm_module*));
+    llvm_module** i = mods;
+    aseglist_iterator_begin(&it, &TAUC.worker_threads);
+    tc = &TAUC.main_thread_context;
+    while (true) {
+        sbi mit;
+        sbi_begin(&mit, &tc->modules);
+        for (llvm_module** m = sbi_next(&mit, sizeof(llvm_module*)); m;
+             m = sbi_next(&mit, sizeof(llvm_module*))) {
+            *i = *m;
+            i++;
+        }
+        worker_thread* wt = (worker_thread*)aseglist_iterator_next(&it);
+        if (!wt) break;
+        tc = &wt->tc;
+    }
+    assert(i - mods == mod_count);
+    return llvm_link_modules(mods, i, "hello_tau");
 }

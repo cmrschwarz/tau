@@ -21,7 +21,9 @@ typedef enum module_stage_e {
     MS_AWAITING_DEPENDENCIES, // required, parsed
     MS_RESOLVING, // required, parsed, deps resolved or in same resolve group
     MS_GENERATING, // resolved, generating IR
-    MS_DONE, // IR generated
+    // since linking must be done in single threadedly we don't
+    // update the stage to done_generating or smth but track a single
+    // atomic in TAUC.linking_holdups
 } module_stage;
 
 static inline bool module_stage_needed(module_stage ms)

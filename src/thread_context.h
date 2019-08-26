@@ -20,6 +20,7 @@ typedef struct thread_context_s {
     scc_detector sccd;
     stack tempstack;
     llvm_backend* llvmb;
+    sbuffer modules;
 } thread_context;
 
 int thread_context_init(thread_context* tc);

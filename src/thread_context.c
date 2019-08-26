@@ -7,15 +7,16 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
 {
     switch (i) {
         case -1:
-        case 10: llvm_backend_delete(&tc->llvmb);
-        case 9: list_builder_fin(&tc->listb2);
-        case 8: list_builder_fin(&tc->listb);
-        case 7: stack_fin(&tc->tempstack);
-        case 6: scc_detector_fin(&tc->sccd);
-        case 5: resolver_fin(&tc->r);
-        case 4: parser_fin(&tc->p);
-        case 3: error_log_fin(&tc->err_log);
-        case 2: pool_fin(&tc->tempmem);
+        case 11: llvm_backend_delete(&tc->llvmb);
+        case 10: list_builder_fin(&tc->listb2);
+        case 9: list_builder_fin(&tc->listb);
+        case 8: stack_fin(&tc->tempstack);
+        case 7: scc_detector_fin(&tc->sccd);
+        case 6: resolver_fin(&tc->r);
+        case 5: parser_fin(&tc->p);
+        case 4: error_log_fin(&tc->err_log);
+        case 3: pool_fin(&tc->tempmem);
+        case 2: sbuffer_fin(&tc->modules);
         case 1: pool_fin(&tc->permmem);
         case 0: break;
     }
@@ -30,24 +31,26 @@ int thread_context_init(thread_context* tc)
 {
     int r = pool_init(&tc->permmem);
     if (r) return thread_context_partial_fin(tc, r, 0);
-    r = pool_init(&tc->tempmem);
+    r = sbuffer_init(&tc->modules, sizeof(llvm_module*) * 8);
     if (r) return thread_context_partial_fin(tc, r, 1);
-    error_log_init(&tc->err_log, &tc->permmem);
+    r = pool_init(&tc->tempmem);
     if (r) return thread_context_partial_fin(tc, r, 2);
-    r = parser_init(&tc->p, tc);
+    error_log_init(&tc->err_log, &tc->permmem);
     if (r) return thread_context_partial_fin(tc, r, 3);
-    r = resolver_init(&tc->r, tc);
+    r = parser_init(&tc->p, tc);
     if (r) return thread_context_partial_fin(tc, r, 4);
-    r = scc_detector_init(&tc->sccd, &tc->permmem);
+    r = resolver_init(&tc->r, tc);
     if (r) return thread_context_partial_fin(tc, r, 5);
-    r = stack_init(&tc->tempstack, &tc->permmem);
+    r = scc_detector_init(&tc->sccd, &tc->permmem);
     if (r) return thread_context_partial_fin(tc, r, 6);
-    r = list_builder_init(&tc->listb, &tc->tempmem, 64);
+    r = stack_init(&tc->tempstack, &tc->permmem);
     if (r) return thread_context_partial_fin(tc, r, 7);
-    r = list_builder_init(&tc->listb2, &tc->tempmem, 64);
+    r = list_builder_init(&tc->listb, &tc->tempmem, 64);
     if (r) return thread_context_partial_fin(tc, r, 8);
+    r = list_builder_init(&tc->listb2, &tc->tempmem, 64);
+    if (r) return thread_context_partial_fin(tc, r, 9);
     tc->llvmb = llvm_backend_new(tc);
-    if (!tc->llvmb) return thread_context_partial_fin(tc, -1, 9);
+    if (!tc->llvmb) return thread_context_partial_fin(tc, -1, 10);
     return OK;
 }
 int thread_context_do_job(thread_context* tc, job* j)
@@ -55,28 +58,47 @@ int thread_context_do_job(thread_context* tc, job* j)
     if (j->kind == JOB_PARSE) {
         return parser_parse_file(&tc->p, &j->concrete.parse);
     }
-    else if (j->kind == JOB_RESOLVE_MULTIPLE) {
-        int r = resolver_resolve_multiple(
-            &tc->r, j->concrete.resolve_multiple.start,
-            j->concrete.resolve_multiple.end);
-        tfree(j->concrete.resolve_multiple.start);
-        return r;
-    }
-    else if (j->kind == JOB_RESOLVE_SINGLE) {
-        int r =
-            resolver_resolve_single(&tc->r, j->concrete.resolve_single.node);
-        if (r) return r;
-        if (j->concrete.resolve_single.node == TAUC.mdg.root_node) {
-            tauc_request_end();
+    else if (j->kind == JOB_RESOLVE) {
+        bool can_link = false;
+        int r;
+        if (j->concrete.resolve.single_store) {
+            r = resolver_resolve(
+                &tc->r, &j->concrete.resolve.single_store,
+                &j->concrete.resolve.single_store + 1);
         }
-        return OK;
+        else {
+            r = resolver_resolve(
+                &tc->r, j->concrete.resolve.start, j->concrete.resolve.end);
+        }
+
+        if (!r) {
+            llvm_module* mod;
+            r = llvm_backend_emit_module(
+                tc->llvmb, j->concrete.resolve.start, j->concrete.resolve.end,
+                &mod);
+            if (!r) {
+                llvm_module** tgt =
+                    sbuffer_append(&tc->modules, sizeof(llvm_module*));
+                if (tgt) {
+                    *tgt = mod;
+                    ureg lh = atomic_ureg_dec(&TAUC.linking_holdups);
+                    if (lh == 0) can_link = true;
+                }
+                else {
+                    r = ERR;
+                }
+            }
+        }
+        if (!j->concrete.resolve.single_store) tfree(j->concrete.resolve.start);
+        if (r) return r;
+        if (can_link) return tauc_link();
+        return r;
     }
     else if (j->kind == JOB_FINALIZE) {
         job_queue_stop(&TAUC.job_queue);
         // DEBUG:
         print_mdg_node(TAUC.mdg.root_node, 0);
         puts("");
-
         return mdg_final_sanity_check(&TAUC.mdg, tc);
     }
     else {

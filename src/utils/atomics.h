@@ -20,13 +20,13 @@ void atomic_ptr_store_flat(atomic_ptr* a, void* value);
 bool atomic_ptr_cas(atomic_ptr* a, void** oldval, void* newval);
 void atomic_ptr_fin(atomic_ptr* a);
 
-int atomic_bool_init(atomic_bool* a, bool value);
-bool atomic_bool_load(atomic_bool* a);
-bool atomic_bool_load_flat(atomic_bool* a);
-void atomic_bool_store(atomic_bool* a, bool value);
-void atomic_bool_store_flat(atomic_bool* a, bool value);
-bool atomic_bool_cas(atomic_bool* a, bool* oldval, bool newval);
-void atomic_bool_fin(atomic_bool* a);
+int atomic_boolean_init(atomic_boolean* a, bool value);
+bool atomic_boolean_load(atomic_boolean* a);
+bool atomic_boolean_load_flat(atomic_boolean* a);
+void atomic_boolean_store(atomic_boolean* a, bool value);
+void atomic_boolean_store_flat(atomic_boolean* a, bool value);
+bool atomic_boolean_cas(atomic_boolean* a, bool* oldval, bool newval);
+void atomic_boolean_fin(atomic_boolean* a);
 
 int atomic_ureg_init(atomic_ureg* a, ureg value);
 ureg atomic_ureg_load(atomic_ureg* a);

@@ -1,107 +1,107 @@
 #include "../../threading.h"
 #ifdef USE_LIBC_ATOMICS
-
+#include <stdatomic.h>
 // ptr
 int atomic_ptr_init(atomic_ptr* a, void* value)
 {
-    atomic_init((void**)a, value);
+    atomic_init(&a->val, value);
     return 0;
 }
 void* atomic_ptr_load(atomic_ptr* a)
 {
-    return atomic_load((void**)a);
+    return atomic_load(&a->val);
 }
 void* atomic_ptr_load_flat(atomic_ptr* a)
 {
-    return a;
+    return a->val;
 }
 void atomic_ptr_store(atomic_ptr* a, void* value)
 {
-    atomic_store((void**)a, value);
+    atomic_store(&a->val, value);
 }
 void atomic_ptr_store_flat(atomic_ptr* a, void* value)
 {
-    *(void**)a = value;
+    a->val = value;
 }
 bool atomic_ptr_cas(atomic_ptr* a, void** oldval, void* newval)
 {
-    return atomic_compare_exchange_weak((void**)a, oldval, newval);
+    return atomic_compare_exchange_weak(&a->val, oldval, newval);
 }
 void atomic_ptr_fin(atomic_ptr* a)
 {
 }
 
 // bool
-int atomic_bool_init(atomic_bool* a, bool value)
+int atomic_boolean_init(atomic_boolean* a, bool value)
 {
-    atomic_init(a, value);
+    atomic_init(&a->val, value);
     return 0;
 }
-bool atomic_bool_load(atomic_bool* a)
+bool atomic_boolean_load(atomic_boolean* a)
 {
-    return atomic_load(a);
+    return atomic_load(&a->val);
 }
-bool atomic_bool_load_flat(atomic_bool* a)
+bool atomic_boolean_load_flat(atomic_boolean* a)
 {
-    return *a;
+    return a->val;
 }
-void atomic_bool_store(atomic_bool* a, bool value)
+void atomic_boolean_store(atomic_boolean* a, bool value)
 {
-    atomic_store(a, value);
+    atomic_store(&a->val, value);
 }
-void atomic_bool_store_flat(atomic_bool* a, bool value)
+void atomic_boolean_store_flat(atomic_boolean* a, bool value)
 {
-    *a = value;
+    a->val = value;
 }
-bool atomic_bool_cas(atomic_bool* a, bool* oldval, bool newval)
+bool atomic_boolean_cas(atomic_boolean* a, bool* oldval, bool newval)
 {
-    return atomic_compare_exchange_weak(a, oldval, newval);
+    return atomic_compare_exchange_weak(&a->val, oldval, newval);
 }
-void atomic_bool_fin(atomic_bool* a)
+void atomic_boolean_fin(atomic_boolean* a)
 {
 }
 
 // ureg
 int atomic_ureg_init(atomic_ureg* a, ureg value)
 {
-    atomic_init(a, value);
+    atomic_init(&a->val, value);
     return 0;
 }
 ureg atomic_ureg_load(atomic_ureg* a)
 {
-    return atomic_load(a);
+    return atomic_load(&a->val);
 }
 ureg atomic_ureg_load_flat(atomic_ureg* a)
 {
-    return *a;
+    return a->val;
 }
 void atomic_ureg_store(atomic_ureg* a, ureg value)
 {
-    atomic_store(a, value);
+    atomic_store(&a->val, value);
 }
 void atomic_ureg_store_flat(atomic_ureg* a, ureg value)
 {
-    *a = value;
+    a->val = value;
 }
 ureg atomic_ureg_inc(atomic_ureg* a)
 {
-    return atomic_fetch_add(a, 1);
+    return atomic_fetch_add(&a->val, 1);
 }
 ureg atomic_ureg_dec(atomic_ureg* a)
 {
-    return atomic_fetch_sub(a, 1);
+    return atomic_fetch_sub(&a->val, 1);
 }
 ureg atomic_ureg_add(atomic_ureg* a, ureg v)
 {
-    return atomic_fetch_add(a, v);
+    return atomic_fetch_add(&a->val, v);
 }
 ureg atomic_ureg_sub(atomic_ureg* a, ureg v)
 {
-    return atomic_fetch_sub(a, v);
+    return atomic_fetch_sub(&a->val, v);
 }
 bool atomic_ureg_cas(atomic_ureg* a, ureg* oldval, ureg newval)
 {
-    return atomic_compare_exchange_weak(a, oldval, newval);
+    return atomic_compare_exchange_weak(&a->val, oldval, newval);
 }
 void atomic_ureg_fin(atomic_ureg* a)
 {
@@ -110,44 +110,44 @@ void atomic_ureg_fin(atomic_ureg* a)
 // sreg
 int atomic_sreg_init(atomic_sreg* a, sreg value)
 {
-    atomic_init(a, value);
+    atomic_init(&a->val, value);
     return 0;
 }
 sreg atomic_sreg_load(atomic_sreg* a)
 {
-    return atomic_load(a);
+    return atomic_load(&a->val);
 }
 sreg atomic_sreg_load_flat(atomic_sreg* a)
 {
-    return *a;
+    return a->val;
 }
 void atomic_sreg_store(atomic_sreg* a, sreg value)
 {
-    atomic_store(a, value);
+    atomic_store(&a->val, value);
 }
 void atomic_sreg_store__flat(atomic_sreg* a, sreg value)
 {
-    *a = value;
+    a->val = value;
 }
 sreg atomic_sreg_inc(atomic_sreg* a)
 {
-    return atomic_fetch_add(a, 1);
+    return atomic_fetch_add(&a->val, 1);
 }
 sreg atomic_sreg_dec(atomic_sreg* a)
 {
-    return atomic_fetch_sub(a, 1);
+    return atomic_fetch_sub(&a->val, 1);
 }
 sreg atomic_sreg_add(atomic_sreg* a, sreg v)
 {
-    return atomic_fetch_add(a, v);
+    return atomic_fetch_add(&a->val, v);
 }
 sreg atomic_sreg_sub(atomic_sreg* a, sreg v)
 {
-    return atomic_fetch_sub(a, v);
+    return atomic_fetch_sub(&a->val, v);
 }
 bool atomic_sreg_cas(atomic_sreg* a, sreg* oldval, sreg newval)
 {
-    return atomic_compare_exchange_weak(a, oldval, newval);
+    return atomic_compare_exchange_weak(&a->val, oldval, newval);
 }
 void atomic_sreg_fin(atomic_sreg* a)
 {

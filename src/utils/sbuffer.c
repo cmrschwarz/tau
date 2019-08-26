@@ -32,6 +32,18 @@ void sbuffer_fin(sbuffer* sb)
         tfree(d);
     } while (sb->last != NULL);
 }
+ureg sbuffer_get_capacity(sbuffer* sb)
+{
+    ureg first_size = ptrdiff(sb->first->end, sb->first);
+    ureg last_size = ptrdiff(sb->last->end, sb->last);
+    ureg size = 2 * last_size - first_size;
+    ureg seg_count = ulog2(last_size) - ulog2(first_size) + 1;
+    return size - sizeof(sbuffer_segment) * seg_count;
+}
+ureg sbuffer_get_curr_segment_free_space(sbuffer* sb)
+{
+    return ptrdiff(sb->last->end, sb->last->head);
+}
 int sbuffer_segment_append(sbuffer* sb, ureg size)
 {
     sbuffer_segment* sn = sbuffer_segment_create(sb, size);
