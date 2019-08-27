@@ -65,7 +65,7 @@ Module* createTestModule(LLVMContext& ctx)
     auto args = *new llvm::ArrayRef<Value*>{
         builder.CreateGlobalStringPtr("7 + 10 = %i.\n"), add};
     builder.CreateCall(printf_func, args);
-    builder.CreateRetVoid();
+    builder.CreateRet(add);
 
     return mod;
 }
@@ -131,7 +131,7 @@ extern "C" {
 int llvmtest_main()
 {
     const char* obj = "./temp/foo.obj";
-    const char* exe = "./temp/foo";
+    const char* exe = "./temp/bar.out";
     {
         LLVMContext ctx;
         Module* mod = createTestModule(ctx);
@@ -141,7 +141,7 @@ int llvmtest_main()
         delete stream;
 
         link_obj_to_executable(obj, exe);
-        llvm_shutdown();
+        // llvm_shutdown();
     }
     delete_file(obj);
 

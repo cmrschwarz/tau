@@ -1,17 +1,7 @@
 //require "test2.tau";
-module foo{
-    module bar{
-        public x: int = 5;
-    }
-    public struct my_struct{
-        x: int;
-    }
-}
-
-func main(z: int) -> int{
-    import foo;
-    import foo::bar;
-    x:= foo::my_struct::x;
-    y:= foo::bar::x;
-    return foo::bar::x;
+public func foo(x: int);
+public func printf(s: string, r: int);
+public func main() -> int{
+    printf("Hello %i", 44);
+    return 5;
 }

@@ -72,10 +72,10 @@ LLVMBackend::LLVMBackend(thread_context* tc)
         llvm::errs() << err << "\n";
     }
     llvm::TargetOptions opt;
-    auto tm = target->createTargetMachine(
+    _tm = target->createTargetMachine(
         target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
         llvm::Optional<llvm::Reloc::Model>());
-    _reg_size = tm->getMCRegisterInfo()->getRegClass(0).RegsSize;
+    _reg_size = _tm->getMCRegisterInfo()->getRegClass(0).RegsSize;
 }
 
 int LLVMBackend::InitLLVMBackend(LLVMBackend* llvmb, thread_context* tc)
@@ -87,8 +87,7 @@ int LLVMBackend::InitLLVMBackend(LLVMBackend* llvmb, thread_context* tc)
 }
 llvm_backend_error LLVMBackend::setup()
 {
-    for (ureg i = PRIMITIVES[0].type_id;
-         i < PRIMITIVES[0].type_id + PRIMITIVE_COUNT; i++) {
+    for (ureg i = 0; i < PRIMITIVE_COUNT; i++) {
         addPrimitive(PRIMITIVES[i].type_id, PRIMITIVES[i].sym.node.pt_kind);
         if (_err) return _err;
     }
@@ -103,11 +102,11 @@ void LLVMBackend::addPrimitive(ureg id, primitive_kind pk)
     llvm::Type* t;
     switch (pk) {
         case PT_INT:
-        case PT_UINT: t = llvm::Type::getIntNTy(_context, _reg_size); break;
+        case PT_UINT: t = _builder.getInt32Ty(); break;
         case PT_BINARY_STRING:
-        case PT_STRING: t = llvm::Type::getInt8PtrTy(_context); break;
-        case PT_FLOAT: t = llvm::Type::getFloatTy(_context); break;
-        case PT_VOID: t = llvm::Type::getVoidTy(_context); break;
+        case PT_STRING: t = _builder.getInt8PtrTy(); break;
+        case PT_FLOAT: t = _builder.getFloatTy(); break;
+        case PT_VOID: t = _builder.getVoidTy(); break;
         default: assert(false); return;
     }
     _global_value_store[id] = (void*)t;
@@ -128,7 +127,7 @@ llvm_backend_error LLVMBackend::createLLVMModule(
             m->module_str += "&";
         }
     }
-    m->name = m->module_str;
+    m->name = "foo.obj";
     puts("}");
     *module = m;
     // init id space
@@ -168,45 +167,207 @@ void LLVMBackend::addAstBodyIR(ast_body* b)
         if (_err) return;
     }
 }
-llvm::Value* LLVMBackend::lookupMdgNodeIR(ureg id, ast_elem* e)
+void** LLVMBackend::lookupAstElem(ureg id)
 {
-    llvm::Value** v;
     if (id >= UREGH_MAX) {
-        v = (llvm::Value**)&_local_value_store[id - UREGH_MAX];
+        return &_local_value_store[id - UREGH_MAX];
     }
     else {
-        v = (llvm::Value**)&_global_value_store[id];
+        return &_global_value_store[id];
     }
+}
+void LLVMBackend::storeAstElem(ureg id, void* val)
+{
+    *lookupAstElem(id) = val;
+}
+llvm::Value* LLVMBackend::lookupAstNodeIR(ureg id, ast_node* n)
+{
+    auto v = (llvm::Value**)lookupAstElem(id);
     if (*v) return *v;
-    // all eleements which are non nodes are primitives
-    // those are initilaized on backend setup
-    // therefore this cast is fine
-    return genMdgNodeIR((ast_node*)e);
+    *v = genMdgNodeIR(n);
+    assert(*v);
+    return *v;
+}
+llvm::Type* LLVMBackend::lookupAstTypeIR(ureg id, ast_elem* e)
+{
+    auto t = (llvm::Type**)lookupAstElem(id);
+    if (*t) return *t;
+    assert(false); // TODO: getPointerTo(), yadda yadda
+    return NULL;
+}
+llvm::Type* LLVMBackend::lookupCTypeIR(ast_elem* e)
+{
+    llvm::Type* t;
+    switch (e->kind) {
+        case PRIMITIVE:
+            t = *(llvm::Type**)lookupAstElem(((primitive*)e)->type_id);
+            break;
+        default: {
+            assert(false); // TODO
+        }
+    }
+    return t;
+}
+llvm::Type* LLVMBackend::lookupPrimitive(primitive_kind pk)
+{
+    return (llvm::Type*)_global_value_store[PRIMITIVES[0].type_id + pk];
 }
 llvm::Value* LLVMBackend::genMdgNodeIR(ast_node* n)
 {
+    // TODO: proper error handling
     switch (n->kind) {
         case OSC_MODULE:
         case OSC_EXTEND: addAstBodyIR(&((open_scope*)n)->scp.body); return NULL;
         case SC_FUNC: return genFunctionIR((sc_func*)n);
-        case EXPR_OP_BINARY: {
-            return NULL;
+        case EXPR_OP_BINARY: return genBinaryOpIR((expr_op_binary*)n);
+        case EXPR_LITERAL: {
+            expr_literal* l = (expr_literal*)n;
+            switch (n->pt_kind) {
+                case PT_INT:
+                case PT_UINT:
+                    return llvm::ConstantInt::get(
+                        (llvm::IntegerType*)lookupPrimitive(n->pt_kind),
+                        l->value.str, 10);
+                case PT_STRING:
+                    return _builder.CreateGlobalStringPtr(l->value.str);
+                /* case PT_FLOAT:
+                     return llvm::ConstantFP::get(
+                         _context,
+                         llvm::APFloat::convertFromString(
+                             l->value.str,
+                             llvm::APFloatBase::roundingMode::rmTowardZero));*/
+                default: assert(false);
+            }
+        }
+        case EXPR_RETURN: {
+            return _builder.CreateRet(genMdgNodeIR(((expr_break*)n)->value));
+        }
+        case EXPR_CALL: {
+            expr_call* c = (expr_call*)n;
+            llvm::Value** args = (llvm::Value**)pool_alloc(
+                &_tc->permmem, sizeof(llvm::Value*) * c->arg_count);
+            if (!args) {
+                _err = LLVMBE_FATAL;
+                return NULL;
+            }
+            for (ureg i = 0; i < c->arg_count; i++) {
+                args[i] = genMdgNodeIR(c->args[i]);
+                if (_err) return NULL;
+            }
+            llvm::ArrayRef<llvm::Value*> args_arr_ref(
+                args, args + c->arg_count);
+            return _builder.CreateCall(
+                lookupAstNodeIR(c->target->id, (ast_node*)c->target),
+                args_arr_ref);
         }
         default: break;
     }
+    return NULL;
 }
-
-llvm::Function* LLVMBackend::genFunctionIR(sc_func* fn)
+llvm::Value* LLVMBackend::genBinaryOpIR(expr_op_binary* b)
 {
+    if (b->op->kind == SC_FUNC) {
+        assert(false); // TODO
+    }
+    switch (b->node.op_kind) {
+        case OP_ADD: {
+            auto lhs = genMdgNodeIR(b->lhs);
+            if (_err) return NULL;
+            auto rhs = genMdgNodeIR(b->rhs);
+            if (_err) return NULL;
+            return _builder.CreateAdd(lhs, rhs);
+        }
+        default: assert(false);
+    }
+}
+llvm::Value* LLVMBackend::genFunctionIR(sc_func* fn)
+{
+    llvm::FunctionType* func_sig;
+    auto ret_type = lookupCTypeIR(fn->return_ctype);
+    if (_err) return NULL;
+    assert(ret_type);
+
+    if (fn->param_count != 0) {
+        llvm::Type** params = (llvm::Type**)pool_alloc(
+            &_tc->permmem, sizeof(llvm::Type*) * fn->param_count);
+        if (!params) {
+            _err = LLVMBE_FATAL;
+            return NULL;
+        }
+        for (ureg i = 0; i < fn->param_count; i++) {
+            params[i] = lookupCTypeIR(fn->params[i].ctype);
+            if (_err) return NULL;
+        }
+        llvm::ArrayRef<llvm::Type*> params_array_ref(
+            params, params + fn->param_count);
+        func_sig = llvm::FunctionType::get(ret_type, params_array_ref, false);
+    }
+    else {
+        func_sig = llvm::FunctionType::get(ret_type, false);
+    }
+
+    assert(func_sig);
+    storeAstElem(fn->signature_id, func_sig);
+
+    if (*fn->scp.body.elements) {
+        auto lt = llvm::Function::ExternalLinkage;
+        llvm::Function* func =
+            llvm::Function::Create(func_sig, lt, fn->scp.sym.name, _mod);
+        assert(func);
+        storeAstElem(fn->id, func);
+        llvm::BasicBlock* func_block =
+            llvm::BasicBlock::Create(_context, "", func);
+        assert(func);
+        _builder.SetInsertPoint(func_block);
+        addAstBodyIR(&fn->scp.body);
+        return func;
+    }
+    else {
+        llvm::Constant* func =
+            _mod->getOrInsertFunction(fn->scp.sym.name, func_sig);
+        storeAstElem(fn->id, func);
+        assert(func);
+        return func;
+    }
 }
 
 void LLVMBackend::emitModule(const std::string& obj_name)
 {
-    // TODO
+    std::error_code EC;
+    llvm::raw_fd_ostream file_stream{obj_name, EC, llvm::sys::fs::F_None};
+    _mod->setDataLayout(_tm->createDataLayout());
+    // Output the bitcode file to std out
+    llvm::legacy::PassManager pass;
+    auto file_type = llvm::TargetMachine::CGFT_ObjectFile;
+
+    if (_tm->addPassesToEmitFile(pass, file_stream, nullptr, file_type)) {
+        llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
+        _err = LLVMBE_FATAL;
+        return;
+    }
+    pass.run(*_mod);
+    file_stream.flush();
     return;
 }
 llvm_backend_error
 linkLLVMModules(LLVMModule** start, LLVMModule** end, char* output_path)
 {
+    // ureg args_count = 10 + (end - start);
+    std::vector<const char*> args;
+    args.push_back(""); // argv[0] -> programm location, ignored
+    args.push_back("--dynamic-linker");
+    args.push_back("/lib64/ld-linux-x86-64.so.2");
+    args.push_back("/usr/lib/x86_64-linux-gnu/crt1.o");
+    args.push_back("/usr/lib/x86_64-linux-gnu/crti.o");
+    args.push_back("/usr/lib/x86_64-linux-gnu/crtn.o");
+    args.push_back("/lib/x86_64-linux-gnu/libc.so.6");
+    args.push_back("/usr/lib/x86_64-linux-gnu/libc_nonshared.a");
+    for (LLVMModule** i = start; i != end; i++) {
+        args.push_back((**i).name.c_str());
+    }
+    args.push_back("-o");
+    args.push_back("a.out");
+    llvm::ArrayRef<const char*> arr_ref(&args[0], args.size());
+    lld::elf::link(arr_ref, false);
     return LLVMBE_OK;
 }

@@ -565,6 +565,7 @@ resolve_error resolve_func_call(
                 re = func_applicable(
                     r, fn_st, call_arg_types, c->arg_count, f, &applicable,
                     ctype);
+                if (applicable) c->target = f;
                 if (re || applicable) break;
                 f = (sc_func*)f->scp.sym.next;
             }
@@ -573,6 +574,7 @@ resolve_error resolve_func_call(
             re = func_applicable(
                 r, fn_st, call_arg_types, c->arg_count, (sc_func*)(*s),
                 &applicable, ctype);
+            if (applicable) c->target = (sc_func*)(*s);
             if (re || applicable) break;
         }
         else {
@@ -1173,10 +1175,8 @@ void adjust_node_ids(ureg sym_offset, ast_node* n)
         }
         case OSC_MODULE:
         case OSC_EXTEND: {
-            symbol_table* st = ((scope*)n)->body.symtab;
-            symtab_it it = symtab_it_make(st);
-            for (symbol* s = symtab_it_next(&it); s; s = symtab_it_next(&it)) {
-                adjust_node_ids(sym_offset, (ast_node*)s);
+            for (ast_node** i = ((scope*)n)->body.elements; *i; i++) {
+                adjust_node_ids(sym_offset, *i);
             }
         }
         default: return;

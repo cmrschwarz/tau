@@ -2178,7 +2178,8 @@ parse_error parse_func_decl(
         f = (symbol*)fnp;
     }
     f->name = name;
-    ast_node_init((ast_node*)f, fng ? SC_FUNC_GENERIC : SC_FUNC);
+    ast_node_init_with_flags(
+        (ast_node*)f, fng ? SC_FUNC_GENERIC : SC_FUNC, flags);
     pe = sym_fill_srange(p, f, start, decl_end);
     if (pe) return pe;
     if (t->kind != TK_PAREN_OPEN) {
@@ -2224,9 +2225,18 @@ parse_error parse_func_decl(
             fnp->return_type = NULL;
         }
     }
-    return parse_scope_body(
-        p, (scope*)f,
-        fng ? fng->generic_param_count + fng->param_count : fnp->param_count);
+    PEEK(p, t);
+    if (fnp && t->kind == TK_SEMICOLON) {
+        fnp->scp.body.elements = NULL_PTR_PTR;
+        fnp->scp.body.srange = SRC_RANGE_INVALID;
+        fnp->scp.body.symtab = NULL;
+        return PE_OK;
+    }
+    else {
+        return parse_scope_body(
+            p, (scope*)f, fng ? fng->generic_param_count + fng->param_count
+                              : fnp->param_count);
+    }
 }
 parse_error parse_struct_decl(
     parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)

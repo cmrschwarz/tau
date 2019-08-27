@@ -68,9 +68,15 @@ struct LLVMBackend {
 
   private:
     void addPrimitive(ureg id, primitive_kind pk);
-    llvm::Value* lookupMdgNodeIR(ureg id, ast_elem* n);
+    void** lookupAstElem(ureg id);
+    void storeAstElem(ureg id, void* val);
+    llvm::Value* lookupAstNodeIR(ureg id, ast_node* n);
+    llvm::Type* lookupAstTypeIR(ureg id, ast_elem* e);
+    llvm::Type* lookupCTypeIR(ast_elem* e);
+    llvm::Type* lookupPrimitive(primitive_kind pk);
     llvm::Value* genMdgNodeIR(ast_node* n);
-    llvm::Function* genFunctionIR(sc_func* fn);
+    llvm::Value* genFunctionIR(sc_func* fn);
+    llvm::Value* genBinaryOpIR(expr_op_binary* b);
 
   private:
     void emitModule(const std::string& obj_name);
