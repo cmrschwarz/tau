@@ -24,11 +24,13 @@ typedef struct resolver {
     thread_context* tc;
     mdg_node** start;
     mdg_node** end;
+    ureg sym_count;
 } resolver;
 
 int resolver_init(resolver* r, thread_context* tc);
 void resolver_fin(resolver* r);
-int resolver_resolve(resolver* r, mdg_node** start, mdg_node** end);
+int resolver_resolve(
+    resolver* r, mdg_node** start, mdg_node** end, ureg* startid, ureg* endid);
 resolve_error add_import_group_decls(
     thread_context* tc, mdg_node* curr_mdg_node, src_file* f,
     sym_import_group* ig, symbol_table* st);

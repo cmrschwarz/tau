@@ -27,6 +27,7 @@ typedef struct tauc {
     mdg mdg;
     file_map file_map;
     job_queue job_queue;
+    atomic_ureg node_ids; // stores the max used id
 } tauc;
 
 extern struct tauc TAUC;

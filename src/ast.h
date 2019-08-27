@@ -311,6 +311,8 @@ typedef struct sc_func_s {
     ureg param_count;
     ast_node* return_type;
     ast_elem* return_ctype;
+    ureg type_id;
+    ureg id;
 } sc_func;
 
 typedef struct sym_func_overloaded_s {
@@ -372,6 +374,7 @@ typedef struct sym_var_s {
     symbol sym;
     ast_node* type; // may be NULL in sym_var_initialized or compoind_assignment
     ast_elem* ctype;
+    ureg var_id;
 } sym_var;
 
 typedef struct sym_var_initialized_s {

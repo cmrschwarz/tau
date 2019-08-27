@@ -12,10 +12,11 @@ static inline int tauc_partial_fin(int r, int i)
 {
     switch (i) {
         case -1:
-        case 8: mdg_fin(&TAUC.mdg);
-        case 7: thread_context_fin(&TAUC.main_thread_context);
-        case 6: fin_global_symtab();
-        case 5: atomic_ureg_fin(&TAUC.thread_count);
+        case 9: mdg_fin(&TAUC.mdg);
+        case 8: thread_context_fin(&TAUC.main_thread_context);
+        case 7: fin_global_symtab();
+        case 6: atomic_ureg_fin(&TAUC.linking_holdups);
+        case 5: atomic_ureg_fin(&TAUC.node_ids);
         case 4: atomic_ureg_fin(&TAUC.thread_count);
         case 3: aseglist_fin(&TAUC.worker_threads);
         case 2: job_queue_fin(&TAUC.job_queue);
@@ -35,15 +36,17 @@ int tauc_init()
     if (r) return tauc_partial_fin(r, 2);
     r = atomic_ureg_init(&TAUC.thread_count, 1);
     if (r) return tauc_partial_fin(r, 3);
+    r = atomic_ureg_init(&TAUC.node_ids, 0);
+    if (r) return tauc_partial_fin(r, 4);
     // 1 for release generation, one for final sanity check
     r = atomic_ureg_init(&TAUC.linking_holdups, 2);
-    if (r) return tauc_partial_fin(r, 4);
-    r = init_global_symtab();
     if (r) return tauc_partial_fin(r, 5);
-    r = thread_context_init(&TAUC.main_thread_context);
+    r = init_global_symtab();
     if (r) return tauc_partial_fin(r, 6);
-    r = mdg_init(&TAUC.mdg);
+    r = thread_context_init(&TAUC.main_thread_context);
     if (r) return tauc_partial_fin(r, 7);
+    r = mdg_init(&TAUC.mdg);
+    if (r) return tauc_partial_fin(r, 8);
     return OK;
 }
 int tauc_request_end()

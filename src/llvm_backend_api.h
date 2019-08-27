@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
+#include "utils/types.h"
 typedef void llvm_backend;
 typedef void llvm_module;
 
@@ -21,7 +21,8 @@ llvm_backend* llvm_backend_new(thread_context* tc);
 void llvm_backend_delete(llvm_backend* llvmb);
 
 llvm_backend_error llvm_backend_emit_module(
-    llvm_backend* llvmb, mdg_node** start, mdg_node** end, llvm_module** mod);
+    llvm_backend* llvmb, mdg_node** start, mdg_node** end, ureg startid,
+    ureg endid, llvm_module** mod);
 
 void llvm_free_module(llvm_module* mod);
 

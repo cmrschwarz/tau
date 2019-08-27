@@ -17,10 +17,11 @@ void llvm_backend_delete(llvm_backend* llvmb)
 }
 
 llvm_backend_error llvm_backend_emit_module(
-    llvm_backend* llvmb, mdg_node** start, mdg_node** end, llvm_module** mod)
+    llvm_backend* llvmb, mdg_node** start, mdg_node** end, ureg startid,
+    ureg endid, llvm_module** mod)
 {
     return ((LLVMBackend*)llvmb)
-        ->createLLVMModule(start, end, (LLVMModule**)mod);
+        ->createLLVMModule(start, end, startid, endid, (LLVMModule**)mod);
 }
 
 void llvm_free_module(llvm_module* mod)
@@ -51,8 +52,11 @@ void LLVMBackend::FinLLVMBackend(LLVMBackend* llvmb)
 }
 
 llvm_backend_error LLVMBackend::createLLVMModule(
-    mdg_node** start, mdg_node** end, LLVMModule** module)
+    mdg_node** start, mdg_node** end, ureg startid, ureg endid,
+    LLVMModule** module)
 {
+    this->mod_startid = startid;
+    this->mod_endid = endid;
     LLVMModule* m = new LLVMModule();
     printf("generating {");
     for (mdg_node** n = start; n != end; n++) {

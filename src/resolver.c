@@ -238,7 +238,12 @@ static resolve_error add_ast_node_decls(
             return add_simple_body_decls(r, st, &((scope*)n)->body);
         }
 
-        case SC_FUNC:
+        case SC_FUNC: {
+            sc_func* fn = (sc_func*)n;
+            fn->id = r->sym_count++;
+            fn->type_id = r->sym_count++;
+            // fallthrough
+        }
         case SC_FUNC_GENERIC: {
             symbol_table* tgtst =
                 (ast_node_flags_get_access_mod(n->flags) == AM_UNSPECIFIED)
@@ -1131,8 +1136,10 @@ resolve_error resolve_body_reporting_loops(resolver* r, ast_body* b)
     if (re == RE_TYPE_LOOP) report_type_loop(r);
     return re;
 }
-resolve_error resolver_resolve(resolver* r, mdg_node** start, mdg_node** end)
+resolve_error resolver_resolve(
+    resolver* r, mdg_node** start, mdg_node** end, ureg* startid, ureg* endid)
 {
+    r->sym_count = 0;
     r->start = start;
     r->end = end;
     resolve_error re;
@@ -1169,7 +1176,11 @@ resolve_error resolver_resolve(resolver* r, mdg_node** start, mdg_node** end)
             if (re) return re;
         }
     }
-    return mark_mdg_nodes_resolved(r);
+    re = mark_mdg_nodes_resolved(r);
+    if (re) return re;
+    *startid = atomic_ureg_add(&TAUC.node_ids, r->sym_count);
+    *endid = *startid + r->sym_count;
+    return RE_OK;
 }
 void resolver_fin(resolver* r)
 {
