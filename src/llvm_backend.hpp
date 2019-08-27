@@ -34,26 +34,30 @@ struct LLVMModule {
 
 struct LLVMBackend {
   private:
-    std::vector<llvm::Value*> value_store;
-    llvm_backend_error err;
-    thread_context* tc;
-    llvm::LLVMContext context;
-    llvm::IRBuilder<> builder;
-    llvm::Module* mod;
-    ureg mod_startid;
-    ureg mod_endid;
+    std::vector<llvm::GlobalValue*> _global_value_store;
+    std::vector<llvm::Value*> _local_value_store;
+    llvm_backend_error _err;
+    thread_context* _tc;
+    llvm::LLVMContext _context;
+    llvm::IRBuilder<> _builder;
+    llvm::Module* _mod;
+    ureg _mod_startid;
+    ureg _mod_endid;
+    ureg _private_sym_count;
 
   public:
+    LLVMBackend(thread_context* tc);
     static int InitLLVMBackend(LLVMBackend* llvmb, thread_context* tc);
     static void FinLLVMBackend(LLVMBackend* llvmb);
 
   public:
     llvm_backend_error createLLVMModule(
         mdg_node** start, mdg_node** end, ureg startid, ureg endid,
-        LLVMModule** module);
+        ureg private_sym_count, LLVMModule** module);
 
   private:
-    void genMdgNodeIR(mdg_node* n);
+    void genModulesIR(mdg_node** start, mdg_node** end);
+    void genMdgNodeIR(ast_node* n);
     llvm::Function* genFunctionIR(sc_func* fn);
     llvm::Value* getExprIR(ast_node* n);
 };

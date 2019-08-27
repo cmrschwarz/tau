@@ -22,7 +22,7 @@ void llvm_backend_delete(llvm_backend* llvmb);
 
 llvm_backend_error llvm_backend_emit_module(
     llvm_backend* llvmb, mdg_node** start, mdg_node** end, ureg startid,
-    ureg endid, llvm_module** mod);
+    ureg endid, ureg private_sym_count, llvm_module** mod);
 
 void llvm_free_module(llvm_module* mod);
 

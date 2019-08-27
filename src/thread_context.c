@@ -70,12 +70,13 @@ int thread_context_do_job(thread_context* tc, job* j)
             start = j->concrete.resolve.start;
             end = j->concrete.resolve.end;
         }
-        ureg startid, endid;
-        r = resolver_resolve(&tc->r, start, end, &startid, &endid);
+        ureg startid, endid, private_sym_count;
+        r = resolver_resolve(
+            &tc->r, start, end, &startid, &endid, &private_sym_count);
         if (!r) {
             llvm_module* mod;
             r = llvm_backend_emit_module(
-                tc->llvmb, start, end, startid, endid, &mod);
+                tc->llvmb, start, end, startid, endid, private_sym_count, &mod);
             if (!r) {
                 llvm_module** tgt =
                     sbuffer_append(&tc->modules, sizeof(llvm_module*));

@@ -58,6 +58,14 @@ bool ast_node_flags_get_relative_import(ast_node_flags f);
 void ast_node_flags_set_resolved(ast_node_flags* f);
 bool ast_node_flags_get_resolved(ast_node_flags f);
 
+// these just use the reverse resolving/resolved flags, since all nodes to emit
+// were previously resolved
+void ast_node_flags_set_id_adjusted(ast_node_flags* f);
+bool ast_node_flags_get_id_adjusted(ast_node_flags f);
+
+void ast_node_flags_set_emitted(ast_node_flags* f);
+bool ast_node_flags_get_emitted(ast_node_flags f);
+
 void ast_node_flags_set_resolving(ast_node_flags* f);
 void ast_node_flags_clear_resolving(ast_node_flags* f);
 bool ast_node_flags_get_resolving(ast_node_flags f);

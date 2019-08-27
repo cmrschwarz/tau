@@ -311,7 +311,7 @@ typedef struct sc_func_s {
     ureg param_count;
     ast_node* return_type;
     ast_elem* return_ctype;
-    ureg type_id;
+    ureg signature_id;
     ureg id;
 } sc_func;
 
@@ -332,6 +332,7 @@ typedef struct sc_func_generic_s {
 
 typedef struct sc_struct_s {
     scope scp;
+    ureg id;
 } sc_struct;
 
 typedef struct sc_struct_generic_s {

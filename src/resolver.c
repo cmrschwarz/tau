@@ -11,8 +11,8 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype);
 resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st);
 resolve_error resolve_expr_body(
     resolver* r, ast_node* expr, ast_body* b, symbol_table* parent_st);
-static resolve_error
-add_simple_body_decls(resolver* r, symbol_table* parent_st, ast_body* b);
+static resolve_error add_simple_body_decls(
+    resolver* r, symbol_table* parent_st, ast_body* b, bool public_st);
 
 static inline resolve_error ret_ctype(ast_elem* type, ast_elem** ctype)
 {
@@ -216,35 +216,39 @@ resolve_error add_import_group_decls(
     return RE_OK;
 }
 static resolve_error add_ast_node_decls(
-    resolver* r, symbol_table* st, symbol_table* sst, ast_node* n)
+    resolver* r, symbol_table* st, symbol_table* sst, ast_node* n,
+    bool public_st)
 {
     if (n == NULL) return RE_OK;
     resolve_error re;
     switch (n->kind) {
         case OSC_MODULE:
-        case OSC_MODULE_GENERIC:
-        case OSC_EXTEND:
-        case OSC_EXTEND_GENERIC: {
+        case OSC_EXTEND: {
             // these guys are handled from their mdg node, not from
             // where they appear in source
             return RE_OK;
         }
         case SC_STRUCT:
-        case SC_STRUCT_GENERIC:
-        case SC_TRAIT:
-        case SC_TRAIT_GENERIC: {
+        case SC_TRAIT: {
             re = add_symbol(r, st, sst, (symbol*)n);
+            ((sc_struct*)n)->id =
+                public_st ? r->public_sym_count : r->private_sym_count;
             if (re) return re;
-            return add_simple_body_decls(r, st, &((scope*)n)->body);
+            public_st = public_st &&
+                        ast_node_flags_get_access_mod(n->flags) >= AM_PROTECTED;
+            return add_simple_body_decls(r, st, &((scope*)n)->body, public_st);
         }
 
         case SC_FUNC: {
             sc_func* fn = (sc_func*)n;
-            fn->id = r->sym_count++;
-            fn->type_id = r->sym_count++;
-            // fallthrough
-        }
-        case SC_FUNC_GENERIC: {
+            if (public_st) {
+                fn->id = r->public_sym_count++;
+                fn->signature_id = r->public_sym_count++;
+            }
+            else {
+                fn->id = r->private_sym_count++;
+                fn->signature_id = r->private_sym_count;
+            }
             symbol_table* tgtst =
                 (ast_node_flags_get_access_mod(n->flags) == AM_UNSPECIFIED)
                     ? st
@@ -319,75 +323,87 @@ static resolve_error add_ast_node_decls(
             // TODO
             return RE_OK;
 
-        case SYM_VAR: return add_symbol(r, st, sst, (symbol*)n);
+        case SYM_VAR_INITIALIZED: {
+            re = add_ast_node_decls(
+                r, st, sst, ((sym_var_initialized*)n)->initial_value,
+                public_st);
+            if (re) return re;
+            // fallthrough
+        }
+        case SYM_VAR: {
+            if (public_st) {
+                ((sym_var*)n)->var_id = r->public_sym_count++;
+            }
+            else {
+                ((sym_var*)n)->var_id = r->private_sym_count++;
+            }
+            return add_symbol(r, st, sst, (symbol*)n);
+        }
         case SYM_NAMED_USING: {
             re = add_symbol(r, st, sst, (symbol*)n);
             if (re) return re;
             return add_ast_node_decls(
-                r, st, sst, ((sym_named_using*)n)->target);
-        }
-        case SYM_VAR_INITIALIZED: {
-            re = add_symbol(r, st, sst, (symbol*)n);
-            if (re) return re;
-            return add_ast_node_decls(
-                r, st, sst, ((sym_var_initialized*)n)->initial_value);
+                r, st, sst, ((sym_named_using*)n)->target, public_st);
         }
 
         case EXPR_RETURN:
         case EXPR_BREAK:
-            return add_ast_node_decls(r, st, sst, ((expr_break*)n)->value);
+            return add_ast_node_decls(
+                r, st, sst, ((expr_break*)n)->value, public_st);
 
         case EXPR_BLOCK:
-            return add_simple_body_decls(r, st, &((expr_block*)n)->body);
+            return add_simple_body_decls(r, st, &((expr_block*)n)->body, false);
 
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
-            re = add_ast_node_decls(r, st, sst, ei->condition);
+            re = add_ast_node_decls(r, st, sst, ei->condition, false);
             if (re) return re;
-            re = add_ast_node_decls(r, st, sst, ei->if_body);
+            re = add_ast_node_decls(r, st, sst, ei->if_body, false);
             if (re) return re;
-            return add_ast_node_decls(r, st, sst, ei->else_body);
+            return add_ast_node_decls(r, st, sst, ei->else_body, false);
         }
 
         case EXPR_LOOP:
-            return add_simple_body_decls(r, st, &((expr_loop*)n)->body);
+            return add_simple_body_decls(r, st, &((expr_loop*)n)->body, false);
 
         case EXPR_MACRO: {
             expr_macro* em = (expr_macro*)n;
-            re = add_simple_body_decls(r, st, &em->body);
+            re = add_simple_body_decls(r, st, &em->body, false);
             if (re) return re;
-            return add_ast_node_decls(r, st, sst, (ast_node*)em->next);
+            return add_ast_node_decls(r, st, sst, (ast_node*)em->next, false);
         }
 
         case EXPR_PP: {
             symbol_table* sstpp = sst ? sst->pp_symtab : NULL;
             return add_ast_node_decls(
-                r, st->pp_symtab, sstpp, ((expr_pp*)n)->pp_expr);
+                r, st->pp_symtab, sstpp, ((expr_pp*)n)->pp_expr, false);
         }
         case EXPR_MATCH: {
             expr_match* em = (expr_match*)n;
-            re = add_ast_node_decls(r, st, sst, em->match_expr);
+            re = add_ast_node_decls(r, st, sst, em->match_expr, false);
             if (re) return re;
             for (match_arm** ma = (match_arm**)em->body.elements; *ma != NULL;
                  ma++) {
-                re = add_ast_node_decls(r, st, sst, (**ma).condition);
+                re = add_ast_node_decls(r, st, sst, (**ma).condition, false);
                 if (re) return re;
-                re = add_ast_node_decls(r, st, sst, (**ma).value);
+                re = add_ast_node_decls(r, st, sst, (**ma).value, false);
                 if (re) return re;
             }
             return RE_OK;
         }
         case EXPR_OP_BINARY: {
-            re = add_ast_node_decls(r, st, sst, ((expr_op_binary*)n)->lhs);
+            re = add_ast_node_decls(
+                r, st, sst, ((expr_op_binary*)n)->lhs, false);
             if (re) return re;
-            return add_ast_node_decls(r, st, sst, ((expr_op_binary*)n)->rhs);
+            return add_ast_node_decls(
+                r, st, sst, ((expr_op_binary*)n)->rhs, false);
         }
         case EXPR_ACCESS: {
             expr_access* a = (expr_access*)n;
-            re = add_ast_node_decls(r, st, sst, a->lhs);
+            re = add_ast_node_decls(r, st, sst, a->lhs, false);
             if (re) return re;
             for (ureg i = 0; i < a->arg_count; i++) {
-                re = add_ast_node_decls(r, st, sst, a->args[i]);
+                re = add_ast_node_decls(r, st, sst, a->args[i], false);
                 if (re) return re;
             }
             // we could make this tail recursive by moving lhs down here
@@ -396,24 +412,26 @@ static resolve_error add_ast_node_decls(
         }
         case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
-            re = add_ast_node_decls(r, st, sst, c->lhs);
+            re = add_ast_node_decls(r, st, sst, c->lhs, false);
             if (re) return re;
             for (ureg i = 0; i < c->arg_count; i++) {
-                re = add_ast_node_decls(r, st, sst, c->args[i]);
+                re = add_ast_node_decls(r, st, sst, c->args[i], false);
                 if (re) return re;
             }
             return RE_OK;
         }
         case EXPR_SCOPE_ACCESS:
         case EXPR_MEMBER_ACCESS: {
-            return add_ast_node_decls(r, st, sst, ((expr_scope_access*)n)->lhs);
+            return add_ast_node_decls(
+                r, st, sst, ((expr_scope_access*)n)->lhs, false);
         }
         case EXPR_PARENTHESES: {
             return add_ast_node_decls(
-                r, st, sst, ((expr_parentheses*)n)->child);
+                r, st, sst, ((expr_parentheses*)n)->child, false);
         }
         case EXPR_OP_UNARY: {
-            return add_ast_node_decls(r, st, sst, ((expr_op_unary*)n)->child);
+            return add_ast_node_decls(
+                r, st, sst, ((expr_op_unary*)n)->child, false);
         }
         default:
             return RE_OK; // TODO
@@ -423,7 +441,8 @@ static resolve_error add_ast_node_decls(
 }
 
 static resolve_error add_body_decls(
-    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ast_body* b)
+    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ast_body* b,
+    bool public_st)
 {
     if (b->symtab == NULL) {
         b->symtab = parent_st;
@@ -432,15 +451,16 @@ static resolve_error add_body_decls(
         b->symtab->parent = parent_st;
     }
     for (ast_node** n = b->elements; *n; n++) {
-        resolve_error re = add_ast_node_decls(r, b->symtab, shared_st, *n);
+        resolve_error re =
+            add_ast_node_decls(r, b->symtab, shared_st, *n, public_st);
         if (re) return re;
     }
     return RE_OK;
 }
-static resolve_error
-add_simple_body_decls(resolver* r, symbol_table* parent_st, ast_body* b)
+static resolve_error add_simple_body_decls(
+    resolver* r, symbol_table* parent_st, ast_body* b, bool public_st)
 {
-    return add_body_decls(r, parent_st, NULL, b);
+    return add_body_decls(r, parent_st, NULL, b, public_st);
 }
 static inline resolve_error mark_mdg_nodes_resolved(resolver* r)
 {
@@ -1005,18 +1025,18 @@ resolve_error resolve_ast_node_raw(
             return resolve_ast_node(r, ei->else_body, st, NULL);
         }
 
-        case EXPR_LOOP:
+        case EXPR_LOOP: {
             // TODO ctype
             if (ctype) *ctype = NULL;
             if (resolved) return RE_OK;
-            return add_simple_body_decls(r, st, &((expr_loop*)n)->body);
-
+            return add_simple_body_decls(r, st, &((expr_loop*)n)->body, false);
+        }
         case EXPR_MACRO: {
             // TODO ctype
             if (ctype) *ctype = NULL;
             if (resolved) return RE_OK;
             expr_macro* em = (expr_macro*)n;
-            resolve_error re = add_simple_body_decls(r, st, &em->body);
+            resolve_error re = add_simple_body_decls(r, st, &em->body, false);
             if (re) return re;
             return resolve_ast_node(r, (ast_node*)em->next, st, NULL);
         }
@@ -1114,7 +1134,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
     if (re) return re;
     ast_node_flags_set_resolved(&fn->scp.sym.node.flags);
     for (ast_node** n = b->elements; *n != NULL; n++) {
-        re = add_ast_node_decls(r, st, NULL, *n);
+        re = add_ast_node_decls(r, st, NULL, *n, false);
         if (re) return re;
         re = resolve_ast_node(r, *n, b->symtab, NULL);
         if (re) return re;
@@ -1136,10 +1156,50 @@ resolve_error resolve_body_reporting_loops(resolver* r, ast_body* b)
     if (re == RE_TYPE_LOOP) report_type_loop(r);
     return re;
 }
-resolve_error resolver_resolve(
-    resolver* r, mdg_node** start, mdg_node** end, ureg* startid, ureg* endid)
+void adjust_node_ids(ureg sym_offset, ast_node* n)
 {
-    r->sym_count = 0;
+    switch (n->kind) {
+        case SC_FUNC: {
+            if (ast_node_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
+            sc_func* fn = (sc_func*)n;
+            fn->id += sym_offset;
+            fn->signature_id += sym_offset;
+            return;
+        }
+
+        case SC_STRUCT: {
+            if (ast_node_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
+            ((sc_struct*)n)->id += sym_offset;
+        }
+        case OSC_MODULE:
+        case OSC_EXTEND: {
+            symbol_table* st = ((scope*)n)->body.symtab;
+            symtab_it it = symtab_it_make(st);
+            for (symbol* s = symtab_it_next(&it); s; s = symtab_it_next(&it)) {
+                adjust_node_ids(sym_offset, (ast_node*)s);
+            }
+        }
+        default: return;
+    }
+}
+void adjust_ids(ureg sym_offset, mdg_node** start, mdg_node** end)
+{
+    while (start != end) {
+        aseglist_iterator it;
+        aseglist_iterator_begin(&it, &(**start).open_scopes);
+        for (open_scope* osc = aseglist_iterator_next(&it); osc;
+             osc = aseglist_iterator_next(&it)) {
+            adjust_node_ids(sym_offset, (ast_node*)osc);
+        }
+        start++;
+    }
+}
+resolve_error resolver_resolve(
+    resolver* r, mdg_node** start, mdg_node** end, ureg* startid, ureg* endid,
+    ureg* private_sym_count)
+{
+    r->public_sym_count = 0;
+    r->private_sym_count = 0;
     r->start = start;
     r->end = end;
     resolve_error re;
@@ -1163,7 +1223,8 @@ resolve_error resolver_resolve(
         aseglist_iterator_begin(&asi, &(**i).open_scopes);
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
-            re = add_body_decls(r, (**i).symtab, (**i).symtab, &osc->scp.body);
+            re = add_body_decls(
+                r, (**i).symtab, (**i).symtab, &osc->scp.body, true);
             if (re) return re;
         }
     }
@@ -1176,11 +1237,13 @@ resolve_error resolver_resolve(
             if (re) return re;
         }
     }
-    re = mark_mdg_nodes_resolved(r);
+
     if (re) return re;
-    *startid = atomic_ureg_add(&TAUC.node_ids, r->sym_count);
-    *endid = *startid + r->sym_count;
-    return RE_OK;
+    *startid = atomic_ureg_add(&TAUC.node_ids, r->public_sym_count);
+    *endid = *startid + r->public_sym_count;
+    *private_sym_count = r->private_sym_count;
+    adjust_ids(*startid, start, end);
+    return mark_mdg_nodes_resolved(r);
 }
 void resolver_fin(resolver* r)
 {
