@@ -311,6 +311,7 @@ llvm::Value* LLVMBackend::genFunctionIR(sc_func* fn)
 
     if (*fn->scp.body.elements) {
         auto lt = llvm::Function::ExternalLinkage;
+        if (fn->id >= UREGH_MAX) lt = llvm::Function::InternalLinkage;
         llvm::Function* func =
             llvm::Function::Create(func_sig, lt, fn->scp.sym.name, _mod);
         assert(func);

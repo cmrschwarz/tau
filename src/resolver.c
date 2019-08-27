@@ -231,8 +231,13 @@ static resolve_error add_ast_node_decls(
         case SC_STRUCT:
         case SC_TRAIT: {
             re = add_symbol(r, st, sst, (symbol*)n);
-            ((sc_struct*)n)->id =
-                public_st ? r->public_sym_count : r->private_sym_count;
+            if (public_st &&
+                ast_node_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
+                ((sc_struct*)n)->id = r->public_sym_count++;
+            }
+            else {
+                ((sc_struct*)n)->id = r->private_sym_count++;
+            }
             if (re) return re;
             public_st = public_st &&
                         ast_node_flags_get_access_mod(n->flags) >= AM_PROTECTED;
@@ -241,7 +246,8 @@ static resolve_error add_ast_node_decls(
 
         case SC_FUNC: {
             sc_func* fn = (sc_func*)n;
-            if (public_st) {
+            if (public_st &&
+                ast_node_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
                 fn->id = r->public_sym_count++;
                 fn->signature_id = r->public_sym_count++;
             }

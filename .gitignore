@@ -3,3 +3,5 @@
 /build
 /temp
 /deps/llvm-project-prebuild/**
+*.obj
+*.out

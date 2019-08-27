@@ -3,7 +3,7 @@
 #include "utils/c_extensions.h"
 
 #define mk_prim(prim_kind, prim_name)                                          \
-    {                                                                          \
+    [prim_kind] = {                                                            \
         .sym = {.node = {.kind = PRIMITIVE,                                    \
                          .pt_kind = prim_kind,                                 \
                          .flags = ASTF_RESOLVED,                               \
@@ -12,12 +12,9 @@
                 .next = NULL},                                                 \
     }
 primitive PRIMITIVES[] = {
-    mk_prim(PT_VOID, "void"),
-    mk_prim(PT_INT, "int"),
-    mk_prim(PT_UINT, "uint"),
-    mk_prim(PT_STRING, "string"),
-    mk_prim(PT_BINARY_STRING, "bstring"),
-    mk_prim(PT_FLOAT, "float"),
+    mk_prim(PT_VOID, "void"),     mk_prim(PT_INT, "int"),
+    mk_prim(PT_UINT, "uint"),     mk_prim(PT_FLOAT, "float"),
+    mk_prim(PT_STRING, "string"), mk_prim(PT_BINARY_STRING, "bstring"),
 };
 ureg PRIMITIVE_COUNT = sizeof(PRIMITIVES) / sizeof(primitive);
 

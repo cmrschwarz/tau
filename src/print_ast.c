@@ -329,6 +329,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SC_FUNC: {
             sc_func* f = (sc_func*)n;
+            print_ast_node_modifiers(n->flags);
             p("func ");
             pu(f->scp.sym.name);
             p("(");
