@@ -2266,11 +2266,12 @@ parse_error parse_struct_decl(
         if (!sp) return PE_FATAL;
         s = (symbol*)sp;
     }
+    ast_node_init_with_flags(
+        (ast_node*)s, sg ? SC_STRUCT_GENERIC : SC_STRUCT, flags);
     s->name = name;
     pe = sym_fill_srange(p, s, start, decl_end);
     if (pe) return pe;
-    ast_node_init_with_flags(
-        (ast_node*)s, sg ? SC_STRUCT_GENERIC : SC_STRUCT, flags);
+  
     *n = (ast_node*)s;
     curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
     return parse_scope_body(p, (scope*)s, sg ? sg->generic_param_count : 0);
