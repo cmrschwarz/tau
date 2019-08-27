@@ -28,12 +28,17 @@ extern "C" {
 #include <unistd.h>
 
 struct LLVMModule {
+    std::string path;
+    std::string module_str;
 };
 
 struct LLVMBackend {
   private:
+    llvm_backend_error err;
     thread_context* tc;
     llvm::LLVMContext context;
+    llvm::IRBuilder<> builder;
+    llvm::Module* mod;
 
   public:
     static int InitLLVMBackend(LLVMBackend* llvmb, thread_context* tc);
@@ -42,6 +47,13 @@ struct LLVMBackend {
   public:
     llvm_backend_error
     createLLVMModule(mdg_node** start, mdg_node** end, LLVMModule** module);
+
+  private:
+    void genMdgNodeIR(mdg_node* n);
+    llvm::Function* genFunctionIR(sc_func* fn);
+    llvm::Value* getExprIR(ast_node* n);
 };
 
+llvm_backend_error
+linkLLVMModules(LLVMModule** start, LLVMModule** end, char* output_path);
 #endif

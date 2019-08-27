@@ -213,6 +213,9 @@ int tauc_link()
     }
     assert(i - mods == mod_count);
     int r = llvm_link_modules(mods, i, "hello_tau");
+    for (llvm_module** m = mods; m != i; m++) {
+        llvm_free_module(*m);
+    }
     tfree(mods);
     return r;
 }

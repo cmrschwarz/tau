@@ -1,5 +1,4 @@
 #include "llvm_backend.hpp"
-
 extern "C" {
 #include "thread_context.h"
 #include "utils/pool.h"
@@ -26,22 +25,25 @@ llvm_backend_error llvm_backend_emit_module(
 
 void llvm_free_module(llvm_module* mod)
 {
+    delete (LLVMModule*)mod;
 }
-
 int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
 {
     printf("linking {");
-    for (llvm_module** n = start; n != end; n++) {
-        printf("%s%s", *(char**)n, (n + 1 == end) ? "" : ", ");
-        tfree(*n);
+    for (LLVMModule** n = (LLVMModule**)start; !ptreq(n, end); n++) {
+        printf("%s%s", (**n).module_str.c_str(), ptreq(n + 1, end) ? "" : ", ");
     }
     puts("}");
+    llvm_backend_error be =
+        linkLLVMModules((LLVMModule**)start, (LLVMModule**)end, output_path);
+    if (be) return ERR;
     return OK;
 }
 }
 
 int LLVMBackend::InitLLVMBackend(LLVMBackend* llvmb, thread_context* tc)
 {
+    llvmb->tc = tc;
     return OK;
 }
 void LLVMBackend::FinLLVMBackend(LLVMBackend* llvmb)
@@ -51,27 +53,22 @@ void LLVMBackend::FinLLVMBackend(LLVMBackend* llvmb)
 llvm_backend_error LLVMBackend::createLLVMModule(
     mdg_node** start, mdg_node** end, LLVMModule** module)
 {
-    ureg strsize = 0;
+    LLVMModule* m = new LLVMModule();
     printf("generating {");
     for (mdg_node** n = start; n != end; n++) {
-        printf("%s%s", (**n).name, (n + 1 == end) ? "" : ", ");
-        strsize += strlen((**n).name + 2);
+        m->module_str += (**n).name;
+        fputs((**n).name, stdout);
+        if (n + 1 != end) {
+            fputs(", ", stdout);
+            m->module_str += ", ";
+        }
     }
     puts("}");
-    *(char**)module = (char*)tmalloc(strsize - 1);
-    char* i = (char*)*module;
-    for (mdg_node** n = start; n != end; n++) {
-        strcpy(i, (**n).name);
-        i += strlen((**n).name);
-        if (n + 1 != end) {
-            *i = ',';
-            i++;
-            *i = ' ';
-            i++;
-        }
-        else {
-            *i = '\0';
-        }
-    }
+    *module = m;
+    return LLVMBE_OK;
+}
+llvm_backend_error
+linkLLVMModules(LLVMModule** start, LLVMModule** end, char* output_path)
+{
     return LLVMBE_OK;
 }

@@ -66,6 +66,10 @@ static inline void* ptrsubs(void* ptr, sreg val)
 {
     return (void*)((ureg)ptr - val);
 }
+static inline bool ptreq(void* a, void* b)
+{
+    return a == b;
+}
 static inline void ptrswap(void** a, void** b)
 {
     void* a_tmp = *a;

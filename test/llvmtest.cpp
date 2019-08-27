@@ -131,15 +131,19 @@ int llvmtest_main()
 {
     const char* obj = "./temp/foo.obj";
     const char* exe = "./temp/foo";
-    LLVMContext ctx;
-    Module* mod = createTestModule(ctx);
-    raw_fd_ostream* stream = createFileStream(obj);
-    createObjectFileFromModule(mod, stream);
-    delete mod;
-    delete stream;
+    {
+        LLVMContext ctx;
+        Module* mod = createTestModule(ctx);
+        raw_fd_ostream* stream = createFileStream(obj);
+        createObjectFileFromModule(mod, stream);
+        delete mod;
+        delete stream;
 
-    link_obj_to_executable(obj, exe);
+        link_obj_to_executable(obj, exe);
+        llvm_shutdown();
+    }
     delete_file(obj);
+
     system(exe);
     return 0;
 }
