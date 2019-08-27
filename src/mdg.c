@@ -454,47 +454,46 @@ void mdg_node_report_missing_import(
 int scc_detector_strongconnect(
     thread_context* tc, mdg_node* n, sccd_node* sn, mdg_node* caller)
 {
-    if (n->stage == MS_PARSING || n->stage == MS_RESOLVING ||
-        n->stage == MS_NOT_FOUND) {
-        if (n->stage == MS_NOT_FOUND) {
-            mdg_node* par = n->parent;
-            assert(par); // root is never NOT_FOUND
-            while (true) {
-                rwslock_read(&par->stage_lock);
-                if (par->stage > MS_PARSING) {
-                    // if we reach here all children on n's way up
-                    // are not found. therefore the direct child of par
-                    // is also not found, but we are done parsing par,
-                    // so it can never be found. therefore we have an error
-                    rwslock_end_read(&par->stage_lock);
-                    rwslock_end_read(&n->stage_lock);
-                    return SCCD_MISSING_IMPORT;
-                }
-                else if (n->parent->stage == MS_NOT_FOUND) {
-                    rwslock_end_read(&par->stage_lock);
-                    par = par->parent;
-                }
-                else {
-                    // if this parent gets done we are sure
-                    // that the entire unfound chain is invalid
-                    int r = aseglist_add(&par->notify, caller);
-                    rwslock_end_read(&par->stage_lock);
-                    // if the one we actually need gets found
-                    // we can continue
-                    int r2 = aseglist_add(&n->notify, caller);
-                    rwslock_end_read(&n->stage_lock);
-                    if (r || r2) return ERR;
-                    return SCCD_ADDED_NOTIFICATION;
-                }
+
+    if (n->stage == MS_NOT_FOUND) {
+        mdg_node* par = n->parent;
+        assert(par); // root is never NOT_FOUND
+        while (true) {
+            rwslock_read(&par->stage_lock);
+            if (par->stage > MS_PARSING) {
+                // if we reach here all children on n's way up
+                // are not found. therefore the direct child of par
+                // is also not found, but we are done parsing par,
+                // so it can never be found. therefore we have an error
+                rwslock_end_read(&par->stage_lock);
+                rwslock_end_read(&n->stage_lock);
+                return SCCD_MISSING_IMPORT;
+            }
+            else if (n->parent->stage == MS_NOT_FOUND) {
+                rwslock_end_read(&par->stage_lock);
+                par = par->parent;
+            }
+            else {
+                // if this parent gets done we are sure
+                // that the entire unfound chain is invalid
+                int r = aseglist_add(&par->notify, caller);
+                rwslock_end_read(&par->stage_lock);
+                // if the one we actually need gets found
+                // we can continue
+                int r2 = aseglist_add(&n->notify, caller);
+                rwslock_end_read(&n->stage_lock);
+                if (r || r2) return ERR;
+                return SCCD_ADDED_NOTIFICATION;
             }
         }
-        else {
-            int r = aseglist_add(&n->notify, caller);
-            rwslock_end_read(&n->stage_lock);
-            if (r) return ERR;
-            return SCCD_ADDED_NOTIFICATION;
-        }
     }
+    else if (n->stage == MS_PARSING || n->stage == MS_RESOLVING) {
+        int r = aseglist_add(&n->notify, caller);
+        rwslock_end_read(&n->stage_lock);
+        if (r) return ERR;
+        return SCCD_ADDED_NOTIFICATION;
+    }
+
     // can't be in a circle with caller if it's not pending
     if (n->stage != MS_AWAITING_DEPENDENCIES) {
         sn->index = tc->sccd.dfs_start_index;
@@ -644,6 +643,8 @@ int mdg_node_resolved(mdg_node* n, thread_context* tc)
     rwslock_write(&n->stage_lock);
     n->stage = MS_GENERATING;
     rwslock_end_write(&n->stage_lock);
+    // TODO: clear notify before actually notifying, since necessary
+    // notifications will be readded and we don't want this to explode
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &n->notify);
     while (true) {

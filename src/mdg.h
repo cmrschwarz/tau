@@ -40,7 +40,10 @@ typedef struct mdg_node_s {
     aseglist dependencies;
     aseglist open_scopes;
     aseglist notify;
+    // these are used in the scc detector. don't confuse these with
+    // the symbol ids used in the llvm backend, they don't share an "id space"
     ureg id;
+
     atomic_ureg decl_count;
     atomic_ureg using_count;
     symbol_table* symtab;
@@ -72,7 +75,7 @@ typedef struct mdg_s {
     mdg_new_node changes[MDG_MAX_CHANGES];
     ureg change_count;
     mdg_node* root_node;
-    atomic_ureg node_ids;
+    atomic_ureg node_ids; // stores max used id for modules
 } mdg;
 
 int mdg_init(mdg* m);
