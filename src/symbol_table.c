@@ -10,6 +10,7 @@
 #include "utils/zero.h"
 #include <assert.h>
 #include "utils/error.h"
+#include "tauc.h"
 #define USING_BIT (((ureg)1) << (REG_BITS - 1))
 
 symbol_table* GLOBAL_SYMTAB = NULL;
@@ -176,7 +177,9 @@ int init_global_symtab()
 {
     if (symbol_table_init(&GLOBAL_SYMTAB, PRIMITIVE_COUNT, 0, true, NULL))
         return ERR;
+    ureg sym_start = atomic_ureg_add(&TAUC.node_ids, PRIMITIVE_COUNT);
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {
+        PRIMITIVES[i].type_id = sym_start;
         if (symbol_table_insert(GLOBAL_SYMTAB, (symbol*)&PRIMITIVES[i])) {
             symbol_table_fin(GLOBAL_SYMTAB);
             return ERR;

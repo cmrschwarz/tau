@@ -185,7 +185,7 @@ void print_ast_elem_name(ast_elem* n)
         pu(((symbol*)n)->name);
     }
     else if (n->kind == PRIMITIVE) {
-        pu(PRIMITIVES[((ast_node*)n)->pt_kind].name);
+        pu(PRIMITIVES[((ast_node*)n)->pt_kind].sym.name);
     }
     else {
         pu("<unknown node>");

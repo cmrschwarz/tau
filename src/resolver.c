@@ -1199,7 +1199,7 @@ resolve_error resolver_resolve(
     ureg* private_sym_count)
 {
     r->public_sym_count = 0;
-    r->private_sym_count = 0;
+    r->private_sym_count = UREGH_MAX;
     r->start = start;
     r->end = end;
     resolve_error re;
@@ -1241,7 +1241,7 @@ resolve_error resolver_resolve(
     if (re) return re;
     *startid = atomic_ureg_add(&TAUC.node_ids, r->public_sym_count);
     *endid = *startid + r->public_sym_count;
-    *private_sym_count = r->private_sym_count;
+    *private_sym_count = r->private_sym_count - UREGH_MAX;
     adjust_ids(*startid, start, end);
     return mark_mdg_nodes_resolved(r);
 }

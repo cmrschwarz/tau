@@ -7,7 +7,7 @@
 #include "utils/threading.h"
 #include "utils/zero.h"
 
-int mdg_fin_partial(mdg* m, int i, int r)
+int mdg_fin_partial(module_dependency_graph* m, int i, int r)
 {
     switch (i) {
         case 0:
@@ -23,8 +23,9 @@ int mdg_fin_partial(mdg* m, int i, int r)
     }
     return r;
 }
-mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent);
-int mdg_init(mdg* m)
+mdg_node*
+mdg_node_create(module_dependency_graph* m, string ident, mdg_node* parent);
+int mdg_init(module_dependency_graph* m)
 {
     int r = atomic_ureg_init(&m->node_ids, 0);
     if (r) return r;
@@ -45,22 +46,22 @@ int mdg_init(mdg* m)
     m->change_count = 0;
     return 0;
 }
-void mdg_fin(mdg* m)
+void mdg_fin(module_dependency_graph* m)
 {
     mdg_fin_partial(m, 0, 0);
 }
 
-mdght* mdg_start_read(mdg* m)
+mdght* mdg_start_read(module_dependency_graph* m)
 {
     ureg id = evmap2_start_read(&m->evm);
     return &m->mdghts[id];
 }
-void mdg_end_read(mdg* m, mdght* h)
+void mdg_end_read(module_dependency_graph* m, mdght* h)
 {
     evmap2_end_read(&m->evm, (h == &m->mdghts[0]) ? 0 : 1);
 }
 
-static int mdg_apply_changes(mdg* m, mdght* tgt)
+static int mdg_apply_changes(module_dependency_graph* m, mdght* tgt)
 {
     for (ureg i = 0; i < m->change_count; i++) {
         void* p = mdght_insert_at(tgt, m->changes[i].pos, m->changes[i].node);
@@ -70,7 +71,7 @@ static int mdg_apply_changes(mdg* m, mdght* tgt)
     return OK;
 }
 
-mdght* mdg_start_write(mdg* m)
+mdght* mdg_start_write(module_dependency_graph* m)
 {
     ureg id;
     ureg changes = evmap2_start_write(&m->evm, &id);
@@ -80,7 +81,7 @@ mdght* mdg_start_write(mdg* m)
     m->change_count = 0;
     return &m->mdghts[id];
 }
-void mdg_end_write(mdg* m)
+void mdg_end_write(module_dependency_graph* m)
 {
     evmap2_end_write(&m->evm);
 }
@@ -100,7 +101,8 @@ void* mdg_node_partial_fin(mdg_node* n, int i)
 }
 // since this is called while inside mdg_write, there is no race
 // on the memory pools
-mdg_node* mdg_node_create(mdg* m, string ident, mdg_node* parent)
+mdg_node*
+mdg_node_create(module_dependency_graph* m, string ident, mdg_node* parent)
 {
     mdg_node* n = pool_alloc(&m->node_pool, sizeof(mdg_node));
     if (!n) return NULL;
@@ -226,7 +228,8 @@ void mdg_node_fin(mdg_node* n)
     mdg_node_partial_fin(n, 0);
 }
 
-mdg_node* mdg_get_node(mdg* m, mdg_node* parent, string ident)
+mdg_node*
+mdg_get_node(module_dependency_graph* m, mdg_node* parent, string ident)
 {
     ureg hash = mdght_get_hash_str(parent, ident);
     mdght* h = mdg_start_read(m);
@@ -255,8 +258,8 @@ mdg_node* mdg_get_node(mdg* m, mdg_node* parent, string ident)
     return n;
 }
 
-mdg_node*
-mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident)
+mdg_node* mdg_add_open_scope(
+    module_dependency_graph* m, mdg_node* parent, open_scope* osc, string ident)
 {
     mdg_node* n = mdg_get_node(m, parent, ident);
     if (!n) return n;
@@ -273,7 +276,7 @@ mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident)
     return n;
 }
 
-int mdg_node_parsed(mdg* m, mdg_node* n, thread_context* tc)
+int mdg_node_parsed(module_dependency_graph* m, mdg_node* n, thread_context* tc)
 {
     bool run_scc = true;
     rwslock_write(&n->stage_lock);
@@ -289,7 +292,8 @@ int mdg_node_parsed(mdg* m, mdg_node* n, thread_context* tc)
     if (run_scc) return scc_detector_run(tc, n);
     return OK;
 }
-int mdg_node_file_parsed(mdg* m, mdg_node* n, thread_context* tc)
+int mdg_node_file_parsed(
+    module_dependency_graph* m, mdg_node* n, thread_context* tc)
 {
     ureg up = atomic_ureg_dec(&n->unparsed_files);
     if (up == 1) return mdg_node_parsed(m, n, tc);
@@ -771,7 +775,7 @@ int mdg_node_add_dependency(
     if (!r && needed) mdg_node_require(dependency, tc);
     return r;
 }
-int mdg_final_sanity_check(mdg* m, thread_context* tc)
+int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
 {
     // write is necessary since we aren't satisfied with eventual
     // consistency

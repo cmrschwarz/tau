@@ -33,6 +33,7 @@
 #include <llvm/IR/LegacyPassManager.h>
 #include <lld/Common/Driver.h>
 #include <llvm/IR/Type.h>
+#include <llvm/MC/MCRegisterInfo.h>
 #include <llvm/IR/IRBuilder.h>
 #include <unistd.h>
 
@@ -63,7 +64,6 @@ Module* createTestModule(LLVMContext& ctx)
     Value* add = builder.CreateAdd(add_lhs, add_rhs);
     auto args = *new llvm::ArrayRef<Value*>{
         builder.CreateGlobalStringPtr("7 + 10 = %i.\n"), add};
-
     builder.CreateCall(printf_func, args);
     builder.CreateRetVoid();
 
@@ -92,6 +92,7 @@ int createObjectFileFromModule(Module* mod, raw_fd_ostream* file_stream)
     auto tm = target->createTargetMachine(
         target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
         Optional<Reloc::Model>());
+
     mod->setDataLayout(tm->createDataLayout());
     // Output the bitcode file to std   out
     legacy::PassManager pass;

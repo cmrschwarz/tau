@@ -12,15 +12,16 @@ static inline int tauc_partial_fin(int r, int i)
 {
     switch (i) {
         case -1:
-        case 9: mdg_fin(&TAUC.mdg);
-        case 8: thread_context_fin(&TAUC.main_thread_context);
-        case 7: fin_global_symtab();
-        case 6: atomic_ureg_fin(&TAUC.linking_holdups);
-        case 5: atomic_ureg_fin(&TAUC.node_ids);
-        case 4: atomic_ureg_fin(&TAUC.thread_count);
-        case 3: aseglist_fin(&TAUC.worker_threads);
-        case 2: job_queue_fin(&TAUC.job_queue);
-        case 1: file_map_fin(&TAUC.file_map);
+        case 10: mdg_fin(&TAUC.mdg);
+        case 9: thread_context_fin(&TAUC.main_thread_context);
+        case 8: fin_global_symtab();
+        case 7: atomic_ureg_fin(&TAUC.linking_holdups);
+        case 6: atomic_ureg_fin(&TAUC.node_ids);
+        case 5: atomic_ureg_fin(&TAUC.thread_count);
+        case 4: aseglist_fin(&TAUC.worker_threads);
+        case 3: job_queue_fin(&TAUC.jobqueue);
+        case 2: file_map_fin(&TAUC.filemap);
+        case 1: llvm_backend_fin_globals();
         case 0: break;
     }
     if (r) master_error_log_report("memory allocation failed");
@@ -28,25 +29,27 @@ static inline int tauc_partial_fin(int r, int i)
 }
 int tauc_init()
 {
-    int r = file_map_init(&TAUC.file_map);
+    int r = llvm_backend_init_globals();
     if (r) return tauc_partial_fin(r, 0);
-    r = job_queue_init(&TAUC.job_queue);
+    r = file_map_init(&TAUC.filemap);
     if (r) return tauc_partial_fin(r, 1);
-    r = aseglist_init(&TAUC.worker_threads);
+    r = job_queue_init(&TAUC.jobqueue);
     if (r) return tauc_partial_fin(r, 2);
-    r = atomic_ureg_init(&TAUC.thread_count, 1);
+    r = aseglist_init(&TAUC.worker_threads);
     if (r) return tauc_partial_fin(r, 3);
-    r = atomic_ureg_init(&TAUC.node_ids, 0);
+    r = atomic_ureg_init(&TAUC.thread_count, 1);
     if (r) return tauc_partial_fin(r, 4);
+    r = atomic_ureg_init(&TAUC.node_ids, 0);
+    if (r) return tauc_partial_fin(r, 5);
     // 1 for release generation, one for final sanity check
     r = atomic_ureg_init(&TAUC.linking_holdups, 2);
-    if (r) return tauc_partial_fin(r, 5);
-    r = init_global_symtab();
     if (r) return tauc_partial_fin(r, 6);
-    r = thread_context_init(&TAUC.main_thread_context);
+    r = init_global_symtab(); // needs node_ids
     if (r) return tauc_partial_fin(r, 7);
-    r = mdg_init(&TAUC.mdg);
+    r = thread_context_init(&TAUC.main_thread_context);
     if (r) return tauc_partial_fin(r, 8);
+    r = mdg_init(&TAUC.mdg);
+    if (r) return tauc_partial_fin(r, 9);
     return OK;
 }
 int tauc_request_end()
@@ -55,7 +58,7 @@ int tauc_request_end()
     jb.kind = JOB_FINALIZE;
     // memset(&jb.concrete, 1, sizeof(jb.concrete)); //why valgrind?
     ureg w, j;
-    int r = job_queue_push(&TAUC.job_queue, &jb, &w, &j);
+    int r = job_queue_push(&TAUC.jobqueue, &jb, &w, &j);
     if (r != ERR) return OK;
     return ERR;
 }
@@ -71,7 +74,7 @@ void tauc_fin()
         if (!wt) break;
         worker_thread_status wts = atomic_ureg_load(&wt->status);
         if (wts != WTS_FAILED) {
-            thread_join(&wt->thread);
+            thread_join(&wt->thr);
         }
         thread_context_fin(&wt->tc);
         tfree(wt);
@@ -84,7 +87,7 @@ int tauc_run(int argc, char** argv)
     if (argc < 2) return 0;
     for (int i = 1; i < argc; i++) {
         src_file* f = file_map_get_file_from_path(
-            &TAUC.file_map, string_from_cstr(argv[i]));
+            &TAUC.filemap, string_from_cstr(argv[i]));
         if (!f) return ERR;
         src_file_require(f, NULL, SRC_RANGE_INVALID, TAUC.mdg.root_node);
     }
@@ -120,7 +123,7 @@ int tauc_add_worker_thread()
         tfree(wt);
         return r;
     }
-    r = thread_launch(&wt->thread, worker_thread_fn, wt);
+    r = thread_launch(&wt->thr, worker_thread_fn, wt);
     if (r) {
         // all other initialization failiures are due to memory allocation,
         // which is deemed fatal for the CALLING thread
@@ -139,7 +142,7 @@ int tauc_add_worker_thread()
 int tauc_add_job(job* j)
 {
     ureg waiters, jobs;
-    int r = job_queue_push(&TAUC.job_queue, j, &waiters, &jobs);
+    int r = job_queue_push(&TAUC.jobqueue, j, &waiters, &jobs);
     if (r) return r;
     // TODO: tweak spawn condition
     if (jobs > waiters + 1) {

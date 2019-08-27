@@ -523,7 +523,12 @@ typedef struct type_tuple_s {
     ureg size;
 } type_tuple;
 
-extern symbol PRIMITIVES[];
+typedef struct primitive_s {
+    symbol sym;
+    ureg type_id;
+} primitive;
+
+extern primitive PRIMITIVES[];
 extern ureg PRIMITIVE_COUNT;
 
 int ast_type_node_get_mod_count(ast_type_node atn);

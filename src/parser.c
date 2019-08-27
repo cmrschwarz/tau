@@ -2271,7 +2271,7 @@ parse_error parse_struct_decl(
     s->name = name;
     pe = sym_fill_srange(p, s, start, decl_end);
     if (pe) return pe;
-  
+
     *n = (ast_node*)s;
     curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
     return parse_scope_body(p, (scope*)s, sg ? sg->generic_param_count : 0);
@@ -2930,7 +2930,7 @@ parse_require(parser* p, ast_node_flags flags, ureg start, ureg flags_end)
         return PE_ERROR;
     }
     src_file* f = file_map_get_file_from_relative_path(
-        &TAUC.file_map, p->lx.file->head.parent, t->str);
+        &TAUC.filemap, p->lx.file->head.parent, t->str);
     lx_void(&p->lx);
     PEEK(p, t);
     if (t->kind != TK_SEMICOLON) {

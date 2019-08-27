@@ -67,7 +67,7 @@ typedef struct mdg_deps_list_s {
 
 #define MDG_MAX_CHANGES 16
 #define MDG_MAX_CHANGES_PER_WRITE 2
-typedef struct mdg_s {
+typedef struct module_dependency_graph_s {
     evmap2 evm;
     pool node_pool;
     pool ident_pool;
@@ -76,21 +76,23 @@ typedef struct mdg_s {
     ureg change_count;
     mdg_node* root_node;
     atomic_ureg node_ids; // stores max used id for modules
-} mdg;
+} module_dependency_graph;
 
-int mdg_init(mdg* m);
-void mdg_fin(mdg* m);
+int mdg_init(module_dependency_graph* m);
+void mdg_fin(module_dependency_graph* m);
 void mdg_node_fin(mdg_node* n);
 
-mdght* mdg_start_read(mdg* m);
-void mdg_end_read(mdg* m, mdght* h);
+mdght* mdg_start_read(module_dependency_graph* m);
+void mdg_end_read(module_dependency_graph* m, mdght* h);
 
-mdght* mdg_start_write(mdg* m);
-void mdg_end_write(mdg* m);
+mdght* mdg_start_write(module_dependency_graph* m);
+void mdg_end_write(module_dependency_graph* m);
 
+mdg_node* mdg_add_open_scope(
+    module_dependency_graph* m, mdg_node* parent, open_scope* osc,
+    string ident);
 mdg_node*
-mdg_add_open_scope(mdg* m, mdg_node* parent, open_scope* osc, string ident);
-mdg_node* mdg_get_node(mdg* m, mdg_node* parent, string ident);
+mdg_get_node(module_dependency_graph* m, mdg_node* parent, string ident);
 
 typedef struct sccd_node_s {
     ureg index;
@@ -106,8 +108,10 @@ typedef struct scc_detector_s {
     pool* mem_src;
 } scc_detector;
 
-int mdg_node_parsed(mdg* m, mdg_node* n, thread_context* tc);
-int mdg_node_file_parsed(mdg* m, mdg_node* n, thread_context* tc);
+int mdg_node_parsed(
+    module_dependency_graph* m, mdg_node* n, thread_context* tc);
+int mdg_node_file_parsed(
+    module_dependency_graph* m, mdg_node* n, thread_context* tc);
 int mdg_node_resolved(mdg_node* n, thread_context* tc);
 int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc);
 int mdg_node_add_dependency(
@@ -117,6 +121,6 @@ int scc_detector_init(scc_detector* d, pool* mem_src);
 int scc_detector_run(thread_context* tc, mdg_node* n);
 void scc_detector_fin(scc_detector* d);
 
-int mdg_final_sanity_check(mdg* m, thread_context* tc);
+int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc);
 
 #endif

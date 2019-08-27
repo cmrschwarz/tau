@@ -14,7 +14,7 @@ typedef enum worker_thread_status {
 typedef struct worker_thread {
     thread_context tc;
     atomic_ureg status;
-    thread thread;
+    thread thr;
 } worker_thread;
 
 typedef struct tauc {
@@ -24,9 +24,9 @@ typedef struct tauc {
     // number of task that need to be completed before linking can start. the
     // task that changes this to 0 does the linking.
     atomic_ureg linking_holdups;
-    mdg mdg;
-    file_map file_map;
-    job_queue job_queue;
+    module_dependency_graph mdg;
+    file_map filemap;
+    job_queue jobqueue;
     atomic_ureg node_ids; // stores the max used id
 } tauc;
 

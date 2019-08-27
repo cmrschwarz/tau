@@ -2,6 +2,21 @@
 extern "C" {
 #include "thread_context.h"
 #include "utils/pool.h"
+#include "tauc.h"
+int llvm_backend_init_globals()
+{
+    // InitializeAllTargetInfos();
+    LLVMInitializeNativeTarget();
+    // InitializeAllTargetMCs();
+    llvm::InitializeNativeTargetAsmParser();
+    llvm::InitializeNativeTargetAsmPrinter();
+    return 0;
+}
+void llvm_backend_fin_globals()
+{
+    llvm::llvm_shutdown();
+}
+
 llvm_backend* llvm_backend_new(thread_context* tc)
 {
     LLVMBackend* b =
@@ -45,20 +60,58 @@ int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
 
 // CPP
 LLVMBackend::LLVMBackend(thread_context* tc)
-    : _tc(tc), _context(), _builder(_context)
+    : _tc(tc), _context(), _builder(_context),
+      _global_value_store(atomic_ureg_load(&TAUC.node_ids), NULL),
+      _err(LLVMBE_OK)
+
 {
+    std::string err;
+    auto target_triple = LLVMGetDefaultTargetTriple();
+    auto target = llvm::TargetRegistry::lookupTarget(target_triple, err);
+    if (err.length() > 0) { // TODO: properly
+        llvm::errs() << err << "\n";
+    }
+    llvm::TargetOptions opt;
+    auto tm = target->createTargetMachine(
+        target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
+        llvm::Optional<llvm::Reloc::Model>());
+    _reg_size = tm->getMCRegisterInfo()->getRegClass(0).RegsSize;
 }
 
 int LLVMBackend::InitLLVMBackend(LLVMBackend* llvmb, thread_context* tc)
 {
     void* res = new (llvmb) LLVMBackend(tc); // placement new is noexcept
     if (!res) return ERR;
+    if (llvmb->setup()) return ERR;
     return OK;
+}
+llvm_backend_error LLVMBackend::setup()
+{
+    for (ureg i = PRIMITIVES[0].type_id;
+         i < PRIMITIVES[0].type_id + PRIMITIVE_COUNT; i++) {
+        addPrimitive(PRIMITIVES[i].type_id, PRIMITIVES[i].sym.node.pt_kind);
+        if (_err) return _err;
+    }
+    return LLVMBE_OK;
 }
 void LLVMBackend::FinLLVMBackend(LLVMBackend* llvmb)
 {
 }
 
+void LLVMBackend::addPrimitive(ureg id, primitive_kind pk)
+{
+    llvm::Type* t;
+    switch (pk) {
+        case PT_INT:
+        case PT_UINT: t = llvm::Type::getIntNTy(_context, _reg_size); break;
+        case PT_BINARY_STRING:
+        case PT_STRING: t = llvm::Type::getInt8PtrTy(_context); break;
+        case PT_FLOAT: t = llvm::Type::getFloatTy(_context); break;
+        case PT_VOID: t = llvm::Type::getVoidTy(_context); break;
+        default: assert(false); return;
+    }
+    _global_value_store[id] = (void*)t;
+}
 llvm_backend_error LLVMBackend::createLLVMModule(
     mdg_node** start, mdg_node** end, ureg startid, ureg endid,
     ureg private_sym_count, LLVMModule** module)
@@ -75,6 +128,7 @@ llvm_backend_error LLVMBackend::createLLVMModule(
             m->module_str += "&";
         }
     }
+    m->name = m->module_str;
     puts("}");
     *module = m;
     // init id space
@@ -87,13 +141,15 @@ llvm_backend_error LLVMBackend::createLLVMModule(
     // i really hope this doesn't realloc
     _local_value_store.assign(_private_sym_count, NULL);
     // create actual module
-    _mod = new (std::nothrow) llvm::Module(m->module_str, _context);
+    _mod = new (std::nothrow) llvm::Module(m->name, _context);
     if (!_mod) return LLVMBE_FATAL;
-    genModulesIR(start, end);
+    addModulesIR(start, end);
+    if (_err) return _err;
+    emitModule(m->name);
     return _err;
 }
 
-void LLVMBackend::genModulesIR(mdg_node** start, mdg_node** end)
+void LLVMBackend::addModulesIR(mdg_node** start, mdg_node** end)
 {
     for (mdg_node** n = start; n != end; n++) {
         aseglist_iterator it;
@@ -105,14 +161,50 @@ void LLVMBackend::genModulesIR(mdg_node** start, mdg_node** end)
         }
     }
 }
-void LLVMBackend::genMdgNodeIR(ast_node* n)
+void LLVMBackend::addAstBodyIR(ast_body* b)
+{
+    for (ast_node** n = b->elements; *n; n++) {
+        genMdgNodeIR(*n);
+        if (_err) return;
+    }
+}
+llvm::Value* LLVMBackend::lookupMdgNodeIR(ureg id, ast_elem* e)
+{
+    llvm::Value** v;
+    if (id >= UREGH_MAX) {
+        v = (llvm::Value**)&_local_value_store[id - UREGH_MAX];
+    }
+    else {
+        v = (llvm::Value**)&_global_value_store[id];
+    }
+    if (*v) return *v;
+    // all eleements which are non nodes are primitives
+    // those are initilaized on backend setup
+    // therefore this cast is fine
+    return genMdgNodeIR((ast_node*)e);
+}
+llvm::Value* LLVMBackend::genMdgNodeIR(ast_node* n)
+{
+    switch (n->kind) {
+        case OSC_MODULE:
+        case OSC_EXTEND: addAstBodyIR(&((open_scope*)n)->scp.body); return NULL;
+        case SC_FUNC: return genFunctionIR((sc_func*)n);
+        case EXPR_OP_BINARY: {
+            return NULL;
+        }
+        default: break;
+    }
+}
+
+llvm::Function* LLVMBackend::genFunctionIR(sc_func* fn)
+{
+}
+
+void LLVMBackend::emitModule(const std::string& obj_name)
 {
     // TODO
     return;
 }
-llvm::Function* genFunctionIR(sc_func* fn);
-llvm::Value* getExprIR(ast_node* n);
-
 llvm_backend_error
 linkLLVMModules(LLVMModule** start, LLVMModule** end, char* output_path)
 {

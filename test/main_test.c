@@ -36,7 +36,7 @@ int mdg_test()
 {
     if (tauc_init()) return ERR;
     int res = ERR;
-    mdg* m = &TAUC.mdg;
+    module_dependency_graph* m = &TAUC.mdg;
     thread_context* tc = &TAUC.main_thread_context;
     mdg_node* a = mdg_get_node(m, m->root_node, string_from_cstr("a"));
     mdg_node* b = mdg_get_node(m, m->root_node, string_from_cstr("b"));
@@ -66,7 +66,7 @@ int mdg_test()
     if (scc_detector_run(tc, a)) goto err;
     job j;
     while (true) {
-        int r = job_queue_try_pop(&TAUC.job_queue, &j);
+        int r = job_queue_try_pop(&TAUC.jobqueue, &j);
         if (r == JQ_NONE) break;
         if (r != OK) goto err;
         r = thread_context_do_job(&TAUC.main_thread_context, &j);

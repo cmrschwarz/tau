@@ -24,23 +24,27 @@ extern "C" {
 #include <llvm/IR/LegacyPassManager.h>
 #include <lld/Common/Driver.h>
 #include <llvm/IR/Type.h>
+#include <llvm/MC/MCRegisterInfo.h>
 #include <llvm/IR/IRBuilder.h>
 #include <unistd.h>
 
 struct LLVMModule {
-    std::string path;
+    std::string name;
     std::string module_str;
 };
 
 struct LLVMBackend {
   private:
-    std::vector<llvm::GlobalValue*> _global_value_store;
-    std::vector<llvm::Value*> _local_value_store;
-    llvm_backend_error _err;
     thread_context* _tc;
     llvm::LLVMContext _context;
     llvm::IRBuilder<> _builder;
+    std::vector<void*> _global_value_store;
+    std::vector<void*> _local_value_store;
+    llvm_backend_error _err;
+
     llvm::Module* _mod;
+    llvm::TargetMachine* _tm;
+    ureg _reg_size;
     ureg _mod_startid;
     ureg _mod_endid;
     ureg _private_sym_count;
@@ -51,15 +55,25 @@ struct LLVMBackend {
     static void FinLLVMBackend(LLVMBackend* llvmb);
 
   public:
+    llvm_backend_error setup();
+
+  public:
     llvm_backend_error createLLVMModule(
         mdg_node** start, mdg_node** end, ureg startid, ureg endid,
         ureg private_sym_count, LLVMModule** module);
 
   private:
-    void genModulesIR(mdg_node** start, mdg_node** end);
-    void genMdgNodeIR(ast_node* n);
+    void addModulesIR(mdg_node** start, mdg_node** end);
+    void addAstBodyIR(ast_body* n);
+
+  private:
+    void addPrimitive(ureg id, primitive_kind pk);
+    llvm::Value* lookupMdgNodeIR(ureg id, ast_elem* n);
+    llvm::Value* genMdgNodeIR(ast_node* n);
     llvm::Function* genFunctionIR(sc_func* fn);
-    llvm::Value* getExprIR(ast_node* n);
+
+  private:
+    void emitModule(const std::string& obj_name);
 };
 
 llvm_backend_error

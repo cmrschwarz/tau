@@ -851,7 +851,7 @@ void master_error_log_unwind()
             }
             tfree(errors);
             file_map_iterator fmi;
-            file_map_iterator_begin(&fmi, &TAUC.file_map);
+            file_map_iterator_begin(&fmi, &TAUC.filemap);
             while (true) {
                 src_file* f = file_map_iterator_next_file(&fmi);
                 if (!f) break;

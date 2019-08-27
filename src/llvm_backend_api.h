@@ -16,6 +16,9 @@ typedef enum llvm_backend_error_e {
     LLVMBE_FATAL,
 } llvm_backend_error;
 
+int llvm_backend_init_globals();
+void llvm_backend_fin_globals();
+
 llvm_backend* llvm_backend_new(thread_context* tc);
 
 void llvm_backend_delete(llvm_backend* llvmb);

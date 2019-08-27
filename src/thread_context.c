@@ -96,7 +96,7 @@ int thread_context_do_job(thread_context* tc, job* j)
         return r;
     }
     else if (j->kind == JOB_FINALIZE) {
-        job_queue_stop(&TAUC.job_queue);
+        job_queue_stop(&TAUC.jobqueue);
         // DEBUG:
         print_mdg_node(TAUC.mdg.root_node, 0);
         puts("");
@@ -117,7 +117,7 @@ int thread_context_run(thread_context* tc)
     int r = OK;
     job j;
     while (true) {
-        r = job_queue_pop(&TAUC.job_queue, &j);
+        r = job_queue_pop(&TAUC.jobqueue, &j);
         if (r == JQ_DONE) return OK;
         if (r != OK) return r;
         r = thread_context_do_job(tc, &j);
