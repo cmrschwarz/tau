@@ -322,7 +322,6 @@ llvm::Value* LLVMBackend::genFunctionIR(sc_func* fn)
     }
 
     assert(func_sig);
-    storeAstElem(fn->signature_id, func_sig);
 
     if (*fn->scp.body.elements) {
         auto lt = llvm::Function::ExternalLinkage;

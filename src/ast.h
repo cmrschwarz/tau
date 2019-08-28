@@ -311,7 +311,6 @@ typedef struct sc_func_s {
     ureg param_count;
     ast_node* return_type;
     ast_elem* return_ctype;
-    ureg signature_id;
     ureg id;
 } sc_func;
 

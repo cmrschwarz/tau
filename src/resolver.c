@@ -249,11 +249,9 @@ static resolve_error add_ast_node_decls(
             if (public_st &&
                 ast_node_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
                 fn->id = r->public_sym_count++;
-                fn->signature_id = r->public_sym_count++;
             }
             else {
                 fn->id = r->private_sym_count++;
-                fn->signature_id = r->private_sym_count++;
             }
             symbol_table* tgtst =
                 (ast_node_flags_get_access_mod(n->flags) == AM_UNSPECIFIED)
@@ -1200,7 +1198,6 @@ void adjust_node_ids(ureg sym_offset, ast_node* n)
             if (ast_node_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             sc_func* fn = (sc_func*)n;
             fn->id += sym_offset;
-            fn->signature_id += sym_offset;
             return;
         }
 
