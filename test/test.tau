@@ -1,14 +1,11 @@
 //require "test2.tau";
 
-public func printf(x: string, y: int, z: int);
-public func puts(x: string);
-
-public func foo(x: int) -> int {
-    return 5 * x;
-}
+func foo(x: int);
+func bar(x: int);
+func printf(x: string, y: int, z: int);
 
 public func main() -> int{
-    printf("Hello %i%c", foo(20), 10);
-    puts("Moin!");
+    printf("Hello %i%c",10, 10);
+   // puts("Moin!");
     return 5 + 4;
 }

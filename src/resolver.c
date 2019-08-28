@@ -253,7 +253,7 @@ static resolve_error add_ast_node_decls(
             }
             else {
                 fn->id = r->private_sym_count++;
-                fn->signature_id = r->private_sym_count;
+                fn->signature_id = r->private_sym_count++;
             }
             symbol_table* tgtst =
                 (ast_node_flags_get_access_mod(n->flags) == AM_UNSPECIFIED)
@@ -550,11 +550,13 @@ resolve_error resolve_func_call(
 {
     ast_elem** call_arg_types =
         dbuffer_claim(&r->call_types, c->arg_count * sizeof(ast_elem*));
+    resolve_error re = RE_OK;
     for (ureg i = 0; i < c->arg_count; i++) {
-        resolve_ast_node(r, c->args[i], st, &call_arg_types[i]);
+        re = resolve_ast_node(r, c->args[i], st, &call_arg_types[i]);
+        if (re) return re;
     }
     symbol_table* lt = st;
-    resolve_error re = RE_OK;
+
     while (lt) {
         symbol_table* fn_st;
         symbol** s = symbol_table_lookup_with_decl(
