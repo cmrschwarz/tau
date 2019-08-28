@@ -2230,6 +2230,9 @@ parse_error parse_func_decl(
         fnp->scp.body.elements = NULL_PTR_PTR;
         fnp->scp.body.srange = SRC_RANGE_INVALID;
         fnp->scp.body.symtab = NULL;
+        if (push_bpd(p, (ast_node*)fnp, &fnp->scp.body)) return PE_FATAL;
+        curr_scope_add_decls(p, AM_UNSPECIFIED, fnp->param_count);
+        if (pop_bpd(p, PE_OK)) return PE_FATAL;
         return PE_OK;
     }
     else {

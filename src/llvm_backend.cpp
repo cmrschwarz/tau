@@ -133,10 +133,10 @@ llvm_backend_error LLVMBackend::createLLVMModule(
     // init id space
     _mod_startid = startid;
     _mod_endid = endid;
-    _private_sym_count = private_sym_count;
     if (_global_value_store.size() <= endid) {
         _global_value_store.resize(endid + 1, NULL);
     }
+    _private_sym_count = private_sym_count;
     // i really hope this doesn't realloc
     _local_value_store.assign(_private_sym_count, NULL);
     // create actual module
@@ -239,6 +239,17 @@ llvm::Value* LLVMBackend::genMdgNodeIR(ast_node* n)
                 default: assert(false);
             }
         }
+        case SYM_PARAM: {
+            sym_param* p = (sym_param*)n;
+            sc_func* f = (sc_func*)p->sym.declaring_st->owning_node;
+            ureg param_nr = p - f->params;
+            auto lf = (llvm::Function*)lookupAstNodeIR(f->id, (ast_node*)f);
+            llvm::Argument* a = lf->arg_begin() + param_nr;
+            return a;
+        }
+        case EXPR_IDENTIFIER: {
+            return genMdgNodeIR((ast_node*)((expr_identifier*)n)->value.sym);
+        }
         case EXPR_RETURN: {
             return _builder.CreateRet(genMdgNodeIR(((expr_break*)n)->value));
         }
@@ -260,7 +271,9 @@ llvm::Value* LLVMBackend::genMdgNodeIR(ast_node* n)
                 lookupAstNodeIR(c->target->id, (ast_node*)c->target),
                 args_arr_ref);
         }
-        default: break;
+        case SYM_IMPORT_GROUP:
+        case SYM_IMPORT_MODULE: return NULL;
+        default: assert(false);
     }
     return NULL;
 }
@@ -269,14 +282,16 @@ llvm::Value* LLVMBackend::genBinaryOpIR(expr_op_binary* b)
     if (b->op->kind == SC_FUNC) {
         assert(false); // TODO
     }
+    auto lhs = genMdgNodeIR(b->lhs);
+    if (_err) return NULL;
+    auto rhs = genMdgNodeIR(b->rhs);
+    if (_err) return NULL;
     switch (b->node.op_kind) {
-        case OP_ADD: {
-            auto lhs = genMdgNodeIR(b->lhs);
-            if (_err) return NULL;
-            auto rhs = genMdgNodeIR(b->rhs);
-            if (_err) return NULL;
-            return _builder.CreateAdd(lhs, rhs);
-        }
+        case OP_ADD: return _builder.CreateAdd(lhs, rhs);
+        case OP_SUB: return _builder.CreateSub(lhs, rhs);
+        case OP_MUL: return _builder.CreateMul(lhs, rhs);
+        case OP_DIV: return _builder.CreateSDiv(lhs, rhs);
+        case OP_MOD: return _builder.CreateSRem(lhs, rhs);
         default: assert(false);
     }
 }

@@ -736,6 +736,29 @@ resolve_error resolve_import_parent(
     ast_node_flags_set_resolved(&ip->sym.node.flags);
     return RE_OK;
 }
+resolve_error
+resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype)
+{
+    resolve_error re;
+    if (p->type) {
+        re = resolve_ast_node(r, p->type, st, &p->ctype);
+        if (re) return re;
+        if (p->default_value) {
+            ast_elem* r;
+            re = resolve_ast_node(r, (ast_node*)p->default_value, st, &r);
+            if (re) return re;
+            if (!ctypes_unifiable(p->ctype, r)) {
+                assert(false); // TODO: error
+            }
+        }
+    }
+    else {
+        re = resolve_ast_node(r, p->default_value, st, &p->ctype);
+        if (re) return re;
+    }
+    if (ctype) *ctype = p->ctype;
+    return PE_OK;
+}
 resolve_error resolve_expr_scope_access(
     resolver* r, expr_scope_access* esa, symbol_table* st, bool* left_scope,
     symbol** res, ast_elem** ctype)
@@ -1044,7 +1067,7 @@ resolve_error resolve_ast_node_raw(
             if (ctype) *ctype = NULL;
             if (resolved) return RE_OK;
             expr_macro* em = (expr_macro*)n;
-            resolve_error re = add_simple_body_decls(r, st, &em->body, false);
+            re = add_simple_body_decls(r, st, &em->body, false);
             if (re) return re;
             return resolve_ast_node(r, (ast_node*)em->next, st, NULL);
         }
@@ -1059,7 +1082,7 @@ resolve_error resolve_ast_node_raw(
             if (ctype) *ctype = NULL;
             if (resolved) return RE_OK;
             expr_match* em = (expr_match*)n;
-            resolve_error re = resolve_ast_node(r, em->match_expr, st, NULL);
+            re = resolve_ast_node(r, em->match_expr, st, NULL);
             if (re) return re;
             for (match_arm** ma = (match_arm**)em->body.elements; *ma != NULL;
                  ma++) {
@@ -1069,6 +1092,11 @@ resolve_error resolve_ast_node_raw(
                 if (re) return re;
             }
             return RE_OK;
+        }
+        case SYM_PARAM: {
+            sym_param* p = (sym_param*)n;
+            if (resolved) ret_ctype(p->ctype, ctype);
+            return resolve_param(r, p, st, ctype);
         }
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
@@ -1132,8 +1160,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
     resolve_error re;
     for (ureg i = 0; i < fn->param_count; i++) {
         // TODO: default args etc.
-        re = resolve_ast_node(
-            r, fn->params[i].type, parent_st, &fn->params[i].ctype);
+        re = resolve_param(r, &fn->params[i], st, NULL);
         if (re) return re;
         re = add_symbol(r, st, NULL, (symbol*)&fn->params[i]);
         if (re) return re;
