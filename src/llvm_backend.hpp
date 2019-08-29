@@ -40,7 +40,6 @@ struct LLVMBackend {
     llvm::IRBuilder<> _builder;
     std::vector<void*> _global_value_store;
     std::vector<void*> _local_value_store;
-    llvm_backend_error _err;
 
     llvm::Module* _mod;
     llvm::TargetMachine* _tm;
@@ -55,33 +54,34 @@ struct LLVMBackend {
     static void FinLLVMBackend(LLVMBackend* llvmb);
 
   public:
-    llvm_backend_error setup();
+    llvm_error setup();
 
   public:
-    llvm_backend_error createLLVMModule(
+    llvm_error createLLVMModule(
         mdg_node** start, mdg_node** end, ureg startid, ureg endid,
         ureg private_sym_count, LLVMModule** module);
 
   private:
-    void addModulesIR(mdg_node** start, mdg_node** end);
-    void addAstBodyIR(ast_body* n);
+    llvm_error addModulesIR(mdg_node** start, mdg_node** end);
+    llvm_error addAstBodyIR(ast_body* n);
 
   private:
     void addPrimitive(ureg id, primitive_kind pk);
     void** lookupAstElem(ureg id);
     void storeAstElem(ureg id, void* val);
-    llvm::Value* lookupAstNodeIR(ureg id, ast_node* n);
-    llvm::Type* lookupAstTypeIR(ureg id, ast_elem* e);
-    llvm::Type* lookupCTypeIR(ast_elem* e);
+    llvm_error lookupValue(ureg id, ast_node* n, llvm::Value** v);
+    llvm_error lookupType(ureg id, ast_elem* e, llvm::Type** t);
+    llvm_error lookupCType(ast_elem* e, llvm::Type** t);
     llvm::Type* lookupPrimitive(primitive_kind pk);
-    llvm::Value* genMdgNodeIR(ast_node* n);
-    llvm::Value* genFunctionIR(sc_func* fn);
-    llvm::Value* genBinaryOpIR(expr_op_binary* b);
+    // val can be NULL
+    llvm_error genMdgNodeIR(ast_node* n, llvm::Value** v);
+    llvm_error genFunctionIR(sc_func* fn);
+    llvm_error genBinaryOpIR(expr_op_binary* b, llvm::Value** v);
 
   private:
-    void emitModule(const std::string& obj_name);
+    llvm_error emitModule(const std::string& obj_name);
 };
 
-llvm_backend_error
+llvm_error
 linkLLVMModules(LLVMModule** start, LLVMModule** end, char* output_path);
 #endif
