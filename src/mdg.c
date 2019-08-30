@@ -535,16 +535,18 @@ int scc_detector_strongconnect(
     }
     if (sn->lowlink == sn->index) {
         // the caller isn't part of the cycle so it depends on it
-        // and somebody else is already dealing with it
         // we must wait for the cycle to be resolved
+        int ret = OK;
         if (sn->lowlink != tc->sccd.dfs_start_index + 1) {
             int r = aseglist_add(&n->notify, caller);
             rwslock_end_read(&n->stage_lock);
             if (r) return ERR;
-            return SCCD_ADDED_NOTIFICATION;
+            ret = SCCD_ADDED_NOTIFICATION;
+        }
+        else {
+            rwslock_end_read(&n->stage_lock);
         }
 
-        rwslock_end_read(&n->stage_lock);
         bool success = false;
 
         if (stack_peek(&tc->tempstack) == n) {
@@ -559,7 +561,7 @@ int scc_detector_strongconnect(
             if (success) {
                 tauc_request_resolve_single(n);
             }
-            return OK;
+            return ret;
         }
         else {
             stack_state ss_end, ss_start;
@@ -596,7 +598,7 @@ int scc_detector_strongconnect(
             else {
                 tfree(node_list);
             }
-            return OK;
+            return ret;
         }
     }
     rwslock_end_read(&n->stage_lock);
