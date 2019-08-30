@@ -20,7 +20,7 @@ typedef enum resolve_error {
 typedef struct thread_context_s thread_context;
 typedef struct resolver {
     stack error_stack;
-    dbuffer call_types;
+    sbuffer call_types;
     thread_context* tc;
     mdg_node** start;
     mdg_node** end;

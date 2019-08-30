@@ -87,6 +87,13 @@ void sbuffer_remove(sbuffer* sb, sbi* sbi, ureg size)
         cs->head = ptrsub(cs->head, size);
     }
 }
+void sbuffer_remove_at_end(sbuffer* sb, ureg size)
+{
+    sbi it;
+    sbi_begin_at_end(&it, sb);
+    sbi_previous(&it, size);
+    sbuffer_remove(sb, &it, size);
+}
 void* sbuffer_insert(sbuffer* sb, sbi* sbi, ureg size)
 {
     sbuffer_segment* cs = sbi->seg;

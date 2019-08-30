@@ -548,7 +548,6 @@ bool ast_body_is_braced(ast_body* b);
 
 bool is_unary_op_postfix(operator_kind t);
 ast_node* get_parent_body(scope* parent);
-void ast_node_get_highlight_bounds(ast_node* n, ureg* start, ureg* end);
 void ast_node_get_bounds(ast_node* n, ureg* start, ureg* end);
 char* op_to_str(operator_kind t);
 

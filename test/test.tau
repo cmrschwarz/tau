@@ -1,16 +1,16 @@
 //require "test2.tau";
 
 module b{
-    global: int = 30;
+    public global: int = 30;
 
-    func foo() -> int{
+    public func foo() -> int{
         x := 10;
         return global * global;
     }
 }
 module a{
     import b;
-    func printf(x: string, y: int, z: int);
+    public func printf(x: string, y: int, z: int);
 }
 
 import a;

@@ -123,7 +123,7 @@ llvm_error LLVMBackend::createLLVMModule(
             m->module_str += "&";
         }
     }
-    m->name = "foo.obj";
+    m->name = m->module_str + ".obj";
     puts("}");
     *module = m;
     // init id space
@@ -135,11 +135,17 @@ llvm_error LLVMBackend::createLLVMModule(
     _private_sym_count = private_sym_count;
     // i really hope this doesn't realloc
     _local_value_store.assign(_private_sym_count, NULL);
+    _null_after_emit.clear();
     // create actual module
     _mod = new (std::nothrow) llvm::Module(m->name, _context);
     if (!_mod) return LLE_OK;
     llvm_error lle = addModulesIR(start, end);
     if (lle) return lle;
+    for (auto it = _null_after_emit.begin(); it != _null_after_emit.end();
+         ++it) {
+        // delete (**it);
+        **it = NULL;
+    }
     return emitModule(m->name);
 }
 
@@ -212,6 +218,10 @@ llvm::Type* LLVMBackend::lookupPrimitive(primitive_kind pk)
 {
     return (llvm::Type*)_global_value_store[PRIMITIVES[0].type_id + pk];
 }
+bool LLVMBackend::isIdInModule(ureg id)
+{
+    return (_mod_startid <= id && id < _mod_endid);
+}
 llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
 {
     // TODO: proper error handling
@@ -220,7 +230,7 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
         case OSC_MODULE:
         case OSC_EXTEND:
             return LLE_OK; // these are handled by the osc iterator
-        case SC_FUNC: return genFunctionIR((sc_func*)n);
+        case SC_FUNC: return genFunctionIR((sc_func*)n, val);
         case EXPR_OP_BINARY: return genBinaryOpIR((expr_op_binary*)n, val);
         case EXPR_LITERAL: {
             expr_literal* l = (expr_literal*)n;
@@ -302,9 +312,12 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             sym_var* var = (sym_var*)n;
             void** res = lookupAstElem(var->var_id);
             if (*res) {
-                llvm::LoadInst* load = _builder.CreateLoad((llvm::Value*)*res);
-                if (!load) return LLE_FATAL;
-                *val = load;
+                if (val) {
+                    llvm::LoadInst* load =
+                        _builder.CreateLoad((llvm::Value*)*res);
+                    if (!load) return LLE_FATAL;
+                    *val = load;
+                }
                 return LLE_OK;
             }
             llvm::Type* tp;
@@ -314,11 +327,19 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             llvm::Value* var_val;
             if (k == ELEM_MDG_NODE || k == OSC_MODULE || k == OSC_EXTEND) {
                 // global var
-                auto lt = (var->var_id >= UREGH_MAX)
-                              ? llvm::GlobalVariable::InternalLinkage
-                              : llvm::GlobalVariable::ExternalLinkage;
+                llvm::GlobalVariable::LinkageTypes lt;
+                if (var->var_id >= UREGH_MAX) {
+                    lt = llvm::GlobalVariable::InternalLinkage;
+                }
+                else {
+                    lt = llvm::GlobalVariable::ExternalLinkage;
+                    if (isIdInModule(var->var_id)) {
+                        _null_after_emit.push_back(res);
+                    }
+                }
                 llvm::Constant* init = NULL;
-                if (n->kind == SYM_VAR_INITIALIZED) {
+                if (n->kind == SYM_VAR_INITIALIZED &&
+                    isIdInModule(var->var_id)) {
                     llvm::Value* v;
                     lle = getMdgNodeIR(
                         ((sym_var_initialized*)n)->initial_value, &v);
@@ -357,6 +378,10 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             }
             return LLE_OK;
         }
+        case EXPR_SCOPE_ACCESS: {
+            expr_scope_access* esa = (expr_scope_access*)n;
+            return getMdgNodeIR((ast_node*)esa->target.sym, val);
+        }
         case SYM_IMPORT_GROUP:
         case SYM_IMPORT_MODULE: return LLE_OK;
         default: assert(false);
@@ -387,7 +412,7 @@ llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** val)
     if (!*val) return LLE_FATAL;
     return LLE_OK;
 }
-llvm_error LLVMBackend::genFunctionIR(sc_func* fn)
+llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
 {
     llvm::FunctionType* func_sig;
     llvm::Type* ret_type;
@@ -411,14 +436,20 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn)
         func_sig = llvm::FunctionType::get(ret_type, false);
         if (!func_sig) return LLE_FATAL;
     }
-
-    if (*fn->scp.body.elements) {
+    void** res = lookupAstElem(fn->id);
+    if (*fn->scp.body.elements && isIdInModule(fn->id)) {
         auto lt = llvm::Function::ExternalLinkage;
-        if (fn->id >= UREGH_MAX) lt = llvm::Function::InternalLinkage;
+        if (fn->id >= UREGH_MAX) {
+            lt = llvm::Function::InternalLinkage;
+        }
+        else {
+            _null_after_emit.push_back(res);
+        }
         llvm::Function* func =
             llvm::Function::Create(func_sig, lt, fn->scp.sym.name, _mod);
         if (!func) return LLE_FATAL;
-        storeAstElem(fn->id, func);
+        *res = (void*)func;
+        if (val) *val = func;
         llvm::BasicBlock* func_block =
             llvm::BasicBlock::Create(_context, "", func);
         if (!func_block) return LLE_FATAL;
@@ -429,7 +460,8 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn)
         llvm::Constant* func =
             _mod->getOrInsertFunction(fn->scp.sym.name, func_sig);
         assert(func);
-        storeAstElem(fn->id, func);
+        *res = (void*)func;
+        if (val) *val = func;
         return LLE_OK;
     }
 }

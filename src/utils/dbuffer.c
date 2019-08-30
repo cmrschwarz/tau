@@ -67,7 +67,7 @@ bool dbuffer_can_fit(dbuffer* db, ureg required_space)
 
 int dbuffer_reserve(dbuffer* db, ureg space)
 {
-    if (dbuffer_can_fit(db, space)) {
+    if (!dbuffer_can_fit(db, space)) {
         ureg capacity = dbuffer_get_capacity(db);
         if (capacity > space) {
             capacity = capacity * 2;

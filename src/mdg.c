@@ -699,6 +699,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
     tc->sccd.dfs_start_index = tc->sccd.dfs_index;
     tc->sccd.dfs_index++;
     aseglist* oscs;
+    // since the stack is segmented there is no risk of this getting invalidated
     void** stack_head = tc->tempstack.head;
     while (true) {
         rwslock_write(&n->stage_lock);

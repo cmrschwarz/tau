@@ -13,25 +13,27 @@ resolve_error resolve_expr_body(
     resolver* r, ast_node* expr, ast_body* b, symbol_table* parent_st);
 static resolve_error add_simple_body_decls(
     resolver* r, symbol_table* parent_st, ast_body* b, bool public_st);
+resolve_error resolve_expr_scope_access(
+    resolver* r, expr_scope_access* esa, symbol_table* st, bool* left_scope,
+    symbol** res, ast_elem** ctype);
+static inline resolve_error resolve_expr_scope_access_lhs(
+    resolver* r, expr_scope_access* esa, symbol_table* st, bool* left_scope,
+    symbol** res, symbol_table** lhs_st);
 
 static inline resolve_error ret_ctype(ast_elem* type, ast_elem** ctype)
 {
     *ctype = type;
     return RE_OK;
 }
-static inline resolve_error
-report_unknown_symbol_raw(resolver* r, src_file* f, src_range range)
-{
-    error_log_report_annotated(
-        &r->tc->err_log, ES_RESOLVER, false, "unknown symbol", f,
-        src_range_get_start(range), src_range_get_end(range),
-        "use of an undefined symbol");
-    return RE_UNKNOWN_SYMBOL;
-}
-static inline resolve_error
+static resolve_error
 report_unknown_symbol(resolver* r, ast_node* n, symbol_table* st)
 {
-    return report_unknown_symbol_raw(r, ast_node_get_file(n, st), n->srange);
+    ureg start, end;
+    ast_node_get_bounds(n, &start, &end);
+    error_log_report_annotated(
+        &r->tc->err_log, ES_RESOLVER, false, "unknown symbol",
+        ast_node_get_file(n, st), start, end, "use of an undefined symbol");
+    return RE_UNKNOWN_SYMBOL;
 }
 static resolve_error report_redeclaration_error_raw(
     thread_context* tc, symbol* redecl, src_file* redecl_file, symbol* prev,
@@ -544,24 +546,25 @@ resolve_error func_applicable(
     return resolve_ast_node(r, func->return_type, fn_st, ctype);
 }
 resolve_error resolve_func_call(
-    resolver* r, char* func_name, expr_call* c, symbol_table* st,
-    ast_elem** ctype)
+    resolver* r, char* func_name, expr_call* c, symbol_table* func_st,
+    symbol_table* args_st, ast_elem** ctype)
 {
     ast_elem** call_arg_types =
-        dbuffer_claim(&r->call_types, c->arg_count * sizeof(ast_elem*));
+        sbuffer_append(&r->call_types, c->arg_count * sizeof(ast_elem*));
     resolve_error re = RE_OK;
     for (ureg i = 0; i < c->arg_count; i++) {
-        re = resolve_ast_node(r, c->args[i], st, &call_arg_types[i]);
+        re = resolve_ast_node(r, c->args[i], args_st, &call_arg_types[i]);
         if (re) return re;
     }
-    symbol_table* lt = st;
+    symbol_table* lt = func_st;
 
     while (lt) {
         symbol_table* fn_st;
         symbol** s = symbol_table_lookup_with_decl(
             lt, AM_UNSPECIFIED, func_name, &fn_st);
         if (!s) {
-            re = report_unknown_symbol(r, c->lhs, st);
+            // we use args_st here because thats the scope that the call is in
+            re = report_unknown_symbol(r, c->lhs, args_st);
             break;
         }
         bool applicable;
@@ -589,7 +592,7 @@ resolve_error resolve_func_call(
         }
         lt = lt->parent;
     }
-    dbuffer_pop(&r->call_types, c->arg_count * sizeof(ast_elem*));
+    sbuffer_remove_at_end(&r->call_types, c->arg_count * sizeof(ast_elem*));
     return re;
 }
 resolve_error
@@ -598,7 +601,17 @@ resolve_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
 
     if (c->lhs->kind == EXPR_IDENTIFIER) {
         return resolve_func_call(
-            r, ((expr_identifier*)c->lhs)->value.str, c, st, ctype);
+            r, ((expr_identifier*)c->lhs)->value.str, c, st, st, ctype);
+    }
+    else if (c->lhs->kind == EXPR_SCOPE_ACCESS) {
+        expr_scope_access* esa = (expr_scope_access*)c->lhs;
+        symbol* lhs_sym;
+        symbol_table* lhs_st;
+        bool left_scope = false;
+        resolve_error re = resolve_expr_scope_access_lhs(
+            r, esa, st, &left_scope, &lhs_sym, &lhs_st);
+        if (re) return re;
+        return resolve_func_call(r, esa->target.name, c, lhs_st, st, ctype);
     }
     else {
         assert(false); // TODO
@@ -760,36 +773,46 @@ resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype)
     if (ctype) *ctype = p->ctype;
     return PE_OK;
 }
+static inline resolve_error resolve_expr_scope_access_lhs(
+    resolver* r, expr_scope_access* esa, symbol_table* st, bool* left_scope,
+    symbol** res, symbol_table** lhs_st)
+{
+    resolve_error re;
+    if (esa->lhs->kind == EXPR_SCOPE_ACCESS) {
+        // TODO: is this a problem for loop reporting?
+        expr_scope_access* lhs_esa = (expr_scope_access*)esa->lhs;
+        re = resolve_expr_scope_access(r, lhs_esa, st, left_scope, res, NULL);
+        if (re) return re;
+        re = resolve_ast_node(r, (ast_node*)lhs_esa->target.sym, st, NULL);
+        if (re) return re;
+    }
+    else if (esa->lhs->kind == EXPR_IDENTIFIER) {
+        re = resolve_ast_node(r, esa->lhs, st, NULL);
+        if (re) return re;
+        *res = ((expr_identifier*)esa->lhs)->value.sym;
+    }
+    else {
+        assert(false); // TODO: error
+    }
+    re = get_resolved_symbol_symtab(r, *res, left_scope, lhs_st);
+    if (re) return re;
+    return RE_OK;
+}
 resolve_error resolve_expr_scope_access(
     resolver* r, expr_scope_access* esa, symbol_table* st, bool* left_scope,
     symbol** res, ast_elem** ctype)
 {
     resolve_error re;
     symbol* lhs_sym;
-    if (esa->lhs->kind == EXPR_SCOPE_ACCESS) {
-        // TODO: is this a problem for loop reporting?
-        re = resolve_expr_scope_access(
-            r, (expr_scope_access*)esa->lhs, st, left_scope, &lhs_sym, NULL);
-        if (re) return re;
-        re = resolve_ast_node(r, (ast_node*)lhs_sym, st, NULL);
-        if (re) return re;
-    }
-    else if (esa->lhs->kind == EXPR_IDENTIFIER) {
-        re = resolve_ast_node(r, esa->lhs, st, NULL);
-        if (re) return re;
-        lhs_sym = ((expr_identifier*)esa->lhs)->value.sym;
-    }
-    else {
-        assert(false); // TODO: error
-    }
     symbol_table* lhs_st;
-    re = get_resolved_symbol_symtab(r, lhs_sym, left_scope, &lhs_st);
+    re = resolve_expr_scope_access_lhs(
+        r, esa, st, left_scope, &lhs_sym, &lhs_st);
     if (re) return re;
+
     symbol** s = symbol_table_lookup(
         lhs_st, *left_scope ? AM_PUBLIC : AM_UNSPECIFIED, esa->target.name);
     if (!s) {
-        return report_unknown_symbol_raw(
-            r, ast_node_get_file((ast_node*)esa, st), esa->target_srange);
+        return report_unknown_symbol(r, (ast_node*)esa, st);
     }
     esa->target.sym = *s;
     ast_node_flags_set_resolved(&esa->node.flags);
@@ -1212,13 +1235,13 @@ void adjust_node_ids(ureg sym_offset, ast_node* n)
             ((sc_struct*)n)->id += sym_offset;
             // fallthrough
         }
-        case OSC_MODULE:
-        case OSC_EXTEND: {
-            for (ast_node** i = ((scope*)n)->body.elements; *i; i++) {
-                adjust_node_ids(sym_offset, *i);
-            }
-        }
         default: return;
+    }
+}
+void adjust_body_ids(ureg sym_offset, ast_body* b)
+{
+    for (ast_node** i = b->elements; *i; i++) {
+        adjust_node_ids(sym_offset, *i);
     }
 }
 void adjust_ids(ureg sym_offset, mdg_node** start, mdg_node** end)
@@ -1228,7 +1251,7 @@ void adjust_ids(ureg sym_offset, mdg_node** start, mdg_node** end)
         aseglist_iterator_begin(&it, &(**start).open_scopes);
         for (open_scope* osc = aseglist_iterator_next(&it); osc;
              osc = aseglist_iterator_next(&it)) {
-            adjust_node_ids(sym_offset, (ast_node*)osc);
+            adjust_body_ids(sym_offset, &osc->scp.body);
         }
         start++;
     }
@@ -1286,14 +1309,14 @@ resolve_error resolver_resolve(
 }
 void resolver_fin(resolver* r)
 {
-    dbuffer_fin(&r->call_types);
+    sbuffer_fin(&r->call_types);
     stack_fin(&r->error_stack);
 }
 int resolver_init(resolver* r, thread_context* tc)
 {
     r->tc = tc;
     if (stack_init(&r->error_stack, &r->tc->tempmem)) return ERR;
-    if (dbuffer_init(&r->call_types)) {
+    if (sbuffer_init(&r->call_types, sizeof(ast_node*) * 32)) {
         stack_fin(&r->error_stack);
         return ERR;
     }

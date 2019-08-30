@@ -40,7 +40,7 @@ struct LLVMBackend {
     llvm::IRBuilder<> _builder;
     std::vector<void*> _global_value_store;
     std::vector<void*> _local_value_store;
-
+    std::vector<void**> _null_after_emit;
     llvm::Module* _mod;
     llvm::TargetMachine* _tm;
     ureg _reg_size;
@@ -66,6 +66,9 @@ struct LLVMBackend {
     llvm_error addAstBodyIR(ast_body* n);
 
   private:
+    bool isIdInModule(ureg id);
+
+  private:
     void addPrimitive(ureg id, primitive_kind pk);
     void** lookupAstElem(ureg id);
     void storeAstElem(ureg id, void* val);
@@ -75,7 +78,7 @@ struct LLVMBackend {
     llvm::Type* lookupPrimitive(primitive_kind pk);
     // val can be NULL
     llvm_error getMdgNodeIR(ast_node* n, llvm::Value** v);
-    llvm_error genFunctionIR(sc_func* fn);
+    llvm_error genFunctionIR(sc_func* fn, llvm::Value** val);
     llvm_error genBinaryOpIR(expr_op_binary* b, llvm::Value** v);
 
   private:

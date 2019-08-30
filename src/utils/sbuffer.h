@@ -27,6 +27,7 @@ int sbuffer_init(sbuffer* sb, ureg initial_capacity);
 void sbuffer_fin(sbuffer* sb);
 void* sbuffer_append(sbuffer* sb, ureg size);
 void sbuffer_remove(sbuffer* sb, sbi* sbi, ureg size);
+void sbuffer_remove_at_end(sbuffer* sb, ureg size);
 void* sbuffer_insert(sbuffer* sb, sbi* sbi, ureg size);
 void sbuffer_clear(sbuffer* sb);
 ureg sbuffer_get_capacity(sbuffer* sb);
