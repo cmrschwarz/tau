@@ -335,7 +335,8 @@ static resolve_error add_ast_node_decls(
             // fallthrough
         }
         case SYM_VAR: {
-            if (public_st) {
+            if (public_st &&
+                ast_node_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
                 ((sym_var*)n)->var_id = r->public_sym_count++;
             }
             else {
@@ -1200,10 +1201,16 @@ void adjust_node_ids(ureg sym_offset, ast_node* n)
             fn->id += sym_offset;
             return;
         }
-
+        case SYM_VAR:
+        case SYM_VAR_INITIALIZED: {
+            if (ast_node_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
+            ((sym_var*)n)->var_id += sym_offset;
+            return;
+        }
         case SC_STRUCT: {
             if (ast_node_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             ((sc_struct*)n)->id += sym_offset;
+            // fallthrough
         }
         case OSC_MODULE:
         case OSC_EXTEND: {

@@ -1,13 +1,16 @@
 //require "test2.tau";
 
+
+global: int = 30;
+
 func foo() -> int{
     x := 10;
-    return 2 * x;
+    return global * global;
 }
-func bar(x: int);
+
 func printf(x: string, y: int, z: int);
 
 public func main() -> int{
-    printf("foo: %i%c",foo(), 10);
+    printf("foo: %i%c", global * foo(), 10);
     return 0;
 }

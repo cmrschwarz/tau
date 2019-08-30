@@ -74,7 +74,7 @@ struct LLVMBackend {
     llvm_error lookupCType(ast_elem* e, llvm::Type** t);
     llvm::Type* lookupPrimitive(primitive_kind pk);
     // val can be NULL
-    llvm_error genMdgNodeIR(ast_node* n, llvm::Value** v);
+    llvm_error getMdgNodeIR(ast_node* n, llvm::Value** v);
     llvm_error genFunctionIR(sc_func* fn);
     llvm_error genBinaryOpIR(expr_op_binary* b, llvm::Value** v);
 

@@ -150,7 +150,7 @@ llvm_error LLVMBackend::addModulesIR(mdg_node** start, mdg_node** end)
         aseglist_iterator_begin(&it, &(**n).open_scopes);
         for (open_scope* osc = (open_scope*)aseglist_iterator_next(&it); osc;
              osc = (open_scope*)aseglist_iterator_next(&it)) {
-            llvm_error lle = genMdgNodeIR((ast_node*)osc, NULL);
+            llvm_error lle = getMdgNodeIR((ast_node*)osc, NULL);
             if (lle) return lle;
         }
     }
@@ -159,7 +159,7 @@ llvm_error LLVMBackend::addModulesIR(mdg_node** start, mdg_node** end)
 llvm_error LLVMBackend::addAstBodyIR(ast_body* b)
 {
     for (ast_node** n = b->elements; *n; n++) {
-        llvm_error lle = genMdgNodeIR(*n, NULL);
+        llvm_error lle = getMdgNodeIR(*n, NULL);
         if (lle) return lle;
     }
     return LLE_OK;
@@ -184,7 +184,7 @@ llvm_error LLVMBackend::lookupValue(ureg id, ast_node* n, llvm::Value** val)
         *val = *v;
         return LLE_OK;
     }
-    return genMdgNodeIR(n, val);
+    return getMdgNodeIR(n, val);
 }
 llvm_error LLVMBackend::lookupType(ureg id, ast_elem* e, llvm::Type** type)
 {
@@ -212,7 +212,7 @@ llvm::Type* LLVMBackend::lookupPrimitive(primitive_kind pk)
 {
     return (llvm::Type*)_global_value_store[PRIMITIVES[0].type_id + pk];
 }
-llvm_error LLVMBackend::genMdgNodeIR(ast_node* n, llvm::Value** val)
+llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
 {
     // TODO: proper error handling
     llvm_error lle;
@@ -262,12 +262,12 @@ llvm_error LLVMBackend::genMdgNodeIR(ast_node* n, llvm::Value** val)
             return LLE_OK;
         }
         case EXPR_IDENTIFIER: {
-            return genMdgNodeIR(
+            return getMdgNodeIR(
                 (ast_node*)((expr_identifier*)n)->value.sym, val);
         }
         case EXPR_RETURN: {
             llvm::Value* v;
-            lle = genMdgNodeIR(((expr_break*)n)->value, &v);
+            lle = getMdgNodeIR(((expr_break*)n)->value, &v);
             if (lle) return lle;
             if (!_builder.CreateRet(v)) return LLE_FATAL;
             assert(!val);
@@ -279,7 +279,7 @@ llvm_error LLVMBackend::genMdgNodeIR(ast_node* n, llvm::Value** val)
                 &_tc->permmem, sizeof(llvm::Value*) * c->arg_count);
             if (!args) return LLE_FATAL;
             for (ureg i = 0; i < c->arg_count; i++) {
-                lle = genMdgNodeIR(c->args[i], &args[i]);
+                lle = getMdgNodeIR(c->args[i], &args[i]);
                 if (lle) return lle;
             }
             llvm::ArrayRef<llvm::Value*> args_arr_ref(
@@ -299,34 +299,62 @@ llvm_error LLVMBackend::genMdgNodeIR(ast_node* n, llvm::Value** val)
                 assert(false);
             }
             sym_var* var = (sym_var*)n;
+            void** res = lookupAstElem(var->var_id);
+            if (*res) {
+                llvm::LoadInst* load = _builder.CreateLoad((llvm::Value*)*res);
+                if (!load) return LLE_FATAL;
+                *val = load;
+                return LLE_OK;
+            }
+            llvm::Type* tp;
+            lle = lookupCType(var->ctype, &tp);
+            if (lle) return lle;
             ast_node_kind k = var->sym.declaring_st->owning_node->kind;
+            llvm::Value* var_val;
             if (k == ELEM_MDG_NODE || k == OSC_MODULE || k == OSC_EXTEND) {
                 // global var
+                auto lt = (var->var_id >= UREGH_MAX)
+                              ? llvm::GlobalVariable::InternalLinkage
+                              : llvm::GlobalVariable::ExternalLinkage;
+                llvm::Constant* init = NULL;
+                if (n->kind == SYM_VAR_INITIALIZED) {
+                    llvm::Value* v;
+                    lle = getMdgNodeIR(
+                        ((sym_var_initialized*)n)->initial_value, &v);
+                    if (lle) return lle;
+                    if (!(init = llvm::dyn_cast<llvm::Constant>(v))) {
+                        assert(false); // must be constant, TODO: error
+                        return LLE_FATAL;
+                    }
+                }
+                var_val = (llvm::Value*)new llvm::GlobalVariable(
+                    *_mod, tp, false, lt, init, var->sym.name);
+                if (!var_val) return LLE_FATAL;
             }
             else if (k == SC_STRUCT) {
                 // struct var
+                assert(false); // TODO
             }
             else {
                 // local var
-                llvm::Type* t;
-                lle = lookupCType(var->ctype, &t);
-                if (lle) return lle;
-                auto alloc = _builder.CreateAlloca(t);
-                if (!alloc) return LLE_FATAL;
+                var_val = _builder.CreateAlloca(tp);
+                if (!var_val) return LLE_FATAL;
                 if (n->kind == SYM_VAR_INITIALIZED) {
                     llvm::Value* v;
-                    lle = genMdgNodeIR(
+                    lle = getMdgNodeIR(
                         ((sym_var_initialized*)n)->initial_value, &v);
                     if (lle) return lle;
-                    if (!_builder.CreateStore(v, alloc, false))
+                    if (!_builder.CreateStore(v, var_val, false))
                         return LLE_FATAL;
                 }
-                auto load = _builder.CreateLoad(alloc);
-                if (!load) return LLE_FATAL;
-                storeAstElem(var->var_id, load);
-                if (val) *val = load;
-                return LLE_OK;
             }
+            *res = (void*)var_val;
+            if (val) {
+                llvm::LoadInst* load = _builder.CreateLoad(var_val);
+                if (!load) return LLE_FATAL;
+                *val = load;
+            }
+            return LLE_OK;
         }
         case SYM_IMPORT_GROUP:
         case SYM_IMPORT_MODULE: return LLE_OK;
@@ -335,15 +363,16 @@ llvm_error LLVMBackend::genMdgNodeIR(ast_node* n, llvm::Value** val)
     assert(false);
     return LLE_FATAL;
 }
+
 llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** val)
 {
     if (b->op->kind == SC_FUNC) {
         assert(false); // TODO
     }
     llvm::Value *lhs, *rhs;
-    llvm_error lle = genMdgNodeIR(b->lhs, &lhs);
+    llvm_error lle = getMdgNodeIR(b->lhs, &lhs);
     if (lle) return lle;
-    lle = genMdgNodeIR(b->rhs, &rhs);
+    lle = getMdgNodeIR(b->rhs, &rhs);
     if (lle) return lle;
     assert(val);
     switch (b->node.op_kind) {
