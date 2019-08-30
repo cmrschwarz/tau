@@ -1732,8 +1732,9 @@ static inline parse_error
 parse_binary_op(parser* p, operator_kind op, ast_node** ex, ast_node* lhs)
 {
 
-    if (op == OP_SCOPE_ACCESS || op == OP_MEMBER_ACCESS)
+    if (op == OP_SCOPE_ACCESS || op == OP_MEMBER_ACCESS) {
         return parse_scope_access(p, ex, lhs, (op == OP_MEMBER_ACCESS));
+    }
     token* t = lx_aquire(&p->lx);
     lx_void(&p->lx);
     expr_op_binary* ob = (expr_op_binary*)alloc_perm(p, sizeof(expr_op_binary));
@@ -1769,19 +1770,18 @@ parse_expression_of_prec_post_value(parser* p, ast_node** ex, ureg prec)
     while (true) {
         PEEK(p, t);
         op = token_to_postfix_unary_op(t);
-        if (op == OP_NOOP) break;
-        if (op_precedence[op] < prec) return PE_OK;
-        pe = parse_postfix_unary_op(p, op, ex, *ex);
-        if (pe) return pe;
-    }
-    // parse arbitrarily many binary operators
-    while (true) {
-        op = token_to_binary_op(t);
-        if (op == OP_NOOP) break;
-        if (op_precedence[op] < prec) return PE_OK;
-        pe = parse_binary_op(p, op, ex, *ex);
-        if (pe) return pe;
-        PEEK(p, t);
+        if (op != OP_NOOP) {
+            if (op_precedence[op] < prec) return PE_OK;
+            pe = parse_postfix_unary_op(p, op, ex, *ex);
+            if (pe) return pe;
+        }
+        else {
+            op = token_to_binary_op(t);
+            if (op == OP_NOOP) break;
+            if (op_precedence[op] < prec) return PE_OK;
+            pe = parse_binary_op(p, op, ex, *ex);
+            if (pe) return pe;
+        }
     }
     return PE_OK;
 }

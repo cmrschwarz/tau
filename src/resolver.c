@@ -745,10 +745,10 @@ resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype)
         re = resolve_ast_node(r, p->type, st, &p->ctype);
         if (re) return re;
         if (p->default_value) {
-            ast_elem* r;
-            re = resolve_ast_node(r, (ast_node*)p->default_value, st, &r);
+            ast_elem* val;
+            re = resolve_ast_node(r, (ast_node*)p->default_value, st, &val);
             if (re) return re;
-            if (!ctypes_unifiable(p->ctype, r)) {
+            if (!ctypes_unifiable(p->ctype, val)) {
                 assert(false); // TODO: error
             }
         }

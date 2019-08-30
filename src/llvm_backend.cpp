@@ -150,7 +150,7 @@ llvm_error LLVMBackend::addModulesIR(mdg_node** start, mdg_node** end)
         aseglist_iterator_begin(&it, &(**n).open_scopes);
         for (open_scope* osc = (open_scope*)aseglist_iterator_next(&it); osc;
              osc = (open_scope*)aseglist_iterator_next(&it)) {
-            llvm_error lle = getMdgNodeIR((ast_node*)osc, NULL);
+            llvm_error lle = addAstBodyIR(&osc->scp.body);
             if (lle) return lle;
         }
     }
@@ -218,7 +218,8 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
     llvm_error lle;
     switch (n->kind) {
         case OSC_MODULE:
-        case OSC_EXTEND: return addAstBodyIR(&((open_scope*)n)->scp.body);
+        case OSC_EXTEND:
+            return LLE_OK; // these are handled by the osc iterator
         case SC_FUNC: return genFunctionIR((sc_func*)n);
         case EXPR_OP_BINARY: return genBinaryOpIR((expr_op_binary*)n, val);
         case EXPR_LITERAL: {
