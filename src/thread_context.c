@@ -98,8 +98,8 @@ int thread_context_do_job(thread_context* tc, job* j)
     if (j->kind == JOB_FINALIZE) {
         job_queue_stop(&TAUC.jobqueue);
         // DEBUG:
-        print_mdg_node(TAUC.mdg.root_node, 0);
-        puts("");
+        // print_mdg_node(TAUC.mdg.root_node, 0);
+        // puts("");
         int r = mdg_final_sanity_check(&TAUC.mdg, tc);
         if (!r) {
             ureg lh = atomic_ureg_dec(&TAUC.linking_holdups);

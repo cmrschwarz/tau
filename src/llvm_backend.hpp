@@ -4,28 +4,45 @@ extern "C" {
 #include "llvm_backend_api.h"
 #include "thread_context.h"
 }
+#include <lld/Common/Driver.h>
+#include <llvm/Analysis/TargetLibraryInfo.h>
+#include <llvm/Analysis/TargetTransformInfo.h>
 #include <llvm/Bitcode/BitcodeWriter.h>
+#include <llvm/InitializePasses.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
 #include <llvm/IR/DerivedTypes.h>
+#include <llvm/IR/DiagnosticInfo.h>
+#include <llvm/IR/DIBuilder.h>
 #include <llvm/IR/Function.h>
+#include <llvm/IR/InlineAsm.h>
 #include <llvm/IR/InstrTypes.h>
 #include <llvm/IR/Instruction.h>
 #include <llvm/IR/Instructions.h>
+#include <llvm/IR/IRBuilder.h>
+#include <llvm/IR/LegacyPassManager.h>
 #include <llvm/IR/LLVMContext.h>
 #include <llvm/IR/Module.h>
+#include <llvm/IR/PassManager.h>
 #include <llvm/IR/Type.h>
-#include <llvm/Support/raw_ostream.h>
-#include <llvm/Support/FileSystem.h>
-#include <llvm/Support/TargetRegistry.h>
-#include <llvm/Target/TargetMachine.h>
-#include <llvm/Target/CodeGenCWrappers.h>
-#include <llvm/Support/TargetSelect.h>
-#include <llvm/IR/LegacyPassManager.h>
-#include <lld/Common/Driver.h>
-#include <llvm/IR/Type.h>
+#include <llvm/IR/Verifier.h>
 #include <llvm/MC/MCRegisterInfo.h>
-#include <llvm/IR/IRBuilder.h>
+#include <llvm/MC/SubtargetFeature.h>
+#include <llvm/Object/Archive.h>
+#include <llvm/Object/ArchiveWriter.h>
+#include <llvm/PassRegistry.h>
+#include <llvm/Support/FileSystem.h>
+#include <llvm/Support/raw_ostream.h>
+#include <llvm/Support/TargetParser.h>
+#include <llvm/Support/TargetRegistry.h>
+#include <llvm/Support/TargetSelect.h>
+#include <llvm/Target/CodeGenCWrappers.h>
+#include <llvm/Target/TargetMachine.h>
+#include <llvm/Transforms/IPO/AlwaysInliner.h>
+#include <llvm/Transforms/IPO.h>
+#include <llvm/Transforms/IPO/PassManagerBuilder.h>
+#include <llvm/Transforms/Scalar.h>
+#include <llvm/Transforms/Utils.h>
 #include <unistd.h>
 
 struct LLVMModule {
@@ -46,8 +63,8 @@ struct LLVMBackend {
     std::vector<bool> _global_value_init_flags;
     std::vector<void*> _local_value_store;
     std::vector<ureg> _reset_after_emit;
-    llvm::Module* _mod;
-    llvm::TargetMachine* _tm;
+    llvm::Module* _module;
+    llvm::TargetMachine* _target_machine;
     ureg _reg_size;
     ureg _mod_startid;
     ureg _mod_endid;

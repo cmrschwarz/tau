@@ -70,10 +70,10 @@ LLVMBackend::LLVMBackend(thread_context* tc)
         llvm::errs() << err << "\n";
     }
     llvm::TargetOptions opt;
-    _tm = target->createTargetMachine(
+    _target_machine = target->createTargetMachine(
         target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
         llvm::Optional<llvm::Reloc::Model>());
-    _reg_size = _tm->getMCRegisterInfo()->getRegClass(0).RegsSize;
+    _reg_size = _target_machine->getMCRegisterInfo()->getRegClass(0).RegsSize;
 }
 
 LLVMBackend::~LLVMBackend()
@@ -149,8 +149,8 @@ llvm_error LLVMBackend::createLLVMModule(
     _local_value_store.assign(_private_sym_count, NULL);
     _reset_after_emit.clear();
     // create actual module
-    _mod = new (std::nothrow) llvm::Module(m->name, _context);
-    if (!_mod) return LLE_OK;
+    _module = new (std::nothrow) llvm::Module(m->name, _context);
+    if (!_module) return LLE_OK;
     llvm_error lle = addModulesIR(start, end);
     if (lle) return lle;
     lle = emitModule(m->name);
@@ -167,7 +167,7 @@ llvm_error LLVMBackend::createLLVMModule(
             ((llvm::Function*)val)->removeFromParent();
         }
     }
-    delete _mod;
+    delete _module;
     return lle;
 }
 
@@ -205,7 +205,7 @@ llvm::Value** LLVMBackend::lookupVariableRaw(ureg id)
     if (isGlobalID(id) && *gv) {
         if (!_global_value_init_flags[id]) {
             _global_value_init_flags[id] = true;
-            _mod->getGlobalList().push_back((llvm::GlobalVariable*)*gv);
+            _module->getGlobalList().push_back((llvm::GlobalVariable*)*gv);
         }
     }
     return (llvm::Value**)gv;
@@ -216,7 +216,7 @@ llvm::Function** LLVMBackend::lookupFunctionRaw(ureg id)
     if (isGlobalID(id) && *fn) {
         if (!_global_value_init_flags[id]) {
             _global_value_init_flags[id] = true;
-            _mod->getFunctionList().push_back(*fn);
+            _module->getFunctionList().push_back(*fn);
         }
     }
     return fn;
@@ -407,7 +407,7 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
                     }
                 }
                 var_val = (llvm::Value*)new llvm::GlobalVariable(
-                    *_mod, tp, false, lt, init, var->sym.name);
+                    *_module, tp, false, lt, init, var->sym.name);
                 if (!var_val) return LLE_FATAL;
             }
             else if (k == SC_STRUCT) {
@@ -507,7 +507,7 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
             _reset_after_emit.push_back(fn->id);
         }
         llvm::Function* func =
-            llvm::Function::Create(func_sig, lt, fn->scp.sym.name, _mod);
+            llvm::Function::Create(func_sig, lt, fn->scp.sym.name, _module);
         if (!func) return LLE_FATAL;
         *res = func;
         if (val) *val = func;
@@ -517,8 +517,8 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
         _builder.SetInsertPoint(func_block);
         return addAstBodyIR(&fn->scp.body);
     }
-    auto func =
-        (llvm::Function*)_mod->getOrInsertFunction(fn->scp.sym.name, func_sig);
+    auto func = (llvm::Function*)_module->getOrInsertFunction(
+        fn->scp.sym.name, func_sig);
     if (isGlobalID(fn->id)) {
         _global_value_init_flags[fn->id] = true;
         _reset_after_emit.push_back(fn->id);
@@ -532,22 +532,67 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
     if (val) *val = func;
     return LLE_OK;
 }
+static void addDiscriminatorsPass(
+    const llvm::PassManagerBuilder& pmb, llvm::legacy::PassManagerBase& pm)
+{
+    pm.add(llvm::createAddDiscriminatorsPass());
+}
 
 llvm_error LLVMBackend::emitModule(const std::string& obj_name)
 {
+    printf("emmitting %s\n", (char*)obj_name.c_str());
     std::error_code EC;
     llvm::raw_fd_ostream file_stream{obj_name, EC, llvm::sys::fs::F_None};
-    _mod->setDataLayout(_tm->createDataLayout());
-    // Output the bitcode file to std out
-    llvm::legacy::PassManager pass;
+    _module->setDataLayout(_target_machine->createDataLayout());
+    _module->setTargetTriple(_target_machine->getTargetTriple().str());
+    auto pmb = new llvm::PassManagerBuilder();
+    pmb->OptLevel = 0;
+    pmb->DisableTailCalls = true;
+    pmb->DisableUnitAtATime = true;
+    pmb->DisableUnrollLoops = true;
+    pmb->SLPVectorize = false;
+    pmb->LoopVectorize = false;
+    pmb->RerollLoops = false;
+    pmb->DisableGVNLoadPRE = true;
+    pmb->VerifyInput = true;
+    pmb->MergeFunctions = true;
+    pmb->PrepareForLTO = false;
+    pmb->PrepareForThinLTO = false;
+    pmb->PerformThinLTO = false;
+    auto tlii = new llvm::TargetLibraryInfoImpl(
+        llvm::Triple(_module->getTargetTriple()));
+    pmb->LibraryInfo = tlii;
+    pmb->Inliner = llvm::createAlwaysInlinerLegacyPass(false);
+    /*pmb.addExtension(
+        llvm::PassManagerBuilder::EP_EarlyAsPossible, addDiscriminatorsPass);
+    pmb.Inliner =
+        llvm::createFunctionInliningPass(pmb.OptLevel, pmb.SizeLevel, false);*/
+    auto fpm = new llvm::legacy::FunctionPassManager(_module);
+    auto tliwp = new (std::nothrow) llvm::TargetLibraryInfoWrapperPass(*tlii);
+    fpm->add(tliwp);
+    fpm->add(
+        llvm::createTargetTransformInfoWrapperPass(
+            _target_machine->getTargetIRAnalysis()));
+    pmb->populateFunctionPassManager(*fpm);
+    auto mpm = new llvm::legacy::PassManager();
+    pmb->populateModulePassManager(*mpm);
+
     auto file_type = llvm::TargetMachine::CGFT_ObjectFile;
 
-    if (_tm->addPassesToEmitFile(pass, file_stream, nullptr, file_type)) {
+    if (_target_machine->addPassesToEmitFile(
+            *mpm, file_stream, nullptr, file_type)) {
         llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
         return LLE_FATAL;
     }
-    pass.run(*_mod);
+    fpm->doInitialization();
+    for (llvm::Function& fn : *_module) {
+        if (!fn.isDeclaration()) fpm->run(fn);
+    }
+    fpm->doFinalization();
+    mpm->run(*_module);
     file_stream.flush();
+    delete tliwp;
+    delete pmb;
     return LLE_OK;
 }
 llvm_error
