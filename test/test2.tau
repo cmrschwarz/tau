@@ -1,7 +1,6 @@
 import bar;
 
 module bar;
-import doo::loo;
 //#x := 3;
 func main(args: String[]){    
     func bar(){}

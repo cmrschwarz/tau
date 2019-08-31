@@ -503,6 +503,7 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
             lt = llvm::Function::InternalLinkage;
         }
         else {
+            _global_value_init_flags[fn->id] = true;
             _reset_after_emit.push_back(fn->id);
         }
         llvm::Function* func =

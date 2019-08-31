@@ -1,4 +1,4 @@
-require "test2.tau";
+//require "test2.tau";
 
 module b{
     public global: int = 30;

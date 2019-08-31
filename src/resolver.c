@@ -5,6 +5,8 @@
 #include "utils/panic.h"
 #include "utils/zero.h"
 
+resolve_error
+resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype);
 resolve_error resolve_body(resolver* r, ast_body* b);
 resolve_error
 resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype);
@@ -270,6 +272,7 @@ static resolve_error add_ast_node_decls(
                     sfo->sym.node.srange = SRC_RANGE_INVALID;
                     sfo->sym.next = (**conflict).next;
                     sfo->sym.name = (**conflict).name;
+                    sfo->sym.declaring_st = tgtst;
                     sfo->funcs = (sc_func*)*conflict;
                     (**conflict).next = sym;
                     sym->next = NULL;
@@ -284,8 +287,19 @@ static resolve_error add_ast_node_decls(
                     return report_redeclaration_error(r, sym, *conflict, tgtst);
                 }
             }
-            // we don't do function bodys here because they are strongly ordered
-            // (vars can't be used before declaration)
+            // we only do the parameters here because the declaration and use
+            // func body vars is strongly ordered
+            ast_body* b = &fn->scp.body;
+            if (b->symtab == NULL) {
+                b->symtab = st;
+            }
+            else {
+                b->symtab->parent = st;
+            }
+            for (ureg i = 0; i < fn->param_count; i++) {
+                re = add_symbol(r, b->symtab, NULL, (symbol*)&fn->params[i]);
+                if (re) return re;
+            }
             return RE_OK;
         }
         case SYM_IMPORT_GROUP: {
@@ -504,15 +518,16 @@ resolve_error operator_func_applicable(
         *applicable = false;
         return RE_OK;
     }
-    if (!ast_node_flags_get_resolved(f->scp.sym.node.flags)) {
-        resolve_error re = resolve_ast_node(r, (ast_node*)f, op_st, NULL);
-        if (re) return re;
-    }
-    if (!ctypes_unifiable(lhs, f->params[0].ctype)) {
+    ast_elem* param_ctype;
+    resolve_error re = resolve_param(r, &f->params[0], op_st, &param_ctype);
+    if (re) return re;
+    if (!ctypes_unifiable(lhs, param_ctype)) {
         *applicable = false;
         return RE_OK;
     }
-    if (!ctypes_unifiable(rhs, f->params[1].ctype)) {
+    re = resolve_param(r, &f->params[0], op_st, &param_ctype);
+    if (re) return re;
+    if (!ctypes_unifiable(rhs, param_ctype)) {
         *applicable = false;
         return RE_OK;
     }
@@ -526,12 +541,11 @@ resolve_error func_applicable(
 {
     // works cause varags are not in the lang yet
     if (func->param_count != arg_count) return false;
-    if (!ast_node_flags_get_resolved(func->scp.sym.node.flags)) {
-        resolve_error re = resolve_ast_node(r, (ast_node*)func, fn_st, NULL);
-        if (re) return re;
-    }
     for (ureg i = 0; i < arg_count; i++) {
-        if (!ctypes_unifiable(func->params[i].ctype, call_arg_types[i])) {
+        ast_elem* ctype;
+        resolve_error re = resolve_param(r, &func->params[i], fn_st, &ctype);
+        if (re) return re;
+        if (!ctypes_unifiable(ctype, call_arg_types[i])) {
             *applicable = false;
             return RE_OK;
         }
@@ -573,6 +587,7 @@ resolve_error resolve_func_call(
                 if (re || applicable) break;
                 f = (sc_func*)f->scp.sym.next;
             }
+            if (re || applicable) break;
         }
         else if ((**s).node.kind == SC_FUNC) {
             re = func_applicable(
@@ -730,7 +745,7 @@ resolve_error resolve_import_parent(
         if (*s->name != '\0') {
             symbol** res = symbol_table_insert(pst, s);
             // we checked for collisions during insert into the linked list
-            assert(!res);
+            if (!res) assert(!res);
         }
         else {
             symbol_table_insert_using(
@@ -927,10 +942,7 @@ resolve_error resolve_ast_node_raw(
             // TODO: ctype should actually be some kind of func ptr
             if (ctype) *ctype = (ast_elem*)n;
             if (resolved) return RE_OK;
-            re = resolve_func(r, (sc_func*)n, st);
-            if (re) return re;
-            ast_node_flags_set_resolved(&n->flags);
-            return RE_OK;
+            return resolve_func(r, (sc_func*)n, st);
         }
         case SYM_IMPORT_PARENT: {
             // TODO: fix the ctype
@@ -1165,31 +1177,21 @@ resolve_error resolve_expr_body(
 resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
 {
     ast_body* b = &fn->scp.body;
-    if (b->symtab == NULL) {
-        b->symtab = parent_st;
-    }
-    else {
-        b->symtab->parent = parent_st;
-    }
     symbol_table* st = b->symtab;
-
     resolve_error re;
     for (ureg i = 0; i < fn->param_count; i++) {
-        // TODO: default args etc.
         re = resolve_param(r, &fn->params[i], st, NULL);
         if (re) return re;
-        re = add_symbol(r, st, NULL, (symbol*)&fn->params[i]);
-        if (re) return re;
     }
-    re = resolve_ast_node(r, fn->return_type, parent_st, &fn->return_ctype);
+    re = resolve_ast_node(r, fn->return_type, st, &fn->return_ctype);
     if (re) return re;
-    ast_node_flags_set_resolved(&fn->scp.sym.node.flags);
     for (ast_node** n = b->elements; *n != NULL; n++) {
         re = add_ast_node_decls(r, st, NULL, *n, false);
         if (re) return re;
         re = resolve_ast_node(r, *n, b->symtab, NULL);
         if (re) return re;
     }
+    ast_node_flags_set_resolved(&fn->scp.sym.node.flags);
     return RE_OK;
 }
 resolve_error resolve_body(resolver* r, ast_body* b)
