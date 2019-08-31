@@ -418,6 +418,7 @@ bool scope_find_import(
             if (((sym_import_module*)*n)->target == import) {
                 *tgt_group = NULL;
                 *tgt_sym = (sym_import_module*)*n;
+                return true;
             }
         }
     }
@@ -447,9 +448,17 @@ void mdg_node_report_missing_import(
     sym_import_group* tgt_group;
     src_file* f;
     mdg_node_find_import(m, import, &tgt_group, &tgt_sym, &f);
-    src_range_large tgt_group_srl, tgt_sym_srl;
-    src_range_unpack(tgt_group->sym.node.srange, &tgt_group_srl);
+    src_range_large tgt_sym_srl;
     src_range_unpack(tgt_sym->sym.node.srange, &tgt_sym_srl);
+    if (!tgt_group) {
+        error_log_report_annotated(
+            &tc->err_log, ES_RESOLVER, false,
+            "missing definition for imported module", f, tgt_sym_srl.start,
+            tgt_sym_srl.end, "imported here");
+        return;
+    }
+    src_range_large tgt_group_srl;
+    src_range_unpack(tgt_group->sym.node.srange, &tgt_group_srl);
     error_log_report_annotated_twice(
         &tc->err_log, ES_RESOLVER, false,
         "missing definition for imported module", f, tgt_sym_srl.start,
