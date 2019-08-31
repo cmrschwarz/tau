@@ -55,14 +55,12 @@ token* lx_peek_nth(lexer* tk, int n)
     if (rem >= n) {
         return t + n - 1;
     }
-    else {
-        n -= rem;
-        while (n > 1) {
-            if (!lx_load(tk)) return NULL;
-            n--;
-        }
-        return lx_load(tk);
+    n -= rem;
+    while (n > 1) {
+        if (!lx_load(tk)) return NULL;
+        n--;
     }
+    return lx_load(tk);
 }
 token* lx_peek(lexer* tk)
 {
@@ -322,10 +320,8 @@ static token* lx_load(lexer* tk)
                     tok->kind = TK_DOUBLE_COLON;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_COLON;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_COLON;
+                return lx_return_head(tk, 1);
             }
             case '*': {
                 char peek = lx_peek_char(tk);
@@ -334,10 +330,8 @@ static token* lx_load(lexer* tk)
                     tok->kind = TK_STAR_EQUALS;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_STAR;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_STAR;
+                return lx_return_head(tk, 1);
             }
             case '+': {
                 char peek = lx_peek_char(tk);
@@ -346,15 +340,13 @@ static token* lx_load(lexer* tk)
                     tok->kind = TK_DOUBLE_PLUS;
                     return lx_return_head(tk, 2);
                 }
-                else if (peek == '=') {
+                if (peek == '=') {
                     lx_void_char_peek(tk);
                     tok->kind = TK_PLUS_EQUALS;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_PLUS;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_PLUS;
+                return lx_return_head(tk, 1);
             }
             case '-': {
                 char peek = lx_peek_char(tk);
@@ -363,20 +355,18 @@ static token* lx_load(lexer* tk)
                     tok->kind = TK_DOUBLE_MINUS;
                     return lx_return_head(tk, 2);
                 }
-                else if (peek == '=') {
+                if (peek == '=') {
                     lx_void_char_peek(tk);
                     tok->kind = TK_MINUS_EQUALS;
                     return lx_return_head(tk, 2);
                 }
-                else if (peek == '>') {
+                if (peek == '>') {
                     lx_void_char_peek(tk);
                     tok->kind = TK_ARROW;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_MINUS;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_MINUS;
+                return lx_return_head(tk, 1);
             }
             case '!': {
                 char peek = lx_peek_char(tk);
@@ -385,10 +375,8 @@ static token* lx_load(lexer* tk)
                     tok->kind = TK_EXCLAMATION_MARK_EQUALS;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_EXCLAMATION_MARK;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_EXCLAMATION_MARK;
+                return lx_return_head(tk, 1);
             }
             case '|': {
                 char peek = lx_peek_char(tk);
@@ -397,15 +385,13 @@ static token* lx_load(lexer* tk)
                     tok->kind = TK_DOUBLE_PIPE;
                     return lx_return_head(tk, 2);
                 }
-                else if (peek == '=') {
+                if (peek == '=') {
                     lx_void_char_peek(tk);
                     tok->kind = TK_PIPE_EQUALS;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_PIPE;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_PIPE;
+                return lx_return_head(tk, 1);
             }
             case '&': {
                 char peek = lx_peek_char(tk);
@@ -414,15 +400,13 @@ static token* lx_load(lexer* tk)
                     tok->kind = TK_DOUBLE_AND;
                     return lx_return_head(tk, 2);
                 }
-                else if (peek == '=') {
+                if (peek == '=') {
                     lx_void_char_peek(tk);
                     tok->kind = TK_AND_EQUALS;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_AND;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_AND;
+                return lx_return_head(tk, 1);
             }
             case '^': {
                 char peek = lx_peek_char(tk);
@@ -431,15 +415,13 @@ static token* lx_load(lexer* tk)
                     tok->kind = TK_DOUBLE_CARET;
                     return lx_return_head(tk, 2);
                 }
-                else if (peek == '=') {
+                if (peek == '=') {
                     lx_void_char_peek(tk);
                     tok->kind = TK_CARET_EQUALS;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_CARET;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_CARET;
+                return lx_return_head(tk, 1);
             }
             case '~': {
                 char peek = lx_peek_char(tk);
@@ -448,10 +430,8 @@ static token* lx_load(lexer* tk)
                     tok->kind = TK_TILDE_EQUALS;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_TILDE;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_TILDE;
+                return lx_return_head(tk, 1);
             }
             case '=': {
                 char peek = lx_peek_char(tk);
@@ -460,15 +440,13 @@ static token* lx_load(lexer* tk)
                     tok->kind = TK_DOUBLE_EQUALS;
                     return lx_return_head(tk, 2);
                 }
-                else if (peek == '>') {
+                if (peek == '>') {
                     lx_void_char_peek(tk);
                     tok->kind = TK_FAT_ARROW;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_EQUALS;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_EQUALS;
+                return lx_return_head(tk, 1);
             }
             case '/': {
                 char peek = lx_peek_char(tk);
@@ -563,10 +541,8 @@ static token* lx_load(lexer* tk)
                     tok->kind = TK_PERCENT_EQUALS;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_PERCENT;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_PERCENT;
+                return lx_return_head(tk, 1);
             }
             case '#': {
                 char peek = lx_peek_char(tk);
@@ -575,10 +551,8 @@ static token* lx_load(lexer* tk)
                     tok->kind = TK_DOUBLE_HASH;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_HASH;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_HASH;
+                return lx_return_head(tk, 1);
             }
             case '<': {
                 char peek = lx_peek_char(tk);
@@ -590,20 +564,16 @@ static token* lx_load(lexer* tk)
                         tok->kind = TK_DOUBLE_LESS_THAN_EQUALS;
                         return lx_return_head(tk, 3);
                     }
-                    else {
-                        tok->kind = TK_DOUBLE_LESS_THAN;
-                        return lx_return_head(tk, 2);
-                    }
+                    tok->kind = TK_DOUBLE_LESS_THAN;
+                    return lx_return_head(tk, 2);
                 }
-                else if (peek == '=') {
+                if (peek == '=') {
                     lx_void_char_peek(tk);
                     tok->kind = TK_LESS_THAN_EQUALS;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_LESS_THAN;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_LESS_THAN;
+                return lx_return_head(tk, 1);
             }
             case '>': {
                 char peek = lx_peek_char(tk);
@@ -615,19 +585,15 @@ static token* lx_load(lexer* tk)
                         tok->kind = TK_DOUBLE_GREATER_THAN_EQUALS;
                         return lx_return_head(tk, 3);
                     }
-                    else {
-                        tok->kind = TK_DOUBLE_GREATER_THAN;
-                        return lx_return_head(tk, 2);
-                    }
+                    tok->kind = TK_DOUBLE_GREATER_THAN;
+                    return lx_return_head(tk, 2);
                 }
-                else if (peek == '=') {
+                if (peek == '=') {
                     tok->kind = TK_GREATER_THAN_EQUALS;
                     return lx_return_head(tk, 2);
                 }
-                else {
-                    tok->kind = TK_GREATER_THAN;
-                    return lx_return_head(tk, 1);
-                }
+                tok->kind = TK_GREATER_THAN;
+                return lx_return_head(tk, 1);
             }
             case '\'': {
                 char* str_start = tk->file_buffer_pos - 1;

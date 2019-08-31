@@ -31,20 +31,10 @@ static inline ureg get_max_fit(ureg large, ureg small, ureg scale)
 {
     const ureg max_large = UREG_MAX / scale;
     const ureg max_small = UREG_MAX - max_large * scale;
-    if (large < max_large) {
-        return large * scale + small;
-    }
-    if (large > max_large) {
-        return UREG_MAX;
-    }
-    else { // large == max_large
-        if (small > max_small) {
-            return UREG_MAX;
-        }
-        else {
-            return large * scale + small;
-        }
-    }
+    if (large < max_large) return large * scale + small;
+    if (large > max_large) return UREG_MAX;
+    if (small > max_small) return UREG_MAX;
+    return large * scale + small;
 }
 ureg timespan_get_nanos(timespan* t)
 {

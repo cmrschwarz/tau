@@ -37,21 +37,19 @@ void* pool_alloc(pool* p, ureg size)
         p->segments->head += size;
         return res;
     }
-    else {
-        ureg size_new =
-            2 * (ptrdiff(p->segments->end, p->segments) - sizeof(pool_segment));
-        if (size_new < size) {
-            size_new = ceil_to_pow2(size);
-            if (size_new == 0) size_new = size;
-        }
-        pool_segment* seg = pool_alloc_segment(p, size_new);
-        if (!seg) return NULL;
-        seg->next = p->segments;
-        p->segments = seg;
-        void* res = seg->head;
-        seg->head += size;
-        return res;
+    ureg size_new =
+        2 * (ptrdiff(p->segments->end, p->segments) - sizeof(pool_segment));
+    if (size_new < size) {
+        size_new = ceil_to_pow2(size);
+        if (size_new == 0) size_new = size;
     }
+    pool_segment* seg = pool_alloc_segment(p, size_new);
+    if (!seg) return NULL;
+    seg->next = p->segments;
+    p->segments = seg;
+    void* res = seg->head;
+    seg->head += size;
+    return res;
 }
 void pool_clear(pool* p)
 {

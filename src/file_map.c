@@ -365,18 +365,16 @@ src_file* file_map_get_file_from_relative_path(
             mutex_unlock(&fm->lock);
             return file_map_get_file_unlocked(fm, parent_dir, x);
         }
-        else {
-            string x;
-            x.start = curr_start;
-            x.end = curr_end;
-            parent_dir = file_map_get_dir_unlocked(fm, parent_dir, x);
-            if (!parent_dir) {
-                mutex_unlock(&fm->lock);
-                return NULL;
-            }
-            curr_end++;
-            curr_start = curr_end;
+        string x;
+        x.start = curr_start;
+        x.end = curr_end;
+        parent_dir = file_map_get_dir_unlocked(fm, parent_dir, x);
+        if (!parent_dir) {
+            mutex_unlock(&fm->lock);
+            return NULL;
         }
+        curr_end++;
+        curr_start = curr_end;
     }
 }
 src_file* file_map_get_file_from_path(file_map* fm, string path)

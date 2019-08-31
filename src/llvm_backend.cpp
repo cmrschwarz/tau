@@ -175,9 +175,7 @@ void** LLVMBackend::lookupAstElem(ureg id)
     if (id >= UREGH_MAX) {
         return &_local_value_store[id - UREGH_MAX];
     }
-    else {
-        return &_global_value_store[id];
-    }
+    return &_global_value_store[id];
 }
 void LLVMBackend::storeAstElem(ureg id, void* val)
 {
@@ -456,14 +454,12 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
         _builder.SetInsertPoint(func_block);
         return addAstBodyIR(&fn->scp.body);
     }
-    else {
-        llvm::Constant* func =
-            _mod->getOrInsertFunction(fn->scp.sym.name, func_sig);
-        assert(func);
-        *res = (void*)func;
-        if (val) *val = func;
-        return LLE_OK;
-    }
+    llvm::Constant* func =
+        _mod->getOrInsertFunction(fn->scp.sym.name, func_sig);
+    assert(func);
+    *res = (void*)func;
+    if (val) *val = func;
+    return LLE_OK;
 }
 
 llvm_error LLVMBackend::emitModule(const std::string& obj_name)

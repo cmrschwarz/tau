@@ -211,9 +211,7 @@ ureg get_line_nr_offset(ureg max_line)
         return (ureg)floor(log10(max_line)) +
                1; //+1 because log(10, 10) is 1, not 2
     }
-    else {
-        return 1;
-    }
+    return 1;
 }
 int print_filepath(ureg line_nr_offset, src_pos pos, src_file* file)
 {
@@ -386,7 +384,7 @@ int print_src_line(
             if (buff_len != tgt) {
                 pe("\n");
                 return ERR;
-            };
+            }
         }
         else {
             has_newline = false;
@@ -609,47 +607,43 @@ ureg extend_em(
         err_points[0].col_end = end.column;
         return 1;
     }
-    else {
-        err_points[0].message = "";
-        ureg lstart, llength;
-        src_pos_get_line_bounds(&file->src_map, pos.line, &lstart, &llength);
-        err_points[0].col_end = llength - 1;
-        err_points[1].message_color = err_points[0].message_color;
-        err_points[1].squigly_color = err_points[0].squigly_color;
-        err_points[1].file = err_points[0].file;
-        if (pos.line + 1 == end.line) {
-            err_points[1].line = end.line;
-            err_points[1].col_start = 0;
-            err_points[1].col_end = end.column;
-            err_points[1].message = annot;
-            return 2;
-        }
-        else if (pos.line + 2 == end.line) {
-            src_pos_get_line_bounds(
-                &file->src_map, pos.line + 1, &lstart, &llength);
-            err_points[1].message = "";
-            err_points[1].col_start = 0;
-            err_points[1].col_end = llength - 1;
-            err_points[1].line = pos.line + 1;
-            src_pos_get_line_bounds(
-                &file->src_map, pos.line + 2, &lstart, &llength);
-            err_points[2].message_color = err_points[0].message_color;
-            err_points[2].squigly_color = err_points[0].squigly_color;
-            err_points[2].col_start = 0;
-            err_points[2].col_end = end.column;
-            err_points[2].message = annot;
-            err_points[2].line = end.line;
-            err_points[2].file = err_points[1].file;
-            return 3;
-        }
-        else {
-            err_points[1].message = annot;
-            err_points[1].col_start = 0;
-            err_points[1].col_end = end.column;
-            err_points[1].line = end.line;
-            return 2;
-        }
+    err_points[0].message = "";
+    ureg lstart, llength;
+    src_pos_get_line_bounds(&file->src_map, pos.line, &lstart, &llength);
+    err_points[0].col_end = llength - 1;
+    err_points[1].message_color = err_points[0].message_color;
+    err_points[1].squigly_color = err_points[0].squigly_color;
+    err_points[1].file = err_points[0].file;
+    if (pos.line + 1 == end.line) {
+        err_points[1].line = end.line;
+        err_points[1].col_start = 0;
+        err_points[1].col_end = end.column;
+        err_points[1].message = annot;
+        return 2;
     }
+    if (pos.line + 2 == end.line) {
+        src_pos_get_line_bounds(
+            &file->src_map, pos.line + 1, &lstart, &llength);
+        err_points[1].message = "";
+        err_points[1].col_start = 0;
+        err_points[1].col_end = llength - 1;
+        err_points[1].line = pos.line + 1;
+        src_pos_get_line_bounds(
+            &file->src_map, pos.line + 2, &lstart, &llength);
+        err_points[2].message_color = err_points[0].message_color;
+        err_points[2].squigly_color = err_points[0].squigly_color;
+        err_points[2].col_start = 0;
+        err_points[2].col_end = end.column;
+        err_points[2].message = annot;
+        err_points[2].line = end.line;
+        err_points[2].file = err_points[1].file;
+        return 3;
+    }
+    err_points[1].message = annot;
+    err_points[1].col_start = 0;
+    err_points[1].col_end = end.column;
+    err_points[1].line = end.line;
+    return 2;
 }
 int report_error(error* e)
 {

@@ -42,6 +42,10 @@ char* ast_elem_get_label(ast_elem* n, bool* lbl)
             name = ((expr_match*)n)->name;
             if (lbl) *lbl = true;
         } break;
+        case EXPR_LOOP: {
+            name = ((expr_loop*)n)->name;
+            if (lbl) *lbl = true;
+        } break;
         default: {
             name = NULL;
             if (lbl) *lbl = false;

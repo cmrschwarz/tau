@@ -95,9 +95,7 @@ resolve_error add_sym_import_module_decl(
                     *tgt_parent = (sym_import_parent*)*tgt;
                     return RE_OK;
                 }
-                else {
-                    p = (sym_import_parent*)*tgt;
-                }
+                p = (sym_import_parent*)*tgt;
             }
             else if (tgt_parent && (*tgt)->node.kind == SYM_IMPORT_MODULE) {
                 p = NULL;
@@ -147,14 +145,12 @@ resolve_error add_sym_import_module_decl(
                     *tgt_parent = (sym_import_parent*)c;
                     return RE_OK;
                 }
-                else {
-                    p = (sym_import_parent*)*tgt;
-                    im->sym.name = "";
-                    c = p->children.symbols;
-                    tgt = &p->children.symbols;
-                    next = p->children.symbols;
-                    continue;
-                }
+                p = (sym_import_parent*)*tgt;
+                im->sym.name = "";
+                c = p->children.symbols;
+                tgt = &p->children.symbols;
+                next = p->children.symbols;
+                continue;
             }
         }
     }
@@ -297,15 +293,13 @@ static resolve_error add_ast_node_decls(
             if (ig->sym.name) {
                 return add_symbol(r, st, sst, (symbol*)ig);
             }
-            else {
-                symbol_table* pst = st;
-                while (pst->owning_node->kind != ELEM_MDG_NODE) {
-                    pst = pst->parent;
-                    assert(pst);
-                }
-                return add_import_group_decls(
-                    r->tc, (mdg_node*)pst->owning_node, NULL, ig, st);
+            symbol_table* pst = st;
+            while (pst->owning_node->kind != ELEM_MDG_NODE) {
+                pst = pst->parent;
+                assert(pst);
             }
+            return add_import_group_decls(
+                r->tc, (mdg_node*)pst->owning_node, NULL, ig, st);
         }
         case SYM_IMPORT_MODULE: {
             sym_import_module* im = (sym_import_module*)n;
@@ -603,7 +597,7 @@ resolve_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
         return resolve_func_call(
             r, ((expr_identifier*)c->lhs)->value.str, c, st, st, ctype);
     }
-    else if (c->lhs->kind == EXPR_SCOPE_ACCESS) {
+    if (c->lhs->kind == EXPR_SCOPE_ACCESS) {
         expr_scope_access* esa = (expr_scope_access*)c->lhs;
         symbol* lhs_sym;
         symbol_table* lhs_st;
@@ -613,9 +607,7 @@ resolve_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
         if (re) return re;
         return resolve_func_call(r, esa->target.name, c, lhs_st, st, ctype);
     }
-    else {
-        assert(false); // TODO
-    }
+    assert(false); // TODO
     return RE_OK;
 }
 resolve_error choose_binary_operator_overload(
@@ -690,6 +682,10 @@ resolve_error get_resolved_symbol_symtab(
         return RE_OK;
     }
     *left_scope = true;
+    if (s->node.kind == SYM_IMPORT_SYMBOL) {
+        return get_resolved_symbol_symtab(
+            r, ((sym_import_symbol*)s)->target.sym, left_scope, tgt_st);
+    }
     if (s->node.kind == SYM_IMPORT_GROUP) {
         *tgt_st = ((sym_import_group*)s)->children.symtab;
     }
@@ -698,10 +694,6 @@ resolve_error get_resolved_symbol_symtab(
     }
     else if (s->node.kind == SYM_IMPORT_MODULE) {
         *tgt_st = ((sym_import_module*)s)->target->symtab;
-    }
-    else if (s->node.kind == SYM_IMPORT_SYMBOL) {
-        return get_resolved_symbol_symtab(
-            r, ((sym_import_symbol*)s)->target.sym, left_scope, tgt_st);
     }
     else {
         assert(false); // TODO: error

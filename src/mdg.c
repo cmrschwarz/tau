@@ -403,8 +403,9 @@ bool scope_find_import(
 {
     for (ast_node** n = s->body.elements; *n; n++) {
         if (ast_elem_is_scope((ast_elem*)*n)) {
-            if (scope_find_import((scope*)*n, import, tgt_group, tgt_sym))
+            if (scope_find_import((scope*)*n, import, tgt_group, tgt_sym)) {
                 return true;
+            }
         }
         else if ((**n).kind == SYM_IMPORT_GROUP) {
             sym_import_group* ig = (sym_import_group*)*n;
@@ -461,8 +462,8 @@ int scc_detector_strongconnect(
 
     if (n->stage == MS_NOT_FOUND) {
         mdg_node* par = n->parent;
-        assert(par); // root is never NOT_FOUND
         while (true) {
+            assert(par); // root is never NOT_FOUND
             rwslock_read(&par->stage_lock);
             if (par->stage > MS_PARSING) {
                 // if we reach here all children on n's way up
@@ -473,7 +474,7 @@ int scc_detector_strongconnect(
                 rwslock_end_read(&n->stage_lock);
                 return SCCD_MISSING_IMPORT;
             }
-            else if (n->parent->stage == MS_NOT_FOUND) {
+            if (par->stage == MS_NOT_FOUND) {
                 rwslock_end_read(&par->stage_lock);
                 par = par->parent;
             }
@@ -563,43 +564,41 @@ int scc_detector_strongconnect(
             }
             return ret;
         }
-        else {
-            stack_state ss_end, ss_start;
-            stack_state_save(&ss_end, &tc->tempstack);
-            mdg_node* stack_mdgn = stack_pop(&tc->tempstack);
-            ureg node_count = 1;
-            do {
-                stack_mdgn = stack_pop(&tc->tempstack);
-                node_count++;
-            } while (stack_mdgn != n);
-            stack_state_save(&ss_start, &tc->tempstack);
-            ureg list_size = node_count * sizeof(mdg_node*);
-            mdg_node** node_list = tmalloc(list_size);
-            if (!node_list) return ERR;
-            stack_pop_to_list(
-                &tc->tempstack, &ss_start, &ss_end, (void**)node_list);
-            mdg_nodes_quick_sort(node_list, node_count);
-            for (mdg_node** i = node_list; i != node_list + node_count; i++) {
-                rwslock_write(&(**i).stage_lock);
-                if ((**i).stage == MS_AWAITING_DEPENDENCIES) {
-                    (**i).stage = MS_RESOLVING;
-                    success = true;
-                }
-                rwslock_end_write(&(**i).stage_lock);
-                sccd_node* in = scc_detector_get(&tc->sccd, (**i).id);
-                if (!in) return ERR;
-                in->index = tc->sccd.dfs_start_index;
-                if (!success) break;
+        stack_state ss_end, ss_start;
+        stack_state_save(&ss_end, &tc->tempstack);
+        mdg_node* stack_mdgn = stack_pop(&tc->tempstack);
+        ureg node_count = 1;
+        do {
+            stack_mdgn = stack_pop(&tc->tempstack);
+            node_count++;
+        } while (stack_mdgn != n);
+        stack_state_save(&ss_start, &tc->tempstack);
+        ureg list_size = node_count * sizeof(mdg_node*);
+        mdg_node** node_list = tmalloc(list_size);
+        if (!node_list) return ERR;
+        stack_pop_to_list(
+            &tc->tempstack, &ss_start, &ss_end, (void**)node_list);
+        mdg_nodes_quick_sort(node_list, node_count);
+        for (mdg_node** i = node_list; i != node_list + node_count; i++) {
+            rwslock_write(&(**i).stage_lock);
+            if ((**i).stage == MS_AWAITING_DEPENDENCIES) {
+                (**i).stage = MS_RESOLVING;
+                success = true;
             }
-            if (success) {
-                tauc_request_resolve_multiple(
-                    node_list, ptradd(node_list, list_size));
-            }
-            else {
-                tfree(node_list);
-            }
-            return ret;
+            rwslock_end_write(&(**i).stage_lock);
+            sccd_node* in = scc_detector_get(&tc->sccd, (**i).id);
+            if (!in) return ERR;
+            in->index = tc->sccd.dfs_start_index;
+            if (!success) break;
         }
+        if (success) {
+            tauc_request_resolve_multiple(
+                node_list, ptradd(node_list, list_size));
+        }
+        else {
+            tfree(node_list);
+        }
+        return ret;
     }
     rwslock_end_read(&n->stage_lock);
     return OK;

@@ -212,13 +212,11 @@ symbol* symtab_it_next(symtab_it* stit)
             stit->subpos = stit->subpos->next;
             return res;
         }
-        else {
-            stit->pos++;
-            if (stit->pos == stit->end) {
-                stit->pos--;
-                return NULL;
-            }
-            stit->subpos = *stit->pos;
+        stit->pos++;
+        if (stit->pos == stit->end) {
+            stit->pos--;
+            return NULL;
         }
+        stit->subpos = *stit->pos;
     }
 }

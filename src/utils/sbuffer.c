@@ -206,56 +206,50 @@ void* sbuffer_insert(sbuffer* sb, sbi* sbi, ureg size)
             sbi->seg = s;
             return sbi->pos;
         }
-        else {
-            memcpy(s->start, sbi->pos, used_space_after);
-            s->head += used_space_after;
-            cs->head = sbi->pos + size;
-            return sbi->pos;
-        }
+        memcpy(s->start, sbi->pos, used_space_after);
+        s->head += used_space_after;
+        cs->head = sbi->pos + size;
+        return sbi->pos;
+    }
+    bool move_ins_too = false;
+    if (used_space_before + free_space_before < size) {
+        move_ins_too = true;
+        used_space_before += size;
+    }
+    if (seg_size < used_space_before) {
+        seg_size = ((used_space_before / seg_size) + 1) * seg_size;
+    }
+    sbuffer_segment* s;
+    if (cs->prev == NULL) {
+        s = sbuffer_segment_create(sb, seg_size);
+        if (!s) return NULL;
+        sb->first = s;
+        s->next = cs;
+        cs->prev = s;
+        s->prev = NULL;
     }
     else {
-        bool move_ins_too = false;
-        if (used_space_before + free_space_before < size) {
-            move_ins_too = true;
-            used_space_before += size;
-        }
-        if (seg_size < used_space_before) {
-            seg_size = ((used_space_before / seg_size) + 1) * seg_size;
-        }
-        sbuffer_segment* s;
-        if (cs->prev == NULL) {
-            s = sbuffer_segment_create(sb, seg_size);
-            if (!s) return NULL;
-            sb->first = s;
-            s->next = cs;
-            cs->prev = s;
-            s->prev = NULL;
-        }
-        else {
-            s = sbuffer_segment_create(sb, seg_size);
-            if (!s) return NULL;
-            s->next = cs;
-            s->prev = cs->prev;
-            cs->prev->next = s;
-            cs->prev = s;
-        }
-        if (move_ins_too) {
-            s->head += used_space_before;
-            used_space_before -= size;
-            memcpy(s->start, cs->start, used_space_before);
-            cs->start = sbi->pos;
-            sbi->pos = s->start + used_space_before;
-            sbi->seg = s;
-            return sbi->pos;
-        }
-        else {
-            memcpy(s->start, cs->start, used_space_before);
-            s->head += used_space_before;
-            sbi->pos -= size;
-            cs->start = sbi->pos;
-            return sbi->pos;
-        }
+        s = sbuffer_segment_create(sb, seg_size);
+        if (!s) return NULL;
+        s->next = cs;
+        s->prev = cs->prev;
+        cs->prev->next = s;
+        cs->prev = s;
     }
+    if (move_ins_too) {
+        s->head += used_space_before;
+        used_space_before -= size;
+        memcpy(s->start, cs->start, used_space_before);
+        cs->start = sbi->pos;
+        sbi->pos = s->start + used_space_before;
+        sbi->seg = s;
+        return sbi->pos;
+    }
+    memcpy(s->start, cs->start, used_space_before);
+    s->head += used_space_before;
+    sbi->pos -= size;
+    cs->start = sbi->pos;
+    return sbi->pos;
 }
 
 void sbuffer_clear(sbuffer* sb)

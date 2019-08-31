@@ -75,15 +75,13 @@ static inline int string_cmp(string l, string r)
         }
         return -1;
     }
-    else {
-        while (r.start != r.end) {
-            if (*r.start != *l.start) return *l.start - *r.start;
-            l.start++;
-            r.start++;
-        }
-        if (l.start == l.end) return 0;
-        return 1;
+    while (r.start != r.end) {
+        if (*r.start != *l.start) return *l.start - *r.start;
+        l.start++;
+        r.start++;
     }
+    if (l.start == l.end) return 0;
+    return 1;
 }
 
 static inline int string_cmp_cstr(string l, char* r)

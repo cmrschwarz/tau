@@ -114,7 +114,7 @@ static inline int aseglist_add(aseglist* l, void* data)
             ((void**)ptradd(node, ASEGLIST_ELEM_OFFSET))[space] = data;
             return OK;
         }
-        else if (space == 0) {
+        if (space == 0) {
             atomic_ptr_store(l, NULL);
             ureg size_new = (*(ureg*)ptradd(node, ASEGLIST_ELEM_OFFSET)) * 2;
             aseglist_node* node_new = aseglist_node_new(size_new);

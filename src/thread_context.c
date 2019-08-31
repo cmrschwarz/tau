@@ -58,7 +58,7 @@ int thread_context_do_job(thread_context* tc, job* j)
     if (j->kind == JOB_PARSE) {
         return parser_parse_file(&tc->p, &j->concrete.parse);
     }
-    else if (j->kind == JOB_RESOLVE) {
+    if (j->kind == JOB_RESOLVE) {
         bool can_link = false;
         int r;
         mdg_node **start, **end;
@@ -95,7 +95,7 @@ int thread_context_do_job(thread_context* tc, job* j)
         if (can_link) return tauc_link();
         return r;
     }
-    else if (j->kind == JOB_FINALIZE) {
+    if (j->kind == JOB_FINALIZE) {
         job_queue_stop(&TAUC.jobqueue);
         // DEBUG:
         print_mdg_node(TAUC.mdg.root_node, 0);
@@ -107,10 +107,8 @@ int thread_context_do_job(thread_context* tc, job* j)
         }
         return r;
     }
-    else {
-        error_log_report_critical_failiure(&tc->err_log, "unknown job type");
-        return ERR;
-    }
+    error_log_report_critical_failiure(&tc->err_log, "unknown job type");
+    return ERR;
 }
 int thread_context_run(thread_context* tc)
 {

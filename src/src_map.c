@@ -156,21 +156,16 @@ src_range src_range_large_pack(thread_context* tc, src_range_large* d)
             *(tgt + 1) = d->end;
             return SRC_RANGE_EXTERN_BIT | (((ureg)tgt) >> 2);
         }
-        else {
-            return (d->start << SRC_RANGE_LENGTH_BITS) | len;
-        }
+        return (d->start << SRC_RANGE_LENGTH_BITS) | len;
     }
-    else {
-        src_file** tgt = (src_file**)pool_alloc(&tc->permmem, sizeof(ureg) * 3);
-        if (!tgt) return SRC_RANGE_INVALID;
-        *tgt = d->file;
-        ureg* range = (void*)(tgt + 1);
-        *range = d->start;
-        range++;
-        *range = d->end;
-        return SRC_RANGE_EXTERN_BIT | SRC_RANGE_NEW_MAP_BIT |
-               (((ureg)tgt) >> 2);
-    }
+    src_file** tgt = (src_file**)pool_alloc(&tc->permmem, sizeof(ureg) * 3);
+    if (!tgt) return SRC_RANGE_INVALID;
+    *tgt = d->file;
+    ureg* range = (void*)(tgt + 1);
+    *range = d->start;
+    range++;
+    *range = d->end;
+    return SRC_RANGE_EXTERN_BIT | SRC_RANGE_NEW_MAP_BIT | (((ureg)tgt) >> 2);
 }
 src_range src_range_pack(thread_context* tc, ureg start, ureg end, src_file* f)
 {

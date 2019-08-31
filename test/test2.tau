@@ -23,7 +23,8 @@ func main(args: String[]){
             }
         };
         
-        if (1) @foo{
+
+        loop @foo{
             continue @foo;
             continue;
             return 12;
