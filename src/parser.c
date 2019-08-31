@@ -1997,7 +1997,8 @@ parse_error parse_var_decl(
 {
     token* t = lx_aquire(&p->lx);
     ureg end = t->end;
-    string ident = t->str;
+    char* ident = alloc_string_perm(p, t->str);
+    if (!ident) return PE_FATAL;
     lx_void(&p->lx);
     t = lx_aquire(&p->lx);
     ureg col_end = t->end;
@@ -2064,7 +2065,7 @@ parse_error parse_var_decl(
         ast_node_init((ast_node*)v, SYM_VAR);
     }
     v->type = type;
-    v->sym.name = alloc_string_perm(p, ident);
+    v->sym.name = ident;
     if (!v->sym.name) return PE_FATAL;
     v->sym.node.flags = flags;
     *n = (ast_node*)v;

@@ -1188,7 +1188,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
     for (ast_node** n = b->elements; *n != NULL; n++) {
         re = add_ast_node_decls(r, st, NULL, *n, false);
         if (re) return re;
-        re = resolve_ast_node(r, *n, b->symtab, NULL);
+        re = resolve_ast_node(r, *n, st, NULL);
         if (re) return re;
     }
     ast_node_flags_set_resolved(&fn->scp.sym.node.flags);
