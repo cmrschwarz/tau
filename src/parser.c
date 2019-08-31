@@ -2210,7 +2210,7 @@ parse_error parse_func_decl(
     }
     PEEK(p, t);
     if (fnp && t->kind == TK_SEMICOLON) {
-        fnp->scp.body.elements = NULL_PTR_PTR;
+        fnp->scp.body.elements = (ast_node**)NULL_PTR_PTR;
         fnp->scp.body.srange = SRC_RANGE_INVALID;
         fnp->scp.body.symtab = NULL;
         if (push_bpd(p, (ast_node*)fnp, &fnp->scp.body)) return PE_FATAL;

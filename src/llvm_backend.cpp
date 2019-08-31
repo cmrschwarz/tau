@@ -76,6 +76,16 @@ LLVMBackend::LLVMBackend(thread_context* tc)
     _reg_size = _tm->getMCRegisterInfo()->getRegClass(0).RegsSize;
 }
 
+LLVMBackend::~LLVMBackend()
+{
+    for (ureg i = PRIMITIVES[PRIMITIVE_COUNT - 1].type_id + 1;
+         i != _global_value_store.size(); i++) {
+
+        auto val = (llvm::Value*)_global_value_store[i];
+        if (val) val->deleteValue();
+    }
+}
+
 int LLVMBackend::InitLLVMBackend(LLVMBackend* llvmb, thread_context* tc)
 {
     void* res = new (llvmb) LLVMBackend(tc); // placement new is noexcept
@@ -92,6 +102,7 @@ llvm_error LLVMBackend::setup()
 }
 void LLVMBackend::FinLLVMBackend(LLVMBackend* llvmb)
 {
+    llvmb->~LLVMBackend();
 }
 
 void LLVMBackend::addPrimitive(ureg id, primitive_kind pk)
@@ -131,22 +142,33 @@ llvm_error LLVMBackend::createLLVMModule(
     _mod_endid = endid;
     if (_global_value_store.size() <= endid) {
         _global_value_store.resize(endid + 1, NULL);
+        _global_value_init_flags.assign(endid + 1, false);
     }
     _private_sym_count = private_sym_count;
     // i really hope this doesn't realloc
     _local_value_store.assign(_private_sym_count, NULL);
-    _null_after_emit.clear();
+    _reset_after_emit.clear();
     // create actual module
     _mod = new (std::nothrow) llvm::Module(m->name, _context);
     if (!_mod) return LLE_OK;
     llvm_error lle = addModulesIR(start, end);
     if (lle) return lle;
-    for (auto it = _null_after_emit.begin(); it != _null_after_emit.end();
-         ++it) {
-        // delete (**it);
-        **it = NULL;
+    lle = emitModule(m->name);
+    for (ureg id : _reset_after_emit) {
+        if (isGlobalIDInModule(id)) {
+            _global_value_store[id] = NULL;
+            continue;
+        }
+        auto val = (llvm::Value*)_global_value_store[id];
+        if (llvm::isa<llvm::GlobalVariable>(*val)) {
+            ((llvm::GlobalVariable*)val)->removeFromParent();
+        }
+        else {
+            ((llvm::Function*)val)->removeFromParent();
+        }
     }
-    return emitModule(m->name);
+    delete _mod;
+    return lle;
 }
 
 llvm_error LLVMBackend::addModulesIR(mdg_node** start, mdg_node** end)
@@ -172,23 +194,50 @@ llvm_error LLVMBackend::addAstBodyIR(ast_body* b)
 }
 void** LLVMBackend::lookupAstElem(ureg id)
 {
-    if (id >= UREGH_MAX) {
+    if (isLocalID(id)) {
         return &_local_value_store[id - UREGH_MAX];
     }
     return &_global_value_store[id];
 }
-void LLVMBackend::storeAstElem(ureg id, void* val)
+llvm::Value** LLVMBackend::lookupVariableRaw(ureg id)
 {
-    *lookupAstElem(id) = val;
+    auto gv = (llvm::GlobalValue**)lookupAstElem(id);
+    if (isGlobalID(id) && *gv) {
+        if (!_global_value_init_flags[id]) {
+            _global_value_init_flags[id] = true;
+            _mod->getGlobalList().push_back((llvm::GlobalVariable*)*gv);
+        }
+    }
+    return (llvm::Value**)gv;
 }
-llvm_error LLVMBackend::lookupValue(ureg id, ast_node* n, llvm::Value** val)
+llvm::Function** LLVMBackend::lookupFunctionRaw(ureg id)
 {
-    auto v = (llvm::Value**)lookupAstElem(id);
-    if (*v) {
-        *val = *v;
+    auto fn = (llvm::Function**)lookupAstElem(id);
+    if (isGlobalID(id) && *fn) {
+        if (!_global_value_init_flags[id]) {
+            _global_value_init_flags[id] = true;
+            _mod->getFunctionList().push_back(*fn);
+        }
+    }
+    return fn;
+}
+llvm_error LLVMBackend::lookupVariable(ureg id, ast_node* n, llvm::Value** v)
+{
+    auto r = lookupVariableRaw(id);
+    if (*r) {
+        *v = *r;
         return LLE_OK;
     }
-    return getMdgNodeIR(n, val);
+    return getMdgNodeIR(n, v);
+}
+llvm_error LLVMBackend::lookupFunction(ureg id, ast_node* n, llvm::Function** f)
+{
+    auto r = lookupFunctionRaw(id);
+    if (*r) {
+        *f = *r;
+        return LLE_OK;
+    }
+    return getMdgNodeIR(n, (llvm::Value**)f);
 }
 llvm_error LLVMBackend::lookupType(ureg id, ast_elem* e, llvm::Type** type)
 {
@@ -208,6 +257,7 @@ llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t)
             break;
         default: {
             assert(false); // TODO
+            *t = NULL; // to silcence -Wmaybe-uninitialized :(
         }
     }
     return LLE_OK;
@@ -216,9 +266,21 @@ llvm::Type* LLVMBackend::lookupPrimitive(primitive_kind pk)
 {
     return (llvm::Type*)_global_value_store[PRIMITIVES[0].type_id + pk];
 }
-bool LLVMBackend::isIdInModule(ureg id)
+bool LLVMBackend::isIDInModule(ureg id)
+{
+    return isLocalID(id) || isGlobalIDInModule(id);
+}
+bool LLVMBackend::isGlobalIDInModule(ureg id)
 {
     return (_mod_startid <= id && id < _mod_endid);
+}
+bool LLVMBackend::isLocalID(ureg id)
+{
+    return id >= UREGH_MAX;
+}
+bool LLVMBackend::isGlobalID(ureg id)
+{
+    return !isLocalID(id);
 }
 llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
 {
@@ -262,7 +324,7 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             sc_func* f = (sc_func*)p->sym.declaring_st->owning_node;
             ureg param_nr = p - f->params;
             llvm::Function* fn;
-            lle = lookupValue(f->id, (ast_node*)f, (llvm::Value**)&fn);
+            lle = lookupFunction(f->id, (ast_node*)f, &fn);
             if (lle) return lle;
             llvm::Argument* a = fn->arg_begin() + param_nr;
             if (!a) return LLE_FATAL;
@@ -293,8 +355,8 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             }
             llvm::ArrayRef<llvm::Value*> args_arr_ref(
                 args, args + c->arg_count);
-            llvm::Value* callee;
-            lle = lookupValue(c->target->id, (ast_node*)c->target, &callee);
+            llvm::Function* callee;
+            lle = lookupFunction(c->target->id, (ast_node*)c->target, &callee);
             if (lle) return lle;
             auto call = _builder.CreateCall(callee, args_arr_ref);
             if (!call) return LLE_FATAL;
@@ -308,11 +370,10 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
                 assert(false);
             }
             sym_var* var = (sym_var*)n;
-            void** res = lookupAstElem(var->var_id);
+            llvm::Value** res = lookupVariableRaw(var->var_id);
             if (*res) {
                 if (val) {
-                    llvm::LoadInst* load =
-                        _builder.CreateLoad((llvm::Value*)*res);
+                    llvm::LoadInst* load = _builder.CreateLoad(*res);
                     if (!load) return LLE_FATAL;
                     *val = load;
                 }
@@ -326,18 +387,16 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             if (k == ELEM_MDG_NODE || k == OSC_MODULE || k == OSC_EXTEND) {
                 // global var
                 llvm::GlobalVariable::LinkageTypes lt;
-                if (var->var_id >= UREGH_MAX) {
+                if (isLocalID(var->var_id)) {
                     lt = llvm::GlobalVariable::InternalLinkage;
                 }
                 else {
                     lt = llvm::GlobalVariable::ExternalLinkage;
-                    if (isIdInModule(var->var_id)) {
-                        _null_after_emit.push_back(res);
-                    }
+                    _reset_after_emit.push_back(var->var_id);
                 }
                 llvm::Constant* init = NULL;
                 if (n->kind == SYM_VAR_INITIALIZED &&
-                    isIdInModule(var->var_id)) {
+                    isIDInModule(var->var_id)) {
                     llvm::Value* v;
                     lle = getMdgNodeIR(
                         ((sym_var_initialized*)n)->initial_value, &v);
@@ -354,6 +413,7 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             else if (k == SC_STRUCT) {
                 // struct var
                 assert(false); // TODO
+                return LLE_FATAL;
             }
             else {
                 // local var
@@ -368,7 +428,9 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
                         return LLE_FATAL;
                 }
             }
-            *res = (void*)var_val;
+            *res = var_val;
+            if (isGlobalID(var->var_id))
+                _global_value_init_flags[var->var_id] = true;
             if (val) {
                 llvm::LoadInst* load = _builder.CreateLoad(var_val);
                 if (!load) return LLE_FATAL;
@@ -434,19 +496,19 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
         func_sig = llvm::FunctionType::get(ret_type, false);
         if (!func_sig) return LLE_FATAL;
     }
-    void** res = lookupAstElem(fn->id);
-    if (*fn->scp.body.elements && isIdInModule(fn->id)) {
+    llvm::Function** res = lookupFunctionRaw(fn->id);
+    if (*fn->scp.body.elements && isIDInModule(fn->id)) {
         auto lt = llvm::Function::ExternalLinkage;
-        if (fn->id >= UREGH_MAX) {
+        if (isLocalID(fn->id)) {
             lt = llvm::Function::InternalLinkage;
         }
         else {
-            _null_after_emit.push_back(res);
+            _reset_after_emit.push_back(fn->id);
         }
         llvm::Function* func =
             llvm::Function::Create(func_sig, lt, fn->scp.sym.name, _mod);
         if (!func) return LLE_FATAL;
-        *res = (void*)func;
+        *res = func;
         if (val) *val = func;
         llvm::BasicBlock* func_block =
             llvm::BasicBlock::Create(_context, "", func);
@@ -454,10 +516,18 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
         _builder.SetInsertPoint(func_block);
         return addAstBodyIR(&fn->scp.body);
     }
-    llvm::Constant* func =
-        _mod->getOrInsertFunction(fn->scp.sym.name, func_sig);
-    assert(func);
-    *res = (void*)func;
+    auto func =
+        (llvm::Function*)_mod->getOrInsertFunction(fn->scp.sym.name, func_sig);
+    if (isGlobalID(fn->id)) {
+        _global_value_init_flags[fn->id] = true;
+        _reset_after_emit.push_back(fn->id);
+    }
+    /*  llvm::Function* func = llvm::Function::Create(
+          *_mod, func_sig, llvm::GlobalVariable::ExternalLinkage,
+          _mod->getDataLayout().getProgramAddressSpace(), fn->scp.sym.name);
+      _mod->getFunctionList().push_back(func);*/
+    if (!func) return LLE_FATAL;
+    *res = func;
     if (val) *val = func;
     return LLE_OK;
 }

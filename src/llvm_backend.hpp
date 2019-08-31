@@ -34,13 +34,18 @@ struct LLVMModule {
 };
 
 struct LLVMBackend {
+
   private:
     thread_context* _tc;
     llvm::LLVMContext _context;
     llvm::IRBuilder<> _builder;
+    // must be void* because there is no common ancestor between
+    // llvm::Value and llvm::Type
+    // TOOD: put primitives in different data structure so these can be values
     std::vector<void*> _global_value_store;
+    std::vector<bool> _global_value_init_flags;
     std::vector<void*> _local_value_store;
-    std::vector<void**> _null_after_emit;
+    std::vector<ureg> _reset_after_emit;
     llvm::Module* _mod;
     llvm::TargetMachine* _tm;
     ureg _reg_size;
@@ -50,6 +55,7 @@ struct LLVMBackend {
 
   public:
     LLVMBackend(thread_context* tc);
+    ~LLVMBackend();
     static int InitLLVMBackend(LLVMBackend* llvmb, thread_context* tc);
     static void FinLLVMBackend(LLVMBackend* llvmb);
 
@@ -66,13 +72,18 @@ struct LLVMBackend {
     llvm_error addAstBodyIR(ast_body* n);
 
   private:
-    bool isIdInModule(ureg id);
+    bool isIDInModule(ureg id);
+    bool isGlobalIDInModule(ureg id);
+    static bool isLocalID(ureg id);
+    static bool isGlobalID(ureg id);
 
   private:
     void addPrimitive(ureg id, primitive_kind pk);
     void** lookupAstElem(ureg id);
-    void storeAstElem(ureg id, void* val);
-    llvm_error lookupValue(ureg id, ast_node* n, llvm::Value** v);
+    llvm::Value** lookupVariableRaw(ureg id);
+    llvm::Function** lookupFunctionRaw(ureg id);
+    llvm_error lookupVariable(ureg id, ast_node* n, llvm::Value** v);
+    llvm_error lookupFunction(ureg id, ast_node* n, llvm::Function** f);
     llvm_error lookupType(ureg id, ast_elem* e, llvm::Type** t);
     llvm_error lookupCType(ast_elem* e, llvm::Type** t);
     llvm::Type* lookupPrimitive(primitive_kind pk);

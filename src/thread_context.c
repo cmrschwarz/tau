@@ -7,7 +7,7 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
 {
     switch (i) {
         case -1:
-        case 11: llvm_backend_delete(&tc->llvmb);
+        case 11: llvm_backend_delete(tc->llvmb);
         case 10: list_builder_fin(&tc->listb2);
         case 9: list_builder_fin(&tc->listb);
         case 8: stack_fin(&tc->tempstack);
