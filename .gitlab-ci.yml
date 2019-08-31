@@ -26,6 +26,6 @@ test:
     stage: test
     script:
         - ./build/tauc
-        - valgrind --track-origins=yes --leak-check=full --error-exitcode=1 ./build/tauc 
+       # - valgrind --track-origins=yes --leak-check=full --error-exitcode=1 --suppressions test/valgrind_suppressions./build/tauc 
     only:
         - master
