@@ -487,6 +487,7 @@ static inline resolve_error mark_mdg_nodes_resolved(resolver* r)
 }
 static inline void print_debug_info(resolver* r)
 {
+
     printf("resolving {");
     mdg_node** i = r->start;
     i = r->start;

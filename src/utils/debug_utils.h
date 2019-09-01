@@ -4,42 +4,50 @@
 #include "timing.h"
 #include <stdio.h>
 
-void pretty_print_timespan(timespan* ts)
+static inline void pretty_print_timespan(timespan* ts)
 {
     ureg hrs = timespan_get_hours(ts);
     ureg mnts = timespan_get_rminutes(ts);
-    ureg secs = timespan_get_rseconds(ts);
-    freg mlls = timespan_get_frmillis(ts);
+    freg secs = timespan_get_frseconds(ts);
+    freg millis = timespan_get_fmillis(ts);
     if (hrs > 0) {
-        printf("%lluh %llum %llus %fms", hrs, mnts, secs, mlls);
+        printf("%02zu:%02zu:%04.2f", hrs, mnts, secs);
     }
     else if (mnts > 0) {
-        printf("%llum %llus %fms", mnts, secs, mlls);
+        printf("%02zu:%04.2f", mnts, secs);
     }
-    else if (secs > 0) {
-        printf("%llus %fms", secs, mlls);
+    else if (secs >= 1) {
+        printf("%04.2f s", secs);
     }
     else {
-        printf("%fms", mlls);
+        printf("%.2f ms", millis);
     }
 }
+#if DEBUG
 
-#define TIME(name, code)                                                       \
+#define TIME(code)                                                             \
     do {                                                                       \
-        puts("INITIATE TIMING " name);                                         \
         timer ____timer_reserved_name_for_bench_macro;                         \
         timer_init(&____timer_reserved_name_for_bench_macro);                  \
         {                                                                      \
             code                                                               \
         }                                                                      \
         timer_stop(&____timer_reserved_name_for_bench_macro);                  \
-        fputs("FINISHED TIMING " name ", ", stdout);                           \
         timespan ____timespan_reserved_name_for_bench_macro;                   \
         timer_get_elapsed(                                                     \
             &____timer_reserved_name_for_bench_macro,                          \
             &____timespan_reserved_name_for_bench_macro);                      \
+        printf("    ");                                                        \
         pretty_print_timespan(&____timespan_reserved_name_for_bench_macro);    \
         puts(" elapsed");                                                      \
+        fflush(stdout);                                                        \
     } while (false)
+#else
+
+#define TIME(code)                                                             \
+    do {                                                                       \
+        code                                                                   \
+    } while (false)
+#endif
 
 #endif

@@ -1917,6 +1917,7 @@ parse_error parse_eof_delimited_open_scope(parser* p, open_scope* osc)
 parse_error parser_parse_file(parser* p, job_parse* j)
 {
     int r = lx_open_file(&p->lx, j->file);
+    printf("parsing %s\n", j->file->head.name.start);
     if (r) {
         if (j->requiring_file != NULL) {
             src_range_large srl;

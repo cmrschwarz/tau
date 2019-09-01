@@ -221,7 +221,7 @@ int print_filepath(ureg line_nr_offset, src_pos pos, src_file* file)
     // TODO: the column index is currently based on the number of byte,
     // not the number of unicode code points, but tools expect the latter
     fprintf(
-        stderr, ":%llu:%llu\n",
+        stderr, ":%llu:%zu\n",
         pos.line + 1, // make indices start at one
         pos.column + 1);
     return OK;
@@ -355,7 +355,7 @@ int print_src_line(
         }
     }
     pec(ANSICOLOR_BOLD ANSICOLOR_BLUE);
-    fprintf(stderr, "%llu", line + 1);
+    fprintf(stderr, "%zu", line + 1);
     ureg space = max_line_length - get_line_nr_offset(line);
     for (ureg i = 0; i < space; i++) pe(" ");
     pe(" |");

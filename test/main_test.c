@@ -193,6 +193,7 @@ int release_test()
     return r;
 }
 int llvmtest_main();
+#include <utils/debug_utils.h>
 int main_test(int argc, char** argv)
 {
 
@@ -206,7 +207,7 @@ int main_test(int argc, char** argv)
     res |= TEST(file_map_test);
     res |= TEST(job_queue_test);
     // res |= TEST(mdg_test);
-    res |= TEST(release_test);
+    TIME(res |= TEST(release_test););
 
     if (res) {
         print_dash_padded("FAILED", false);

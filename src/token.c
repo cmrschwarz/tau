@@ -132,6 +132,5 @@ void token_debug_print(src_file* f, token* t)
         } break;
     }
     src_pos p = src_map_get_pos(&f->src_map, t->start);
-    printf(
-        "[%llu; %llu | l: %llu c: %llu]\n", t->start, t->end, p.line, p.column);
+    printf("[%zu; %zu | l: %zu c: %zu]\n", t->start, t->end, p.line, p.column);
 }

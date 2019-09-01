@@ -68,7 +68,7 @@ typedef f32 freg;
 #define REG_WIDTH_64 0
 
 #elif INTPTR_MAX == INT64_MAX
-typedef unsigned long long int ureg;
+typedef size_t ureg;
 typedef int64_t sreg;
 typedef uint32_t uregh;
 typedef int32_t sregh;

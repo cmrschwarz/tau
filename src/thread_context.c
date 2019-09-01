@@ -3,6 +3,7 @@
 #include "resolver.h"
 #include "tauc.h"
 #include "print_ast.h"
+#include "utils/debug_utils.h"
 static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
 {
     switch (i) {
@@ -56,7 +57,9 @@ int thread_context_init(thread_context* tc)
 int thread_context_do_job(thread_context* tc, job* j)
 {
     if (j->kind == JOB_PARSE) {
-        return parser_parse_file(&tc->p, &j->concrete.parse);
+        int r;
+        TIME(r = parser_parse_file(&tc->p, &j->concrete.parse););
+        return r;
     }
     if (j->kind == JOB_RESOLVE) {
         bool can_link = false;
@@ -71,8 +74,9 @@ int thread_context_do_job(thread_context* tc, job* j)
             end = j->concrete.resolve.end;
         }
         ureg startid, endid, private_sym_count;
-        r = resolver_resolve(
-            &tc->r, start, end, &startid, &endid, &private_sym_count);
+        TIME(
+            r = resolver_resolve(
+                &tc->r, start, end, &startid, &endid, &private_sym_count););
         if (!r) {
             llvm_module* mod;
             r = llvm_backend_emit_module(
@@ -103,13 +107,16 @@ int thread_context_do_job(thread_context* tc, job* j)
         int r = mdg_final_sanity_check(&TAUC.mdg, tc);
         if (!r) {
             ureg lh = atomic_ureg_dec(&TAUC.linking_holdups);
-            if (lh == 1) return tauc_link();
+            if (lh == 1) {
+                TIME(r = tauc_link(););
+            }
         }
         return r;
     }
     error_log_report_critical_failiure(&tc->err_log, "unknown job type");
     return ERR;
 }
+#include <utils/debug_utils.h>
 int thread_context_run(thread_context* tc)
 {
     int r = OK;

@@ -3,6 +3,7 @@ extern "C" {
 #include "thread_context.h"
 #include "utils/pool.h"
 #include "tauc.h"
+#include <utils/debug_utils.h>
 int llvm_backend_init_globals()
 {
     // InitializeAllTargetInfos();
@@ -120,6 +121,7 @@ void LLVMBackend::addPrimitive(ureg id, primitive_kind pk)
     }
     _global_value_store[id] = (void*)t;
 }
+
 llvm_error LLVMBackend::createLLVMModule(
     mdg_node** start, mdg_node** end, ureg startid, ureg endid,
     ureg private_sym_count, LLVMModule** module)
@@ -153,9 +155,10 @@ llvm_error LLVMBackend::createLLVMModule(
     // create actual module
     _module = new (std::nothrow) llvm::Module(m->name, _context);
     if (!_module) return LLE_OK;
-    llvm_error lle = addModulesIR(start, end);
+    llvm_error lle;
+    TIME(lle = addModulesIR(start, end););
     if (lle) return lle;
-    lle = emitModule(m->name);
+    TIME(lle = emitModule(m->name););
     for (ureg id : _reset_after_emit) {
         if (isGlobalIDInModule(id)) {
             _global_value_store[id] = NULL;
@@ -567,10 +570,13 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
         llvm::Triple(_module->getTargetTriple()));
     pmb->LibraryInfo = tlii;
     pmb->Inliner = llvm::createAlwaysInlinerLegacyPass(false);
-    /*pmb.addExtension(
-        llvm::PassManagerBuilder::EP_EarlyAsPossible, addDiscriminatorsPass);
-    pmb.Inliner =
-        llvm::createFunctionInliningPass(pmb.OptLevel, pmb.SizeLevel, false);*/
+    if (false /* release */) {
+        pmb->addExtension(
+            llvm::PassManagerBuilder::EP_EarlyAsPossible,
+            addDiscriminatorsPass);
+        pmb->Inliner = llvm::createFunctionInliningPass(
+            pmb->OptLevel, pmb->SizeLevel, false);
+    }
     auto fpm = new llvm::legacy::FunctionPassManager(_module);
     auto tliwp = new (std::nothrow) llvm::TargetLibraryInfoWrapperPass(*tlii);
     fpm->add(tliwp);
