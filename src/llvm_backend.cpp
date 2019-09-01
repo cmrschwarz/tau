@@ -11,6 +11,8 @@ int llvm_backend_init_globals()
     // InitializeAllTargetMCs();
     llvm::InitializeNativeTargetAsmParser();
     llvm::InitializeNativeTargetAsmPrinter();
+    // const char* args[] = {"", "-time-passes"};
+    // llvm::cl::ParseCommandLineOptions(2, args);
     return 0;
 }
 void llvm_backend_fin_globals()
@@ -66,7 +68,8 @@ LLVMBackend::LLVMBackend(thread_context* tc)
       _global_value_store(atomic_ureg_load(&TAUC.node_ids), NULL)
 {
     std::string err;
-    auto target_triple = LLVMGetDefaultTargetTriple();
+    auto target_triple = "x86_64-pc-linux-gnu";
+    LLVMGetDefaultTargetTriple();
     auto target = llvm::TargetRegistry::lookupTarget(target_triple, err);
     if (err.length() > 0) { // TODO: properly
         llvm::errs() << err << "\n";
@@ -469,7 +472,7 @@ llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** val)
     if (lle) return lle;
     assert(val);
     switch (b->node.op_kind) {
-        case OP_ADD: *val = _builder.CreateAdd(lhs, rhs); break;
+        case OP_ADD: *val = _builder.CreateNSWAdd(lhs, rhs); break;
         case OP_SUB: *val = _builder.CreateSub(lhs, rhs); break;
         case OP_MUL: *val = _builder.CreateMul(lhs, rhs); break;
         case OP_DIV: *val = _builder.CreateSDiv(lhs, rhs); break;
@@ -562,7 +565,7 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     pmb->RerollLoops = false;
     pmb->DisableGVNLoadPRE = true;
     pmb->VerifyInput = true;
-    pmb->MergeFunctions = true;
+    pmb->MergeFunctions = false;
     pmb->PrepareForLTO = false;
     pmb->PrepareForThinLTO = false;
     pmb->PerformThinLTO = false;
@@ -596,19 +599,23 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     }
     fpm->doInitialization();
     for (llvm::Function& fn : *_module) {
-        if (!fn.isDeclaration()) fpm->run(fn);
+        if (!fn.isDeclaration()) {
+            fn.addFnAttr(llvm::Attribute::NoUnwind);
+            fn.addFnAttr(llvm::Attribute::UWTable);
+            fpm->run(fn);
+        }
     }
     fpm->doFinalization();
     mpm->run(*_module);
-    file_stream.flush();
-    /* llvm::raw_fd_ostream ir_stream{obj_name.substr(0, obj_name.length() - 3)
-     +
-                                        "ll",
-                                    EC, llvm::sys::fs::F_None};
 
-     _module->print(ir_stream, nullptr, false, false);
-     ir_stream.flush();
-     */
+    file_stream.flush();
+    if (false /* output ll */) {
+        llvm::raw_fd_ostream ir_stream{
+            obj_name.substr(0, obj_name.length() - 3) + "ll", EC,
+            llvm::sys::fs::F_None};
+        _module->print(ir_stream, nullptr, false, false);
+        ir_stream.flush();
+    }
     delete tliwp;
     delete pmb;
     return LLE_OK;
