@@ -51,6 +51,7 @@ int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
         printf("%s%s", (**n).module_str.c_str(), ptreq(n + 1, end) ? "" : ", ");
     }
     puts("}");
+    fflush(stdout);
     llvm_error lle =
         linkLLVMModules((LLVMModule**)start, (LLVMModule**)end, output_path);
     if (lle) return ERR;
@@ -136,6 +137,7 @@ llvm_error LLVMBackend::createLLVMModule(
     }
     m->name = m->module_str + ".obj";
     puts("}");
+    fflush(stdout);
     *module = m;
     // init id space
     _mod_startid = startid;
@@ -373,7 +375,7 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             llvm::Value** res = lookupVariableRaw(var->var_id);
             if (*res) {
                 if (val) {
-                    llvm::LoadInst* load = _builder.CreateLoad(*res);
+                    llvm::LoadInst* load = _builder.CreateAlignedLoad(*res, 4);
                     if (!load) return LLE_FATAL;
                     *val = load;
                 }
@@ -417,14 +419,16 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             }
             else {
                 // local var
-                var_val = _builder.CreateAlloca(tp);
+                var_val = new llvm::AllocaInst(
+                    tp, 0, nullptr, 4, var->sym.name,
+                    _builder.GetInsertBlock());
                 if (!var_val) return LLE_FATAL;
                 if (n->kind == SYM_VAR_INITIALIZED) {
                     llvm::Value* v;
                     lle = getMdgNodeIR(
                         ((sym_var_initialized*)n)->initial_value, &v);
                     if (lle) return lle;
-                    if (!_builder.CreateStore(v, var_val, false))
+                    if (!_builder.CreateAlignedStore(v, var_val, 4, false))
                         return LLE_FATAL;
                 }
             }
@@ -432,7 +436,7 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             if (isGlobalID(var->var_id))
                 _global_value_init_flags[var->var_id] = true;
             if (val) {
-                llvm::LoadInst* load = _builder.CreateLoad(var_val);
+                llvm::LoadInst* load = _builder.CreateAlignedLoad(var_val, 4);
                 if (!load) return LLE_FATAL;
                 *val = load;
             }
@@ -512,7 +516,7 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
         *res = func;
         if (val) *val = func;
         llvm::BasicBlock* func_block =
-            llvm::BasicBlock::Create(_context, "", func);
+            llvm::BasicBlock::Create(_context, "", func, nullptr);
         if (!func_block) return LLE_FATAL;
         _builder.SetInsertPoint(func_block);
         return addAstBodyIR(&fn->scp.body);
@@ -541,8 +545,8 @@ static void addDiscriminatorsPass(
 llvm_error LLVMBackend::emitModule(const std::string& obj_name)
 {
     printf("emmitting %s\n", (char*)obj_name.c_str());
+    fflush(stdout);
     std::error_code EC;
-    llvm::raw_fd_ostream file_stream{obj_name, EC, llvm::sys::fs::F_None};
     _module->setDataLayout(_target_machine->createDataLayout());
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
     auto pmb = new llvm::PassManagerBuilder();
@@ -578,7 +582,7 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     pmb->populateModulePassManager(*mpm);
 
     auto file_type = llvm::TargetMachine::CGFT_ObjectFile;
-
+    llvm::raw_fd_ostream file_stream{obj_name, EC, llvm::sys::fs::F_None};
     if (_target_machine->addPassesToEmitFile(
             *mpm, file_stream, nullptr, file_type)) {
         llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
@@ -591,6 +595,14 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     fpm->doFinalization();
     mpm->run(*_module);
     file_stream.flush();
+    /* llvm::raw_fd_ostream ir_stream{obj_name.substr(0, obj_name.length() - 3)
+     +
+                                        "ll",
+                                    EC, llvm::sys::fs::F_None};
+
+     _module->print(ir_stream, nullptr, false, false);
+     ir_stream.flush();
+     */
     delete tliwp;
     delete pmb;
     return LLE_OK;

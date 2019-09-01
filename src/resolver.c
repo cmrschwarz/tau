@@ -495,6 +495,7 @@ static inline void print_debug_info(resolver* r)
         i++;
     }
     printf("%s}\n", (**i).name);
+    fflush(stdout);
 }
 
 bool ctypes_unifiable(ast_elem* a, ast_elem* b)

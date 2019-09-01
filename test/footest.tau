@@ -1,8 +1,3 @@
-global: int = 0;
-public func foo() -> int{
-    x:= 10;
-    return x + x * global * global;
-}
 func f0() -> int {
     return 0;
 }
