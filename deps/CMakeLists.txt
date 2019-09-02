@@ -12,9 +12,11 @@ option(TAU_LLVM_PRECOMPILED
     "use precompiled llvm libraries locaded in TAU_LLVM_LIB_PATHES" 
     OFF
 )
+
 set(TAU_LLVM_TARGETS_TO_BUILD "X86;" CACHE BOOL 
     "Semocion separated list of Target architectures to build and link" 
 FORCE)
+
 if(${TAU_LLVM_PRECOMPILED})
     message("precompiled!")
     set(TAU_LLVM_PROJECT_DIR "${CMAKE_CURRENT_LIST_DIR}/llvm-project-prebuild"
@@ -43,19 +45,17 @@ if(${TAU_LLVM_PRECOMPILED})
         "Preprocessor Definitions for the precompiled LLVM"
     )
     execute_process(
-        COMMAND ${TAU_LLVM_CONFIG_EXE} --libfiles --link-static
+        COMMAND sh -c "${TAU_LLVM_CONFIG_EXE} --libfiles --link-static | xargs du | sed -e '/^0\\s*/d' -e 's/^[0-9]*\\s*//'"
         OUTPUT_VARIABLE LLVM_LIBRARIES_SPACES
         OUTPUT_STRIP_TRAILING_WHITESPACE)
-    string(REPLACE " " ";" TAU_LLVM_LIBRARIES "${LLVM_LIBRARIES_SPACES}")
-
+    string(REPLACE "\n" ";" TAU_LLVM_LIBRARIES "${LLVM_LIBRARIES_SPACES}")
     execute_process(
-        COMMAND ${TAU_LLVM_CONFIG_EXE} --system-libs --link-static
+        COMMAND ${TAU_LLVM_CONFIG_EXE} --system-libs --link-static 
         OUTPUT_VARIABLE LLVM_SYSTEM_LIBS_SPACES
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     string(REPLACE " " ";" TAU_LLVM_SYSTEM_LIBS "${LLVM_SYSTEM_LIBS_SPACES}")
-
     execute_process(
-        COMMAND ${TAU_LLVM_CONFIG_EXE} --libdir --link-static
+        COMMAND ${TAU_LLVM_CONFIG_EXE} --libdir --link-static 
         OUTPUT_VARIABLE LLVM_LIBDIRS_SPACES
         OUTPUT_STRIP_TRAILING_WHITESPACE)
     string(REPLACE " " ";" TAU_LLVM_LIBDIRS "${LLVM_LIBDIRS_SPACES}")
@@ -141,6 +141,7 @@ else()
         support
         target
         irreader
+        bitreader
         bitwriter
         codegen
         analysis

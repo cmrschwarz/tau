@@ -1,29 +1,37 @@
-#image: alpine
-
 variables:
-  GIT_SUBMODULE_STRATEGY: recursive
+    GIT_SUBMODULE_STRATEGY: recursive
 
 stages:
+    - precompile
     - build
     - test
 
+precompile:
+    stage: precompile
+    script: 
+        - ./precompile_llvm.sh
+    cache:
+        key: precompile
+        paths:
+            - deps/llvm-project-prebuild/
+
 build:
     stage: build
-#    before_script:
-#        - apk update
-#        - apk add gcc make cmake build-base
     script:
         - mkdir build
         - cd build
-        - cmake -DCMAKE_BUILD_TYPE=Debug TAU_LLVM_PRECOMPILED=OFF ../
+        - cmake -DCMAKE_BUILD_TYPE=Debug ../
         - make -j$(nproc)
+    cache:
+        key: precompile
+        paths:
+            - deps/llvm-project-prebuild/
+        policy: pull
     artifacts:
         paths:
             - ./build
             - ./build/tauc
         expire_in: 20 minutes
-    only:
-        - master
 
 test:
     stage: test

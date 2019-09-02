@@ -610,7 +610,6 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
         llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
         return LLE_FATAL;
     }
-
     PerFunctionPasses.doInitialization();
     for (llvm::Function& F : *_module)
         if (!F.isDeclaration()) PerFunctionPasses.run(F);

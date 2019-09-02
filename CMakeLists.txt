@@ -42,15 +42,11 @@ set(TAUC_INCLUDE_DIRS
     "${CMAKE_CURRENT_LIST_DIR}/src"
 )
 
-#use prebuild llvm for debug speed
-set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "" FORCE)
+set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "")
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/deps")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    #use prebuild llvm for debug speed
-    set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "" FORCE)
-    
     set(TAUC_C_TESTS
         ./test/main_test.c
     )
@@ -73,7 +69,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR
     "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"
 )
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -pedantic")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic -std=c++11")
 endif ()
 
 add_executable(tauc ${TAUC_C_SRCS} ${TAUC_CPP_SRCS})
