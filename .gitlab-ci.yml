@@ -14,6 +14,8 @@ precompile:
         key: precompile
         paths:
             - deps/llvm-project-prebuild/
+    only:
+        - master
 
 build:
     stage: build
@@ -32,9 +34,13 @@ build:
             - ./build
             - ./build/tauc
         expire_in: 20 minutes
+    only:
+        - master
 
 test:
     stage: test
     script:
         - ./build/tauc
        # - valgrind --track-origins=yes --leak-check=full --error-exitcode=1 --suppressions test/valgrind_suppressions./build/tauc 
+    only:
+        - master
