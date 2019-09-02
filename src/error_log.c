@@ -221,7 +221,7 @@ int print_filepath(ureg line_nr_offset, src_pos pos, src_file* file)
     // TODO: the column index is currently based on the number of byte,
     // not the number of unicode code points, but tools expect the latter
     fprintf(
-        stderr, ":%llu:%zu\n",
+        stderr, ":%zu:%zu\n",
         pos.line + 1, // make indices start at one
         pos.column + 1);
     return OK;

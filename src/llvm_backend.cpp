@@ -619,6 +619,7 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     PerModulePasses.run(*_module);
 
     CodeGenPasses.run(*_module);
+    return LLE_OK;
 }
 llvm_error
 linkLLVMModules(LLVMModule** start, LLVMModule** end, char* output_path)
