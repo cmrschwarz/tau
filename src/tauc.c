@@ -56,7 +56,6 @@ int tauc_request_end()
 {
     job jb;
     jb.kind = JOB_FINALIZE;
-    // memset(&jb.concrete, 1, sizeof(jb.concrete)); //why valgrind?
     ureg w, j;
     int r = job_queue_push(&TAUC.jobqueue, &jb, &w, &j);
     if (r != ERR) return OK;
@@ -181,6 +180,7 @@ int tauc_request_resolve_single(mdg_node* node)
 {
     job j;
     j.kind = JOB_RESOLVE;
+    // we can't use start and end here since jobs are copied by value
     j.concrete.resolve.single_store = node;
     return tauc_add_job(&j);
 }

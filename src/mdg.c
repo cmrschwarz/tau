@@ -252,6 +252,7 @@ mdg_get_node(module_dependency_graph* m, mdg_node* parent, string ident)
             m->changes[m->change_count].pos = np - h->table_start;
             m->changes[m->change_count].node = n;
             m->change_count++;
+            h->elem_count++;
             mdg_end_write(m);
         }
     }
@@ -789,11 +790,11 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
     // write is necessary since we aren't satisfied with eventual
     // consistency
     mdght* h = mdg_start_write(m);
-    mdght_iterator it;
-    mdght_iterator_begin(&it, h);
+    mdght_iterator mdg_it;
+    mdght_iterator_begin(&mdg_it, h);
     int res = OK;
     while (true) {
-        mdg_node* n = mdght_iterator_next(&it);
+        mdg_node* n = mdght_iterator_next(&mdg_it);
         if (!n) break;
         // we still need to lock the stages since some final resolving might
         // still be going on

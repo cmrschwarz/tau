@@ -53,7 +53,7 @@ void* tmalloc(ureg size)
 void* tmallocz(ureg size)
 {
     void* m = tmalloc(size);
-    if (m) memset(m, 0, size);
+    if (m != NULL) memset(m, 0, size);
     return m;
 }
 

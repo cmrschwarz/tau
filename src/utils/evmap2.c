@@ -29,6 +29,7 @@ int evmap2_init(evmap2* m, ureg max_change_count)
     if (r) return evmap2_partial_fin(m, 1, r);
     m->reader_id = 0;
     m->prev_readers = 0;
+    m->swapped = false;
     m->change_count = 0;
     m->max_change_count = max_change_count;
     return 0;

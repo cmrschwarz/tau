@@ -11,10 +11,10 @@ static inline void pretty_print_timespan(timespan* ts)
     freg secs = timespan_get_frseconds(ts);
     freg millis = timespan_get_fmillis(ts);
     if (hrs > 0) {
-        printf("%02zu:%02zu:%04.2f", hrs, mnts, secs);
+        printf("%02zu:%02zu:%05.2f", hrs, mnts, secs);
     }
     else if (mnts > 0) {
-        printf("%02zu:%04.2f", mnts, secs);
+        printf("%02zu:%05.2f", mnts, secs);
     }
     else if (secs >= 1) {
         printf("%04.2f s", secs);

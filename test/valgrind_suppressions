@@ -5,6 +5,11 @@
 }
 {
    <insert_a_suppression_name_here>
+   Memcheck:Value8
+   obj:/lib/x86_64-linux-gnu/libc-2.28.so
+}
+{
+   <insert_a_suppression_name_here>
    Memcheck:Cond
    obj:/lib/x86_64-linux-gnu/libc-2.28.so
 }

@@ -6,13 +6,11 @@
 #include "utils/string.h"
 #include "utils/types.h"
 
-#ifndef TAUC_MDG_H
 typedef struct mdg_node_s mdg_node;
-#endif
 
 // mdght: mdg hash table
 // TODO: use closed hashing to improve get performance on nonexisting entries
-typedef struct mdght {
+typedef struct mdght_s {
     mdg_node** table_start;
     mdg_node** table_end;
     ureg elem_count;
@@ -24,10 +22,11 @@ typedef struct mdght {
 ureg mdght_get_hash_str(mdg_node* parent, string str);
 ureg mdght_get_hash(mdg_node* parent, const char* str);
 
-typedef struct mdght_iterator {
+typedef struct mdght_iterator_s {
     mdg_node** head;
     mdg_node** end;
 } mdght_iterator;
+
 void mdght_iterator_begin(mdght_iterator* it, mdght* h);
 mdg_node* mdght_iterator_next(mdght_iterator* it);
 

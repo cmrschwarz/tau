@@ -44,27 +44,27 @@ static inline ureg ceil_to_pow2(ureg v)
 
 static inline ureg ptrdiff(void* greater, void* smaller)
 {
-    return (ureg)greater - (ureg)smaller;
+    return (char*)greater - (char*)smaller;
 }
 static inline sreg ptrdiffs(void* left, void* right)
 {
-    return (sreg)left - (sreg)right;
+    return (char*)left - (char*)right;
 }
 static inline void* ptradd(void* ptr, ureg val)
 {
-    return (void*)((ureg)ptr + val);
+    return (void*)((char*)ptr + val);
 }
 static inline void* ptradds(void* ptr, sreg val)
 {
-    return (void*)((ureg)ptr + val);
+    return (void*)((char*)ptr + val);
 }
 static inline void* ptrsub(void* ptr, ureg val)
 {
-    return (void*)((ureg)ptr - val);
+    return (void*)((char*)ptr - val);
 }
 static inline void* ptrsubs(void* ptr, sreg val)
 {
-    return (void*)((ureg)ptr - val);
+    return (void*)((char*)ptr - val);
 }
 static inline bool ptreq(void* a, void* b)
 {

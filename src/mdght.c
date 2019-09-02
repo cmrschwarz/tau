@@ -27,6 +27,7 @@ int mdght_init_with_capacity(mdght* h, ureg capacity)
     h->table_start = (mdg_node**)tmallocz(size);
     if (!h->table_start) return ERR;
     h->table_end = (mdg_node**)ptradd(h->table_start, size);
+    memset(h->table_start, 0, size); // why valgrind???
 
     // this limits the "used size" to a power of 2
     // elements after that size will be used for colliding elements,
@@ -85,7 +86,9 @@ void mdght_iterator_begin(mdght_iterator* it, mdght* h)
 mdg_node* mdght_iterator_next(mdght_iterator* it)
 {
     while (true) {
-        if (it->head == it->end) return NULL;
+        if (it->head == it->end) {
+            return NULL;
+        }
         if (*it->head == NULL) {
             it->head++;
             continue;
