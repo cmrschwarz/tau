@@ -88,9 +88,8 @@ void mdg_end_read(module_dependency_graph* m, mdght* h);
 mdght* mdg_start_write(module_dependency_graph* m);
 void mdg_end_write(module_dependency_graph* m);
 
-mdg_node* mdg_add_open_scope(
-    module_dependency_graph* m, mdg_node* parent, open_scope* osc,
-    string ident);
+mdg_node*
+mdg_found_node(module_dependency_graph* m, mdg_node* parent, string ident);
 mdg_node*
 mdg_get_node(module_dependency_graph* m, mdg_node* parent, string ident);
 

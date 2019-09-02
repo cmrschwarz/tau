@@ -2321,6 +2321,8 @@ parse_error parse_module_decl(
             "in this module declaration");
         return PE_ERROR;
     }
+    mdg_node* mdgn = mdg_found_node(&TAUC.mdg, p->current_module, t->str);
+    if (mdgn == NULL) return PE_FATAL;
     ureg decl_end = t->end;
 
     t2 = lx_peek_2nd(&p->lx);
@@ -2344,14 +2346,13 @@ parse_error parse_module_decl(
         if (!md) return PE_FATAL;
         lx_void(&p->lx);
     }
-    mdg_node* mdgn =
-        mdg_add_open_scope(&TAUC.mdg, p->current_module, md, t->str);
-    if (mdgn == NULL) return PE_FATAL;
     ast_node_init_with_flags(
         (ast_node*)md, mod_gen ? OSC_MODULE_GENERIC : OSC_MODULE, flags);
     md->scp.sym.node.srange =
         src_range_pack(p->lx.tc, start, decl_end, p->lx.file);
     if (md->scp.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
+    aseglist_add(&mdgn->open_scopes, (open_scope*)md);
+    md->scp.sym.name = mdgn->name;
     PEEK(p, t);
     mdg_node* parent = p->current_module;
     p->current_module = mdgn;
@@ -2393,6 +2394,8 @@ parse_error parse_extend_decl(
             "in this extend declaration");
         return PE_ERROR;
     }
+    mdg_node* mdgn = mdg_found_node(&TAUC.mdg, p->current_module, t->str);
+    if (mdgn == NULL) return PE_FATAL;
     ureg decl_end = t->end;
     t2 = lx_peek_2nd(&p->lx);
     if (!t2) return PE_LX_ERROR;
@@ -2413,14 +2416,13 @@ parse_error parse_extend_decl(
         if (!ex) return PE_FATAL;
         lx_void(&p->lx);
     }
-    mdg_node* mdgn =
-        mdg_add_open_scope(&TAUC.mdg, p->current_module, ex, t->str);
-    if (mdgn == NULL) return PE_FATAL;
     ex->scp.sym.node.srange =
         src_range_pack(p->lx.tc, start, decl_end, p->lx.file);
     if (ex->scp.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     ast_node_init_with_flags(
         (ast_node*)ex, eg ? OSC_EXTEND_GENERIC : OSC_EXTEND, flags);
+    aseglist_add(&mdgn->open_scopes, (open_scope*)ex);
+    ex->scp.sym.name = mdgn->name;
     PEEK(p, t);
     mdg_node* parent = p->current_module;
     p->current_module = mdgn;

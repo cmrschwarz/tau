@@ -109,10 +109,10 @@ mdg_node_create(module_dependency_graph* m, string ident, mdg_node* parent)
     n->elem.kind = ELEM_MDG_NODE;
     ureg identlen = string_len(ident);
     n->name = pool_alloc(&m->ident_pool, identlen + 1);
-    n->id = atomic_ureg_inc(&m->node_ids);
-    if (!n->name) return NULL;
     memcpy(n->name, ident.start, identlen);
+    if (!n->name) return NULL;
     n->name[identlen] = '\0';
+    n->id = atomic_ureg_inc(&m->node_ids);
     n->parent = parent;
     int r = aseglist_init(&n->open_scopes);
     if (r) return NULL;
@@ -258,8 +258,8 @@ mdg_get_node(module_dependency_graph* m, mdg_node* parent, string ident)
     return n;
 }
 
-mdg_node* mdg_add_open_scope(
-    module_dependency_graph* m, mdg_node* parent, open_scope* osc, string ident)
+mdg_node*
+mdg_found_node(module_dependency_graph* m, mdg_node* parent, string ident)
 {
     mdg_node* n = mdg_get_node(m, parent, ident);
     if (!n) return n;
@@ -271,8 +271,6 @@ mdg_node* mdg_add_open_scope(
         if (n->stage == MS_NOT_FOUND) n->stage = MS_PARSING;
         rwslock_end_write(&n->stage_lock);
     }
-    aseglist_add(&n->open_scopes, osc);
-    osc->scp.sym.name = n->name;
     return n;
 }
 
