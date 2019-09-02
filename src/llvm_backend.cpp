@@ -324,12 +324,13 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
                     if (val) *val = c;
                     return LLE_OK;
                 }
-                /* case PT_FLOAT:
-                   return llvm::ConstantFP::get(
-                       _context,
-                       llvm::APFloat::convertFromString(
-                           l->value.str,
-                           llvm::APFloatBase::roundingMode::rmTowardZero));*/
+                case PT_FLOAT: {
+                    auto c = new llvm::APFloat(
+                        llvm::APFloatBase::IEEEsingle(), l->value.str);
+                    if (!c) return LLE_FATAL;
+                    return LLE_OK;
+                }
+
                 default: assert(false);
             }
         }
@@ -539,10 +540,6 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
         _global_value_init_flags[fn->id] = true;
         _reset_after_emit.push_back(fn->id);
     }
-    /*  llvm::Function* func = llvm::Function::Create(
-          *_mod, func_sig, llvm::GlobalVariable::ExternalLinkage,
-          _mod->getDataLayout().getProgramAddressSpace(), fn->scp.sym.name);
-      _mod->getFunctionList().push_back(func);*/
     if (!func) return LLE_FATAL;
     *res = func;
     if (val) *val = func;
