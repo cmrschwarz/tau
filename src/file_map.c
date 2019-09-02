@@ -141,9 +141,10 @@ static inline void src_dir_fin(src_dir* d)
 
 ureg src_file_get_path_len(src_file* f)
 {
-    file_map_head* n = &f->head;
-    ureg len = 0;
+    ureg len = string_len(f->head.name);
+    file_map_head* n = &f->head.parent->head;
     while (n) {
+        len += 1;
         len += string_len(n->name);
         n = &n->parent->head;
     }
