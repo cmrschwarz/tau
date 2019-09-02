@@ -1,4 +1,5 @@
 #include "llvm_backend.hpp"
+#include <memory>
 extern "C" {
 #include "thread_context.h"
 #include "utils/pool.h"
@@ -11,8 +12,10 @@ int llvm_backend_init_globals()
     // InitializeAllTargetMCs();
     llvm::InitializeNativeTargetAsmParser();
     llvm::InitializeNativeTargetAsmPrinter();
-    // const char* args[] = {"", "-time-passes"};
-    // llvm::cl::ParseCommandLineOptions(2, args);
+    const char* args[] = {"tauc", /*"-time-passes",*/
+                          /*"--debug-pass=Structure"*/};
+
+    llvm::cl::ParseCommandLineOptions(sizeof(args) / sizeof(char*), args);
     return 0;
 }
 void llvm_backend_fin_globals()
@@ -75,9 +78,12 @@ LLVMBackend::LLVMBackend(thread_context* tc)
         llvm::errs() << err << "\n";
     }
     llvm::TargetOptions opt;
+    opt.ThreadModel = llvm::ThreadModel::POSIX;
+    llvm::Optional<llvm::CodeModel::Model> CM = llvm::CodeModel::Small;
+    llvm::CodeGenOpt::Level OptLevel = llvm::CodeGenOpt::None;
     _target_machine = target->createTargetMachine(
         target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
-        llvm::Optional<llvm::Reloc::Model>());
+        llvm::Optional<llvm::Reloc::Model>(), CM, OptLevel);
     _reg_size = _target_machine->getMCRegisterInfo()->getRegClass(0).RegsSize;
 }
 
@@ -319,11 +325,11 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
                     return LLE_OK;
                 }
                 /* case PT_FLOAT:
-                     return llvm::ConstantFP::get(
-                         _context,
-                         llvm::APFloat::convertFromString(
-                             l->value.str,
-                             llvm::APFloatBase::roundingMode::rmTowardZero));*/
+                   return llvm::ConstantFP::get(
+                       _context,
+                       llvm::APFloat::convertFromString(
+                           l->value.str,
+                           llvm::APFloatBase::roundingMode::rmTowardZero));*/
                 default: assert(false);
             }
         }
@@ -542,12 +548,6 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
     if (val) *val = func;
     return LLE_OK;
 }
-static void addDiscriminatorsPass(
-    const llvm::PassManagerBuilder& pmb, llvm::legacy::PassManagerBase& pm)
-{
-    pm.add(llvm::createAddDiscriminatorsPass());
-}
-
 llvm_error LLVMBackend::emitModule(const std::string& obj_name)
 {
     printf("emmitting %s\n", (char*)obj_name.c_str());
@@ -555,70 +555,70 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     std::error_code EC;
     _module->setDataLayout(_target_machine->createDataLayout());
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
-    auto pmb = new llvm::PassManagerBuilder();
-    pmb->OptLevel = 0;
-    pmb->DisableTailCalls = true;
-    pmb->DisableUnitAtATime = true;
-    pmb->DisableUnrollLoops = true;
-    pmb->SLPVectorize = false;
-    pmb->LoopVectorize = false;
-    pmb->RerollLoops = false;
-    pmb->DisableGVNLoadPRE = true;
-    pmb->VerifyInput = true;
-    pmb->MergeFunctions = false;
-    pmb->PrepareForLTO = false;
-    pmb->PrepareForThinLTO = false;
-    pmb->PerformThinLTO = false;
-    auto tlii = new llvm::TargetLibraryInfoImpl(
-        llvm::Triple(_module->getTargetTriple()));
-    pmb->LibraryInfo = tlii;
-    pmb->Inliner = llvm::createAlwaysInlinerLegacyPass(false);
-    if (false /* release */) {
-        pmb->addExtension(
-            llvm::PassManagerBuilder::EP_EarlyAsPossible,
-            addDiscriminatorsPass);
-        pmb->Inliner = llvm::createFunctionInliningPass(
-            pmb->OptLevel, pmb->SizeLevel, false);
-    }
-    auto fpm = new llvm::legacy::FunctionPassManager(_module);
-    auto tliwp = new (std::nothrow) llvm::TargetLibraryInfoWrapperPass(*tlii);
-    fpm->add(tliwp);
-    fpm->add(
+    llvm::Triple TargetTriple(_module->getTargetTriple());
+    std::unique_ptr<llvm::TargetLibraryInfoImpl> TLII(
+        new llvm::TargetLibraryInfoImpl(TargetTriple));
+
+    llvm::legacy::PassManager PerModulePasses;
+    PerModulePasses.add(
         llvm::createTargetTransformInfoWrapperPass(
             _target_machine->getTargetIRAnalysis()));
-    pmb->populateFunctionPassManager(*fpm);
-    auto mpm = new llvm::legacy::PassManager();
-    pmb->populateModulePassManager(*mpm);
+
+    llvm::legacy::FunctionPassManager PerFunctionPasses(_module);
+    PerFunctionPasses.add(
+        llvm::createTargetTransformInfoWrapperPass(
+            _target_machine->getTargetIRAnalysis()));
+
+    // CreatePasses(PerModulePasses, PerFunctionPasses);
+    llvm::PassManagerBuilder pmb{};
+    pmb.OptLevel = 0;
+    pmb.DisableTailCalls = true;
+    pmb.DisableUnitAtATime = true;
+    pmb.DisableUnrollLoops = true;
+    pmb.SLPVectorize = false;
+    pmb.LoopVectorize = false;
+    pmb.RerollLoops = false;
+    pmb.DisableGVNLoadPRE = true;
+    pmb.VerifyInput = true;
+    pmb.MergeFunctions = false;
+    pmb.PrepareForLTO = false;
+    pmb.PrepareForThinLTO = false;
+    pmb.PerformThinLTO = false;
+
+    pmb.Inliner = llvm::createAlwaysInlinerLegacyPass(false);
+
+    PerModulePasses.add(new llvm::TargetLibraryInfoWrapperPass(*TLII));
+
+    _target_machine->adjustPassManager(pmb);
+
+    PerFunctionPasses.add(new llvm::TargetLibraryInfoWrapperPass(*TLII));
+
+    pmb.populateFunctionPassManager(PerFunctionPasses);
+    pmb.populateModulePassManager(PerModulePasses);
+
+    llvm::legacy::PassManager CodeGenPasses;
+    CodeGenPasses.add(
+        llvm::createTargetTransformInfoWrapperPass(
+            _target_machine->getTargetIRAnalysis()));
+
+    CodeGenPasses.add(new llvm::TargetLibraryInfoWrapperPass(*TLII));
 
     auto file_type = llvm::TargetMachine::CGFT_ObjectFile;
     llvm::raw_fd_ostream file_stream{obj_name, EC, llvm::sys::fs::F_None};
     if (_target_machine->addPassesToEmitFile(
-            *mpm, file_stream, nullptr, file_type)) {
+            CodeGenPasses, file_stream, nullptr, file_type)) {
         llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
         return LLE_FATAL;
     }
-    fpm->doInitialization();
-    for (llvm::Function& fn : *_module) {
-        if (!fn.isDeclaration()) {
-            fn.addFnAttr(llvm::Attribute::NoUnwind);
-            fn.addFnAttr(llvm::Attribute::UWTable);
-            fpm->run(fn);
-        }
-    }
-    fpm->doFinalization();
-    mpm->run(*_module);
 
-    file_stream.flush();
-    if (false /* output ll */) {
-        llvm::raw_fd_ostream ir_stream{
-            obj_name.substr(0, obj_name.length() - 3) + "ll", EC,
-            llvm::sys::fs::F_None};
-        _module->print(ir_stream, nullptr, false, false);
-        ir_stream.flush();
-    }
-    delete tliwp;
-    delete pmb;
-    return LLE_OK;
+    PerFunctionPasses.doInitialization();
+    for (llvm::Function& F : *_module)
+        if (!F.isDeclaration()) PerFunctionPasses.run(F);
+    PerFunctionPasses.doFinalization();
+
+    PerModulePasses.run(*_module);
+
+    CodeGenPasses.run(*_module);
 }
 llvm_error
 linkLLVMModules(LLVMModule** start, LLVMModule** end, char* output_path)
