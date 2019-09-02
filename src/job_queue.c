@@ -1,7 +1,9 @@
 #include "job_queue.h"
 #include "tauc.h"
 #include "assert.h"
-#define JOB_QUEUE_INITIAL_CAPACITY 1
+// must be at least two, otherwise
+// since one slot needs to always be free
+#define JOB_QUEUE_INITIAL_CAPACITY 2
 
 int job_queue_init(job_queue* jq)
 {
@@ -99,7 +101,9 @@ int job_queue_push(job_queue* jq, const job* jb, ureg* waiters, ureg* jobs)
         }
         ureg tail_size = ptrdiff(jq->buffer_end, jq->tail);
         memcpy(buffer_new, jq->tail, tail_size);
-        memcpy(ptradd(buffer_new, tail_size), jq->buffer, size_old - tail_size);
+        memcpy(
+            ptradd(buffer_new, tail_size), jq->buffer,
+            size_old - tail_size - 1);
         tfree(jq->buffer);
         jq->buffer = buffer_new;
         jq->buffer_end = ptradd(buffer_new, size_new);
