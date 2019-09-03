@@ -146,6 +146,7 @@ typedef enum PACK_ENUM primitive_kind_e {
     PT_FLOAT,
     PT_STRING,
     PT_BINARY_STRING,
+    PRIMITIVE_COUNT,
 } primitive_kind;
 
 // root of all, can be cast from ast_node since it only contains one element
@@ -524,11 +525,10 @@ typedef struct type_tuple_s {
 
 typedef struct primitive_s {
     symbol sym;
-    ureg type_id;
+    ureg alignment;
 } primitive;
 
-extern primitive PRIMITIVES[];
-extern ureg PRIMITIVE_COUNT;
+extern primitive PRIMITIVES[PRIMITIVE_COUNT];
 
 int ast_type_node_get_mod_count(ast_type_node atn);
 ast_type_mod ast_type_node_get_mod_n(ast_type_node atn, int n);

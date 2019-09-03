@@ -89,8 +89,7 @@ LLVMBackend::LLVMBackend(thread_context* tc)
 
 LLVMBackend::~LLVMBackend()
 {
-    for (ureg i = PRIMITIVES[PRIMITIVE_COUNT - 1].type_id + 1;
-         i != _global_value_store.size(); i++) {
+    for (ureg i = 0; i != _global_value_store.size(); i++) {
 
         auto val = (llvm::Value*)_global_value_store[i];
         if (val) val->deleteValue();
@@ -106,9 +105,7 @@ int LLVMBackend::InitLLVMBackend(LLVMBackend* llvmb, thread_context* tc)
 }
 llvm_error LLVMBackend::setup()
 {
-    for (ureg i = 0; i < PRIMITIVE_COUNT; i++) {
-        addPrimitive(PRIMITIVES[i].type_id, PRIMITIVES[i].sym.node.pt_kind);
-    }
+    addPrimitives();
     return LLE_OK;
 }
 void LLVMBackend::FinLLVMBackend(LLVMBackend* llvmb)
@@ -116,19 +113,21 @@ void LLVMBackend::FinLLVMBackend(LLVMBackend* llvmb)
     llvmb->~LLVMBackend();
 }
 
-void LLVMBackend::addPrimitive(ureg id, primitive_kind pk)
+void LLVMBackend::addPrimitives()
 {
-    llvm::Type* t;
-    switch (pk) {
-        case PT_INT:
-        case PT_UINT: t = _builder.getInt32Ty(); break;
-        case PT_BINARY_STRING:
-        case PT_STRING: t = _builder.getInt8PtrTy(); break;
-        case PT_FLOAT: t = _builder.getFloatTy(); break;
-        case PT_VOID: t = _builder.getVoidTy(); break;
-        default: assert(false); return;
+    for (ureg i = 0; i < PRIMITIVE_COUNT; i++) {
+        llvm::Type* t;
+        switch (i) {
+            case PT_INT:
+            case PT_UINT: t = _builder.getInt32Ty(); break;
+            case PT_BINARY_STRING:
+            case PT_STRING: t = _builder.getInt8PtrTy(); break;
+            case PT_FLOAT: t = _builder.getFloatTy(); break;
+            case PT_VOID: t = _builder.getVoidTy(); break;
+            default: assert(false); return;
+        }
+        _primitive_types[i] = t;
     }
-    _global_value_store[id] = (void*)t;
 }
 
 llvm_error LLVMBackend::createLLVMModule(
@@ -168,6 +167,8 @@ llvm_error LLVMBackend::createLLVMModule(
     TIME(lle = addModulesIR(start, end););
     if (lle) return lle;
     TIME(lle = emitModule(m->name););
+    // PERF: instead of this last minute checking
+    // just have different buffers for the different reset types
     for (ureg id : _reset_after_emit) {
         if (isGlobalIDInModule(id)) {
             _global_value_store[id] = NULL;
@@ -253,21 +254,11 @@ llvm_error LLVMBackend::lookupFunction(ureg id, ast_node* n, llvm::Function** f)
     }
     return getMdgNodeIR(n, (llvm::Value**)f);
 }
-llvm_error LLVMBackend::lookupType(ureg id, ast_elem* e, llvm::Type** type)
-{
-    auto t = (llvm::Type**)lookupAstElem(id);
-    if (*t) {
-        *type = *t;
-        return LLE_OK;
-    }
-    assert(false); // TODO: getPointerTo(), yadda yadda
-    return LLE_FATAL;
-}
 llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t)
 {
     switch (e->kind) {
         case PRIMITIVE:
-            *t = *(llvm::Type**)lookupAstElem(((primitive*)e)->type_id);
+            *t = _primitive_types[((primitive*)e)->sym.node.pt_kind];
             break;
         default: {
             assert(false); // TODO
@@ -275,10 +266,6 @@ llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t)
         }
     }
     return LLE_OK;
-}
-llvm::Type* LLVMBackend::lookupPrimitive(primitive_kind pk)
-{
-    return (llvm::Type*)_global_value_store[PRIMITIVES[0].type_id + pk];
 }
 bool LLVMBackend::isIDInModule(ureg id)
 {
@@ -311,8 +298,9 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             switch (n->pt_kind) {
                 case PT_INT:
                 case PT_UINT: {
+                    new llvm::StructType(_context);
                     auto c = llvm::ConstantInt::get(
-                        (llvm::IntegerType*)lookupPrimitive(n->pt_kind),
+                        (llvm::IntegerType*)_primitive_types[n->pt_kind],
                         l->value.str, 10);
                     if (!c) return LLE_FATAL;
                     if (val) *val = c;

@@ -66,6 +66,7 @@ struct LLVMBackend {
     std::vector<bool> _global_value_init_flags;
     std::vector<void*> _local_value_store;
     std::vector<ureg> _reset_after_emit;
+    llvm::Type* _primitive_types[PRIMITIVE_COUNT];
     llvm::Module* _module;
     llvm::TargetMachine* _target_machine;
     ureg _reg_size;
@@ -98,7 +99,7 @@ struct LLVMBackend {
     static bool isGlobalID(ureg id);
 
   private:
-    void addPrimitive(ureg id, primitive_kind pk);
+    void addPrimitives();
     void** lookupAstElem(ureg id);
     llvm::Value** lookupVariableRaw(ureg id);
     llvm::Function** lookupFunctionRaw(ureg id);
@@ -106,7 +107,6 @@ struct LLVMBackend {
     llvm_error lookupFunction(ureg id, ast_node* n, llvm::Function** f);
     llvm_error lookupType(ureg id, ast_elem* e, llvm::Type** t);
     llvm_error lookupCType(ast_elem* e, llvm::Type** t);
-    llvm::Type* lookupPrimitive(primitive_kind pk);
     // val can be NULL
     llvm_error getMdgNodeIR(ast_node* n, llvm::Value** v);
     llvm_error genFunctionIR(sc_func* fn, llvm::Value** val);
