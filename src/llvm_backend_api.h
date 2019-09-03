@@ -32,6 +32,8 @@ void llvm_free_module(llvm_module* mod);
 int llvm_link_modules(
     llvm_module** start, llvm_module** end, char* output_path);
 
+int llvm_delete_objs(llvm_module** start, llvm_module** end);
+
 #ifdef __cplusplus
 }
 #endif

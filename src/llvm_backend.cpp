@@ -46,6 +46,13 @@ llvm_error llvm_backend_emit_module(
             start, end, startid, endid, private_sym_count, (LLVMModule**)mod);
 }
 
+int llvm_delete_objs(llvm_module** start, llvm_module** end)
+{
+    llvm_error lle = removeObjs((LLVMModule**)start, (LLVMModule**)end);
+    if (lle) return ERR;
+    return OK;
+}
+
 void llvm_free_module(llvm_module* mod)
 {
     delete (LLVMModule*)mod;
@@ -298,7 +305,6 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             switch (n->pt_kind) {
                 case PT_INT:
                 case PT_UINT: {
-                    new llvm::StructType(_context);
                     auto c = llvm::ConstantInt::get(
                         (llvm::IntegerType*)_primitive_types[n->pt_kind],
                         l->value.str, 10);
@@ -625,5 +631,13 @@ linkLLVMModules(LLVMModule** start, LLVMModule** end, char* output_path)
     args.push_back("a.out");
     llvm::ArrayRef<const char*> arr_ref(&args[0], args.size());
     lld::elf::link(arr_ref, false);
+    return LLE_OK;
+}
+
+llvm_error removeObjs(LLVMModule** start, LLVMModule** end)
+{
+    for (LLVMModule** i = start; i != end; i++) {
+        unlink((**i).name.c_str());
+    }
     return LLE_OK;
 }
