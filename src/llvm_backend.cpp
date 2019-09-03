@@ -143,14 +143,15 @@ void LLVMBackend::addPrimitives()
         llvm::Type* t;
         switch (i) {
             case PT_INT:
-            case PT_UINT: t = _builder.getIntNTy(PRIMITIVES[i].size); break;
+            // llvm expects bits, we store bytes (for now)
+            case PT_UINT: t = _builder.getIntNTy(PRIMITIVES[i].size * 8); break;
             case PT_BINARY_STRING:
             case PT_STRING: t = _builder.getInt8PtrTy(); break;
             case PT_FLOAT: {
                 if (PRIMITIVES[i].size == 4) {
                     t = _builder.getFloatTy();
                 }
-                else if (PRIMITIVE[i].size == 8) {
+                else if (PRIMITIVES[i].size == 8) {
                     t = _builder.getDoubleTy();
                 }
                 else {
@@ -291,15 +292,17 @@ llvm_error LLVMBackend::lookupFunction(ureg id, ast_node* n, llvm::Function** f)
     }
     return getMdgNodeIR(n, (llvm::Value**)f);
 }
-llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t)
+llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align)
 {
     switch (e->kind) {
-        case PRIMITIVE:
-            *t = _primitive_types[((primitive*)e)->sym.node.pt_kind];
-            break;
+        case PRIMITIVE: {
+            primitive_kind kind = ((primitive*)e)->sym.node.pt_kind;
+            if (t) *t = _primitive_types[kind];
+            if (align) *align = PRIMITIVES[kind].alignment;
+        } break;
         default: {
             assert(false); // TODO
-            *t = NULL; // to silcence -Wmaybe-uninitialized :(
+            if (t) *t = NULL; // to silcence -Wmaybe-uninitialized :(
         }
     }
     return LLE_OK;
@@ -410,17 +413,20 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             }
             sym_var* var = (sym_var*)n;
             llvm::Value** res = lookupVariableRaw(var->var_id);
+            llvm::Type* tp;
+            ureg align;
+            lle = lookupCType(var->ctype, &tp, &align);
+            if (lle) return lle;
             if (*res) {
                 if (val) {
-                    llvm::LoadInst* load = _builder.CreateAlignedLoad(*res, 4);
+                    llvm::LoadInst* load =
+                        _builder.CreateAlignedLoad(*res, align);
                     if (!load) return LLE_FATAL;
                     *val = load;
                 }
                 return LLE_OK;
             }
-            llvm::Type* tp;
-            lle = lookupCType(var->ctype, &tp);
-            if (lle) return lle;
+
             ast_node_kind k = var->sym.declaring_st->owning_node->kind;
             llvm::Value* var_val;
             if (k == ELEM_MDG_NODE || k == OSC_MODULE || k == OSC_EXTEND) {
@@ -457,7 +463,7 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             else {
                 // local var
                 var_val = new llvm::AllocaInst(
-                    tp, 0, nullptr, 4, var->sym.name,
+                    tp, 0, nullptr, align, var->sym.name,
                     _builder.GetInsertBlock());
                 if (!var_val) return LLE_FATAL;
                 if (n->kind == SYM_VAR_INITIALIZED) {
@@ -465,7 +471,7 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
                     lle = getMdgNodeIR(
                         ((sym_var_initialized*)n)->initial_value, &v);
                     if (lle) return lle;
-                    if (!_builder.CreateAlignedStore(v, var_val, 4, false))
+                    if (!_builder.CreateAlignedStore(v, var_val, align, false))
                         return LLE_FATAL;
                 }
             }
@@ -473,7 +479,8 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             if (isGlobalID(var->var_id))
                 _global_value_init_flags[var->var_id] = true;
             if (val) {
-                llvm::LoadInst* load = _builder.CreateAlignedLoad(var_val, 4);
+                llvm::LoadInst* load =
+                    _builder.CreateAlignedLoad(var_val, align);
                 if (!load) return LLE_FATAL;
                 *val = load;
             }
@@ -517,7 +524,7 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
 {
     llvm::FunctionType* func_sig;
     llvm::Type* ret_type;
-    llvm_error lle = lookupCType(fn->return_ctype, &ret_type);
+    llvm_error lle = lookupCType(fn->return_ctype, &ret_type, NULL);
     if (lle) return lle;
 
     if (fn->param_count != 0) {
@@ -525,7 +532,7 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
             &_tc->permmem, sizeof(llvm::Type*) * fn->param_count);
         if (!params) return LLE_FATAL;
         for (ureg i = 0; i < fn->param_count; i++) {
-            lle = lookupCType(fn->params[i].ctype, &params[i]);
+            lle = lookupCType(fn->params[i].ctype, &params[i], NULL);
             if (lle) return lle;
         }
         llvm::ArrayRef<llvm::Type*> params_array_ref(
@@ -639,6 +646,14 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     PerModulePasses.run(*_module);
 
     CodeGenPasses.run(*_module);
+
+    if (false) { // output ir
+        llvm::raw_fd_ostream ir_stream{obj_name.substr(0, obj_name.size() - 3) +
+                                           "ll",
+                                       EC, llvm::sys::fs::F_None};
+        _module->print(ir_stream, nullptr, true, true);
+        ir_stream.flush();
+    }
     return LLE_OK;
 }
 llvm_error

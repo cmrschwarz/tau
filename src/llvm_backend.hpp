@@ -105,7 +105,7 @@ struct LLVMBackend {
     llvm_error lookupVariable(ureg id, ast_node* n, llvm::Value** v);
     llvm_error lookupFunction(ureg id, ast_node* n, llvm::Function** f);
     llvm_error lookupType(ureg id, ast_elem* e, llvm::Type** t);
-    llvm_error lookupCType(ast_elem* e, llvm::Type** t);
+    llvm_error lookupCType(ast_elem* e, llvm::Type** t, ureg* align);
     // val can be NULL
     llvm_error getMdgNodeIR(ast_node* n, llvm::Value** v);
     llvm_error genFunctionIR(sc_func* fn, llvm::Value** val);
