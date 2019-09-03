@@ -34,6 +34,8 @@ int llvm_link_modules(
 
 int llvm_delete_objs(llvm_module** start, llvm_module** end);
 
+int llvm_initialize_primitive_information();
+
 #ifdef __cplusplus
 }
 #endif

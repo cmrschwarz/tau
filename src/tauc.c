@@ -29,7 +29,9 @@ static inline int tauc_partial_fin(int r, int i)
 }
 int tauc_init()
 {
-    int r = llvm_backend_init_globals();
+    int r = llvm_initialize_primitive_information();
+    if (r) return tauc_partial_fin(r, 0); // ^ this doesn't need to be fin'd
+    r = llvm_backend_init_globals();
     if (r) return tauc_partial_fin(r, 0);
     r = file_map_init(&TAUC.filemap);
     if (r) return tauc_partial_fin(r, 1);

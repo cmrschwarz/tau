@@ -525,6 +525,7 @@ typedef struct type_tuple_s {
 
 typedef struct primitive_s {
     symbol sym;
+    ureg size; // size is different from alignment e.g. for void, string, etc.
     ureg alignment;
 } primitive;
 

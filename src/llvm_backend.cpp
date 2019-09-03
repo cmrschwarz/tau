@@ -70,6 +70,24 @@ int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
     if (lle) return ERR;
     return OK;
 }
+int llvm_initialize_primitive_information()
+{
+    // TODO: properly figure out the plattform information
+    const ureg reg_size = 8;
+    PRIMITIVES[PT_UINT].size = reg_size;
+    PRIMITIVES[PT_INT].size = reg_size;
+    PRIMITIVES[PT_FLOAT].size = reg_size;
+
+    PRIMITIVES[PT_STRING].size = reg_size;
+    PRIMITIVES[PT_BINARY_STRING].size = reg_size;
+    PRIMITIVES[PT_VOID].size = 0;
+
+    for (ureg i = 0; i < PRIMITIVE_COUNT; i++) {
+        PRIMITIVES[i].alignment = PRIMITIVES[i].size;
+    }
+    PRIMITIVES[PT_VOID].alignment = 1;
+    return OK;
+}
 }
 
 // CPP
@@ -91,7 +109,6 @@ LLVMBackend::LLVMBackend(thread_context* tc)
     _target_machine = target->createTargetMachine(
         target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
         llvm::Optional<llvm::Reloc::Model>(), CM, OptLevel);
-    _reg_size = _target_machine->getMCRegisterInfo()->getRegClass(0).RegsSize;
 }
 
 LLVMBackend::~LLVMBackend()
@@ -126,10 +143,23 @@ void LLVMBackend::addPrimitives()
         llvm::Type* t;
         switch (i) {
             case PT_INT:
-            case PT_UINT: t = _builder.getInt32Ty(); break;
+            case PT_UINT: t = _builder.getIntNTy(PRIMITIVES[i].size); break;
             case PT_BINARY_STRING:
             case PT_STRING: t = _builder.getInt8PtrTy(); break;
-            case PT_FLOAT: t = _builder.getFloatTy(); break;
+            case PT_FLOAT: {
+                if (PRIMITIVES[i].size == 4) {
+                    t = _builder.getFloatTy();
+                }
+                else if (PRIMITIVE[i].size == 8) {
+                    t = _builder.getDoubleTy();
+                }
+                else {
+                    // TODO: decide on supported architectures and handle this
+                    // accordingly
+                    assert(false);
+                }
+
+            } break;
             case PT_VOID: t = _builder.getVoidTy(); break;
             default: assert(false); return;
         }

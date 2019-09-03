@@ -69,7 +69,6 @@ struct LLVMBackend {
     llvm::Type* _primitive_types[PRIMITIVE_COUNT];
     llvm::Module* _module;
     llvm::TargetMachine* _target_machine;
-    ureg _reg_size;
     ureg _mod_startid;
     ureg _mod_endid;
     ureg _private_sym_count;
