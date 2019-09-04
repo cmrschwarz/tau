@@ -93,11 +93,11 @@ int llvm_initialize_primitive_information()
 // CPP
 LLVMBackend::LLVMBackend(thread_context* tc)
     : _tc(tc), _context(), _builder(_context),
-      _global_value_store(atomic_ureg_load(&TAUC.node_ids), NULL)
+      _global_value_store(atomic_ureg_load(&TAUC.node_ids), NULL),
+      _data_layout(*(llvm::DataLayout*)&_data_layout_storage[0])
 {
     std::string err;
-    auto target_triple = "x86_64-pc-linux-gnu";
-    LLVMGetDefaultTargetTriple();
+    auto target_triple = "x86_64-pc-linux-gnu"; // LLVMGetDefaultTargetTriple();
     auto target = llvm::TargetRegistry::lookupTarget(target_triple, err);
     if (err.length() > 0) { // TODO: properly
         llvm::errs() << err << "\n";
@@ -109,6 +109,8 @@ LLVMBackend::LLVMBackend(thread_context* tc)
     _target_machine = target->createTargetMachine(
         target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
         llvm::Optional<llvm::Reloc::Model>(), CM, OptLevel);
+    *(llvm::DataLayout*)(&_data_layout_storage[0]) =
+        _target_machine->createDataLayout();
 }
 
 LLVMBackend::~LLVMBackend()
@@ -240,7 +242,7 @@ llvm_error LLVMBackend::addModulesIR(mdg_node** start, mdg_node** end)
 llvm_error LLVMBackend::addAstBodyIR(ast_body* b)
 {
     for (ast_node** n = b->elements; *n; n++) {
-        llvm_error lle = getMdgNodeIR(*n, NULL);
+        llvm_error lle = getAstNodeIR(*n, false, NULL);
         if (lle) return lle;
     }
     return LLE_OK;
@@ -281,7 +283,7 @@ llvm_error LLVMBackend::lookupVariable(ureg id, ast_node* n, llvm::Value** v)
         *v = *r;
         return LLE_OK;
     }
-    return getMdgNodeIR(n, v);
+    return getAstNodeIR(n, false, v);
 }
 llvm_error LLVMBackend::lookupFunction(ureg id, ast_node* n, llvm::Function** f)
 {
@@ -290,7 +292,11 @@ llvm_error LLVMBackend::lookupFunction(ureg id, ast_node* n, llvm::Function** f)
         *f = *r;
         return LLE_OK;
     }
-    return getMdgNodeIR(n, (llvm::Value**)f);
+    return getAstNodeIR(n, false, (llvm::Value**)f);
+}
+llvm::Type** LLVMBackend::lookupTypeRaw(ureg id)
+{
+    return (llvm::Type**)lookupAstElem(id);
 }
 llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align)
 {
@@ -300,6 +306,42 @@ llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align)
             if (t) *t = _primitive_types[kind];
             if (align) *align = PRIMITIVES[kind].alignment;
         } break;
+        case SC_STRUCT: {
+            llvm::Type** tp = lookupTypeRaw(((sc_struct*)e)->id);
+            if (*tp) {
+                if (t) *t = *tp;
+            }
+            else {
+                sc_struct* st = (sc_struct*)e;
+                // PERF: we could steal the array of elements for our types here
+                // this might be too big because of nested structs etc. but it's
+                // definitely big enough
+                auto members = (llvm::Type**)pool_alloc(
+                    &_tc->permmem,
+                    sizeof(llvm::Type*) * st->scp.body.symtab->decl_count);
+                ureg memcnt = 0;
+                for (ast_node** i = st->scp.body.elements; *i; i++) {
+                    // TODO: usings
+                    if ((**i).kind == SYM_VAR ||
+                        (**i).kind == SYM_VAR_INITIALIZED) {
+                        lookupCType(
+                            ((sym_var*)*i)->ctype, &members[memcnt], NULL);
+                        memcnt++;
+                    }
+                }
+                llvm::ArrayRef<llvm::Type*> member_types{members, memcnt};
+                auto strct =
+                    llvm::StructType::create(_context, member_types, "", false);
+                if (!strct) return LLE_FATAL;
+                *tp = strct;
+                if (t) *t = strct;
+            }
+            if (align) {
+                *align = _data_layout.getStructLayout((llvm::StructType*)*tp)
+                             ->getAlignment();
+            }
+            break;
+        }
         default: {
             assert(false); // TODO
             if (t) *t = NULL; // to silcence -Wmaybe-uninitialized :(
@@ -323,41 +365,43 @@ bool LLVMBackend::isGlobalID(ureg id)
 {
     return !isLocalID(id);
 }
-llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
+llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
 {
     // TODO: proper error handling
     llvm_error lle;
     switch (n->kind) {
         case OSC_MODULE:
         case OSC_EXTEND:
+            assert(!vl);
             return LLE_OK; // these are handled by the osc iterator
-        case SC_FUNC: return genFunctionIR((sc_func*)n, val);
-        case EXPR_OP_BINARY: return genBinaryOpIR((expr_op_binary*)n, val);
+        case SC_STRUCT: return lookupCType((ast_elem*)n, NULL, NULL);
+        case SC_FUNC: return genFunctionIR((sc_func*)n, vl);
+        case EXPR_OP_BINARY: return genBinaryOpIR((expr_op_binary*)n, vl);
         case EXPR_LITERAL: {
             expr_literal* l = (expr_literal*)n;
             switch (n->pt_kind) {
                 case PT_INT:
                 case PT_UINT: {
-                    auto c = llvm::ConstantInt::get(
-                        (llvm::IntegerType*)_primitive_types[n->pt_kind],
-                        l->value.str, 10);
+                    auto t = (llvm::IntegerType*)_primitive_types[n->pt_kind];
+                    auto c = llvm::ConstantInt::get(t, l->value.str, 10);
                     if (!c) return LLE_FATAL;
-                    if (val) *val = c;
+                    if (vl) *vl = c;
                     return LLE_OK;
                 }
                 case PT_STRING: {
                     auto c = _builder.CreateGlobalStringPtr(l->value.str);
                     if (!c) return LLE_FATAL;
-                    if (val) *val = c;
+                    if (vl) *vl = c;
                     return LLE_OK;
                 }
                 case PT_FLOAT: {
-                    auto c = new llvm::APFloat(
-                        llvm::APFloatBase::IEEEsingle(), l->value.str);
-                    if (!c) return LLE_FATAL;
+                    auto c = llvm::ConstantFP::get(
+                        _context,
+                        *new llvm::APFloat(
+                            llvm::APFloatBase::IEEEsingle(), l->value.str));
+                    if (vl) *vl = c;
                     return LLE_OK;
                 }
-
                 default: assert(false);
             }
         }
@@ -370,20 +414,20 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             if (lle) return lle;
             llvm::Argument* a = fn->arg_begin() + param_nr;
             if (!a) return LLE_FATAL;
-            assert(val);
-            *val = a;
+            assert(vl);
+            *vl = a;
             return LLE_OK;
         }
         case EXPR_IDENTIFIER: {
-            return getMdgNodeIR(
-                (ast_node*)((expr_identifier*)n)->value.sym, val);
+            return getAstNodeIR(
+                (ast_node*)((expr_identifier*)n)->value.sym, load, vl);
         }
         case EXPR_RETURN: {
             llvm::Value* v;
-            lle = getMdgNodeIR(((expr_break*)n)->value, &v);
+            lle = getAstNodeIR(((expr_break*)n)->value, true, &v);
             if (lle) return lle;
             if (!_builder.CreateRet(v)) return LLE_FATAL;
-            assert(!val);
+            assert(!vl);
             return LLE_OK;
         }
         case EXPR_CALL: {
@@ -392,7 +436,7 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
                 &_tc->permmem, sizeof(llvm::Value*) * c->arg_count);
             if (!args) return LLE_FATAL;
             for (ureg i = 0; i < c->arg_count; i++) {
-                lle = getMdgNodeIR(c->args[i], &args[i]);
+                lle = getAstNodeIR(c->args[i], true, &args[i]);
                 if (lle) return lle;
             }
             llvm::ArrayRef<llvm::Value*> args_arr_ref(
@@ -402,7 +446,7 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
             if (lle) return lle;
             auto call = _builder.CreateCall(callee, args_arr_ref);
             if (!call) return LLE_FATAL;
-            if (val) *val = call;
+            if (vl) *vl = call;
             return LLE_OK;
         }
         case SYM_VAR:
@@ -412,83 +456,104 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
                 assert(false);
             }
             sym_var* var = (sym_var*)n;
-            llvm::Value** res = lookupVariableRaw(var->var_id);
-            llvm::Type* tp;
+            llvm::Type* t;
             ureg align;
-            lle = lookupCType(var->ctype, &tp, &align);
+            lle = lookupCType(var->ctype, &t, &align);
             if (lle) return lle;
-            if (*res) {
-                if (val) {
-                    llvm::LoadInst* load =
-                        _builder.CreateAlignedLoad(*res, align);
-                    if (!load) return LLE_FATAL;
-                    *val = load;
-                }
-                return LLE_OK;
-            }
-
-            ast_node_kind k = var->sym.declaring_st->owning_node->kind;
-            llvm::Value* var_val;
-            if (k == ELEM_MDG_NODE || k == OSC_MODULE || k == OSC_EXTEND) {
-                // global var
-                llvm::GlobalVariable::LinkageTypes lt;
-                if (isLocalID(var->var_id)) {
-                    lt = llvm::GlobalVariable::InternalLinkage;
+            llvm::Value** llvar = lookupVariableRaw(var->var_id);
+            if (!*llvar) {
+                ast_node_kind k = var->sym.declaring_st->owning_node->kind;
+                llvm::Value* var_val;
+                if (k == ELEM_MDG_NODE || k == OSC_MODULE || k == OSC_EXTEND) {
+                    // global var
+                    llvm::GlobalVariable::LinkageTypes lt;
+                    if (isLocalID(var->var_id)) {
+                        lt = llvm::GlobalVariable::InternalLinkage;
+                    }
+                    else {
+                        lt = llvm::GlobalVariable::ExternalLinkage;
+                        _reset_after_emit.push_back(var->var_id);
+                    }
+                    llvm::Constant* init = NULL;
+                    if (n->kind == SYM_VAR_INITIALIZED &&
+                        isIDInModule(var->var_id)) {
+                        llvm::Value* v;
+                        lle = getAstNodeIR(
+                            ((sym_var_initialized*)n)->initial_value, true, &v);
+                        if (lle) return lle;
+                        if (!(init = llvm::dyn_cast<llvm::Constant>(v))) {
+                            assert(false); // must be constant, TODO: error
+                            return LLE_FATAL;
+                        }
+                    }
+                    var_val = (llvm::Value*)new llvm::GlobalVariable(
+                        *_module, t, false, lt, init, var->sym.name);
+                    if (!var_val) return LLE_FATAL;
                 }
                 else {
-                    lt = llvm::GlobalVariable::ExternalLinkage;
-                    _reset_after_emit.push_back(var->var_id);
-                }
-                llvm::Constant* init = NULL;
-                if (n->kind == SYM_VAR_INITIALIZED &&
-                    isIDInModule(var->var_id)) {
-                    llvm::Value* v;
-                    lle = getMdgNodeIR(
-                        ((sym_var_initialized*)n)->initial_value, &v);
-                    if (lle) return lle;
-                    if (!(init = llvm::dyn_cast<llvm::Constant>(v))) {
-                        assert(false); // must be constant, TODO: error
-                        return LLE_FATAL;
+                    // These should be handled by member access
+                    assert(k != SC_STRUCT);
+                    // local var
+                    var_val = new llvm::AllocaInst(
+                        t, 0, nullptr, align, var->sym.name,
+                        _builder.GetInsertBlock());
+                    if (!var_val) return LLE_FATAL;
+                    if (n->kind == SYM_VAR_INITIALIZED) {
+                        llvm::Value* v;
+                        lle = getAstNodeIR(
+                            ((sym_var_initialized*)n)->initial_value, true, &v);
+                        if (lle) return lle;
+                        if (!_builder.CreateAlignedStore(
+                                v, var_val, align, false))
+                            return LLE_FATAL;
                     }
                 }
-                var_val = (llvm::Value*)new llvm::GlobalVariable(
-                    *_module, tp, false, lt, init, var->sym.name);
-                if (!var_val) return LLE_FATAL;
-            }
-            else if (k == SC_STRUCT) {
-                // struct var
-                assert(false); // TODO
-                return LLE_FATAL;
-            }
-            else {
-                // local var
-                var_val = new llvm::AllocaInst(
-                    tp, 0, nullptr, align, var->sym.name,
-                    _builder.GetInsertBlock());
-                if (!var_val) return LLE_FATAL;
-                if (n->kind == SYM_VAR_INITIALIZED) {
-                    llvm::Value* v;
-                    lle = getMdgNodeIR(
-                        ((sym_var_initialized*)n)->initial_value, &v);
-                    if (lle) return lle;
-                    if (!_builder.CreateAlignedStore(v, var_val, align, false))
-                        return LLE_FATAL;
+                *llvar = var_val;
+                if (isGlobalID(var->var_id)) {
+                    _global_value_init_flags[var->var_id] = true;
                 }
             }
-            *res = var_val;
-            if (isGlobalID(var->var_id))
-                _global_value_init_flags[var->var_id] = true;
-            if (val) {
+            if (!vl) return LLE_OK;
+            if (load) {
                 llvm::LoadInst* load =
-                    _builder.CreateAlignedLoad(var_val, align);
+                    _builder.CreateAlignedLoad(*llvar, align);
                 if (!load) return LLE_FATAL;
-                *val = load;
+                *vl = load;
+            }
+            else {
+                *vl = *llvar;
             }
             return LLE_OK;
         }
         case EXPR_SCOPE_ACCESS: {
             expr_scope_access* esa = (expr_scope_access*)n;
-            return getMdgNodeIR((ast_node*)esa->target.sym, val);
+            return getAstNodeIR((ast_node*)esa->target.sym, load, vl);
+        }
+        case EXPR_MEMBER_ACCESS: {
+            auto ema = (expr_member_access*)n;
+            llvm::Value* v;
+            lle = getAstNodeIR(ema->lhs, false, &v);
+            if (lle) return lle;
+            auto st = (sc_struct*)ema->target.sym->declaring_st->owning_node;
+            assert(((ast_node*)st)->kind == SC_STRUCT);
+            ureg align;
+            lle = lookupCType((ast_elem*)st, NULL, &align);
+            if (lle) return lle;
+            ureg idx = 0;
+            for (ast_node** i = st->scp.body.elements;; i++) {
+                assert(*i);
+                if (*i == (ast_node*)ema->target.sym) break;
+                if ((**i).kind == SYM_VAR || (**i).kind == SYM_VAR_INITIALIZED)
+                    idx++;
+            }
+            assert(vl);
+            auto gep = _builder.CreateStructGEP(v, idx);
+            if (load) {
+                *vl = _builder.CreateAlignedLoad(gep, align);
+                return LLE_OK;
+            }
+            *vl = gep;
+            return LLE_OK;
         }
         case SYM_IMPORT_GROUP:
         case SYM_IMPORT_MODULE: return LLE_OK;
@@ -498,29 +563,33 @@ llvm_error LLVMBackend::getMdgNodeIR(ast_node* n, llvm::Value** val)
     return LLE_FATAL;
 }
 
-llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** val)
+llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** vl)
 {
     if (b->op->kind == SC_FUNC) {
         assert(false); // TODO
     }
     llvm::Value *lhs, *rhs;
-    llvm_error lle = getMdgNodeIR(b->lhs, &lhs);
+    llvm_error lle = getAstNodeIR(b->lhs, (b->node.op_kind != OP_ASSIGN), &lhs);
     if (lle) return lle;
-    lle = getMdgNodeIR(b->rhs, &rhs);
+    lle = getAstNodeIR(b->rhs, true, &rhs);
     if (lle) return lle;
-    assert(val);
+    llvm::Value* v;
     switch (b->node.op_kind) {
-        case OP_ADD: *val = _builder.CreateNSWAdd(lhs, rhs); break;
-        case OP_SUB: *val = _builder.CreateSub(lhs, rhs); break;
-        case OP_MUL: *val = _builder.CreateMul(lhs, rhs); break;
-        case OP_DIV: *val = _builder.CreateSDiv(lhs, rhs); break;
-        case OP_MOD: *val = _builder.CreateSRem(lhs, rhs); break;
+        case OP_ADD: v = _builder.CreateNSWAdd(lhs, rhs); break;
+        case OP_SUB: v = _builder.CreateSub(lhs, rhs); break;
+        case OP_MUL: v = _builder.CreateMul(lhs, rhs); break;
+        case OP_DIV: v = _builder.CreateSDiv(lhs, rhs); break;
+        case OP_MOD: v = _builder.CreateSRem(lhs, rhs); break;
+        case OP_ASSIGN: {
+            // TODO: align
+            v = _builder.CreateStore(rhs, lhs, false);
+        } break;
         default: assert(false);
     }
-    if (!*val) return LLE_FATAL;
+    if (vl) *vl = v;
     return LLE_OK;
 }
-llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
+llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** vl)
 {
     llvm::FunctionType* func_sig;
     llvm::Type* ret_type;
@@ -558,7 +627,7 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
             llvm::Function::Create(func_sig, lt, fn->scp.sym.name, _module);
         if (!func) return LLE_FATAL;
         *res = func;
-        if (val) *val = func;
+        if (vl) *vl = func;
         llvm::BasicBlock* func_block =
             llvm::BasicBlock::Create(_context, "", func, nullptr);
         if (!func_block) return LLE_FATAL;
@@ -573,7 +642,7 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** val)
     }
     if (!func) return LLE_FATAL;
     *res = func;
-    if (val) *val = func;
+    if (vl) *vl = func;
     return LLE_OK;
 }
 llvm_error LLVMBackend::emitModule(const std::string& obj_name)
@@ -581,7 +650,7 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     printf("emmitting %s\n", (char*)obj_name.c_str());
     fflush(stdout);
     std::error_code EC;
-    _module->setDataLayout(_target_machine->createDataLayout());
+    _module->setDataLayout(_data_layout);
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
     llvm::Triple TargetTriple(_module->getTargetTriple());
     std::unique_ptr<llvm::TargetLibraryInfoImpl> TLII(
@@ -647,7 +716,7 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
 
     CodeGenPasses.run(*_module);
 
-    if (false) { // output ir
+    if (true) { // output ir
         llvm::raw_fd_ostream ir_stream{obj_name.substr(0, obj_name.size() - 3) +
                                            "ll",
                                        EC, llvm::sys::fs::F_None};

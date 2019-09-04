@@ -69,6 +69,9 @@ struct LLVMBackend {
     llvm::Type* _primitive_types[PRIMITIVE_COUNT];
     llvm::Module* _module;
     llvm::TargetMachine* _target_machine;
+    ureg _data_layout_storage[(sizeof(llvm::DataLayout) + REG_BYTES - 1) /
+                              REG_BYTES]; // FU seppels
+    llvm::DataLayout& _data_layout;
     ureg _mod_startid;
     ureg _mod_endid;
     ureg _private_sym_count;
@@ -102,14 +105,15 @@ struct LLVMBackend {
     void** lookupAstElem(ureg id);
     llvm::Value** lookupVariableRaw(ureg id);
     llvm::Function** lookupFunctionRaw(ureg id);
+    llvm::Type** lookupTypeRaw(ureg id);
     llvm_error lookupVariable(ureg id, ast_node* n, llvm::Value** v);
     llvm_error lookupFunction(ureg id, ast_node* n, llvm::Function** f);
-    llvm_error lookupType(ureg id, ast_elem* e, llvm::Type** t);
     llvm_error lookupCType(ast_elem* e, llvm::Type** t, ureg* align);
+
     // val can be NULL
-    llvm_error getMdgNodeIR(ast_node* n, llvm::Value** v);
-    llvm_error genFunctionIR(sc_func* fn, llvm::Value** val);
-    llvm_error genBinaryOpIR(expr_op_binary* b, llvm::Value** v);
+    llvm_error getAstNodeIR(ast_node* n, bool load, llvm::Value** vl);
+    llvm_error genFunctionIR(sc_func* fn, llvm::Value** vl);
+    llvm_error genBinaryOpIR(expr_op_binary* b, llvm::Value** vl);
 
   private:
     llvm_error emitModule(const std::string& obj_name);
