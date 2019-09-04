@@ -160,8 +160,8 @@ void LLVMBackend::addPrimitives()
                     // TODO: decide on supported architectures and handle this
                     // accordingly
                     assert(false);
+                    return;
                 }
-
             } break;
             case PT_VOID: t = _builder.getVoidTy(); break;
             default: assert(false); return;
@@ -584,7 +584,7 @@ llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** vl)
             // TODO: align
             v = _builder.CreateStore(rhs, lhs, false);
         } break;
-        default: assert(false);
+        default: assert(false); return LLE_FATAL;
     }
     if (vl) *vl = v;
     return LLE_OK;
@@ -716,7 +716,7 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
 
     CodeGenPasses.run(*_module);
 
-    if (true) { // output ir
+    if (false) { // output ir
         llvm::raw_fd_ostream ir_stream{obj_name.substr(0, obj_name.size() - 3) +
                                            "ll",
                                        EC, llvm::sys::fs::F_None};

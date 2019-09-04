@@ -256,9 +256,10 @@ static resolve_error add_ast_node_decls(
                 fn->id = r->private_sym_count++;
             }
             symbol_table* tgtst =
-                (ast_node_flags_get_access_mod(n->flags) == AM_UNSPECIFIED)
-                    ? st
-                    : sst;
+                (sst &&
+                 ast_node_flags_get_access_mod(n->flags) != AM_UNSPECIFIED)
+                    ? sst
+                    : st;
             symbol** conflict;
             symbol* sym = (symbol*)n;
             sym->declaring_st = st;
@@ -960,9 +961,8 @@ resolve_error resolve_ast_node_raw(
                 return ret_ctype(
                     get_resolved_symbol_ctype(esa->target.sym), ctype);
             }
-            bool left_scope = false;
-            return resolve_expr_scope_access(
-                r, esa, st, &left_scope, NULL, ctype);
+            access_modifier access = AM_UNSPECIFIED;
+            return resolve_expr_scope_access(r, esa, st, &access, NULL, ctype);
         }
         case SC_STRUCT:
         case SC_STRUCT_GENERIC:

@@ -32,7 +32,7 @@ int list_builder_add_block(list_builder* b, void* block, ureg block_size)
 {
     assert(block_size % sizeof(void*) == 0);
     void** head_new = ptradd(b->head, block_size);
-    if (ptradd(b->head, block_size) < b->head_segment->end) {
+    if (ptradd(b->head, block_size) < b->head_segment->end) { //<=!
         memcpy(b->head, block, block_size);
         b->head = head_new;
     }
@@ -80,10 +80,15 @@ void* list_builder_pop_block_list(
         return tgt;
     }
     size = ptrdiff(b->head, b->head_segment) - sizeof(list_build_segment);
-    do {
+    while (true) {
         s = s->prev;
+        if (!s) break;
+        if ((void*)s < list_start && s->end >= list_start) {
+            size += ptrdiff(s->end, list_start);
+            break;
+        }
         size += ptrdiff(s->end, s) - sizeof(list_build_segment);
-    } while (!(list_start > (void*)s && list_start < s->end));
+    }
     *list_size = size;
     tgt = (void**)pool_alloc(tgtmem, size + premem + postmem);
     if (!tgt) return NULL;

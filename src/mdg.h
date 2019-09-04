@@ -14,10 +14,10 @@ typedef struct mdg_deps_list_s mdg_deps_list;
 typedef struct thread_context_s thread_context;
 
 typedef enum module_stage_e {
-    MS_UNNEEDED, // partially parsed, but unneded
-    MS_AWAITING_NEED, // fully parsed, but unneded
     MS_NOT_FOUND, // required but not found in src
+    MS_UNNEEDED, //  partially parsed, but unneded
     MS_PARSING, // required and partially parsed
+    MS_AWAITING_NEED, // fully parsed, but unneded
     MS_AWAITING_DEPENDENCIES, // required, parsed
     MS_RESOLVING, // required, parsed, deps resolved or in same resolve group
     MS_GENERATING, // resolved, generating IR

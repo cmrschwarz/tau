@@ -217,13 +217,17 @@ static void free_body_symtabs(ast_node* node, ast_body* b)
 }
 void mdg_node_fin(mdg_node* n)
 {
-    symbol_table_fin(n->symtab);
-    aseglist_iterator it;
-    aseglist_iterator_begin(&it, &n->open_scopes);
-    while (true) {
-        open_scope* osc = aseglist_iterator_next(&it);
-        if (!osc) break;
-        free_body_symtabs((ast_node*)osc, &osc->scp.body);
+    if (n->stage > MS_RESOLVING) {
+        symbol_table_fin(n->symtab);
+    }
+    if (n->stage > MS_PARSING) {
+        aseglist_iterator it;
+        aseglist_iterator_begin(&it, &n->open_scopes);
+        while (true) {
+            open_scope* osc = aseglist_iterator_next(&it);
+            if (!osc) break;
+            free_body_symtabs((ast_node*)osc, &osc->scp.body);
+        }
     }
     mdg_node_partial_fin(n, 0);
 }
