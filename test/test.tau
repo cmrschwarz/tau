@@ -1,21 +1,18 @@
 //require "test2.tau";
+public func printf(x: string, y: int, c: int);
 
-module b{
-    public global: int = 30;
-
-    public func foo() -> int{
-        x := 10;
-        return global * global;
-    }
+struct boo{
+    public x: int;
+    public y: int;
 }
-module a{
-    import b;
-    public func printf(x: string, y: int, z: int);
+func foo()-> int {
+    x: boo;
+    x.x = 1;
+    x.y = 2;
+    return x.x + x.y;
 }
 
-import a;
-import b;
 public func main() -> int{
-    a::printf("foo: %i%c", b::global * b::foo(), 10);
+    printf("foo: %i%c", foo(), 10);
     return 0;
 }

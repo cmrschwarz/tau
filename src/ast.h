@@ -412,7 +412,7 @@ typedef struct expr_scope_access_s {
     } target;
     src_range target_srange;
 } expr_scope_access;
-struct expr_scope_access_s;
+typedef struct expr_scope_access_s expr_member_access;
 
 typedef struct expr_op_unary_s {
     ast_node node;

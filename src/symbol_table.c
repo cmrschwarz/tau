@@ -117,8 +117,9 @@ symbol** symbol_table_insert(symbol_table* st, symbol* s)
     s->next = NULL;
     return NULL;
 }
-symbol** symbol_table_lookup_with_decl(
-    symbol_table* st, access_modifier am, const char* s, symbol_table** decl_st)
+symbol** symbol_table_lookup_limited_with_decl(
+    symbol_table* st, access_modifier am, symbol_table* stop_at, const char* s,
+    symbol_table** decl_st)
 {
     ureg hash = fnv_hash_str(FNV_START_HASH, s);
     do {
@@ -154,8 +155,13 @@ symbol** symbol_table_lookup_with_decl(
             }
         }
         st = st->parent;
-    } while (st);
+    } while (st != stop_at);
     return NULL;
+}
+symbol** symbol_table_lookup_with_decl(
+    symbol_table* st, access_modifier am, const char* s, symbol_table** decl_st)
+{
+    return symbol_table_lookup_limited_with_decl(st, am, NULL, s, decl_st);
 }
 symbol**
 symbol_table_lookup(symbol_table* st, access_modifier am, const char* s)

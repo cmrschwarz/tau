@@ -46,6 +46,9 @@ symbol_table_lookup(symbol_table* st, access_modifier am, const char* s);
 symbol** symbol_table_lookup_with_decl(
     symbol_table* st, access_modifier am, const char* s,
     symbol_table** decl_st);
+symbol** symbol_table_lookup_limited_with_decl(
+    symbol_table* st, access_modifier am, symbol_table* stop_at, const char* s,
+    symbol_table** decl_st);
 
 // might return NULL, for example for mdg_node symbol tables
 src_file* symbol_table_get_file(symbol_table* st);

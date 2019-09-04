@@ -18,7 +18,7 @@ typedef enum resolve_error {
 } resolve_error;
 
 typedef struct thread_context_s thread_context;
-typedef struct resolver {
+typedef struct resolver_s {
     stack error_stack;
     sbuffer call_types;
     thread_context* tc;
@@ -26,6 +26,8 @@ typedef struct resolver {
     mdg_node** end;
     ureg public_sym_count;
     ureg private_sym_count;
+    open_scope* curr_osc;
+    mdg_node* curr_mdg;
 } resolver;
 
 int resolver_init(resolver* r, thread_context* tc);
