@@ -2351,7 +2351,6 @@ parse_error parse_module_decl(
     md->scp.sym.node.srange =
         src_range_pack(p->lx.tc, start, decl_end, p->lx.file);
     if (md->scp.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
-    aseglist_add(&mdgn->open_scopes, (open_scope*)md);
     md->scp.sym.name = mdgn->name;
     PEEK(p, t);
     mdg_node* parent = p->current_module;
@@ -2378,6 +2377,7 @@ parse_error parse_module_decl(
     *n = (ast_node*)md;
     curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
     // return PE_NO_STMT;
+    mdg_node_add_osc(mdgn, (open_scope*)md);
     return PE_OK; // DEBUG
 }
 parse_error parse_extend_decl(
@@ -2421,7 +2421,6 @@ parse_error parse_extend_decl(
     if (ex->scp.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     ast_node_init_with_flags(
         (ast_node*)ex, eg ? OSC_EXTEND_GENERIC : OSC_EXTEND, flags);
-    aseglist_add(&mdgn->open_scopes, (open_scope*)ex);
     ex->scp.sym.name = mdgn->name;
     PEEK(p, t);
     mdg_node* parent = p->current_module;
@@ -2444,6 +2443,7 @@ parse_error parse_extend_decl(
     p->current_module = parent;
     *n = (ast_node*)ex;
     curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
+    mdg_node_add_osc(mdgn, (open_scope*)ex);
     return PE_OK; // DEBUG
     // return PE_NO_STMT;
 }
@@ -2802,7 +2802,7 @@ parse_error parse_import_with_parent(
     bool has_ident = false;
     while (t->kind == TK_IDENTIFIER) {
         has_ident = true;
-        parent = mdg_get_node(&TAUC.mdg, parent, t->str);
+        parent = mdg_get_node(&TAUC.mdg, parent, t->str, MS_NOT_FOUND);
         // if the node doesn't exist it gets created here,
         // we will find out (and report) once all required files are parsed if
         // it is actually missing. NULL just means allocation failiure
@@ -2944,9 +2944,7 @@ parse_require(parser* p, ast_node_flags flags, ureg start, ureg flags_end)
     lx_void(&p->lx);
     rwslock_read(&p->current_module->stage_lock);
     bool needed = (p->current_module->stage != MS_UNNEEDED);
-    int r = list_builder_add_block(&p->lx.tc->listb, &rq, sizeof(rq));
     rwslock_end_read(&p->current_module->stage_lock);
-    if (r) return PE_FATAL;
     if (needed) {
         int r = src_file_require(f, p->lx.file, rq.srange, p->current_module);
         if (r == ERR) return PE_FATAL;
@@ -2954,6 +2952,9 @@ parse_require(parser* p, ast_node_flags flags, ureg start, ureg flags_end)
             atomic_ureg_inc(&p->current_module->unparsed_files);
         }
     }
+    rq.handled = needed;
+    int r = list_builder_add_block(&p->lx.tc->listb, &rq, sizeof(rq));
+    if (r) return PE_FATAL;
     return PE_NO_STMT;
 }
 static inline parse_error ast_node_flags_from_kw(

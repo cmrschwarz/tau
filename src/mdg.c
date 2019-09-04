@@ -23,8 +23,9 @@ int mdg_fin_partial(module_dependency_graph* m, int i, int r)
     }
     return r;
 }
-mdg_node*
-mdg_node_create(module_dependency_graph* m, string ident, mdg_node* parent);
+mdg_node* mdg_node_create(
+    module_dependency_graph* m, string ident, mdg_node* parent,
+    module_stage initial_stage);
 int mdg_init(module_dependency_graph* m)
 {
     int r = atomic_ureg_init(&m->node_ids, 0);
@@ -39,9 +40,8 @@ int mdg_init(module_dependency_graph* m)
     if (r) return mdg_fin_partial(m, 3, r);
     r = mdght_init(&m->mdghts[1]);
     if (r) return mdg_fin_partial(m, 2, r);
-    m->root_node = mdg_node_create(m, string_from_cstr("_"), NULL);
+    m->root_node = mdg_node_create(m, string_from_cstr("_"), NULL, MS_PARSING);
     if (!m->root_node) return mdg_fin_partial(m, 1, ERR);
-    m->root_node->stage = MS_PARSING;
     atomic_ureg_store(&m->root_node->unparsed_files, 1);
     m->change_count = 0;
     return 0;
@@ -101,8 +101,9 @@ void* mdg_node_partial_fin(mdg_node* n, int i)
 }
 // since this is called while inside mdg_write, there is no race
 // on the memory pools
-mdg_node*
-mdg_node_create(module_dependency_graph* m, string ident, mdg_node* parent)
+mdg_node* mdg_node_create(
+    module_dependency_graph* m, string ident, mdg_node* parent,
+    module_stage initial_stage)
 {
     mdg_node* n = pool_alloc(&m->node_pool, sizeof(mdg_node));
     if (!n) return NULL;
@@ -128,7 +129,7 @@ mdg_node_create(module_dependency_graph* m, string ident, mdg_node* parent)
     if (r) return mdg_node_partial_fin(n, 5);
     r = atomic_ureg_init(&n->using_count, 0);
     if (r) return mdg_node_partial_fin(n, 6);
-    n->stage = MS_UNNEEDED;
+    n->stage = initial_stage;
     n->symtab = NULL;
     return n;
 }
@@ -232,8 +233,9 @@ void mdg_node_fin(mdg_node* n)
     mdg_node_partial_fin(n, 0);
 }
 
-mdg_node*
-mdg_get_node(module_dependency_graph* m, mdg_node* parent, string ident)
+mdg_node* mdg_get_node(
+    module_dependency_graph* m, mdg_node* parent, string ident,
+    module_stage initial_stage)
 {
     ureg hash = mdght_get_hash_str(parent, ident);
     mdght* h = mdg_start_read(m);
@@ -247,7 +249,7 @@ mdg_get_node(module_dependency_graph* m, mdg_node* parent, string ident)
             mdg_end_write(m);
         }
         else {
-            n = mdg_node_create(m, ident, parent);
+            n = mdg_node_create(m, ident, parent, initial_stage);
             if (n == NULL) {
                 mdg_end_write(m);
                 return NULL;
@@ -266,16 +268,15 @@ mdg_get_node(module_dependency_graph* m, mdg_node* parent, string ident)
 mdg_node*
 mdg_found_node(module_dependency_graph* m, mdg_node* parent, string ident)
 {
-    mdg_node* n = mdg_get_node(m, parent, ident);
+    mdg_node* n = mdg_get_node(m, parent, ident, MS_UNNEEDED);
     if (!n) return n;
     rwslock_read(&n->stage_lock);
-    bool unfound = (n->stage == MS_NOT_FOUND);
+    bool found = (n->stage != MS_NOT_FOUND);
     rwslock_end_read(&n->stage_lock);
-    if (unfound) {
-        rwslock_write(&n->stage_lock);
-        if (n->stage == MS_NOT_FOUND) n->stage = MS_PARSING;
-        rwslock_end_write(&n->stage_lock);
-    }
+    if (found) return n;
+    rwslock_write(&n->stage_lock);
+    if (n->stage == MS_NOT_FOUND) n->stage = MS_PARSING;
+    rwslock_end_write(&n->stage_lock);
     return n;
 }
 
@@ -689,7 +690,28 @@ int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc)
     }
     return OK;
 }
-
+int mdg_node_add_osc(mdg_node* n, open_scope* osc)
+{
+    int r;
+    bool needed;
+    rwslock_read(&n->stage_lock);
+    // the aseglist_add must be inside the locked region!
+    // otherwise we find unnedded, exit lock,
+    // another thread updates to needed, and than we add osc
+    // --> missing requires
+    r = aseglist_add(&n->open_scopes, osc);
+    needed = module_stage_needed(n->stage);
+    rwslock_end_read(&n->stage_lock);
+    if (r) return r;
+    if (needed) {
+        file_require* r = osc->requires;
+        while (*(void**)r && !r->handled) {
+            src_file_require(r->file, open_scope_get_file(osc), r->srange, n);
+            r++;
+        }
+    }
+    return r;
+}
 int mdg_node_require(mdg_node* n, thread_context* tc)
 {
     mdg_node* parent = n->parent;
@@ -715,13 +737,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
     while (true) {
         rwslock_write(&n->stage_lock);
         if (n->stage == MS_UNNEEDED) {
-            ureg up = atomic_ureg_load(&n->unparsed_files);
-            if (up == 0) {
-                n->stage = MS_NOT_FOUND;
-            }
-            else {
-                n->stage = MS_PARSING;
-            }
+            n->stage = MS_PARSING;
             oscs = &n->open_scopes;
         }
         else if (n->stage == MS_AWAITING_NEED) {

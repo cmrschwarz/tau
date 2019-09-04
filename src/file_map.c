@@ -89,6 +89,7 @@ src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
     f->file_stream = NULL;
     return OK;
 }
+
 int src_file_require(
     src_file* f, src_file* requiring_file, src_range requiring_srange,
     mdg_node* n)

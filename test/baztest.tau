@@ -1,11 +1,5 @@
-require "bartest.tau";
-import bar;
-require "baztest.tau";
-import baz;
-
-func f0() -> int {
-    return 0;
-}
+module baz;
+func f0() -> int {return 0;}
 func f1() -> int {x:= 1; return x + f0();}
 func f2() -> int {x:= 1; return x + f1();}
 func f3() -> int {x:= 1; return x + f2();}
@@ -10005,12 +9999,5 @@ func f9996() -> int {x:= 1; return x + f9995();}
 func f9997() -> int {x:= 1; return x + f9996();}
 func f9998() -> int {x:= 1; return x + f9997();}
 func f9999() -> int {x:= 1; return x + f9998();}
-func f10000() -> int {x:= 1; return x + f9999();}
-
-public func printf(s: string, i: int, j: int);
-
-public func main() -> int{
-    printf("foo: %i%c", f10000() + bar::f10000() + baz::f10000(), 10);
-    return 0;
-}
+public func f10000() -> int {x:= 1; return x + f9999();}
 

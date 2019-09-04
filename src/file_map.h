@@ -54,6 +54,7 @@ int src_file_start_parse(src_file* f, thread_context* tc);
 int src_file_done_parsing(src_file* f, thread_context* tc);
 
 #define SF_ALREADY_PARSED STATUS_1
+// requiring file and srange are purely for error reporting
 int src_file_require(
     src_file* f, src_file* requiring_file, src_range requiring_srange,
     mdg_node* n);

@@ -38,13 +38,20 @@ int mdg_test()
     int res = ERR;
     module_dependency_graph* m = &TAUC.mdg;
     thread_context* tc = &TAUC.main_thread_context;
-    mdg_node* a = mdg_get_node(m, m->root_node, string_from_cstr("a"));
-    mdg_node* b = mdg_get_node(m, m->root_node, string_from_cstr("b"));
-    mdg_node* c = mdg_get_node(m, m->root_node, string_from_cstr("c"));
-    mdg_node* d = mdg_get_node(m, m->root_node, string_from_cstr("d"));
-    mdg_node* e = mdg_get_node(m, m->root_node, string_from_cstr("e"));
-    mdg_node* f = mdg_get_node(m, m->root_node, string_from_cstr("f"));
-    mdg_node* g = mdg_get_node(m, m->root_node, string_from_cstr("g"));
+    mdg_node* a =
+        mdg_get_node(m, m->root_node, string_from_cstr("a"), MS_UNNEEDED);
+    mdg_node* b =
+        mdg_get_node(m, m->root_node, string_from_cstr("b"), MS_UNNEEDED);
+    mdg_node* c =
+        mdg_get_node(m, m->root_node, string_from_cstr("c"), MS_UNNEEDED);
+    mdg_node* d =
+        mdg_get_node(m, m->root_node, string_from_cstr("d"), MS_UNNEEDED);
+    mdg_node* e =
+        mdg_get_node(m, m->root_node, string_from_cstr("e"), MS_UNNEEDED);
+    mdg_node* f =
+        mdg_get_node(m, m->root_node, string_from_cstr("f"), MS_UNNEEDED);
+    mdg_node* g =
+        mdg_get_node(m, m->root_node, string_from_cstr("g"), MS_UNNEEDED);
     mdg_node_add_dependency(a, b, tc);
     mdg_node_add_dependency(b, c, tc);
     mdg_node_add_dependency(c, a, tc);

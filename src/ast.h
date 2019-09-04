@@ -167,6 +167,7 @@ typedef struct ast_node_s {
 typedef struct file_require_s {
     src_file* file;
     src_range srange;
+    bool handled;
 } file_require;
 
 typedef struct symbol_s {

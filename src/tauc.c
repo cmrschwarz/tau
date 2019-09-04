@@ -66,10 +66,12 @@ int tauc_request_end()
 void tauc_fin()
 {
     aseglist_iterator it;
-    aseglist_iterator_begin(&it, &TAUC.worker_threads);
     worker_thread* wt;
+    aseglist_iterator_begin(&it, &TAUC.worker_threads);
+
     // tauc_request_end();
     // thread_context_run(&TAUC.main_thread_context);
+    job_queue_stop(&TAUC.jobqueue);
     while (true) {
         wt = aseglist_iterator_next(&it);
         if (!wt) break;
@@ -77,10 +79,17 @@ void tauc_fin()
         if (wts != WTS_FAILED) {
             thread_join(&wt->thr);
         }
+    }
+    mdg_fin(&TAUC.mdg);
+    aseglist_iterator_begin(&it, &TAUC.worker_threads);
+    while (true) {
+        wt = aseglist_iterator_next(&it);
+        if (!wt) break;
         thread_context_fin(&wt->tc);
         tfree(wt);
     }
-    tauc_partial_fin(0, -1);
+
+    tauc_partial_fin(0, 9);
 }
 
 int tauc_run(int argc, char** argv)
@@ -146,7 +155,7 @@ int tauc_add_job(job* j)
     int r = job_queue_push(&TAUC.jobqueue, j, &waiters, &jobs);
     if (r) return r;
     // TODO: tweak spawn condition
-    if (jobs > waiters + 1) {
+    if (jobs > waiters /*+ 1*/) {
         ureg max_tc = plattform_get_virt_core_count();
         ureg tc = atomic_ureg_load(&TAUC.thread_count);
         if (tc < max_tc) {

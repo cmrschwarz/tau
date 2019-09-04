@@ -219,7 +219,8 @@ llvm_error LLVMBackend::createLLVMModule(
             ((llvm::GlobalVariable*)val)->removeFromParent();
         }
         else {
-            ((llvm::Function*)val)->removeFromParent();
+            _global_value_store[id] = NULL;
+            //((llvm::Function*)val)->removeFromParent();
         }
     }
     delete _module;
@@ -229,6 +230,7 @@ llvm_error LLVMBackend::createLLVMModule(
 llvm_error LLVMBackend::addModulesIR(mdg_node** start, mdg_node** end)
 {
     for (mdg_node** n = start; n != end; n++) {
+        _curr_mdg = *n;
         aseglist_iterator it;
         aseglist_iterator_begin(&it, &(**n).open_scopes);
         for (open_scope* osc = (open_scope*)aseglist_iterator_next(&it); osc;
@@ -275,24 +277,6 @@ llvm::Function** LLVMBackend::lookupFunctionRaw(ureg id)
         }
     }
     return fn;
-}
-llvm_error LLVMBackend::lookupVariable(ureg id, ast_node* n, llvm::Value** v)
-{
-    auto r = lookupVariableRaw(id);
-    if (*r) {
-        *v = *r;
-        return LLE_OK;
-    }
-    return getAstNodeIR(n, false, v);
-}
-llvm_error LLVMBackend::lookupFunction(ureg id, ast_node* n, llvm::Function** f)
-{
-    auto r = lookupFunctionRaw(id);
-    if (*r) {
-        *f = *r;
-        return LLE_OK;
-    }
-    return getAstNodeIR(n, false, (llvm::Value**)f);
 }
 llvm::Type** LLVMBackend::lookupTypeRaw(ureg id)
 {
@@ -375,7 +359,7 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             assert(!vl);
             return LLE_OK; // these are handled by the osc iterator
         case SC_STRUCT: return lookupCType((ast_elem*)n, NULL, NULL);
-        case SC_FUNC: return genFunctionIR((sc_func*)n, vl);
+        case SC_FUNC: return genFunctionIR((sc_func*)n, (llvm::Function**)vl);
         case EXPR_OP_BINARY: return genBinaryOpIR((expr_op_binary*)n, vl);
         case EXPR_LITERAL: {
             expr_literal* l = (expr_literal*)n;
@@ -410,7 +394,7 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             sc_func* f = (sc_func*)p->sym.declaring_st->owning_node;
             ureg param_nr = p - f->params;
             llvm::Function* fn;
-            lle = lookupFunction(f->id, (ast_node*)f, &fn);
+            lle = genFunctionIR(f, &fn);
             if (lle) return lle;
             llvm::Argument* a = fn->arg_begin() + param_nr;
             if (!a) return LLE_FATAL;
@@ -442,7 +426,7 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             llvm::ArrayRef<llvm::Value*> args_arr_ref(
                 args, args + c->arg_count);
             llvm::Function* callee;
-            lle = lookupFunction(c->target->id, (ast_node*)c->target, &callee);
+            lle = genFunctionIR(c->target, &callee);
             if (lle) return lle;
             auto call = _builder.CreateCall(callee, args_arr_ref);
             if (!call) return LLE_FATAL;
@@ -589,8 +573,25 @@ llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** vl)
     if (vl) *vl = v;
     return LLE_OK;
 }
-llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** vl)
+char* name_mangle(mdg_node* n, sc_func* fn)
 {
+    if (n == TAUC.mdg.root_node) return fn->scp.sym.name;
+    ureg mnl = strlen(n->name);
+    ureg fnl = strlen(fn->scp.sym.name);
+    char* res = (char*)malloc(mnl + fnl + 3); // TODO: manage mem properly
+    memcpy(res, n->name, mnl);
+    memcpy(res + mnl, "::", 2);
+    memcpy(res + mnl + 2, fn->scp.sym.name, fnl);
+    *(res + mnl + fnl + 2) = '\0';
+    return res;
+}
+llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Function** llfn)
+{
+    llvm::Function** res = lookupFunctionRaw(fn->id);
+    if (*res) {
+        if (llfn) *llfn = *res;
+        return LLE_OK;
+    }
     llvm::FunctionType* func_sig;
     llvm::Type* ret_type;
     llvm_error lle = lookupCType(fn->return_ctype, &ret_type, NULL);
@@ -613,7 +614,7 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** vl)
         func_sig = llvm::FunctionType::get(ret_type, false);
         if (!func_sig) return LLE_FATAL;
     }
-    llvm::Function** res = lookupFunctionRaw(fn->id);
+    auto func_name_mangled = name_mangle(_curr_mdg, fn);
     if (*fn->scp.body.elements && isIDInModule(fn->id)) {
         auto lt = llvm::Function::ExternalLinkage;
         if (isLocalID(fn->id)) {
@@ -623,11 +624,12 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** vl)
             _global_value_init_flags[fn->id] = true;
             _reset_after_emit.push_back(fn->id);
         }
+
         llvm::Function* func =
-            llvm::Function::Create(func_sig, lt, fn->scp.sym.name, _module);
+            llvm::Function::Create(func_sig, lt, func_name_mangled, _module);
         if (!func) return LLE_FATAL;
         *res = func;
-        if (vl) *vl = func;
+        if (llfn) *llfn = func;
         llvm::BasicBlock* func_block =
             llvm::BasicBlock::Create(_context, "", func, nullptr);
         if (!func_block) return LLE_FATAL;
@@ -635,14 +637,14 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Value** vl)
         return addAstBodyIR(&fn->scp.body);
     }
     auto func = (llvm::Function*)_module->getOrInsertFunction(
-        fn->scp.sym.name, func_sig);
+        func_name_mangled, func_sig);
     if (isGlobalID(fn->id)) {
         _global_value_init_flags[fn->id] = true;
         _reset_after_emit.push_back(fn->id);
     }
     if (!func) return LLE_FATAL;
     *res = func;
-    if (vl) *vl = func;
+    if (llfn) *llfn = func;
     return LLE_OK;
 }
 llvm_error LLVMBackend::emitModule(const std::string& obj_name)

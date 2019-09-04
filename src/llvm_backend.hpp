@@ -68,6 +68,7 @@ struct LLVMBackend {
     std::vector<ureg> _reset_after_emit;
     llvm::Type* _primitive_types[PRIMITIVE_COUNT];
     llvm::Module* _module;
+    mdg_node* _curr_mdg;
     llvm::TargetMachine* _target_machine;
     ureg _data_layout_storage[(sizeof(llvm::DataLayout) + REG_BYTES - 1) /
                               REG_BYTES]; // FU seppels
@@ -106,13 +107,11 @@ struct LLVMBackend {
     llvm::Value** lookupVariableRaw(ureg id);
     llvm::Function** lookupFunctionRaw(ureg id);
     llvm::Type** lookupTypeRaw(ureg id);
-    llvm_error lookupVariable(ureg id, ast_node* n, llvm::Value** v);
-    llvm_error lookupFunction(ureg id, ast_node* n, llvm::Function** f);
     llvm_error lookupCType(ast_elem* e, llvm::Type** t, ureg* align);
 
     // val can be NULL
     llvm_error getAstNodeIR(ast_node* n, bool load, llvm::Value** vl);
-    llvm_error genFunctionIR(sc_func* fn, llvm::Value** vl);
+    llvm_error genFunctionIR(sc_func* fn, llvm::Function** llfn);
     llvm_error genBinaryOpIR(expr_op_binary* b, llvm::Value** vl);
 
   private:

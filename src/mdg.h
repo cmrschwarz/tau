@@ -90,8 +90,9 @@ void mdg_end_write(module_dependency_graph* m);
 
 mdg_node*
 mdg_found_node(module_dependency_graph* m, mdg_node* parent, string ident);
-mdg_node*
-mdg_get_node(module_dependency_graph* m, mdg_node* parent, string ident);
+mdg_node* mdg_get_node(
+    module_dependency_graph* m, mdg_node* parent, string ident,
+    module_stage initial_stage);
 
 typedef struct sccd_node_s {
     ureg index;
@@ -115,6 +116,7 @@ int mdg_node_resolved(mdg_node* n, thread_context* tc);
 int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc);
 int mdg_node_add_dependency(
     mdg_node* n, mdg_node* dependency, thread_context* tc);
+int mdg_node_add_osc(mdg_node* n, open_scope* osc);
 
 int scc_detector_init(scc_detector* d, pool* mem_src);
 int scc_detector_run(thread_context* tc, mdg_node* n);
