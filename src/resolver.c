@@ -484,7 +484,9 @@ static inline resolve_error mark_mdg_nodes_resolved(resolver* r)
 {
     for (mdg_node** i = r->start; i != r->end; i++) {
         resolve_error re = mdg_node_resolved(*i, r->tc);
-        if (re) return re;
+        if (re) {
+            return re;
+        }
     }
     return RE_OK;
 }
@@ -1213,6 +1215,7 @@ resolve_error resolve_expr_body(
     }
     return RE_OK;
 }
+// TODO: make sure we return!
 resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
 {
     ast_body* b = &fn->scp.body;

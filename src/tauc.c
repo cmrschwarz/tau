@@ -155,7 +155,7 @@ int tauc_add_job(job* j)
     int r = job_queue_push(&TAUC.jobqueue, j, &waiters, &jobs);
     if (r) return r;
     // TODO: tweak spawn condition
-    if (jobs > waiters /*+ 1*/) {
+    if (jobs > waiters + 1) {
         ureg max_tc = plattform_get_virt_core_count();
         ureg tc = atomic_ureg_load(&TAUC.thread_count);
         if (tc < max_tc) {

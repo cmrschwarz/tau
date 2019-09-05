@@ -93,8 +93,7 @@ int llvm_initialize_primitive_information()
 // CPP
 LLVMBackend::LLVMBackend(thread_context* tc)
     : _tc(tc), _context(), _builder(_context),
-      _global_value_store(atomic_ureg_load(&TAUC.node_ids), NULL),
-      _data_layout(*(llvm::DataLayout*)&_data_layout_storage[0])
+      _global_value_store(atomic_ureg_load(&TAUC.node_ids), NULL)
 {
     std::string err;
     auto target_triple = "x86_64-pc-linux-gnu"; // LLVMGetDefaultTargetTriple();
@@ -109,8 +108,7 @@ LLVMBackend::LLVMBackend(thread_context* tc)
     _target_machine = target->createTargetMachine(
         target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
         llvm::Optional<llvm::Reloc::Model>(), CM, OptLevel);
-    *(llvm::DataLayout*)(&_data_layout_storage[0]) =
-        _target_machine->createDataLayout();
+    _data_layout = new llvm::DataLayout(_target_machine->createDataLayout());
 }
 
 LLVMBackend::~LLVMBackend()
@@ -176,6 +174,7 @@ llvm_error LLVMBackend::createLLVMModule(
 {
     // create our LLVMModule wrapper thingy for linking
     LLVMModule* m = new LLVMModule();
+    if (!m) return LLE_FATAL;
     printf("generating {");
     for (mdg_node** n = start; n != end; n++) {
         m->module_str += (**n).name;
@@ -188,6 +187,7 @@ llvm_error LLVMBackend::createLLVMModule(
     m->name = m->module_str + ".obj";
     puts("}");
     fflush(stdout);
+
     *module = m;
     // init id space
     _mod_startid = startid;
@@ -203,6 +203,8 @@ llvm_error LLVMBackend::createLLVMModule(
     // create actual module
     _module = new (std::nothrow) llvm::Module(m->name, _context);
     if (!_module) return LLE_OK;
+    _module->setTargetTriple(_target_machine->getTargetTriple().str());
+    _module->setDataLayout(*_data_layout);
     llvm_error lle;
     TIME(lle = addModulesIR(start, end););
     if (lle) return lle;
@@ -211,6 +213,7 @@ llvm_error LLVMBackend::createLLVMModule(
     // just have different buffers for the different reset types
     for (ureg id : _reset_after_emit) {
         if (isGlobalIDInModule(id)) {
+            // freeing the module will delete these
             _global_value_store[id] = NULL;
             continue;
         }
@@ -219,8 +222,7 @@ llvm_error LLVMBackend::createLLVMModule(
             ((llvm::GlobalVariable*)val)->removeFromParent();
         }
         else {
-            _global_value_store[id] = NULL;
-            //((llvm::Function*)val)->removeFromParent();
+            ((llvm::Function*)val)->removeFromParent();
         }
     }
     delete _module;
@@ -230,7 +232,6 @@ llvm_error LLVMBackend::createLLVMModule(
 llvm_error LLVMBackend::addModulesIR(mdg_node** start, mdg_node** end)
 {
     for (mdg_node** n = start; n != end; n++) {
-        _curr_mdg = *n;
         aseglist_iterator it;
         aseglist_iterator_begin(&it, &(**n).open_scopes);
         for (open_scope* osc = (open_scope*)aseglist_iterator_next(&it); osc;
@@ -321,7 +322,7 @@ llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align)
                 if (t) *t = strct;
             }
             if (align) {
-                *align = _data_layout.getStructLayout((llvm::StructType*)*tp)
+                *align = _data_layout->getStructLayout((llvm::StructType*)*tp)
                              ->getAlignment();
             }
             break;
@@ -573,8 +574,11 @@ llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** vl)
     if (vl) *vl = v;
     return LLE_OK;
 }
-char* name_mangle(mdg_node* n, sc_func* fn)
+char* name_mangle(sc_func* fn)
 {
+    symbol_table* st = fn->scp.body.symtab;
+    while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
+    mdg_node* n = (mdg_node*)st->owning_node;
     if (n == TAUC.mdg.root_node) return fn->scp.sym.name;
     ureg mnl = strlen(n->name);
     ureg fnl = strlen(fn->scp.sym.name);
@@ -614,7 +618,7 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Function** llfn)
         func_sig = llvm::FunctionType::get(ret_type, false);
         if (!func_sig) return LLE_FATAL;
     }
-    auto func_name_mangled = name_mangle(_curr_mdg, fn);
+    auto func_name_mangled = name_mangle(fn);
     if (*fn->scp.body.elements && isIDInModule(fn->id)) {
         auto lt = llvm::Function::ExternalLinkage;
         if (isLocalID(fn->id)) {
@@ -636,8 +640,10 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Function** llfn)
         _builder.SetInsertPoint(func_block);
         return addAstBodyIR(&fn->scp.body);
     }
-    auto func = (llvm::Function*)_module->getOrInsertFunction(
-        func_name_mangled, func_sig);
+    auto func = (llvm::Function*)llvm::Function::Create(
+        func_sig, llvm::GlobalVariable::ExternalLinkage,
+        _data_layout->getProgramAddressSpace(), func_name_mangled);
+    _module->getFunctionList().push_back(func);
     if (isGlobalID(fn->id)) {
         _global_value_init_flags[fn->id] = true;
         _reset_after_emit.push_back(fn->id);
@@ -652,8 +658,6 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     printf("emmitting %s\n", (char*)obj_name.c_str());
     fflush(stdout);
     std::error_code EC;
-    _module->setDataLayout(_data_layout);
-    _module->setTargetTriple(_target_machine->getTargetTriple().str());
     llvm::Triple TargetTriple(_module->getTargetTriple());
     std::unique_ptr<llvm::TargetLibraryInfoImpl> TLII(
         new llvm::TargetLibraryInfoImpl(TargetTriple));

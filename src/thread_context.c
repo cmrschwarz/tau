@@ -95,9 +95,6 @@ int thread_context_do_job(thread_context* tc, job* j)
                 }
             }
         }
-        else {
-            assert(false);
-        }
         if (!j->concrete.resolve.single_store) tfree(j->concrete.resolve.start);
         if (r) return r;
         if (can_link) return tauc_link();

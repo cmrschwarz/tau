@@ -183,7 +183,7 @@ int list_builder_test()
 }
 int release_test()
 {
-    static char* cli_args[2] = {"", "test/footest.tau"};
+    static char* cli_args[2] = {"", "test/multimoduletest.tau"};
     int r = master_error_log_init();
     if (!r) {
         r = tauc_init();

@@ -68,11 +68,8 @@ struct LLVMBackend {
     std::vector<ureg> _reset_after_emit;
     llvm::Type* _primitive_types[PRIMITIVE_COUNT];
     llvm::Module* _module;
-    mdg_node* _curr_mdg;
     llvm::TargetMachine* _target_machine;
-    ureg _data_layout_storage[(sizeof(llvm::DataLayout) + REG_BYTES - 1) /
-                              REG_BYTES]; // FU seppels
-    llvm::DataLayout& _data_layout;
+    llvm::DataLayout* _data_layout;
     ureg _mod_startid;
     ureg _mod_endid;
     ureg _private_sym_count;
