@@ -14,7 +14,6 @@ static inline sbuffer_segment* sbuffer_segment_create(sbuffer* sb, ureg size)
 }
 int sbuffer_init(sbuffer* sb, ureg initial_capacity)
 {
-
     sb->first = sbuffer_segment_create(
         sb, ceil_to_pow2(initial_capacity + sizeof(sbuffer_segment)));
     if (!sb->first) return -1;
@@ -62,7 +61,7 @@ void* sbuffer_append(sbuffer* sb, ureg size)
         sb->last->head += size;
         return ret_val;
     }
-    if (sbuffer_segment_append(sb, (sb->last->end - sb->last->start) * 2)) {
+    if (sbuffer_segment_append(sb, ptrdiff(sb->last->end, sb->last) * 2)) {
         return NULL;
     }
     sb->last->head += size;
