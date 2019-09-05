@@ -4,6 +4,7 @@
 #include "tauc.h"
 #include "print_ast.h"
 #include "utils/debug_utils.h"
+#include <assert.h>
 static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
 {
     switch (i) {
@@ -94,6 +95,9 @@ int thread_context_do_job(thread_context* tc, job* j)
                 }
             }
         }
+        else {
+            assert(false);
+        }
         if (!j->concrete.resolve.single_store) tfree(j->concrete.resolve.start);
         if (r) return r;
         if (can_link) return tauc_link();
@@ -126,6 +130,9 @@ int thread_context_run(thread_context* tc)
         if (r == JQ_DONE) return OK;
         if (r != OK) return r;
         r = thread_context_do_job(tc, &j);
-        if (r) return r;
+        if (r) {
+            tauc_request_end();
+            return r;
+        }
     }
 }
