@@ -96,14 +96,17 @@ int job_queue_push(job_queue* jq, const job* jb, ureg* waiters, ureg* jobs)
         ureg size_new = size_old * 2;
         job* buffer_new = tmalloc(size_new);
         if (!buffer_new) {
+            jq->head = j;
             mutex_unlock(&jq->lock);
             return ERR;
         }
         ureg tail_size = ptrdiff(jq->buffer_end, jq->tail);
         memcpy(buffer_new, jq->tail, tail_size);
-        memcpy(
-            ptradd(buffer_new, tail_size), jq->buffer,
-            size_old - tail_size - 1);
+        if (tail_size < size_old) {
+            memcpy(
+                ptradd(buffer_new, tail_size), jq->buffer,
+                size_old - tail_size - 1);
+        }
         tfree(jq->buffer);
         jq->buffer = buffer_new;
         jq->buffer_end = ptradd(buffer_new, size_new);

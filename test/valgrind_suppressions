@@ -1,25 +1,134 @@
 {
    <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   obj:/lib/x86_64-linux-gnu/libc-2.28.so
+}
+{
+   <insert_a_suppression_name_here>
    Memcheck:Addr16
-   obj:/lib/x86_64-linux-gnu/libc-2.28.so
-}
-{
-   <insert_a_suppression_name_here>
-   Memcheck:Value8
-   obj:/lib/x86_64-linux-gnu/libc-2.28.so
-}
-{
-   <insert_a_suppression_name_here>
-   Memcheck:Cond
+   ...
    obj:/lib/x86_64-linux-gnu/libc-2.28.so
 }
 {
    <insert_a_suppression_name_here>
    Memcheck:Cond
+   ...
+   obj:/lib/x86_64-linux-gnu/libc-2.28.so
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   obj:/lib/x86_64-linux-gnu/libpthread-2.28.so
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Addr16
+   ...
+   obj:/lib/x86_64-linux-gnu/libpthread-2.28.so
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   obj:/lib/x86_64-linux-gnu/libpthread-2.28.so
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   fun:_ZN4llvm3sys18getHostCPUFeaturesERNS_9StringMapIbNS_15MallocAllocatorEEE
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   fun:_ZN4llvm3sys18getHostCPUFeaturesERNS_9StringMapIbNS_15MallocAllocatorEEE
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   fun:_ZN4llvm3sys14getHostCPUNameEv
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
    fun:_ZN4llvm3sys14getHostCPUNameEv
 }
 {
    <insert_a_suppression_name_here>
    Memcheck:Value8
-   fun:_ZN4llvm3sys14getHostCPUNameEv
+   ...
+   fun:_ZN4llvm10DataLayoutaSERKS0_
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   fun:_ZN4llvm10DataLayoutaSERKS0_
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   fun:llvm_backend_emit_module
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   fun:llvm_backend_emit_module
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   fun:tauc_link
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   fun:tauc_link
+}
+
+
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   fun:_ZN11LLVMBackend16createLLVMModuleEPP10mdg_node_sS2_mmmPP10LLVMModule
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   fun:_ZN11LLVMBackend16createLLVMModuleEPP10mdg_node_sS2_mmmPP10LLVMModule
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   fun:_ZN4llvm13FPPassManager11runOnModuleERNS_6ModuleE 
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   fun:_ZN4llvm13FPPassManager11runOnModuleERNS_6ModuleE 
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Value8
+   ...
+   fun:_ZN11LLVMBackend10emitModuleERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE 
+}
+{
+   <insert_a_suppression_name_here>
+   Memcheck:Cond
+   ...
+   fun:_ZN11LLVMBackend10emitModuleERKNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEE 
 }

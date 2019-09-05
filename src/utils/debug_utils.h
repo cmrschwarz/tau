@@ -14,7 +14,7 @@ static inline void pretty_print_timespan(timespan* ts)
         printf("%02zu:%02zu:%05.2f", hrs, mnts, secs);
     }
     else if (mnts > 0) {
-        printf("%02zu:%05.2f", mnts, secs);
+        printf("%02zu:%02.0f", mnts, secs);
     }
     else if (secs >= 1) {
         printf("%04.2f s", secs);
