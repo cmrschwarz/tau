@@ -4,6 +4,7 @@
 #include "utils/error.h"
 #include "utils/panic.h"
 #include "utils/zero.h"
+#include "utils/debug_utils.h"
 
 resolve_error
 resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype);
@@ -492,16 +493,14 @@ static inline resolve_error mark_mdg_nodes_resolved(resolver* r)
 }
 static inline void print_debug_info(resolver* r)
 {
-
-    printf("resolving {");
+    tprintf("resolving {");
     mdg_node** i = r->start;
     i = r->start;
     while (i + 1 != r->end) {
-        printf("%s, ", (**i).name);
+        tprintf("%s, ", (**i).name);
         i++;
     }
-    printf("%s}\n", (**i).name);
-    fflush(stdout);
+    tprintf("%s} ", (**i).name);
 }
 
 bool ctypes_unifiable(ast_elem* a, ast_elem* b)

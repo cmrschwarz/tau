@@ -19,7 +19,11 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
         case 4: error_log_fin(&tc->err_log);
         case 3: pool_fin(&tc->tempmem);
         case 2: sbuffer_fin(&tc->modules);
-        case 1: pool_fin(&tc->permmem);
+        case 1:
+            pool_fin(&tc->permmem);
+            // these don't need to be initialized and they are thread local,
+            // so this seems like the best place to free them
+            debug_utils_free_res();
         case 0: break;
     }
     if (r) master_error_log_report("thread context initialization failed");
@@ -60,6 +64,7 @@ int thread_context_do_job(thread_context* tc, job* j)
     if (j->kind == JOB_PARSE) {
         int r;
         TIME(r = parser_parse_file(&tc->p, &j->concrete.parse););
+        tflush();
         return r;
     }
     if (j->kind == JOB_RESOLVE) {
@@ -78,6 +83,7 @@ int thread_context_do_job(thread_context* tc, job* j)
         TIME(
             r = resolver_resolve(
                 &tc->r, start, end, &startid, &endid, &private_sym_count););
+        tflush();
         if (!r) {
             llvm_module* mod;
             r = llvm_backend_emit_module(
@@ -124,12 +130,17 @@ int thread_context_run(thread_context* tc)
     job j;
     while (true) {
         r = job_queue_pop(&TAUC.jobqueue, &j);
-        if (r == JQ_DONE) return OK;
-        if (r != OK) return r;
+        if (r == JQ_DONE) {
+            r = OK;
+            break;
+        }
+        if (r != OK) break;
         r = thread_context_do_job(tc, &j);
         if (r) {
             tauc_request_end();
-            return r;
+            break;
         }
     }
+    debug_utils_free_res();
+    return r;
 }

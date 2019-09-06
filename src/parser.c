@@ -8,6 +8,7 @@
 #include "utils/panic.h"
 #include "utils/zero.h"
 #include "resolver.h"
+#include "utils/debug_utils.h"
 #include <stddef.h>
 
 #define PEEK(p, t)                                                             \
@@ -1917,10 +1918,9 @@ parse_error parse_eof_delimited_open_scope(parser* p, open_scope* osc)
 parse_error parser_parse_file(parser* p, job_parse* j)
 {
     int r = lx_open_file(&p->lx, j->file);
-    printf("parsing ");
-    string_print(j->file->head.name);
-    putchar('\n');
-    fflush(stdout);
+    tprintf("parsing ");
+    tprintn(j->file->head.name.start, string_len(j->file->head.name));
+    tputchar(' ');
     if (r) {
         if (j->requiring_file != NULL) {
             src_range_large srl;

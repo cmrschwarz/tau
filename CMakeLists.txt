@@ -33,6 +33,7 @@ set(TAUC_C_SRCS
     ./src/mdght.c
     ./src/file_map.c
     ./src/job_queue.c
+    ./src/utils/debug_utils.c
     ./src/utils/os/linux/plattform.c
 )
 set (TAUC_CPP_SRCS

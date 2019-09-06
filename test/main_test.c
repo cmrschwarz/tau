@@ -3,6 +3,7 @@
 #include "../src/mdg.h"
 #include "../src/tauc.h"
 #include "../src/utils/stack.h"
+#include "../src/utils/debug_utils.h"
 
 static void print_dash_padded(char* msg, bool err)
 {
@@ -18,17 +19,19 @@ static void print_dash_padded(char* msg, bool err)
     }
     fputc('\n', err ? stderr : stdout);
 }
-#define TEST(test_name) print_result(test_name(), STRINGIFY(test_name))
-static int print_result(int res, char* msg)
+#define TEST(test_name) print_result(&test_name, STRINGIFY(test_name))
+
+static int print_result(int (*testfn)(), char* msg)
 {
-    if (res) {
+    int res;
+    TIME(res = testfn(); if (res) {
         fputs(msg, stderr);
         fputs(" FAILED\n", stderr);
-    }
-    else {
-        fputs(msg, stdout);
-        fputs(" passed\n", stdout);
-    }
+    } else {
+        tput(msg);
+        tput(" passed ");
+    });
+    tflush();
     return res;
 }
 // MDG TESTS
@@ -203,7 +206,6 @@ int llvmtest_main();
 #include <utils/debug_utils.h>
 int main_test(int argc, char** argv)
 {
-
     print_dash_padded("Executing Unit Tests", false);
     talloc_init();
     int res = OK;
@@ -214,7 +216,7 @@ int main_test(int argc, char** argv)
     res |= TEST(file_map_test);
     res |= TEST(job_queue_test);
     // res |= TEST(mdg_test);
-    TIME(res |= TEST(release_test););
+    res |= TEST(release_test);
 
     if (res) {
         print_dash_padded("FAILED", false);
@@ -223,6 +225,7 @@ int main_test(int argc, char** argv)
         print_dash_padded("PASSED", false);
     }
     putchar('\n');
+    debug_utils_free_res();
     talloc_fin();
 
     return 0;

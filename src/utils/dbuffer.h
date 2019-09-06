@@ -51,7 +51,7 @@ int dbuffer_append(dbuffer* db, const void* data, ureg size);
 
 #define dbuffer_append_val(db, val)                                            \
     do {                                                                       \
-        (*(typeof(val)*)dbuffer_claim_small(db, sizeof(val))) = (val);         \
+        (*(typeof(val)*)dbuffer_claim(db, sizeof(val))) = (val);               \
     } while (0)
 
 #endif

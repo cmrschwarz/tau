@@ -4,25 +4,16 @@
 #include "timing.h"
 #include <stdio.h>
 
-static inline void pretty_print_timespan(timespan* ts)
-{
-    ureg hrs = timespan_get_hours(ts);
-    ureg mnts = timespan_get_rminutes(ts);
-    freg secs = timespan_get_frseconds(ts);
-    freg millis = timespan_get_fmillis(ts);
-    if (hrs > 0) {
-        printf("%02zu:%02zu:%05.2f", hrs, mnts, secs);
-    }
-    else if (mnts > 0) {
-        printf("%02zu:%02.0f", mnts, secs);
-    }
-    else if (secs >= 1) {
-        printf("%04.2f s", secs);
-    }
-    else {
-        printf("%.2f ms", millis);
-    }
-}
+void tprintf(const char* format, ...);
+void tputs(const char* c);
+void tput(const char* c);
+void tputchar(const char c);
+void tflush();
+void tprintn(const char* c, ureg n);
+
+void pretty_print_timespan(timespan* ts);
+void debug_utils_free_res();
+
 #if DEBUG
 
 #define TIME(code)                                                             \
@@ -37,10 +28,9 @@ static inline void pretty_print_timespan(timespan* ts)
         timer_get_elapsed(                                                     \
             &____timer_reserved_name_for_bench_macro,                          \
             &____timespan_reserved_name_for_bench_macro);                      \
-        printf("    ");                                                        \
+        tprintf("[");                                                          \
         pretty_print_timespan(&____timespan_reserved_name_for_bench_macro);    \
-        puts(" elapsed");                                                      \
-        fflush(stdout);                                                        \
+        tputs("]");                                                            \
     } while (false)
 #else
 

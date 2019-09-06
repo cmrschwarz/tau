@@ -59,14 +59,17 @@ void llvm_free_module(llvm_module* mod)
 }
 int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
 {
-    printf("linking {");
+    tprintf("linking {");
     for (LLVMModule** n = (LLVMModule**)start; !ptreq(n, end); n++) {
-        printf("%s%s", (**n).module_str.c_str(), ptreq(n + 1, end) ? "" : ", ");
+        tprintf(
+            "%s%s", (**n).module_str.c_str(), ptreq(n + 1, end) ? "" : ", ");
     }
-    puts("}");
-    fflush(stdout);
-    llvm_error lle =
-        linkLLVMModules((LLVMModule**)start, (LLVMModule**)end, output_path);
+    tput("} ");
+    llvm_error lle;
+    TIME(
+        lle = linkLLVMModules(
+            (LLVMModule**)start, (LLVMModule**)end, output_path););
+    tflush();
     if (lle) return ERR;
     return OK;
 }
@@ -175,18 +178,17 @@ llvm_error LLVMBackend::createLLVMModule(
     // create our LLVMModule wrapper thingy for linking
     LLVMModule* m = new LLVMModule();
     if (!m) return LLE_FATAL;
-    printf("generating {");
+    tprintf("generating {");
     for (mdg_node** n = start; n != end; n++) {
         m->module_str += (**n).name;
-        fputs((**n).name, stdout);
+        tprintf("%s", (**n).name);
         if (n + 1 != end) {
-            fputs(", ", stdout);
+            tprintf(", ");
             m->module_str += "&";
         }
     }
     m->name = m->module_str + ".obj";
-    puts("}");
-    fflush(stdout);
+    tput("} ");
 
     *module = m;
     // init id space
@@ -207,8 +209,10 @@ llvm_error LLVMBackend::createLLVMModule(
     _module->setDataLayout(*_data_layout);
     llvm_error lle;
     TIME(lle = addModulesIR(start, end););
+    tflush();
     if (lle) return lle;
     TIME(lle = emitModule(m->name););
+    tflush();
     // PERF: instead of this last minute checking
     // just have different buffers for the different reset types
     for (ureg id : _reset_after_emit) {
@@ -655,8 +659,7 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Function** llfn)
 }
 llvm_error LLVMBackend::emitModule(const std::string& obj_name)
 {
-    printf("emmitting %s\n", (char*)obj_name.c_str());
-    fflush(stdout);
+    tprintf("emmitting %s ", (char*)obj_name.c_str());
     std::error_code EC;
     llvm::Triple TargetTriple(_module->getTargetTriple());
     std::unique_ptr<llvm::TargetLibraryInfoImpl> TLII(

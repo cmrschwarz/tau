@@ -107,6 +107,7 @@ int tauc_run(int argc, char** argv)
 void worker_thread_fn(void* ctx)
 {
     puts("added worker thread!");
+    fflush(stdout);
     worker_thread* wt = (worker_thread*)ctx;
     thread_context_run(&wt->tc);
     atomic_ureg_store(&wt->status, WTS_TERMINATED);
