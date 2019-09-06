@@ -20,13 +20,7 @@ module g{public func foo()->int{
     return 1;
 };}
 
-import a;
-import b;
-import c;
-import d;
-import e;
-import f;
-import g;
+import {a, b, c, d, e, f, g};
 
 public func printf(s: string, i: int, j: int);
 func collect()->int{

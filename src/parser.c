@@ -2793,7 +2793,7 @@ parse_error parse_import_with_parent(
             lx_void_n(&p->lx, 2);
             PEEK(p, t);
         }
-        else { // remove this else to allow {} on root
+        else {
             return parser_error_2a(
                 p, "invalid import syntax", t->start, t->end, "expected ::",
                 start, kw_end, "in this import statement");
@@ -2849,46 +2849,42 @@ parse_error parse_import_with_parent(
         *tgt = (symbol*)ig;
         tgt = &ig->children.symbols;
         // }
-        if (has_ident || name || t->kind != TK_BRACE_OPEN) {
-            ureg ndecl_cnt = 0;
-            if (name) {
-                *decl_cnt = *decl_cnt + 1;
-                decl_cnt = &ndecl_cnt;
-            }
-            parse_error re;
-            if (t->kind == TK_PAREN_OPEN) {
-                re = parse_symbol_imports(
-                    p, flags, start, kw_end, &end, decl_cnt, tgt);
-            }
-            else {
-                re = parse_braced_imports(
-                    p, flags, start, kw_end, parent, &end, decl_cnt, tgt);
-            }
-            if (re) return re;
-            if (ig) {
-                ast_node_fill_srange(p, (ast_node*)ig, start, end);
-            }
-            if (name) {
-                symbol_table* st;
-                if (symbol_table_init(
-                        &st, ndecl_cnt, 0, false, (ast_elem*)ig)) {
-                    return RE_FATAL;
-                }
-                resolve_error re = add_import_group_decls(
-                    p->lx.tc, p->current_module, p->lx.file, ig, st);
-                ig->children.symtab = st;
-                if (re) return PE_ERROR;
-            }
-            return RE_OK;
+
+        ureg ndecl_cnt = 0;
+        if (name) {
+            *decl_cnt = *decl_cnt + 1;
+            decl_cnt = &ndecl_cnt;
         }
+        parse_error re;
+        if (t->kind == TK_PAREN_OPEN) {
+            re = parse_symbol_imports(
+                p, flags, start, kw_end, &end, decl_cnt, tgt);
+        }
+        else {
+            re = parse_braced_imports(
+                p, flags, start, kw_end, parent, &end, decl_cnt, tgt);
+        }
+        if (re) return re;
+        if (ig) {
+            ast_node_fill_srange(p, (ast_node*)ig, start, end);
+        }
+        if (name) {
+            symbol_table* st;
+            if (symbol_table_init(&st, ndecl_cnt, 0, false, (ast_elem*)ig)) {
+                return RE_FATAL;
+            }
+            resolve_error re = add_import_group_decls(
+                p->lx.tc, p->current_module, p->lx.file, ig, st);
+            ig->children.symtab = st;
+            if (re) return PE_ERROR;
+        }
+        return RE_OK;
     }
     char* expected;
-    if (parent == TAUC.mdg.root_node)
-        expected = "expected identifier";
-    else if (has_ident)
+    if (has_ident)
         expected = "expected identifier or ( or {";
     else
-        expected = "expected identifier or (";
+        expected = "expected identifier or {";
     return parser_error_2a(
         p, "invalid import syntax", t->start, t->end, expected, start, kw_end,
         "in this import statement");
