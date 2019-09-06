@@ -1,6 +1,7 @@
 #ifndef TAUC_ERROR_LOG_H
 #define TAUC_ERROR_LOG_H
 
+#include "utils/aseglist.h"
 #include "src_map.h"
 #include "utils/allocator.h"
 #include "utils/c_extensions.h"
@@ -57,7 +58,6 @@ typedef struct error_annotation_s {
 typedef struct master_error_log_s master_error_log;
 
 typedef struct error_log_s {
-    struct error_log_s* next;
     error* errors;
     error* critical_failiure_point;
     const char* critical_failiure_msg;
@@ -65,7 +65,7 @@ typedef struct error_log_s {
 } error_log;
 
 typedef struct master_error_log_s {
-    error_log* error_logs;
+    aseglist error_logs;
     char* global_errors[TAUC_MAX_GLOBAL_ERRORS];
     ureg global_error_count;
     ureg tab_size;

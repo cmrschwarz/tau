@@ -51,6 +51,8 @@ master_error_log MASTER_ERROR_LOG;
 
 int master_error_log_init()
 {
+    int r = aseglist_init(&MASTER_ERROR_LOG.error_logs);
+    if (r) return r;
     MASTER_ERROR_LOG.global_error_count = 0;
     MASTER_ERROR_LOG.tab_size = 4; // TODO: make configurable
     MASTER_ERROR_LOG.tab_spaces = "    ";
@@ -61,6 +63,7 @@ int master_error_log_init()
 }
 void master_error_log_fin()
 {
+    aseglist_fin(&MASTER_ERROR_LOG.error_logs);
 }
 
 void master_error_log_report(char* critical_error)
@@ -78,11 +81,9 @@ void master_error_log_report(char* critical_error)
 
 void error_log_init(error_log* el, pool* error_mem_pool)
 {
-    el->next = MASTER_ERROR_LOG.error_logs;
-    MASTER_ERROR_LOG.error_logs = el;
+    aseglist_add(&MASTER_ERROR_LOG.error_logs, el);
     el->errors = NULL;
     el->error_mem_pool = error_mem_pool;
-    el->next = NULL;
     el->critical_failiure_point = FAILURE_NONE;
 }
 void error_log_fin(error_log* el)
@@ -808,29 +809,30 @@ int compare_errs(const error* a, const error* b)
 void master_error_log_unwind()
 {
     ureg err_count = 0;
-    error_log* el = MASTER_ERROR_LOG.error_logs;
-    while (el != NULL) {
+    aseglist_iterator it;
+    aseglist_iterator_begin(&it, &MASTER_ERROR_LOG.error_logs);
+    for (error_log* el = aseglist_iterator_next(&it); el != NULL;
+         el = aseglist_iterator_next(&it)) {
         error* e = el->errors;
         while (e != NULL) {
             err_count++;
             e = e->previous;
         }
-        el = el->next;
     }
     if (err_count != 0) {
         error** errors = (error**)tmalloc(err_count * sizeof(error*));
         if (errors != NULL) {
             // insert backwards to revert linked list order
             error** pos = errors + err_count - 1;
-            el = MASTER_ERROR_LOG.error_logs;
-            while (el != NULL) {
+            aseglist_iterator_begin(&it, &MASTER_ERROR_LOG.error_logs);
+            for (error_log* el = aseglist_iterator_next(&it); el != NULL;
+                 el = aseglist_iterator_next(&it)) {
                 error* e = el->errors;
                 while (e != NULL) {
                     *pos = e;
                     pos--;
                     e = e->previous;
                 }
-                el = el->next;
             }
             // stable, in place sorting
             errors_grail_sort(errors, err_count);
@@ -858,12 +860,12 @@ void master_error_log_unwind()
             printAllocationError();
         }
     }
-    el = MASTER_ERROR_LOG.error_logs;
-    while (el != NULL) {
+    aseglist_iterator_begin(&it, &MASTER_ERROR_LOG.error_logs);
+    for (error_log* el = aseglist_iterator_next(&it); el != NULL;
+         el = aseglist_iterator_next(&it)) {
         if (el->critical_failiure_point != FAILURE_NONE) {
             printCriticalThreadError(el->critical_failiure_msg);
         }
-        el = el->next;
     }
     for (ureg i = 0; i < MASTER_ERROR_LOG.global_error_count; i++) {
         printCriticalError(MASTER_ERROR_LOG.global_errors[i]);
