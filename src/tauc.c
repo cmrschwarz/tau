@@ -5,6 +5,7 @@
 #include "utils/allocator.h"
 #include "symbol_table.h"
 #include "assert.h"
+#include "utils/debug_utils.h"
 
 struct tauc TAUC;
 
@@ -106,8 +107,8 @@ int tauc_run(int argc, char** argv)
 
 void worker_thread_fn(void* ctx)
 {
-    puts("added worker thread!");
-    fflush(stdout);
+    tputs("added worker thread!");
+    tflush();
     worker_thread* wt = (worker_thread*)ctx;
     thread_context_run(&wt->tc);
     atomic_ureg_store(&wt->status, WTS_TERMINATED);

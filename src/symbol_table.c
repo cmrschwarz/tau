@@ -43,6 +43,7 @@ int symbol_table_init(
         st = &stwu->table;
         st->usings_start =
             (symbol_table**)ptradd(alloc, using_count * sizeof(ast_node*));
+        memset(st->usings_start, 0, using_count * sizeof(symbol*));
         for (ureg i = 0; i < AM_ENUM_ELEMENT_COUNT; i++) {
             stwu->using_ends[i] = st->usings_start;
         }

@@ -32,7 +32,12 @@ static resolve_error
 report_unknown_symbol(resolver* r, ast_node* n, symbol_table* st)
 {
     src_range_large srl;
-    src_range_unpack(n->srange, &srl);
+    if (n->kind == EXPR_SCOPE_ACCESS || n->kind == EXPR_MEMBER_ACCESS) {
+        src_range_unpack(((expr_scope_access*)n)->target_srange, &srl);
+    }
+    else {
+        src_range_unpack(n->srange, &srl);
+    }
     error_log_report_annotated(
         &r->tc->err_log, ES_RESOLVER, false, "unknown symbol",
         ast_node_get_file(n, st), srl.start, srl.end,
@@ -299,11 +304,13 @@ static resolve_error add_ast_node_decls(
             }
             else {
                 b->symtab->parent = st;
+                for (ureg i = 0; i < fn->param_count; i++) {
+                    re =
+                        add_symbol(r, b->symtab, NULL, (symbol*)&fn->params[i]);
+                    if (re) return re;
+                }
             }
-            for (ureg i = 0; i < fn->param_count; i++) {
-                re = add_symbol(r, b->symtab, NULL, (symbol*)&fn->params[i]);
-                if (re) return re;
-            }
+
             return RE_OK;
         }
         case SYM_IMPORT_GROUP: {

@@ -711,7 +711,6 @@ parse_error parse_param_decl(
             tgt->default_value = NULL;
         }
     }
-    curr_scope_add_decls(p, AM_UNSPECIFIED, 1);
     return PE_OK;
 }
 parse_error parse_expr_node_list(
@@ -2371,14 +2370,14 @@ parse_error parse_module_decl(
         return pe;
     }
     p->current_module = parent;
+    *n = (ast_node*)md;
+    // todo: add a dummy symbol that blocks everything but imports
+    // curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
+    mdg_node_add_osc(mdgn, (open_scope*)md);
     if (*(void**)md->requires == NULL) {
         if (mdg_node_parsed(&TAUC.mdg, mdgn, p->lx.tc)) return PE_FATAL;
     }
-    *n = (ast_node*)md;
-    curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
-    // return PE_NO_STMT;
-    mdg_node_add_osc(mdgn, (open_scope*)md);
-    return PE_OK; // DEBUG
+    return PE_OK; // consider PE_NO_STMT
 }
 parse_error parse_extend_decl(
     parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)
