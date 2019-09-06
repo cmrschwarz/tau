@@ -79,10 +79,12 @@ void* list_builder_pop_block_list(
         b->head = list_start;
         return tgt;
     }
-    size = ptrdiff(b->head, b->head_segment) - sizeof(list_build_segment);
+    ureg last_seg_size =
+        ptrdiff(b->head, b->head_segment) - sizeof(list_build_segment);
+    size = last_seg_size;
     while (true) {
         s = s->prev;
-        if (!s) break;
+        assert(s); // the list_start has to be somewhere
         if ((void*)s < list_start && s->end >= list_start) {
             size += ptrdiff(s->end, list_start);
             break;
@@ -96,13 +98,14 @@ void* list_builder_pop_block_list(
     b->head_segment = s;
     void** h = ptradd(tgt, premem);
     void** start = list_start;
-    while (s != head_old->next) {
-        size = ptrdiff(s->end, start);
-        memcpy(h, start, size);
+    while (s != head_old) {
+        ureg seg_size = ptrdiff(s->end, start);
+        memcpy(h, start, seg_size);
         s = s->next;
-        h = ptradd(h, size);
+        h = ptradd(h, seg_size);
         start = ptradd(s, sizeof(list_build_segment));
     }
+    memcpy(h, ptradd(s, sizeof(list_build_segment)), last_seg_size);
     b->head = list_start;
     return tgt;
 }

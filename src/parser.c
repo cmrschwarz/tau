@@ -2793,7 +2793,7 @@ parse_error parse_import_with_parent(
             lx_void_n(&p->lx, 2);
             PEEK(p, t);
         }
-        else {
+        else { // remove this else to allow {} on root
             return parser_error_2a(
                 p, "invalid import syntax", t->start, t->end, "expected ::",
                 start, kw_end, "in this import statement");
