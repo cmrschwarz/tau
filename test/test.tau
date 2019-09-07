@@ -1,15 +1,11 @@
 //require "test2.tau";
 public func printf(x: string, y: int, c: int);
 
-struct boo{
-    public x: int;
-    public y: int;
-}
+
+x:= y;
+y:= x;
 func foo()-> int {
-    x: boo;
-    x.x = 1;
-    x.y = 2;
-    return x.x + x.y;
+   return z;
 }
 
 public func main() -> int{

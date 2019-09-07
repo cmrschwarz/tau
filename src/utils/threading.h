@@ -12,6 +12,15 @@ typedef void (*thread_function_ptr)(void* context);
 #error no threading backend for configured plattform
 #endif
 
+#if __cplusplus
+#define THREAD_LOCAL thread_local
+#elif !defined(__STDC_NO_THREADS__)
+#include <threads.h>
+#define THREAD_LOCAL thread_local
+#elif CMPLR_GCC || CMPLR_CLANG
+#define THREAD_LOCAL __thread
+#endif
+
 // Threads
 int thread_yield();
 int thread_sleep(ureg microsecs);

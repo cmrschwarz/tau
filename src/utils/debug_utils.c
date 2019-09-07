@@ -1,5 +1,5 @@
 #include "debug_utils.h"
-#include <threads.h>
+#include "utils/threading.h"
 #include <stdarg.h>
 #include <string.h>
 #include <assert.h>
@@ -7,7 +7,7 @@
 #include "dbuffer.h"
 
 #if DEBUG
-_Thread_local dbuffer buff; // guraranteed to be zero
+THREAD_LOCAL dbuffer buff; // guraranteed to be zero
 static void init_buffers()
 {
     if (buff.start) return;

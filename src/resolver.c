@@ -893,7 +893,7 @@ resolve_error resolve_ast_node_raw(
             // trigger the type loop error here
             if (labelable && n->kind != AST_NODE_KIND_ERROR)
                 return RE_REQUIRES_BODY_TYPE;
-            assert(false);
+            // assert(false);
             return RE_TYPE_LOOP;
         }
         ast_node_flags_set_resolving(&n->flags);
