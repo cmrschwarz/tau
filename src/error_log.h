@@ -27,6 +27,7 @@ typedef enum error_kind_e {
     ET_MULTI_ANNOT,
 } error_kind;
 
+// a plain error at a position, no context message
 typedef struct error_s {
     struct error_s* previous;
     bool warn;
@@ -37,12 +38,16 @@ typedef struct error_s {
     const char* message;
 } error;
 
+// an error where the position of the error is highlighted,
+// but there aren't any other annotated positions
 typedef struct error_annotated_s {
     error err;
     ureg end;
     const char* annotation;
 } error_annotated;
 
+// the error position is highlighed, and there are additional
+// locations highlighted
 typedef struct error_multi_annotated_s {
     error_annotated err_annot;
     ureg annot_count;
@@ -51,6 +56,8 @@ typedef struct error_multi_annotated_s {
 typedef struct error_annotation_s {
     ureg start;
     ureg end;
+    // NULL means just make sure that this range is shown,
+    // don't underline it
     const char* annotation;
     src_file* file;
 } error_annotation;
@@ -89,6 +96,15 @@ bool error_log_sane_state(error_log* el);
 void error_log_report_simple(
     error_log* el, error_stage stage, bool warn, const char* message,
     src_file* file, ureg position);
+
+error* error_log_create_error(
+    error_log* el, error_stage stage, bool warn, const char* message,
+    src_file* file, ureg start, ureg end, ureg annot_count);
+void error_add_annotation(
+    error* e, src_file* file, ureg start, ureg end, const char* message);
+
+void error_log_report(error_log* el, error* e);
+
 void error_log_report_annotated(
     error_log* el, error_stage stage, bool warn, const char* message,
     src_file* file, ureg start, ureg end, const char* annotation);
@@ -102,13 +118,12 @@ void error_log_report_annotated_thrice(
     src_file* file2, ureg start2, ureg end2, const char* annotation2,
     src_file* file3, ureg start3, ureg end3, const char* annotation3);
 
+// create a concatenated string stored inside the error memory pool
 char* error_log_cat_strings_2(error_log* e, const char* s1, const char* s2);
 char* error_log_cat_strings_3(
     error_log* e, const char* s1, const char* s2, const char* s3);
 char* error_log_cat_strings(error_log* e, ureg count, const char** strs);
 
-void* error_log_alloc(error_log* e, ureg size);
-void error_log_report(error_log* el, error* e);
 void error_log_report_allocation_failiure(error_log* el);
 void error_log_report_synchronization_failiure(error_log* el);
 void error_log_report_critical_failiure(error_log* el, const char* msg);

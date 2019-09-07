@@ -107,14 +107,6 @@ static inline void error_fill(
     e->position = position;
     e->message = message;
 }
-static inline void error_fill_annot(
-    error_annotation* ea, src_file* file, ureg start, ureg end, const char* msg)
-{
-    ea->file = file;
-    ea->start = start;
-    ea->end = end;
-    ea->annotation = msg;
-}
 
 void error_log_report_simple(
     error_log* el, error_stage stage, bool warn, const char* message,
@@ -126,34 +118,64 @@ void error_log_report_simple(
     error_log_report(el, e);
 }
 
+error* error_log_create_error(
+    error_log* el, error_stage stage, bool warn, const char* message,
+    src_file* file, ureg start, ureg end, ureg annot_count)
+{
+    assert(annot_count != 0);
+    if (annot_count == 1) {
+        error_annotated* e =
+            (error_annotated*)error_log_alloc(el, sizeof(error_annotated));
+        if (!e) return NULL; // TODO: report this
+        error_fill((error*)e, stage, warn, ET_1_ANNOT, message, file, start);
+        e->end = end;
+        e->annotation = message;
+        return (error*)e;
+    }
+    error_multi_annotated* e = (error_multi_annotated*)error_log_alloc(
+        el,
+        sizeof(error_multi_annotated) + sizeof(error_annotation) * annot_count);
+    if (!e) return NULL; // TODO: report this
+    error_fill(
+        &e->err_annot.err, stage, warn, ET_MULTI_ANNOT, message, file, start);
+    e->annot_count = 1; // will increase with each annotation added
+    e->err_annot.annotation = message;
+    e->err_annot.end = end;
+    return (error*)e;
+}
+void error_add_annotation(
+    error* e, src_file* file, ureg start, ureg end, const char* message)
+{
+    if (!e) return; // save the user the hassle of checking for this
+    assert(e->kind == ET_MULTI_ANNOT);
+    error_multi_annotated* ema = (error_multi_annotated*)e;
+    error_annotation* ea = (error_annotation*)ptradd(
+        e, sizeof(error_multi_annotated) +
+               sizeof(error_annotation) * ema->annot_count);
+    ea->file = file;
+    ea->start = start;
+    ea->end = end;
+    ea->annotation = message;
+    ema->annot_count++;
+}
+
 void error_log_report_annotated(
     error_log* el, error_stage stage, bool warn, const char* message,
     src_file* file, ureg start, ureg end, const char* annotation)
 {
-    error_annotated* e =
-        (error_annotated*)error_log_alloc(el, sizeof(error_annotated));
-    if (!e) return;
-    error_fill((error*)e, stage, warn, ET_1_ANNOT, message, file, start);
-    e->end = end;
-    e->annotation = annotation;
-    error_log_report(el, (error*)e);
+    error* e =
+        error_log_create_error(el, stage, warn, message, file, start, end, 1);
+    error_log_report(el, e);
 }
 void error_log_report_annotated_twice(
     error_log* el, error_stage stage, bool warn, const char* message,
     src_file* file, ureg start, ureg end, const char* annotation,
     src_file* file2, ureg start2, ureg end2, const char* annotation2)
 {
-    error_multi_annotated* e = (error_multi_annotated*)error_log_alloc(
-        el, sizeof(error_multi_annotated) + sizeof(error_annotated));
-    if (!e) return;
-    error_fill(
-        &e->err_annot.err, stage, warn, ET_MULTI_ANNOT, message, file, start);
-    e->annot_count = 1;
-    e->err_annot.annotation = annotation;
-    e->err_annot.end = end;
-    error_fill_annot(
-        (error_annotation*)(e + 1), file2, start2, end2, annotation2);
-    error_log_report(el, (error*)e);
+    error* e =
+        error_log_create_error(el, stage, warn, message, file, start, end, 2);
+    error_add_annotation(e, file2, start2, end2, annotation2);
+    error_log_report(el, e);
 }
 void error_log_report_annotated_thrice(
     error_log* el, error_stage stage, bool warn, const char* message,
@@ -161,22 +183,16 @@ void error_log_report_annotated_thrice(
     src_file* file2, ureg start2, ureg end2, const char* annotation2,
     src_file* file3, ureg start3, ureg end3, const char* annotation3)
 {
-    error_multi_annotated* e = (error_multi_annotated*)error_log_alloc(
-        el, sizeof(error_multi_annotated) + 2 * sizeof(error_annotated));
-    if (!e) return;
-    error_fill(
-        &e->err_annot.err, stage, warn, ET_MULTI_ANNOT, message, file, start);
-    e->annot_count = 2;
-    e->err_annot.annotation = annotation;
-    e->err_annot.end = end;
-    error_annotation* ea = (error_annotation*)(e + 1);
-    error_fill_annot(ea, file2, start2, end2, annotation2);
-    error_fill_annot(ea + 1, file3, start3, end3, annotation3);
-    error_log_report(el, (error*)e);
+    error* e =
+        error_log_create_error(el, stage, warn, message, file, start, end, 3);
+    error_add_annotation(e, file2, start2, end2, annotation2);
+    error_add_annotation(e, file3, start3, end3, annotation3);
+    error_log_report(el, e);
 }
 
 void error_log_report(error_log* el, error* e)
 {
+    if (!e) return; // save the user the hassle of checking for this
     e->previous = el->errors;
     el->errors = e;
 }

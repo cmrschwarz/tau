@@ -2,10 +2,8 @@
 public func printf(x: string, y: int, c: int);
 
 
-x:= y;
-y:= x;
 func foo()-> int {
-   return z;
+   return 3;
 }
 
 public func main() -> int{
