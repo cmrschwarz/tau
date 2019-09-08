@@ -2,6 +2,7 @@
 #include "resolver.h"
 #include "thread_context.h"
 #include "utils/error.h"
+#include "error_log.h"
 #include "utils/panic.h"
 #include "utils/zero.h"
 #include "utils/debug_utils.h"
@@ -1182,6 +1183,7 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
     resolve_error re = resolve_ast_node_raw(r, n, st, ctype);
     if (re == RE_OK) return RE_OK;
     if (re == RE_TYPE_LOOP) {
+        stack_push(&r->error_stack, st);
         stack_push(&r->error_stack, n);
     }
     else if (re == RE_REQUIRES_BODY_TYPE) {
@@ -1191,8 +1193,28 @@ resolve_ast_node(resolver* r, ast_node* n, symbol_table* st, ast_elem** ctype)
 }
 static inline void report_type_loop(resolver* r)
 {
-    // TODO
-    assert(false);
+    ast_node* n = (ast_node*)stack_pop(&r->error_stack);
+    symbol_table* st = (symbol_table*)stack_pop(&r->error_stack);
+    assert(n && st);
+    src_range_large srl;
+    src_range_unpack(n->srange, &srl);
+    if (!srl.file) srl.file = ast_node_get_file(n, st);
+    ureg annot_count = stack_size(&r->error_stack) / 2;
+    annot_count--; // the starting type is on the stack twice
+    error* e = error_log_create_error(
+        &r->tc->err_log, ES_RESOLVER, false, "type inference cycle", srl.file,
+        srl.start, srl.end, "type definition depends on itself", annot_count);
+    for (ureg i = 0; i < annot_count; i++) {
+        n = (ast_node*)stack_pop(&r->error_stack);
+        if (!n) break;
+        st = (symbol_table*)stack_pop(&r->error_stack);
+        src_range_unpack(n->srange, &srl);
+        if (!srl.file) srl.file = ast_node_get_file(n, st);
+        error_add_annotation(e, srl.file, srl.start, srl.end, "");
+    }
+    stack_pop(&r->error_stack);
+    stack_pop(&r->error_stack);
+    error_log_report(&r->tc->err_log, e);
 }
 resolve_error resolve_expr_body(
     resolver* r, ast_node* expr, ast_body* b, symbol_table* parent_st)

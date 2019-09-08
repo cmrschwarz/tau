@@ -572,30 +572,30 @@ int print_src_line(
                 (ep_pos->col_end - ep_pos->col_start) +
                 (ep_pos->length_diff_end - ep_pos->length_diff_start);
             bool msg_before = space_before + squig_len > msg_len + 2;
-        if (msg_before) {
+            if (msg_before) {
                 sreg blank_space = (sreg)space_before - msg_len;
                 for (sreg i = 0; i < blank_space; i++) pe(" ");
-            pec(ep_pos->message_color);
-            print_msg(ep_pos->message, msg_len);
+                pec(ep_pos->message_color);
+                print_msg(ep_pos->message, msg_len);
                 pec(ep_pos->squigly_color);
                 if (blank_space > 0) {
                     for (ureg i = 0; i != squig_len; i++) pe("^");
-        }
-        else {
+                }
+                else {
                     for (sreg i = ep_pos->col_start + blank_space;
                          i != ep_pos->col_end; i++) {
                         pe("^");
-        }
+                    }
                 }
                 col = ep_pos->col_end + ep_pos->length_diff_end;
             }
             else {
                 for (ureg i = 0; i < space_before; i++) pe(" ");
-        pec(ep_pos->squigly_color);
+                pec(ep_pos->squigly_color);
                 for (ureg i = 0; i != squig_len; i++) pe("^");
-            pect(ANSICOLOR_CLEAR, " ");
-            pec(ep_pos->message_color);
-            pe(ep_pos->message);
+                pect(ANSICOLOR_CLEAR, " ");
+                pec(ep_pos->message_color);
+                pe(ep_pos->message);
                 col = ep_pos->col_end + ep_pos->length_diff_end + 1 + msg_len;
             }
             err_point* next = ep_pos + 1;
@@ -606,9 +606,9 @@ int print_src_line(
                     ep_pos = next;
                     continue;
                 }
-        }
+            }
             ep_pos = next;
-        pect(ANSICOLOR_CLEAR, "\n");
+            pect(ANSICOLOR_CLEAR, "\n");
             break;
         }
     }
@@ -727,9 +727,13 @@ int report_error(error* e)
             } break;
             case ET_MULTI_ANNOT: {
                 // TODO: cap at index 3
-                static char* msg_colors[] = {ANSICOLOR_BOLD ANSICOLOR_RED,
-                                             ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
-                                             ANSICOLOR_BOLD ANSICOLOR_CYAN};
+                static char* msg_colors[] = {
+                    ANSICOLOR_BOLD ANSICOLOR_RED,
+                    ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
+                    ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
+                    ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
+                    ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
+                };
                 error_multi_annotated* ema = (error_multi_annotated*)e;
                 err_points[0].line = pos.line;
                 err_points[0].file = e->file;
