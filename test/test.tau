@@ -2,8 +2,6 @@
 public func printf(x: string, y: int, c: int);
 
 
-xxx := yyy;
-yyy := xxx;
 func foo()-> int {
    return z;
 }

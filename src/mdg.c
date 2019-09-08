@@ -287,9 +287,13 @@ int mdg_node_parsed(module_dependency_graph* m, mdg_node* n, thread_context* tc)
     if (n->stage == MS_PARSING) {
         n->stage = MS_AWAITING_DEPENDENCIES;
     }
-    else {
-        assert(n->stage == MS_UNNEEDED);
+    else if (n->stage == MS_UNNEEDED) {
         n->stage = MS_AWAITING_NEED;
+        run_scc = false;
+    }
+    else {
+        // this happens for example when a module is redeclared
+        assert(n->stage == MS_AWAITING_NEED);
         run_scc = false;
     }
     rwslock_end_write(&n->stage_lock);
