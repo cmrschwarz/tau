@@ -108,6 +108,7 @@ LLVMBackend::LLVMBackend(thread_context* tc)
     opt.ThreadModel = llvm::ThreadModel::POSIX;
     llvm::Optional<llvm::CodeModel::Model> CM = llvm::CodeModel::Small;
     llvm::CodeGenOpt::Level OptLevel = llvm::CodeGenOpt::None;
+
     _target_machine = target->createTargetMachine(
         target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
         llvm::Optional<llvm::Reloc::Model>(), CM, OptLevel);
@@ -117,10 +118,11 @@ LLVMBackend::LLVMBackend(thread_context* tc)
 LLVMBackend::~LLVMBackend()
 {
     for (ureg i = 0; i != _global_value_store.size(); i++) {
-
         auto val = (llvm::Value*)_global_value_store[i];
         if (val) val->deleteValue();
     }
+    delete _data_layout;
+    delete _target_machine;
 }
 
 int LLVMBackend::InitLLVMBackend(LLVMBackend* llvmb, thread_context* tc)

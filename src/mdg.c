@@ -218,7 +218,7 @@ static void free_body_symtabs(ast_node* node, ast_body* b)
 }
 void mdg_node_fin(mdg_node* n)
 {
-    if (n->stage > MS_RESOLVING) {
+    if (n->stage >= MS_RESOLVING) {
         symbol_table_fin(n->symtab);
     }
     if (n->stage > MS_PARSING) {
