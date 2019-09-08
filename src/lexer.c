@@ -142,14 +142,9 @@ static inline int lx_load_file_buffer(lexer* tk, char** holding)
     if (siz == 0) {
         if (ferror(tk->file->file_stream)) {
             tk->status = LX_STATUS_IO_ERROR;
-            error* e = (error*)error_log_alloc(&tk->tc->err_log, sizeof(error));
-            if (!e) return ERR;
-            e->file = tk->file;
-            e->stage = ES_TOKENIZER;
-            e->kind = ET_ERROR;
-            e->position = tk->loaded_tokens_head->start;
-            e->message = "file io error";
-            error_log_report(&tk->tc->err_log, e);
+            error_log_report_simple(
+                &tk->tc->err_log, ES_TOKENIZER, false, "file io error",
+                tk->file, tk->loaded_tokens_head->start);
             return ERR;
         }
         if (tk->status == LX_STATUS_EOF) return 0;

@@ -524,17 +524,10 @@ static inline void parser_error_unexpected_token(
     parser* p, token* t, token_kind exp_tt, char* msg, char* ctx,
     ureg ctx_start, ureg ctx_end)
 {
-    char* expstr = "expected ";
-    ureg explen = strlen(expstr);
-    ureg toklen = strlen(token_strings[exp_tt]);
-    char* ann = (char*)error_log_alloc(&p->lx.tc->err_log, explen + toklen + 3);
-    if (!ann) return;
-    memcpy(ann, expstr, explen);
-    ann[explen] = '\'';
-    memcpy(ann + explen + 1, token_strings[exp_tt], toklen);
-    ann[explen + 1 + toklen] = '\'';
-    ann[explen + 1 + toklen + 1] = '\0';
-    parser_error_2a(p, msg, t->start, t->end, ann, ctx_start, ctx_end, ctx);
+    const char* strs[] = {"expected ", "'", token_strings[exp_tt], "'"};
+    char* annot = error_log_cat_strings(
+        &p->lx.tc->err_log, sizeof(strs) / sizeof(char*), strs);
+    parser_error_2a(p, msg, t->start, t->end, annot, ctx_start, ctx_end, ctx);
 }
 static inline void
 ast_node_init_with_flags(ast_node* n, ast_node_kind kind, ast_node_flags flags)
