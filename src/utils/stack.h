@@ -128,6 +128,17 @@ static inline void* stack_peek_nth(stack* s, int i)
     return res;
 }
 
+static inline ureg stack_size(stack* s)
+{
+    ureg size = ptrdiff(s->head, s->curr_seg_start);
+    stack_segment* seg = s->curr_seg->prev;
+    while (seg) {
+        size += ptrdiff(seg->end, seg) - sizeof(stack_segment);
+        seg = seg->prev;
+    }
+    return size / sizeof(void*);
+}
+
 static inline void
 stack_pop_to_list(stack* s, stack_state* start, stack_state* end, void** tgt)
 {
