@@ -57,6 +57,7 @@ int tauc_init()
 }
 int tauc_request_end()
 {
+    // TODO: make sure this only ever gets done once
     job jb;
     jb.kind = JOB_FINALIZE;
     ureg w, j;

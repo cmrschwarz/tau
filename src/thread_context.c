@@ -138,7 +138,6 @@ int thread_context_run(thread_context* tc)
         r = thread_context_do_job(tc, &j);
         if (r) {
             tauc_request_end();
-            break;
         }
     }
     debug_utils_free_res();
