@@ -566,29 +566,51 @@ int print_src_line(
             ep_pos++;
             continue;
         }
-        bool msg_before = space_before > msg_len + 2;
+        ureg col = 0;
+        while (true) {
+            ureg squig_len =
+                (ep_pos->col_end - ep_pos->col_start) +
+                (ep_pos->length_diff_end - ep_pos->length_diff_start);
+            bool msg_before = space_before + squig_len > msg_len + 2;
         if (msg_before) {
-            for (ureg i = 0; i < space_before - msg_len - 1; i++) pe(" ");
+                sreg blank_space = (sreg)space_before - msg_len;
+                for (sreg i = 0; i < blank_space; i++) pe(" ");
             pec(ep_pos->message_color);
             print_msg(ep_pos->message, msg_len);
-            pec(ANSICOLOR_CLEAR);
-            pe(" ");
+                pec(ep_pos->squigly_color);
+                if (blank_space > 0) {
+                    for (ureg i = 0; i != squig_len; i++) pe("^");
         }
         else {
-            for (ureg i = 0; i < space_before; i++) pe(" ");
+                    for (sreg i = ep_pos->col_start + blank_space;
+                         i != ep_pos->col_end; i++) {
+                        pe("^");
         }
+                }
+                col = ep_pos->col_end + ep_pos->length_diff_end;
+            }
+            else {
+                for (ureg i = 0; i < space_before; i++) pe(" ");
         pec(ep_pos->squigly_color);
-        for (ureg i = ep_pos->col_start + ep_pos->length_diff_start;
-             i < ep_pos->col_end + ep_pos->length_diff_end; i++) {
-            pe("^");
-        }
-        if (!msg_before) {
+                for (ureg i = 0; i != squig_len; i++) pe("^");
             pect(ANSICOLOR_CLEAR, " ");
             pec(ep_pos->message_color);
             pe(ep_pos->message);
+                col = ep_pos->col_end + ep_pos->length_diff_end + 1 + msg_len;
+            }
+            err_point* next = ep_pos + 1;
+            if (next != ep_end) {
+                if (col + 2 < next->col_start + next->length_diff_start) {
+                    space_before =
+                        next->col_start + next->length_diff_start - col;
+                    ep_pos = next;
+                    continue;
+                }
         }
+            ep_pos = next;
         pect(ANSICOLOR_CLEAR, "\n");
-        ep_pos++;
+            break;
+        }
     }
     return OK;
 }
