@@ -29,6 +29,7 @@ int job_queue_init(job_queue* jq)
 void job_queue_fin(job_queue* jq)
 {
     tfree(jq->buffer);
+    cond_var_fin(&jq->has_jobs);
     mutex_fin(&jq->lock);
 }
 static inline void job_queue_inc_ptr(job_queue* jq, job** ptr)

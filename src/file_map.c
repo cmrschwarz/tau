@@ -250,9 +250,10 @@ void file_map_fin(file_map* fm)
             }
         }
     }
+    tfree(fm->table_start);
+    mutex_fin(&fm->lock);
     pool_fin(&fm->string_mem_pool);
     pool_fin(&fm->file_mem_pool);
-    tfree(fm->table_start);
 }
 static inline file_map_head**
 file_map_get_head_unlocked(file_map* fm, src_dir* parent, string name)
