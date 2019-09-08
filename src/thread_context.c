@@ -128,8 +128,10 @@ int thread_context_run(thread_context* tc)
 {
     int r = OK;
     job j;
+    bool preordered = true;
     while (true) {
-        r = job_queue_pop(&TAUC.jobqueue, &j);
+        r = job_queue_pop(&TAUC.jobqueue, &j, preordered);
+        preordered = false;
         if (r == JQ_DONE) {
             r = OK;
             break;
@@ -137,6 +139,7 @@ int thread_context_run(thread_context* tc)
         if (r != OK) break;
         r = thread_context_do_job(tc, &j);
         if (r) {
+            job_queue_preorder_job(&TAUC.jobqueue);
             tauc_request_end();
         }
     }

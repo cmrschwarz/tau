@@ -1946,6 +1946,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     ast_node_init((ast_node*)&j->file->root, OSC_EXTEND);
     parse_error pe = parse_eof_delimited_open_scope(p, &j->file->root.oscope);
     lx_close_file(&p->lx);
+    job_queue_preorder_job(&TAUC.jobqueue);
     if (src_file_done_parsing(j->file, p->lx.tc)) pe = PE_FATAL;
     return pe;
 }

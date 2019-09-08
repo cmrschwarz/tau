@@ -51,7 +51,8 @@ void job_queue_fin(job_queue* jq);
 #define JQ_NONE STATUS_2
 // these return OK, ERR, or JQ_DONE
 int job_queue_push(job_queue* jq, const job* jb, ureg* waiters, ureg* jobs);
-int job_queue_pop(job_queue* jq, job* j);
+int job_queue_pop(job_queue* jq, job* j, bool has_preordered);
+int job_queue_preorder_job(job_queue* jq);
 int job_queue_try_pop(job_queue* jq, job* j);
 
 void job_queue_stop(job_queue* jq);

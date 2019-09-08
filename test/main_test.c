@@ -163,13 +163,13 @@ int job_queue_test()
             if (job_queue_push(&jq, &jb, &waiters, &jobs)) goto err;
             p++;
             if (i % 5 == 0) {
-                job_queue_pop(&jq, &jb);
+                job_queue_pop(&jq, &jb, false);
                 if ((uregh)jb.concrete.parse.requiring_srange != q) goto err;
                 q++;
             }
         }
         while (q < p) {
-            job_queue_pop(&jq, &jb);
+            job_queue_pop(&jq, &jb, false);
             if ((uregh)jb.concrete.parse.requiring_srange != q) goto err;
             q++;
         }

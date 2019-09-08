@@ -97,6 +97,7 @@ void tauc_fin()
 int tauc_run(int argc, char** argv)
 {
     if (argc < 2) return 0;
+    job_queue_preorder_job(&TAUC.jobqueue);
     for (int i = 1; i < argc; i++) {
         src_file* f = file_map_get_file_from_path(
             &TAUC.filemap, string_from_cstr(argv[i]));
@@ -116,6 +117,8 @@ void worker_thread_fn(void* ctx)
 }
 int tauc_add_worker_thread()
 {
+    // preorder a job for the new thread
+    job_queue_preorder_job(&TAUC.jobqueue);
     // TODO: better mem management
     worker_thread* wt = tmalloc(sizeof(worker_thread));
     if (!wt) return ERR;
@@ -157,8 +160,7 @@ int tauc_add_job(job* j)
     ureg waiters, jobs;
     int r = job_queue_push(&TAUC.jobqueue, j, &waiters, &jobs);
     if (r) return r;
-    // TODO: tweak spawn condition
-    if (jobs > waiters + 1) {
+    if (jobs > waiters) {
         ureg max_tc = plattform_get_virt_core_count();
         ureg tc = atomic_ureg_load(&TAUC.thread_count);
         if (tc < max_tc) {

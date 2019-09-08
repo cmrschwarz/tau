@@ -56,21 +56,20 @@ int job_queue_try_pop(job_queue* jq, job* j)
     mutex_unlock(&jq->lock);
     return r;
 }
-int job_queue_pop(job_queue* jq, job* j)
+int job_queue_pop(job_queue* jq, job* j, bool has_preordered)
 {
     mutex_lock(&jq->lock);
     if (jq->head == jq->tail) {
-        jq->waiters++;
+        if (!has_preordered) jq->waiters++;
         do {
-            if (jq->jobs == UREG_MAX) {
-                jq->waiters--;
-                mutex_unlock(&jq->lock);
-                return JQ_DONE;
-            }
+            if (jq->jobs == UREG_MAX) break;
             assert(jq->waiters < atomic_ureg_load(&TAUC.thread_count));
             cond_var_wait(&jq->has_jobs, &jq->lock);
         } while (jq->head == jq->tail);
         jq->waiters--;
+    }
+    else {
+        if (has_preordered) jq->waiters--;
     }
     if (jq->jobs == UREG_MAX) {
         mutex_unlock(&jq->lock);
@@ -122,7 +121,13 @@ int job_queue_push(job_queue* jq, const job* jb, ureg* waiters, ureg* jobs)
     if (*waiters > 0) cond_var_notify_one(&jq->has_jobs);
     return OK;
 }
-
+int job_queue_preorder_job(job_queue* jq)
+{
+    mutex_lock(&jq->lock);
+    jq->waiters++;
+    mutex_unlock(&jq->lock);
+    return OK;
+}
 void job_queue_stop(job_queue* jq)
 {
     mutex_lock(&jq->lock);
