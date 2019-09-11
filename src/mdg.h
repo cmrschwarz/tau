@@ -124,4 +124,5 @@ void scc_detector_fin(scc_detector* d);
 
 int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc);
 
+void free_body_symtabs(ast_node* node, ast_body* b);
 #endif

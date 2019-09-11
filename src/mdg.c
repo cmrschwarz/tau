@@ -133,7 +133,7 @@ mdg_node* mdg_node_create(
     n->symtab = NULL;
     return n;
 }
-static void free_body_symtabs(ast_node* node, ast_body* b);
+void free_body_symtabs(ast_node* node, ast_body* b);
 static void free_astn_symtabs(ast_node* n)
 {
     if (!n) return;
@@ -198,7 +198,7 @@ static void free_astn_symtabs(ast_node* n)
         default: break;
     }
 }
-static void free_body_symtabs(ast_node* node, ast_body* b)
+void free_body_symtabs(ast_node* node, ast_body* b)
 {
     // delete children first since children might contain parent symtab
     // pointer
@@ -221,7 +221,7 @@ void mdg_node_fin(mdg_node* n)
     if (n->stage >= MS_RESOLVING) {
         symbol_table_fin(n->symtab);
     }
-    if (n->stage > MS_PARSING) {
+    if (n->stage >= MS_PARSING) {
         aseglist_iterator it;
         aseglist_iterator_begin(&it, &n->open_scopes);
         while (true) {

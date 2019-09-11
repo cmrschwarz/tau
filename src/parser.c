@@ -1940,7 +1940,13 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     parse_error pe = parse_eof_delimited_open_scope(p, &j->file->root.oscope);
     lx_close_file(&p->lx);
     job_queue_preorder_job(&TAUC.jobqueue);
-    if (src_file_done_parsing(j->file, p->lx.tc)) pe = PE_FATAL;
+    if (!pe) {
+        if (src_file_done_parsing(j->file, p->lx.tc)) pe = PE_FATAL;
+    }
+    else {
+        free_body_symtabs(
+            &j->file->root.oscope.scp, &j->file->root.oscope.scp.body);
+    }
     return pe;
 }
 static inline const char* access_modifier_string(access_modifier am)
@@ -2797,7 +2803,8 @@ parse_error parse_import_with_parent(
         has_ident = true;
         parent = mdg_get_node(&TAUC.mdg, parent, t->str, MS_NOT_FOUND);
         // if the node doesn't exist it gets created here,
-        // we will find out (and report) once all required files are parsed if
+        // we will find out (and report) once all required files are parsed
+        // if
         // it is actually missing. NULL just means allocation failiure
         if (!parent) return PE_FATAL;
         end = t->end;
