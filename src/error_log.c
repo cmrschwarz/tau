@@ -139,7 +139,7 @@ error* error_log_create_error(
     error_fill(
         &e->err_annot.err, stage, warn, ET_MULTI_ANNOT, message, file, start);
     e->annot_count = 0; // will increase with each annotation added
-    e->err_annot.annotation = message;
+    e->err_annot.annotation = annot;
     e->err_annot.end = end;
     return (error*)e;
 }
@@ -359,11 +359,12 @@ int open_src_file(src_file* file)
     return OK;
 }
 // TODO: allow putting annotation above with  vvv/,,, error here or
+// TODO: redo this mess
 int print_src_line(
     src_file* file, ureg line, ureg max_line_length, err_point* ep_start,
     err_point* ep_end)
 {
-    while (ep_start && ep_end - 1 > ep_start) {
+    while (ep_start && ep_end - 1 >= ep_start) {
         if ((ep_end - 1)->message == NULL) {
             ep_end--;
         }
@@ -388,6 +389,7 @@ int print_src_line(
     sreg length_diff = 0;
     bool past_whitespace = false;
     while (!end_of_line) {
+        ureg end = 0;
         ureg buff_len;
         if (length != 0) {
             ureg tgt = length - 1;
@@ -434,7 +436,8 @@ int print_src_line(
             buffer[buff_len - 3] = '.';
             buffer[buff_len - 2] = '.';
             buffer[buff_len - 1] = '.';
-            ep_pos->col_end = length;
+            end = length;
+            //        ep_pos->col_end = length;
         }
         if (!past_whitespace) {
             while (pos < length && buffer[pos] == ' ') {
@@ -456,7 +459,7 @@ int print_src_line(
             }
         }
         ureg bpos = 0;
-        ureg end = pos + buff_len;
+        if (!end) end = pos + buff_len;
         while (pos < end && ep_pos != ep_end) {
             int mode;
             ureg next;
@@ -490,6 +493,7 @@ int print_src_line(
                     next = ep_pos->col_end;
                 }
             }
+            if (end_of_line && next > length) next = length;
             ureg d = next - pos;
             if (d > buff_len - bpos) break;
             ureg after_tab = bpos;
@@ -526,7 +530,7 @@ int print_src_line(
     }
     ep_pos = ep_end - 1;
 
-    ureg msg_len = ep_pos->message ? strlen(ep_pos->message) : 0;
+    ureg msg_len = strlen(ep_pos->message);
     if (ep_end != ep_start && msg_len > 0 &&
         ep_pos->col_end + has_newline == length &&
         length + length_diff + 4 + msg_len + 4 <=
@@ -542,7 +546,7 @@ int print_src_line(
         pe("\n");
     }
     ep_pos = ep_start;
-    while (ep_pos < ep_end) {
+    while (ep_pos != ep_end) {
         if (ep_pos->col_end == ep_pos->col_start) {
             ep_pos++;
             continue;
@@ -603,8 +607,11 @@ int print_src_line(
                 if (col + 2 < next->col_start + next->length_diff_start) {
                     space_before =
                         next->col_start + next->length_diff_start - col;
+                    while (next != ep_end && next->col_end == next->col_start) {
+                        next++;
+                    }
                     ep_pos = next;
-                    continue;
+                    if (ep_pos != ep_end) continue;
                 }
             }
             ep_pos = next;
@@ -730,9 +737,9 @@ int report_error(error* e)
                 static char* msg_colors[] = {
                     ANSICOLOR_BOLD ANSICOLOR_RED,
                     ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
-                    ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
-                    ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
-                    ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
+                    ANSICOLOR_BOLD ANSICOLOR_CYAN,
+                    ANSICOLOR_BOLD ANSICOLOR_GREEN,
+                    ANSICOLOR_BOLD ANSICOLOR_YELLOW,
                 };
                 error_multi_annotated* ema = (error_multi_annotated*)e;
                 err_points[0].line = pos.line;
