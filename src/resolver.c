@@ -1255,11 +1255,27 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
     }
     re = resolve_ast_node(r, fn->return_type, st, &fn->return_ctype);
     if (re) return re;
-    for (ast_node** n = b->elements; *n != NULL; n++) {
+    ast_node** n = b->elements;
+    while (*n) {
         re = add_ast_node_decls(r, st, NULL, *n, false);
         if (re) return re;
         re = resolve_ast_node(r, *n, st, NULL);
         if (re) return re;
+        n++;
+    }
+    if (n != b->elements && (**(n - 1)).kind != EXPR_RETURN &&
+        fn->return_ctype != &PRIMITIVES[PT_VOID]) {
+        ureg brace_end = src_range_get_end(fn->scp.body.srange);
+        src_file* f = ast_node_get_file((ast_node*)fn, parent_st);
+        error_log_report_annotated_thrice(
+            &r->tc->err_log, ES_RESOLVER, false, "expected return statement", f,
+            brace_end - 1, brace_end, "missing return statement", f,
+            src_range_get_start(fn->return_type->srange),
+            src_range_get_end(fn->return_type->srange),
+            "function returns non void type", f,
+            src_range_get_start(fn->scp.sym.node.srange),
+            src_range_get_end(fn->scp.sym.node.srange), NULL);
+        return RE_TYPE_MISSMATCH;
     }
     ast_node_flags_set_resolved(&fn->scp.sym.node.flags);
     return RE_OK;
