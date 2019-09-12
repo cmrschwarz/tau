@@ -1945,7 +1945,8 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     }
     else {
         free_body_symtabs(
-            &j->file->root.oscope.scp, &j->file->root.oscope.scp.body);
+            (ast_node*)&j->file->root.oscope.scp,
+            &j->file->root.oscope.scp.body);
     }
     return pe;
 }

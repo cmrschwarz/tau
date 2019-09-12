@@ -11,8 +11,8 @@
 
 resolve_error
 resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype);
-resolve_error resolve_body(resolver* r, ast_body* b);
-resolve_error resolve_ast_node(
+resolve_error resolve_body_reporting_loops(resolver* r, ast_body* b);
+static inline resolve_error resolve_ast_node(
     resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
     ast_elem** ctype);
 resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st);
@@ -705,15 +705,14 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
         default: return (ast_elem*)s;
     }
 }
-void set_break_target_ctype(ast_node* n, ast_elem* ctype)
+ast_elem** get_break_target_ctype(ast_node* n)
 {
     switch (n->kind) {
-        case EXPR_BLOCK: ((expr_block*)n)->ctype = ctype; break;
-        case EXPR_IF: ((expr_if*)n)->ctype = ctype; break;
-        case EXPR_LOOP: ((expr_loop*)n)->ctype = ctype; break;
+        case EXPR_BLOCK: return &((expr_block*)n)->ctype;
+        case EXPR_IF: return &((expr_if*)n)->ctype;
+        case EXPR_LOOP: return &((expr_loop*)n)->ctype;
         default: assert(false);
     }
-    ast_node_flags_set_resolved(&n->flags);
 }
 resolve_error get_resolved_symbol_symtab(
     resolver* r, symbol* s, access_modifier* access, symbol_table** tgt_st)
@@ -883,13 +882,7 @@ resolve_error resolve_ast_node_raw(
     }
     else {
         if (ast_node_flags_get_resolving(n->flags)) {
-            bool labelable;
-            ast_elem_get_label((ast_elem*)n, &labelable);
-            // AST_NODE_KIND_ERROR means we explicitly intend to
-            // trigger the type loop error here
-            if (labelable && n->kind != AST_NODE_KIND_ERROR)
-                return RE_REQUIRES_BODY_TYPE;
-            // assert(false);
+            r->type_loop_start = n;
             return RE_TYPE_LOOP;
         }
         ast_node_flags_set_resolving(&n->flags);
@@ -913,9 +906,9 @@ resolve_error resolve_ast_node_raw(
             symbol** s = symbol_table_lookup_with_decl(
                 st, AM_UNSPECIFIED, e->value.str, &sym_st);
             if (!s) return report_unknown_symbol(r, n, st);
-            e->value.sym = *s;
             re = resolve_ast_node(r, (ast_node*)*s, sym_st, value, ctype);
             if (re) return re;
+            e->value.sym = *s;
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }
@@ -977,7 +970,7 @@ resolve_error resolve_ast_node_raw(
         case SC_TRAIT_GENERIC: {
             if (ctype) *ctype = (ast_elem*)n;
             if (resolved) return RE_OK;
-            re = resolve_body(r, &((scope*)n)->body);
+            re = resolve_body_reporting_loops(r, &((scope*)n)->body);
             if (re) return re;
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
@@ -1035,8 +1028,11 @@ resolve_error resolve_ast_node_raw(
         case SYM_VAR: {
             sym_var* v = (sym_var*)n;
             if (resolved) RETURN_RESOLVED(value, ctype, v, v->ctype);
+            symbol* prev_sym_decl = r->curr_symbol_decl;
+            r->curr_symbol_decl = (symbol*)v;
             ast_elem* type;
             re = resolve_ast_node(r, v->type, st, &type, NULL);
+            r->curr_symbol_decl = prev_sym_decl;
             if (re) return re;
             v->ctype = type;
             ast_node_flags_set_resolved(&n->flags);
@@ -1047,35 +1043,39 @@ resolve_error resolve_ast_node_raw(
             if (resolved) {
                 RETURN_RESOLVED(value, ctype, vi, vi->var.ctype);
             }
+            symbol* prev_sym_decl = r->curr_symbol_decl;
+            r->curr_symbol_decl = (symbol*)vi;
             if (vi->var.type) {
                 re =
                     resolve_ast_node(r, vi->var.type, st, &vi->var.ctype, NULL);
-                if (re) return re;
-                ast_elem* val_type;
-                re =
-                    resolve_ast_node(r, vi->initial_value, st, NULL, &val_type);
-                if (re) return re;
-                if (!ctypes_unifiable(vi->var.ctype, val_type)) {
-                    error_log_report_annotated_twice(
-                        &r->tc->err_log, ES_RESOLVER, false,
-                        "type missmatch in variable declaration",
-                        ast_node_get_file(vi->var.type, st),
-                        src_range_get_start(vi->var.type->srange),
-                        src_range_get_end(vi->var.type->srange),
-                        "declared type here",
-                        ast_node_get_file(vi->initial_value, st),
-                        src_range_get_start(vi->initial_value->srange),
-                        src_range_get_end(vi->initial_value->srange),
-                        "doesn' t match type of the initial value");
-                    return RE_TYPE_MISSMATCH;
+                if (!re) {
+                    ast_elem* val_type;
+                    re = resolve_ast_node(
+                        r, vi->initial_value, st, NULL, &val_type);
+                    if (!re) {
+                        if (!ctypes_unifiable(vi->var.ctype, val_type)) {
+                            error_log_report_annotated_twice(
+                                &r->tc->err_log, ES_RESOLVER, false,
+                                "type missmatch in variable declaration",
+                                ast_node_get_file(vi->var.type, st),
+                                src_range_get_start(vi->var.type->srange),
+                                src_range_get_end(vi->var.type->srange),
+                                "declared type here",
+                                ast_node_get_file(vi->initial_value, st),
+                                src_range_get_start(vi->initial_value->srange),
+                                src_range_get_end(vi->initial_value->srange),
+                                "doesn' t match type of the initial value");
+                            re = RE_TYPE_MISSMATCH;
+                        }
+                    }
                 }
             }
             else {
                 re = resolve_ast_node(
                     r, vi->initial_value, st, NULL, &vi->var.ctype);
-                if (re) return re;
-                if (ctype) *ctype = vi->var.ctype;
             }
+            r->curr_symbol_decl = prev_sym_decl;
+            if (re) return re;
             ast_node_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, vi, vi->var.ctype);
         }
@@ -1085,21 +1085,17 @@ resolve_error resolve_ast_node_raw(
             if (resolved) RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
             expr_break* b = (expr_break*)n;
             re = resolve_ast_node(r, b->value, st, NULL, &b->value_ctype);
-            if (re) {
-                if (re != RE_REQUIRES_BODY_TYPE) return re;
-                b->value_ctype = NULL;
-            }
-            else {
-                ast_node_flags_set_resolved(&n->flags);
-            }
-
+            if (re) return re;
+            ast_node_flags_set_resolved(&n->flags);
             ast_elem* tgt_type;
             if (n->kind == EXPR_BREAK) {
-                re = resolve_ast_node(r, b->target, st, NULL, &tgt_type);
-                if (re) {
-                    if (re != RE_REQUIRES_BODY_TYPE) return re;
-                    if (b->value_ctype == NULL) return RE_REQUIRES_BODY_TYPE;
-                    set_break_target_ctype(b->target, b->value_ctype);
+                ast_elem** tgtt = get_break_target_ctype(b->target);
+                if (ast_node_flags_get_resolved(b->target->flags)) {
+                    tgt_type = *tgtt;
+                }
+                else {
+                    ast_node_flags_set_resolved(&b->target->flags);
+                    *tgtt = b->value_ctype;
                     RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
                 }
             }
@@ -1108,6 +1104,7 @@ resolve_error resolve_ast_node_raw(
                 tgt_type = ((sc_func*)b->target)->return_ctype;
             }
             else {
+                assert(b->target->kind == SC_FUNC_GENERIC);
                 tgt_type = ((sc_func_generic*)b->target)->return_ctype;
             }
             if (!ctypes_unifiable(b->value_ctype, tgt_type)) {
@@ -1204,18 +1201,19 @@ resolve_error resolve_ast_node_raw(
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
-resolve_error resolve_ast_node(
+static inline resolve_error resolve_ast_node(
     resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
     ast_elem** ctype)
 {
     resolve_error re = resolve_ast_node_raw(r, n, st, value, ctype);
-    if (re == RE_OK) return RE_OK;
     if (re == RE_TYPE_LOOP) {
-        stack_push(&r->error_stack, st);
-        stack_push(&r->error_stack, n);
-    }
-    else if (re == RE_REQUIRES_BODY_TYPE) {
-        ast_node_flags_clear_resolving(&n->flags);
+        if (r->allow_type_loops) {
+            ast_node_flags_clear_resolving(&n->flags);
+        }
+        else {
+            stack_push(&r->error_stack, st);
+            stack_push(&r->error_stack, n);
+        }
     }
     return re;
 }
@@ -1244,24 +1242,52 @@ static inline void report_type_loop(resolver* r)
     stack_pop(&r->error_stack);
     error_log_report(&r->tc->err_log, e);
 }
+static inline resolve_error resolve_ast_node_reporting_loops(
+    resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
+    ast_elem** ctype)
+{
+    resolve_error re = resolve_ast_node(r, n, st, value, ctype);
+    if (re == RE_TYPE_LOOP) {
+        report_type_loop(r);
+        return RE_ERROR;
+    }
+    return re;
+}
 resolve_error resolve_expr_body(
     resolver* r, ast_node* expr, ast_body* b, symbol_table* parent_st)
 {
+    symbol* curr_sym = r->curr_symbol_decl;
+    r->curr_symbol_decl = NULL;
+    bool parent_allows_type_loops = r->allow_type_loops;
+    r->allow_type_loops = true;
     resolve_error re;
     bool second_pass = false;
+    bool parenting_type_loop = false;
     for (ast_node** n = b->elements; *n != NULL; n++) {
         re = resolve_ast_node(r, *n, b->symtab, NULL, NULL);
-        if (re == RE_REQUIRES_BODY_TYPE) {
-            second_pass = true;
+        if (!re) continue;
+        if (re == RE_TYPE_LOOP) {
+            re = RE_OK;
+            if (r->type_loop_start == (ast_node*)curr_sym) {
+                second_pass = true;
+            }
+            else {
+                parenting_type_loop = true;
+            }
             continue;
         }
-        if (re) return re;
+        r->allow_type_loops = parent_allows_type_loops;
+        r->curr_symbol_decl = curr_sym;
+        return re;
+    }
+    r->allow_type_loops = parent_allows_type_loops;
+    r->curr_symbol_decl = curr_sym;
+    if (parenting_type_loop) {
+        return RE_TYPE_LOOP;
     }
     if (!ast_node_flags_get_resolved(expr->flags)) {
         // TODO: error msg
         if (!second_pass) assert(false);
-        // will cause resolve to trigger type loop error on first loop
-        expr->kind = AST_NODE_KIND_ERROR;
     }
     if (second_pass) {
         for (ast_node** n = b->elements; *n != NULL; n++) {
@@ -1287,7 +1313,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
     while (*n) {
         re = add_ast_node_decls(r, st, NULL, *n, false);
         if (re) return re;
-        re = resolve_ast_node(r, *n, st, NULL, NULL);
+        re = resolve_ast_node_reporting_loops(r, *n, st, NULL, NULL);
         if (re) return re;
         n++;
     }
@@ -1308,20 +1334,14 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
     ast_node_flags_set_resolved(&fn->scp.sym.node.flags);
     return RE_OK;
 }
-resolve_error resolve_body(resolver* r, ast_body* b)
+resolve_error resolve_body_reporting_loops(resolver* r, ast_body* b)
 {
     resolve_error re;
     for (ast_node** n = b->elements; *n != NULL; n++) {
-        re = resolve_ast_node(r, *n, b->symtab, NULL, NULL);
+        re = resolve_ast_node_reporting_loops(r, *n, b->symtab, NULL, NULL);
         if (re) return re;
     }
     return RE_OK;
-}
-resolve_error resolve_body_reporting_loops(resolver* r, ast_body* b)
-{
-    resolve_error re = resolve_body(r, b);
-    if (re == RE_TYPE_LOOP) report_type_loop(r);
-    return re;
 }
 void adjust_node_ids(ureg sym_offset, ast_node* n)
 {
@@ -1425,6 +1445,9 @@ void resolver_fin(resolver* r)
 int resolver_init(resolver* r, thread_context* tc)
 {
     r->tc = tc;
+    r->allow_type_loops = false;
+    r->curr_symbol_decl = NULL;
+    r->type_loop_start = NULL;
     if (stack_init(&r->error_stack, &r->tc->tempmem)) return ERR;
     if (sbuffer_init(&r->call_types, sizeof(ast_node*) * 32)) {
         stack_fin(&r->error_stack);

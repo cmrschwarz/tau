@@ -8,6 +8,7 @@
 typedef enum resolve_error {
     RE_FATAL = -1,
     RE_OK = 0,
+    RE_ERROR,
     RE_NOT_APPLICABLE,
     RE_TYPE_MISSMATCH,
     RE_SYMBOL_REDECLARATION,
@@ -28,6 +29,9 @@ typedef struct resolver_s {
     ureg private_sym_count;
     open_scope* curr_osc;
     mdg_node* curr_mdg;
+    symbol* curr_symbol_decl;
+    ast_node* type_loop_start;
+    bool allow_type_loops;
 } resolver;
 
 int resolver_init(resolver* r, thread_context* tc);

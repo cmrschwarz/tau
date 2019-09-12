@@ -73,7 +73,6 @@ typedef enum PACK_ENUM ast_node_kind_e {
     TYPE_TUPLE,
     TYPE_MODIFIERS,
     ELEM_MDG_NODE,
-    AST_NODE_KIND_ERROR,
 
 } ast_node_kind;
 
