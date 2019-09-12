@@ -3,7 +3,7 @@ public func printf(x: string, y: int, c: int);
 
 
 func foo()-> int {
-   return z;
+   return 7;
 }
 
 public func main() -> int{

@@ -12,9 +12,14 @@
                 .next = NULL},                                                 \
     }
 primitive PRIMITIVES[] = {
-    mk_prim(PT_VOID, "void"),     mk_prim(PT_INT, "int"),
-    mk_prim(PT_UINT, "uint"),     mk_prim(PT_FLOAT, "float"),
-    mk_prim(PT_STRING, "string"), mk_prim(PT_BINARY_STRING, "bstring"),
+    mk_prim(PT_VOID, "void"),
+    mk_prim(PT_UNREACHABLE, "unreachable"),
+    mk_prim(PT_INT, "int"),
+    mk_prim(PT_UINT, "uint"),
+    mk_prim(PT_FLOAT, "float"),
+    mk_prim(PT_STRING, "string"),
+    mk_prim(PT_BINARY_STRING, "bstring"),
+
 };
 
 src_file* open_scope_get_file(open_scope* s)

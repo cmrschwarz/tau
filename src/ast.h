@@ -141,6 +141,7 @@ typedef enum PACK_ENUM operator_kind_e {
 
 typedef enum PACK_ENUM primitive_kind_e {
     PT_VOID,
+    PT_UNREACHABLE,
     PT_INT,
     PT_UINT,
     PT_FLOAT,
@@ -530,7 +531,7 @@ typedef struct primitive_s {
     ureg alignment;
 } primitive;
 
-extern primitive PRIMITIVES[PRIMITIVE_COUNT];
+extern primitive PRIMITIVES[];
 
 int ast_type_node_get_mod_count(ast_type_node atn);
 ast_type_mod ast_type_node_get_mod_n(ast_type_node atn, int n);

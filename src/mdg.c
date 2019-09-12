@@ -34,7 +34,7 @@ int mdg_init(module_dependency_graph* m)
     if (r) return mdg_fin_partial(m, 6, r);
     r = pool_init(&m->node_pool);
     if (r) return mdg_fin_partial(m, 5, r);
-    r = evmap2_init(&m->evm, MDG_MAX_CHANGES - MDG_MAX_CHANGES_PER_WRITE);
+    r = evmap2_init(&m->evm, MDG_MAX_CHANGES);
     if (r) return mdg_fin_partial(m, 4, r);
     r = mdght_init(&m->mdghts[0]);
     if (r) return mdg_fin_partial(m, 3, r);

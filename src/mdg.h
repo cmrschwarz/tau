@@ -66,7 +66,6 @@ typedef struct mdg_deps_list_s {
 } mdg_deps_list;
 
 #define MDG_MAX_CHANGES 16
-#define MDG_MAX_CHANGES_PER_WRITE 2
 typedef struct module_dependency_graph_s {
     evmap2 evm;
     pool node_pool;

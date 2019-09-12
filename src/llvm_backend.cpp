@@ -167,6 +167,7 @@ void LLVMBackend::addPrimitives()
                 }
             } break;
             case PT_VOID: t = _builder.getVoidTy(); break;
+            case PT_UNREACHABLE: t = NULL; break;
             default: assert(false); return;
         }
         _primitive_types[i] = t;
