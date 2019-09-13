@@ -32,6 +32,7 @@ typedef struct resolver_s {
     symbol* curr_symbol_decl;
     ast_node* type_loop_start;
     bool allow_type_loops;
+    bool retracing_type_loop;
 } resolver;
 
 int resolver_init(resolver* r, thread_context* tc);

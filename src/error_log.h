@@ -99,7 +99,8 @@ void error_log_report_simple(
 
 error* error_log_create_error(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start, ureg end, const char* annot, ureg annot_count);
+    src_file* file, ureg start, ureg end, const char* annot,
+    ureg extra_annot_count);
 void error_add_annotation(
     error* e, src_file* file, ureg start, ureg end, const char* message);
 

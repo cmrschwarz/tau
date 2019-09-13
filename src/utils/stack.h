@@ -89,6 +89,14 @@ static inline void* stack_pop(stack* s)
     s->head--;
     return *s->head;
 }
+static inline void stack_clear(stack* s)
+{
+    while (s->curr_seg->prev) {
+        s->curr_seg = s->curr_seg->prev;
+    }
+    stack_set_curr_seg(s, s->curr_seg);
+    s->head = s->curr_seg_start;
+}
 static inline void* stack_peek(stack* s)
 {
     if (s->head != s->curr_seg_start) return *(s->head - 1);

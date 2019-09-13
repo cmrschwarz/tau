@@ -120,10 +120,10 @@ void error_log_report_simple(
 
 error* error_log_create_error(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start, ureg end, const char* annot, ureg annot_count)
+    src_file* file, ureg start, ureg end, const char* annot,
+    ureg extra_annot_count)
 {
-    assert(annot_count != 0);
-    if (annot_count == 1) {
+    if (extra_annot_count == 0) {
         error_annotated* e =
             (error_annotated*)error_log_alloc(el, sizeof(error_annotated));
         if (!e) return NULL; // TODO: report this
@@ -133,8 +133,8 @@ error* error_log_create_error(
         return (error*)e;
     }
     error_multi_annotated* e = (error_multi_annotated*)error_log_alloc(
-        el,
-        sizeof(error_multi_annotated) + sizeof(error_annotation) * annot_count);
+        el, sizeof(error_multi_annotated) +
+                sizeof(error_annotation) * extra_annot_count);
     if (!e) return NULL; // TODO: report this
     error_fill(
         &e->err_annot.err, stage, warn, ET_MULTI_ANNOT, message, file, start);
@@ -164,7 +164,7 @@ void error_log_report_annotated(
     src_file* file, ureg start, ureg end, const char* annotation)
 {
     error* e = error_log_create_error(
-        el, stage, warn, message, file, start, end, annotation, 1);
+        el, stage, warn, message, file, start, end, annotation, 0);
     error_log_report(el, e);
 }
 void error_log_report_annotated_twice(
@@ -173,7 +173,7 @@ void error_log_report_annotated_twice(
     src_file* file2, ureg start2, ureg end2, const char* annotation2)
 {
     error* e = error_log_create_error(
-        el, stage, warn, message, file, start, end, annotation, 2);
+        el, stage, warn, message, file, start, end, annotation, 1);
     error_add_annotation(e, file2, start2, end2, annotation2);
     error_log_report(el, e);
 }
@@ -184,7 +184,7 @@ void error_log_report_annotated_thrice(
     src_file* file3, ureg start3, ureg end3, const char* annotation3)
 {
     error* e = error_log_create_error(
-        el, stage, warn, message, file, start, end, annotation, 3);
+        el, stage, warn, message, file, start, end, annotation, 2);
     error_add_annotation(e, file2, start2, end2, annotation2);
     error_add_annotation(e, file3, start3, end3, annotation3);
     error_log_report(el, e);

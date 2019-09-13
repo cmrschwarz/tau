@@ -11,8 +11,8 @@
 
 resolve_error
 resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype);
-resolve_error resolve_body_reporting_loops(resolver* r, ast_body* b);
-static inline resolve_error resolve_ast_node(
+resolve_error resolve_body(resolver* r, ast_body* b);
+static resolve_error resolve_ast_node(
     resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
     ast_elem** ctype);
 resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st);
@@ -864,7 +864,7 @@ resolve_error resolve_expr_member_accesss(
 }
 // the symbol table is not the one that contains the symbol, but the one
 // where it was declared and where the type name loopup should start
-resolve_error resolve_ast_node_raw(
+static inline resolve_error resolve_ast_node_raw(
     resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
     ast_elem** ctype)
 {
@@ -970,7 +970,7 @@ resolve_error resolve_ast_node_raw(
         case SC_TRAIT_GENERIC: {
             if (ctype) *ctype = (ast_elem*)n;
             if (resolved) return RE_OK;
-            re = resolve_body_reporting_loops(r, &((scope*)n)->body);
+            re = resolve_body(r, &((scope*)n)->body);
             if (re) return re;
             ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
@@ -1201,27 +1201,17 @@ resolve_error resolve_ast_node_raw(
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
-static inline resolve_error resolve_ast_node(
-    resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
-    ast_elem** ctype)
-{
-    resolve_error re = resolve_ast_node_raw(r, n, st, value, ctype);
-    if (re == RE_TYPE_LOOP) {
-        if (r->allow_type_loops) {
-            ast_node_flags_clear_resolving(&n->flags);
-        }
-        else {
-            stack_push(&r->error_stack, st);
-            stack_push(&r->error_stack, n);
-        }
-    }
-    return re;
-}
 static inline void report_type_loop(resolver* r)
 {
     ast_node* n = (ast_node*)stack_pop(&r->error_stack);
     symbol_table* st = (symbol_table*)stack_pop(&r->error_stack);
     assert(n && st);
+    ureg stack_s = stack_size(&r->error_stack);
+    if (stack_peek_nth(&r->error_stack, stack_s - 2) != n) {
+        r->retracing_type_loop = true;
+        stack_clear(&r->error_stack);
+        return resolve_ast_node(r, n, st, NULL, NULL);
+    }
     src_range_large srl;
     src_range_unpack(n->srange, &srl);
     if (!srl.file) srl.file = ast_node_get_file(n, st);
@@ -1242,14 +1232,24 @@ static inline void report_type_loop(resolver* r)
     stack_pop(&r->error_stack);
     error_log_report(&r->tc->err_log, e);
 }
-static inline resolve_error resolve_ast_node_reporting_loops(
+static resolve_error resolve_ast_node(
     resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
     ast_elem** ctype)
 {
-    resolve_error re = resolve_ast_node(r, n, st, value, ctype);
+    resolve_error re = resolve_ast_node_raw(r, n, st, value, ctype);
     if (re == RE_TYPE_LOOP) {
-        report_type_loop(r);
-        return RE_ERROR;
+        if (!r->allow_type_loops) {
+            stack_push(&r->error_stack, st);
+            stack_push(&r->error_stack, n);
+        }
+        if (r->type_loop_start == n) {
+            if (!ast_node_flags_get_resolving(n->flags)) {
+                ast_node_flags_clear_resolving(&n->flags);
+                report_type_loop(r);
+                return RE_ERROR;
+            }
+        }
+        ast_node_flags_clear_resolving(&n->flags);
     }
     return re;
 }
@@ -1259,7 +1259,7 @@ resolve_error resolve_expr_body(
     symbol* curr_sym = r->curr_symbol_decl;
     r->curr_symbol_decl = NULL;
     bool parent_allows_type_loops = r->allow_type_loops;
-    r->allow_type_loops = true;
+    if (!r->retracing_type_loop) r->allow_type_loops = true;
     resolve_error re;
     bool second_pass = false;
     bool parenting_type_loop = false;
@@ -1267,13 +1267,18 @@ resolve_error resolve_expr_body(
         re = resolve_ast_node(r, *n, b->symtab, NULL, NULL);
         if (!re) continue;
         if (re == RE_TYPE_LOOP) {
-            re = RE_OK;
             if (r->type_loop_start == (ast_node*)curr_sym) {
+                ast_node_flags_set_resolving(&curr_sym->node.flags);
+                if (r->retracing_type_loop) {
+                    stack_clear(&r->error_stack);
+                }
                 second_pass = true;
             }
             else {
                 parenting_type_loop = true;
+                if (r->retracing_type_loop) return RE_TYPE_LOOP;
             }
+            re = RE_OK;
             continue;
         }
         r->allow_type_loops = parent_allows_type_loops;
@@ -1292,6 +1297,8 @@ resolve_error resolve_expr_body(
     if (second_pass) {
         for (ast_node** n = b->elements; *n != NULL; n++) {
             re = resolve_ast_node(r, *n, b->symtab, NULL, NULL);
+            // TODO: if we have a type loop error,
+            // make it originate from a(?) break statement
             if (re) return re;
         }
     }
@@ -1313,7 +1320,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
     while (*n) {
         re = add_ast_node_decls(r, st, NULL, *n, false);
         if (re) return re;
-        re = resolve_ast_node_reporting_loops(r, *n, st, NULL, NULL);
+        re = resolve_ast_node(r, *n, st, NULL, NULL);
         if (re) return re;
         n++;
     }
@@ -1334,11 +1341,11 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
     ast_node_flags_set_resolved(&fn->scp.sym.node.flags);
     return RE_OK;
 }
-resolve_error resolve_body_reporting_loops(resolver* r, ast_body* b)
+resolve_error resolve_body(resolver* r, ast_body* b)
 {
     resolve_error re;
     for (ast_node** n = b->elements; *n != NULL; n++) {
-        re = resolve_ast_node_reporting_loops(r, *n, b->symtab, NULL, NULL);
+        re = resolve_ast_node(r, *n, b->symtab, NULL, NULL);
         if (re) return re;
     }
     return RE_OK;
@@ -1425,7 +1432,7 @@ resolve_error resolver_resolve(
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
             r->curr_osc = osc;
-            re = resolve_body_reporting_loops(r, &osc->scp.body);
+            re = resolve_body(r, &osc->scp.body);
             if (re) return re;
         }
     }

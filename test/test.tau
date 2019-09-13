@@ -3,6 +3,14 @@ public func printf(x: string, y: int, c: int);
 
 
 func foo()-> int {
+
+    x:= {
+        y:= {
+            break x;
+        };
+        break y;
+    };
+             
    return 7;
 }
 
