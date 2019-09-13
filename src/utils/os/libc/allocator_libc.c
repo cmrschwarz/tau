@@ -45,7 +45,8 @@ void talloc_fin()
 void* tmalloc(ureg size)
 {
     void* r = malloc(size);
-    // printf("alloc %zx\n", r);
+    //  printf("alloc %zx\n", r);
+    // fflush(stdout);
     count_alloc();
     return r;
 }
@@ -66,6 +67,7 @@ void tfree(void* mem)
 {
     count_free();
     // printf("free %zx\n", mem);
+    // fflush(stdout);
     free(mem);
 }
 

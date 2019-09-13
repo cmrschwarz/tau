@@ -24,6 +24,7 @@ int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
     ast_elem* owning_node)
 {
+    assert(*tgt == NULL);
     // we don't worry about ceiling the size to a power of two since
     // we will eventually pool allocate the symtabs which removes this
     // size constraint

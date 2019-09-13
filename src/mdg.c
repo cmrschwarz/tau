@@ -142,9 +142,7 @@ static void free_astn_symtabs(ast_node* n)
         if (!ast_elem_is_open_scope((ast_elem*)n)) {
             free_body_symtabs(n, &((scope*)n)->body);
         }
-        else {
-            return;
-        }
+        return;
     }
     switch (n->kind) {
         case EXPR_BREAK:
@@ -195,13 +193,36 @@ static void free_astn_symtabs(ast_node* n)
             }
         } break;
 
-        default: break;
+        case EXPR_OP_BINARY: {
+            expr_op_binary* ob = (expr_op_binary*)n;
+            free_astn_symtabs(ob->lhs);
+            free_astn_symtabs(ob->rhs);
+        } break;
+        case EXPR_OP_UNARY: {
+            free_astn_symtabs(((expr_op_unary*)n)->child);
+        } break;
+        case SYM_VAR_INITIALIZED: {
+            free_astn_symtabs(((sym_var_initialized*)n)->initial_value);
+        } // fallthrough
+        case SYM_VAR: {
+            free_astn_symtabs(((sym_var*)n)->type);
+        } break;
+        case EXPR_CALL: {
+            expr_call* c = (expr_call*)n;
+            for (ureg i = 0; i < c->arg_count; i++) {
+                free_astn_symtabs(c->args[i]);
+            }
+            free_astn_symtabs(c->lhs);
+        } break;
+        case EXPR_IDENTIFIER:
+        case EXPR_LITERAL: break;
+        default: assert(false);
     }
 }
 void free_body_symtabs(ast_node* node, ast_body* b)
 {
-    // delete children first since children might contain parent symtab
-    // pointer
+    // delete children first since children might contain that symtab
+    // pointer and check for it's owning node
     for (ast_node** n = b->elements; *n != NULL; n++) {
         free_astn_symtabs(*n);
     }

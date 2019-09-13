@@ -244,7 +244,8 @@ int print_filepath(ureg line_nr_offset, src_pos pos, src_file* file)
     return OK;
 }
 #define LINE_BUFFER_SIZE 128
-#define ERR_POINT_BUFFER_SIZE 8
+// TODO: somehow ensure this doesn't get overrun
+#define ERR_POINT_BUFFER_SIZE 16
 typedef struct err_point {
     src_file* file;
     ureg line;
@@ -741,6 +742,8 @@ int report_error(error* e)
                     ANSICOLOR_BOLD ANSICOLOR_GREEN,
                     ANSICOLOR_BOLD ANSICOLOR_YELLOW,
                 };
+                static ureg msg_color_count =
+                    sizeof(msg_colors) / sizeof(char*);
                 error_multi_annotated* ema = (error_multi_annotated*)e;
                 err_points[0].line = pos.line;
                 err_points[0].file = e->file;
@@ -768,9 +771,9 @@ int report_error(error* e)
                         (posi.column + (ea->end - ea->start));
                     err_points[err_point_count].message = ea->annotation;
                     err_points[err_point_count].message_color =
-                        (msg_colors[i + 1]);
+                        (msg_colors[(i + 1) % msg_color_count]);
                     err_points[err_point_count].squigly_color =
-                        (msg_colors[i + 1]);
+                        (msg_colors[(i + 1) % msg_color_count]);
                     end = src_map_get_pos(&ea->file->src_map, ea->end);
                     err_point_count += extend_em(
                         ea->file, &err_points[err_point_count], ea->annotation,
