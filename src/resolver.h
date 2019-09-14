@@ -30,6 +30,7 @@ typedef struct resolver_s {
     open_scope* curr_osc;
     mdg_node* curr_mdg;
     symbol* curr_symbol_decl;
+    ast_node* curr_expr_block_owner;
     ast_node* type_loop_start;
     bool allow_type_loops;
     bool retracing_type_loop;

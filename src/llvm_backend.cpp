@@ -66,9 +66,8 @@ int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
     }
     tput("} ");
     llvm_error lle;
-    TIME(
-        lle = linkLLVMModules(
-            (LLVMModule**)start, (LLVMModule**)end, output_path););
+    TIME(lle = linkLLVMModules(
+             (LLVMModule**)start, (LLVMModule**)end, output_path););
     tflush();
     if (lle) return ERR;
     return OK;
@@ -94,6 +93,7 @@ int llvm_initialize_primitive_information()
 }
 
 // CPP
+
 LLVMBackend::LLVMBackend(thread_context* tc)
     : _tc(tc), _context(), _builder(_context),
       _global_value_store(atomic_ureg_load(&TAUC.node_ids), NULL)
@@ -243,15 +243,20 @@ llvm_error LLVMBackend::addModulesIR(mdg_node** start, mdg_node** end)
         aseglist_iterator_begin(&it, &(**n).open_scopes);
         for (open_scope* osc = (open_scope*)aseglist_iterator_next(&it); osc;
              osc = (open_scope*)aseglist_iterator_next(&it)) {
-            llvm_error lle = addAstBodyIR(&osc->scp.body);
-            if (lle) return lle;
+            for (ast_node** n = osc->scp.body.elements; *n; n++) {
+                llvm_error lle = getAstNodeIR(*n, false, NULL);
+                if (lle) return lle;
+            }
         }
     }
     return LLE_OK;
 }
 llvm_error LLVMBackend::addAstBodyIR(ast_body* b)
 {
+    ControlFlowContext& ctx = _control_flow_ctx.back();
+    ctx.continues_afterwards = true;
     for (ast_node** n = b->elements; *n; n++) {
+        if (!*(n + 1)) ctx.continues_afterwards = false;
         llvm_error lle = getAstNodeIR(*n, false, NULL);
         if (lle) return lle;
     }
@@ -356,6 +361,28 @@ bool LLVMBackend::isLocalID(ureg id)
 bool LLVMBackend::isGlobalID(ureg id)
 {
     return !isLocalID(id);
+}
+llvm_error LLVMBackend::addIfBranch(ast_node* branch)
+{
+    ControlFlowContext& ctx = _control_flow_ctx.back();
+    _builder.SetInsertPoint(ctx.first_block);
+    llvm_error lle;
+    if (branch->kind == EXPR_BLOCK) {
+        // TODO: we might need to cast the expr block return type?
+        lle = addAstBodyIR(&((expr_block*)branch)->body);
+        if (lle) return lle;
+    }
+    else if (ctx.value) {
+        llvm::Value* v;
+        lle = getAstNodeIR(branch, true, &v);
+        if (lle) return lle;
+        if (!_builder.CreateStore(ctx.value, v)) return LLE_FATAL;
+    }
+    else {
+        lle = getAstNodeIR(branch, false, NULL);
+        if (lle) return lle;
+    }
+    return LLE_OK;
 }
 llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
 {
@@ -549,6 +576,72 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
         }
         case SYM_IMPORT_GROUP:
         case SYM_IMPORT_MODULE: return LLE_OK;
+        case EXPR_IF: {
+            expr_if* i = (expr_if*)n;
+            llvm::Value* cond;
+            lle = getAstNodeIR(i->condition, true, &cond);
+            if (lle) return lle;
+
+            ControlFlowContext* ctx = &_control_flow_ctx.back();
+            llvm::BasicBlock* following_block;
+            if (ctx->continues_afterwards) {
+                following_block = llvm::BasicBlock::Create(
+                    _context, "", _curr_fn, ctx->following_block);
+            }
+            else {
+                if (!ctx->following_block) {
+                    ctx->following_block =
+                        llvm::BasicBlock::Create(_context, "", _curr_fn);
+                }
+                following_block = ctx->following_block;
+            }
+            _control_flow_ctx.emplace_back();
+            ctx = &_control_flow_ctx.back();
+            if (lle) return lle;
+            if (i->ctype != VOID_ELEM && i->ctype != UNREACHABLE_ELEM) {
+                ureg align;
+                llvm::Type* t;
+                lle = lookupCType(i->ctype, &t, &align);
+                ctx->value = new llvm::AllocaInst(
+                    t, 0, nullptr, align, "", _builder.GetInsertBlock());
+            }
+            else {
+                ctx->value = NULL; // PERF: probably unecessary
+            }
+            ctx->following_block = following_block;
+            i->control_flow_ctx = ctx;
+            if (i->else_body) {
+                auto if_block = llvm::BasicBlock::Create(
+                    _context, "", _curr_fn, following_block);
+                if (!if_block) return LLE_FATAL;
+                auto else_block = llvm::BasicBlock::Create(
+                    _context, "", _curr_fn, following_block);
+                if (!else_block) return LLE_FATAL;
+                _builder.CreateCondBr(cond, if_block, else_block);
+                ctx->first_block = if_block;
+                lle = addIfBranch(i->if_body);
+                if (lle) return lle;
+                if (!_builder.CreateBr(following_block)) return LLE_FATAL;
+                ctx->first_block = else_block;
+                lle = addIfBranch(i->else_body);
+                if (lle) return lle;
+                if (!_builder.CreateBr(following_block)) return LLE_FATAL;
+            }
+            else {
+                auto if_block = llvm::BasicBlock::Create(
+                    _context, "", _curr_fn, following_block);
+                if (!if_block) return LLE_FATAL;
+                if (!_builder.CreateCondBr(cond, if_block, following_block))
+                    return LLE_FATAL;
+                ctx->first_block = if_block;
+                lle = addIfBranch(i->if_body);
+                if (lle) return lle;
+                if (!_builder.CreateBr(following_block)) return LLE_FATAL;
+            }
+            _control_flow_ctx.pop_back();
+            _builder.SetInsertPoint(following_block);
+            return LLE_OK;
+        }
         default: assert(false);
     }
     assert(false);
@@ -572,6 +665,7 @@ llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** vl)
         case OP_MUL: v = _builder.CreateMul(lhs, rhs); break;
         case OP_DIV: v = _builder.CreateSDiv(lhs, rhs); break;
         case OP_MOD: v = _builder.CreateSRem(lhs, rhs); break;
+        case OP_GREATER_THAN: v = _builder.CreateICmpSGT(lhs, rhs); break;
         case OP_ASSIGN: {
             // TODO: align
             v = _builder.CreateStore(rhs, lhs, false);
@@ -645,7 +739,16 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Function** llfn)
             llvm::BasicBlock::Create(_context, "", func, nullptr);
         if (!func_block) return LLE_FATAL;
         _builder.SetInsertPoint(func_block);
-        return addAstBodyIR(&fn->scp.body);
+        assert(_control_flow_ctx.size() == 0);
+        ControlFlowContext ctx;
+        ctx.value = NULL;
+        ctx.first_block = func_block;
+        ctx.following_block = NULL;
+        _control_flow_ctx.push_back(ctx);
+        _curr_fn = func;
+        lle = addAstBodyIR(&fn->scp.body);
+        _control_flow_ctx.pop_back();
+        return lle;
     }
     auto func = (llvm::Function*)llvm::Function::Create(
         func_sig, llvm::GlobalVariable::ExternalLinkage,
@@ -660,23 +763,31 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Function** llfn)
     if (llfn) *llfn = func;
     return LLE_OK;
 }
+llvm_error LLVMBackend::emitModuleIR(const std::string& ll_name)
+{
+    std::error_code EC;
+    llvm::raw_fd_ostream ir_stream{ll_name, EC, llvm::sys::fs::F_None};
+    _module->print(ir_stream, nullptr, true, true);
+    ir_stream.flush();
+    return LLE_OK;
+}
 llvm_error LLVMBackend::emitModule(const std::string& obj_name)
 {
     tprintf("emmitting %s ", (char*)obj_name.c_str());
-    std::error_code EC;
+    if (true) {
+        emitModuleIR(obj_name.substr(0, obj_name.size() - 3) + "ll");
+    }
     llvm::Triple TargetTriple(_module->getTargetTriple());
     std::unique_ptr<llvm::TargetLibraryInfoImpl> TLII(
         new llvm::TargetLibraryInfoImpl(TargetTriple));
 
     llvm::legacy::PassManager PerModulePasses;
-    PerModulePasses.add(
-        llvm::createTargetTransformInfoWrapperPass(
-            _target_machine->getTargetIRAnalysis()));
+    PerModulePasses.add(llvm::createTargetTransformInfoWrapperPass(
+        _target_machine->getTargetIRAnalysis()));
 
     llvm::legacy::FunctionPassManager PerFunctionPasses(_module);
-    PerFunctionPasses.add(
-        llvm::createTargetTransformInfoWrapperPass(
-            _target_machine->getTargetIRAnalysis()));
+    PerFunctionPasses.add(llvm::createTargetTransformInfoWrapperPass(
+        _target_machine->getTargetIRAnalysis()));
 
     // CreatePasses(PerModulePasses, PerFunctionPasses);
     llvm::PassManagerBuilder pmb{};
@@ -706,13 +817,13 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     pmb.populateModulePassManager(PerModulePasses);
 
     llvm::legacy::PassManager CodeGenPasses;
-    CodeGenPasses.add(
-        llvm::createTargetTransformInfoWrapperPass(
-            _target_machine->getTargetIRAnalysis()));
+    CodeGenPasses.add(llvm::createTargetTransformInfoWrapperPass(
+        _target_machine->getTargetIRAnalysis()));
 
     CodeGenPasses.add(new llvm::TargetLibraryInfoWrapperPass(*TLII));
 
     auto file_type = llvm::TargetMachine::CGFT_ObjectFile;
+    std::error_code EC;
     llvm::raw_fd_ostream file_stream{obj_name, EC, llvm::sys::fs::F_None};
     if (_target_machine->addPassesToEmitFile(
             CodeGenPasses, file_stream, nullptr, file_type)) {
@@ -727,14 +838,6 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     PerModulePasses.run(*_module);
 
     CodeGenPasses.run(*_module);
-
-    if (false) { // output ir
-        llvm::raw_fd_ostream ir_stream{obj_name.substr(0, obj_name.size() - 3) +
-                                           "ll",
-                                       EC, llvm::sys::fs::F_None};
-        _module->print(ir_stream, nullptr, true, true);
-        ir_stream.flush();
-    }
     return LLE_OK;
 }
 llvm_error

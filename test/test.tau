@@ -2,19 +2,18 @@
 public func printf(x: string, y: int, c: int);
 
 
-func foo()-> int {
-
-    x:= {
-        y:= {
-            break x;
-        };
-        break y;
-    };
-             
-   return 7;
+func foo(i: int)-> int {
+    x := 0;
+    if(i > 2){
+        x = 17;
+    }
+    else{
+        x = 4;
+    }
+    return x;
 }
 
 public func main() -> int{
-    printf("foo: %i%c", foo(), 10);
+    printf("foo: %i%c", foo(3), 10);
     return 0;
 }

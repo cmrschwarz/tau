@@ -7,8 +7,6 @@
 #include "utils/zero.h"
 #include "utils/debug_utils.h"
 
-#define VOID_ELEM ((ast_elem*)&PRIMITIVES[PT_VOID])
-
 resolve_error
 resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype);
 resolve_error resolve_body(resolver* r, ast_body* b);
@@ -17,7 +15,8 @@ static resolve_error resolve_ast_node(
     ast_elem** ctype);
 resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st);
 resolve_error resolve_expr_body(
-    resolver* r, ast_node* expr, ast_body* b, symbol_table* parent_st);
+    resolver* r, ast_node* expr, ast_body* b, symbol_table* parent_st,
+    ast_elem** value, ast_elem** ctype);
 static resolve_error add_simple_body_decls(
     resolver* r, symbol_table* parent_st, ast_body* b, bool public_st);
 resolve_error resolve_expr_scope_access(
@@ -75,11 +74,10 @@ static resolve_error
 add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
 {
     sym->declaring_st = st;
-    symbol_table* tgtst =
-        (sst &&
-         ast_node_flags_get_access_mod(sym->node.flags) != AM_UNSPECIFIED)
-            ? sst
-            : st;
+    symbol_table* tgtst = (sst && ast_node_flags_get_access_mod(
+                                      sym->node.flags) != AM_UNSPECIFIED)
+                              ? sst
+                              : st;
     symbol** conflict;
     conflict = symbol_table_insert(tgtst, sym);
     if (conflict) {
@@ -267,11 +265,10 @@ static resolve_error add_ast_node_decls(
             else {
                 fn->id = r->private_sym_count++;
             }
-            symbol_table* tgtst =
-                (sst &&
-                 ast_node_flags_get_access_mod(n->flags) != AM_UNSPECIFIED)
-                    ? sst
-                    : st;
+            symbol_table* tgtst = (sst && ast_node_flags_get_access_mod(
+                                              n->flags) != AM_UNSPECIFIED)
+                                      ? sst
+                                      : st;
             symbol** conflict;
             symbol* sym = (symbol*)n;
             sym->declaring_st = st;
@@ -696,12 +693,8 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
     switch (s->node.kind) {
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
-        case SYM_NAMED_USING:
-            assert(false);
-            return NULL; // TODO
-        case PRIMITIVE:
-            assert(false);
-            return NULL; // would be ctype "Type"
+        case SYM_NAMED_USING: assert(false); return NULL; // TODO
+        case PRIMITIVE: assert(false); return NULL; // would be ctype "Type"
         default: return (ast_elem*)s;
     }
 }
@@ -1099,13 +1092,30 @@ static inline resolve_error resolve_ast_node_raw(
                     RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
                 }
             }
-            else if (b->target->kind == SC_FUNC) {
-                // must already be resolved since parenting function
-                tgt_type = ((sc_func*)b->target)->return_ctype;
-            }
             else {
-                assert(b->target->kind == SC_FUNC_GENERIC);
-                tgt_type = ((sc_func_generic*)b->target)->return_ctype;
+                // if we return from a block, this block's result becomes
+                // unreachable
+                if (r->curr_expr_block_owner) {
+                    ast_elem** tgtt =
+                        get_break_target_ctype(r->curr_expr_block_owner);
+                    if (ast_node_flags_get_resolved(
+                            r->curr_expr_block_owner->flags)) {
+                        assert(false); // TODO: error, unreachable not unifiable
+                    }
+                    else {
+                        ast_node_flags_set_resolved(
+                            &r->curr_expr_block_owner->flags);
+                        *tgtt = UNREACHABLE_ELEM;
+                    }
+                }
+                if (b->target->kind == SC_FUNC) {
+                    // must already be resolved since parenting function
+                    tgt_type = ((sc_func*)b->target)->return_ctype;
+                }
+                else {
+                    assert(b->target->kind == SC_FUNC_GENERIC);
+                    tgt_type = ((sc_func_generic*)b->target)->return_ctype;
+                }
             }
             if (!ctypes_unifiable(b->value_ctype, tgt_type)) {
                 ureg vstart, vend;
@@ -1126,10 +1136,11 @@ static inline resolve_error resolve_ast_node_raw(
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
             if (!resolved) {
-                re = resolve_expr_body(r, (ast_node*)b, &b->body, st);
+                re = resolve_expr_body(
+                    r, (ast_node*)b, &b->body, st, value, &b->ctype);
                 if (re) return re;
             }
-            RETURN_RESOLVED(value, ctype, b, b->ctype);
+            RETURN_RESOLVED(value, ctype, value, b->ctype);
         }
 
         case EXPR_IF: {
@@ -1152,6 +1163,7 @@ static inline resolve_error resolve_ast_node_raw(
                     "values");
                 return RE_TYPE_MISSMATCH;
             }
+            ei->ctype = (ctype_if != UNREACHABLE_ELEM) ? ctype_if : ctype_else;
             RETURN_RESOLVED(value, ctype, ei, ei->ctype);
         }
 
@@ -1210,7 +1222,7 @@ static inline void report_type_loop(resolver* r)
     if (stack_peek_nth(&r->error_stack, stack_s - 2) != n) {
         r->retracing_type_loop = true;
         stack_clear(&r->error_stack);
-        return resolve_ast_node(r, n, st, NULL, NULL);
+        resolve_ast_node(r, n, st, NULL, NULL);
     }
     src_range_large srl;
     src_range_unpack(n->srange, &srl);
@@ -1254,10 +1266,13 @@ static resolve_error resolve_ast_node(
     return re;
 }
 resolve_error resolve_expr_body(
-    resolver* r, ast_node* expr, ast_body* b, symbol_table* parent_st)
+    resolver* r, ast_node* expr, ast_body* b, symbol_table* parent_st,
+    ast_elem** value, ast_elem** ctype)
 {
     symbol* curr_sym = r->curr_symbol_decl;
     r->curr_symbol_decl = NULL;
+    ast_node* parent_expr_block_owner = r->curr_expr_block_owner;
+    r->curr_expr_block_owner = expr;
     bool parent_allows_type_loops = r->allow_type_loops;
     if (!r->retracing_type_loop) r->allow_type_loops = true;
     resolve_error re;
@@ -1274,25 +1289,29 @@ resolve_error resolve_expr_body(
                 }
                 second_pass = true;
             }
-            else {
+            else if (!r->retracing_type_loop) {
                 parenting_type_loop = true;
-                if (r->retracing_type_loop) return RE_TYPE_LOOP;
+            }
+            else {
+                break;
             }
             re = RE_OK;
             continue;
         }
-        r->allow_type_loops = parent_allows_type_loops;
-        r->curr_symbol_decl = curr_sym;
-        return re;
+        break;
     }
     r->allow_type_loops = parent_allows_type_loops;
+    r->curr_expr_block_owner = parent_expr_block_owner;
     r->curr_symbol_decl = curr_sym;
+    if (re) return re;
     if (parenting_type_loop) {
         return RE_TYPE_LOOP;
     }
     if (!ast_node_flags_get_resolved(expr->flags)) {
-        // TODO: error msg
-        if (!second_pass) assert(false);
+        if (!second_pass) { // means that it doesn't break anything -> void
+            ast_node_flags_set_resolved(&expr->flags);
+            RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
+        }
     }
     if (second_pass) {
         for (ast_node** n = b->elements; *n != NULL; n++) {
@@ -1302,6 +1321,7 @@ resolve_error resolve_expr_body(
             if (re) return re;
         }
     }
+    assert(ast_node_flags_get_resolved(expr->flags));
     return RE_OK;
 }
 // TODO: make sure we return!
@@ -1455,6 +1475,7 @@ int resolver_init(resolver* r, thread_context* tc)
     r->allow_type_loops = false;
     r->curr_symbol_decl = NULL;
     r->type_loop_start = NULL;
+    r->curr_expr_block_owner = NULL;
     if (stack_init(&r->error_stack, &r->tc->tempmem)) return ERR;
     if (sbuffer_init(&r->call_types, sizeof(ast_node*) * 32)) {
         stack_fin(&r->error_stack);

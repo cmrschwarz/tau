@@ -6,6 +6,9 @@
 #include "symbol_table.h"
 #include "utils/c_extensions.h"
 
+#define VOID_ELEM ((ast_elem*)&PRIMITIVES[PT_VOID])
+#define UNREACHABLE_ELEM ((ast_elem*)&PRIMITIVES[PT_UNREACHABLE])
+
 typedef struct mdg_node_s mdg_node;
 
 typedef enum PACK_ENUM ast_node_kind_e {
@@ -258,6 +261,7 @@ typedef struct expr_block_s {
     char* name; // NULL if no label provided and not in if/else/etc.
     ast_body body;
     ast_elem* ctype;
+    void* control_flow_ctx;
 } expr_block;
 
 typedef struct expr_if_s {
@@ -266,6 +270,7 @@ typedef struct expr_if_s {
     ast_node* if_body;
     ast_node* else_body;
     ast_elem* ctype;
+    void* control_flow_ctx;
 } expr_if;
 
 typedef struct expr_loop_s {
@@ -273,6 +278,7 @@ typedef struct expr_loop_s {
     char* name;
     ast_body body;
     ast_elem* ctype;
+    void* control_flow_ctx;
 } expr_loop;
 
 typedef struct expr_macro_s {

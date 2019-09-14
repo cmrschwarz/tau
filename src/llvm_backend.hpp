@@ -53,6 +53,13 @@ struct LLVMModule {
     std::string module_str;
 };
 
+struct ControlFlowContext {
+    llvm::Value* value;
+    llvm::BasicBlock* first_block;
+    llvm::BasicBlock* following_block;
+    bool continues_afterwards;
+};
+
 struct LLVMBackend {
 
   private:
@@ -61,15 +68,19 @@ struct LLVMBackend {
     llvm::IRBuilder<> _builder;
     // must be void* because there is no common ancestor between
     // llvm::Value and llvm::Type
-    // TOOD: put primitives in different data structure so these can be values
+    // TOOD: put primitives in different data structure so these can be
+    // values
     std::vector<void*> _global_value_store;
     std::vector<bool> _global_value_init_flags;
     std::vector<void*> _local_value_store;
     std::vector<ureg> _reset_after_emit;
+    // we have to avoid pointer invalidation on resize, therefore deque
+    std::deque<ControlFlowContext> _control_flow_ctx;
     llvm::Type* _primitive_types[PRIMITIVE_COUNT];
     llvm::Module* _module;
     llvm::TargetMachine* _target_machine;
     llvm::DataLayout* _data_layout;
+    llvm::Function* _curr_fn;
     ureg _mod_startid;
     ureg _mod_endid;
     ureg _private_sym_count;
@@ -87,6 +98,7 @@ struct LLVMBackend {
     llvm_error createLLVMModule(
         mdg_node** start, mdg_node** end, ureg startid, ureg endid,
         ureg private_sym_count, LLVMModule** module);
+    llvm_error addIfBranch(ast_node* branch);
 
   private:
     llvm_error addModulesIR(mdg_node** start, mdg_node** end);
@@ -113,6 +125,7 @@ struct LLVMBackend {
 
   private:
     llvm_error emitModule(const std::string& obj_name);
+    llvm_error emitModuleIR(const std::string& ll_name);
 };
 
 llvm_error
