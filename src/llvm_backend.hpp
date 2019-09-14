@@ -55,6 +55,7 @@ struct LLVMModule {
 
 struct ControlFlowContext {
     llvm::Value* value;
+    ureg value_align;
     llvm::BasicBlock* first_block;
     llvm::BasicBlock* following_block;
     bool continues_afterwards;
@@ -102,7 +103,7 @@ struct LLVMBackend {
 
   private:
     llvm_error addModulesIR(mdg_node** start, mdg_node** end);
-    llvm_error addAstBodyIR(ast_body* n);
+    llvm_error addAstBodyIR(ast_body* n, bool continues_after);
 
   private:
     bool isIDInModule(ureg id);
@@ -117,6 +118,7 @@ struct LLVMBackend {
     llvm::Function** lookupFunctionRaw(ureg id);
     llvm::Type** lookupTypeRaw(ureg id);
     llvm_error lookupCType(ast_elem* e, llvm::Type** t, ureg* align);
+    llvm_error createScopeValue(ast_elem* ctype, ControlFlowContext& ctx);
 
     // val can be NULL
     llvm_error getAstNodeIR(ast_node* n, bool load, llvm::Value** vl);

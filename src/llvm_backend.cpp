@@ -251,7 +251,7 @@ llvm_error LLVMBackend::addModulesIR(mdg_node** start, mdg_node** end)
     }
     return LLE_OK;
 }
-llvm_error LLVMBackend::addAstBodyIR(ast_body* b)
+llvm_error LLVMBackend::addAstBodyIR(ast_body* b, bool continues_afterwards)
 {
     ControlFlowContext& ctx = _control_flow_ctx.back();
     ctx.continues_afterwards = true;
@@ -367,20 +367,48 @@ llvm_error LLVMBackend::addIfBranch(ast_node* branch)
     ControlFlowContext& ctx = _control_flow_ctx.back();
     _builder.SetInsertPoint(ctx.first_block);
     llvm_error lle;
+    bool ret;
     if (branch->kind == EXPR_BLOCK) {
         // TODO: we might need to cast the expr block return type?
-        lle = addAstBodyIR(&((expr_block*)branch)->body);
+        auto eb = (expr_block*)branch;
+        ret = (eb->ctype != UNREACHABLE_ELEM);
+        lle = addAstBodyIR(&eb->body, ret);
         if (lle) return lle;
     }
     else if (ctx.value) {
         llvm::Value* v;
+        ret = true;
+        ctx.continues_afterwards = true;
         lle = getAstNodeIR(branch, true, &v);
         if (lle) return lle;
         if (!_builder.CreateStore(ctx.value, v)) return LLE_FATAL;
     }
     else {
+        // TODO: proper handling for unreachable
+        ret = (branch->kind != EXPR_RETURN);
+        ctx.continues_afterwards = ret;
         lle = getAstNodeIR(branch, false, NULL);
         if (lle) return lle;
+    }
+    if (ret) {
+        _builder.CreateBr(ctx.following_block);
+    }
+    return LLE_OK;
+}
+llvm_error
+LLVMBackend::createScopeValue(ast_elem* ctype, ControlFlowContext& ctx)
+{
+    if (ctype != VOID_ELEM && ctype != UNREACHABLE_ELEM) {
+        llvm::Type* t;
+        llvm_error lle = lookupCType(ctype, &t, &ctx.value_align);
+        if (lle) return lle;
+        ctx.value = new llvm::AllocaInst(
+            t, 0, nullptr, ctx.value_align, "", _builder.GetInsertBlock());
+        if (!ctx.value) return LLE_FATAL;
+    }
+    else {
+        ctx.value = NULL;
+        ctx.value_align = 0;
     }
     return LLE_OK;
 }
@@ -442,10 +470,19 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                 (ast_node*)((expr_identifier*)n)->value.sym, load, vl);
         }
         case EXPR_RETURN: {
+            ControlFlowContext& fn_ctx = _control_flow_ctx.front();
+            auto ast_val = ((expr_break*)n)->value;
             llvm::Value* v;
-            lle = getAstNodeIR(((expr_break*)n)->value, true, &v);
-            if (lle) return lle;
-            if (!_builder.CreateRet(v)) return LLE_FATAL;
+            if (ast_val) {
+                // todo: where do we cast?
+                lle = getAstNodeIR(ast_val, true, &v);
+                if (lle) return lle;
+                if (!_builder.CreateAlignedStore(
+                        v, fn_ctx.value, fn_ctx.value_align))
+                    return LLE_FATAL;
+            }
+            assert(!_control_flow_ctx.back().continues_afterwards);
+            _builder.CreateBr(fn_ctx.following_block);
             assert(!vl);
             return LLE_OK;
         }
@@ -597,17 +634,8 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             }
             _control_flow_ctx.emplace_back();
             ctx = &_control_flow_ctx.back();
+            lle = createScopeValue(i->ctype, *ctx);
             if (lle) return lle;
-            if (i->ctype != VOID_ELEM && i->ctype != UNREACHABLE_ELEM) {
-                ureg align;
-                llvm::Type* t;
-                lle = lookupCType(i->ctype, &t, &align);
-                ctx->value = new llvm::AllocaInst(
-                    t, 0, nullptr, align, "", _builder.GetInsertBlock());
-            }
-            else {
-                ctx->value = NULL; // PERF: probably unecessary
-            }
             ctx->following_block = following_block;
             i->control_flow_ctx = ctx;
             if (i->else_body) {
@@ -621,11 +649,9 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                 ctx->first_block = if_block;
                 lle = addIfBranch(i->if_body);
                 if (lle) return lle;
-                if (!_builder.CreateBr(following_block)) return LLE_FATAL;
                 ctx->first_block = else_block;
                 lle = addIfBranch(i->else_body);
                 if (lle) return lle;
-                if (!_builder.CreateBr(following_block)) return LLE_FATAL;
             }
             else {
                 auto if_block = llvm::BasicBlock::Create(
@@ -636,10 +662,19 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                 ctx->first_block = if_block;
                 lle = addIfBranch(i->if_body);
                 if (lle) return lle;
-                if (!_builder.CreateBr(following_block)) return LLE_FATAL;
             }
+            auto val = ctx->value;
+            ureg align = ctx->value_align;
             _control_flow_ctx.pop_back();
             _builder.SetInsertPoint(following_block);
+            if (!vl) return LLE_OK;
+            assert(val);
+            if (!load) {
+                *vl = val;
+                return LLE_OK;
+            }
+            *vl = _builder.CreateAlignedLoad(val, align);
+            if (!*vl) return LLE_FATAL;
             return LLE_OK;
         }
         default: assert(false);
@@ -666,6 +701,8 @@ llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** vl)
         case OP_DIV: v = _builder.CreateSDiv(lhs, rhs); break;
         case OP_MOD: v = _builder.CreateSRem(lhs, rhs); break;
         case OP_GREATER_THAN: v = _builder.CreateICmpSGT(lhs, rhs); break;
+        case OP_LESS_THAN: v = _builder.CreateICmpSLT(lhs, rhs); break;
+        case OP_EQUAL: v = _builder.CreateICmpEQ(lhs, rhs); break;
         case OP_ASSIGN: {
             // TODO: align
             v = _builder.CreateStore(rhs, lhs, false);
@@ -720,48 +757,60 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Function** llfn)
         if (!func_sig) return LLE_FATAL;
     }
     auto func_name_mangled = name_mangle(fn);
-    if (*fn->scp.body.elements && isIDInModule(fn->id)) {
-        auto lt = llvm::Function::ExternalLinkage;
-        if (isLocalID(fn->id)) {
-            lt = llvm::Function::InternalLinkage;
-        }
-        else {
+    if (!*fn->scp.body.elements || !isIDInModule(fn->id)) {
+        auto func = (llvm::Function*)llvm::Function::Create(
+            func_sig, llvm::GlobalVariable::ExternalLinkage,
+            _data_layout->getProgramAddressSpace(), func_name_mangled);
+        _module->getFunctionList().push_back(func);
+        if (isGlobalID(fn->id)) {
             _global_value_init_flags[fn->id] = true;
             _reset_after_emit.push_back(fn->id);
         }
-
-        llvm::Function* func =
-            llvm::Function::Create(func_sig, lt, func_name_mangled, _module);
         if (!func) return LLE_FATAL;
         *res = func;
         if (llfn) *llfn = func;
-        llvm::BasicBlock* func_block =
-            llvm::BasicBlock::Create(_context, "", func, nullptr);
-        if (!func_block) return LLE_FATAL;
-        _builder.SetInsertPoint(func_block);
-        assert(_control_flow_ctx.size() == 0);
-        ControlFlowContext ctx;
-        ctx.value = NULL;
-        ctx.first_block = func_block;
-        ctx.following_block = NULL;
-        _control_flow_ctx.push_back(ctx);
-        _curr_fn = func;
-        lle = addAstBodyIR(&fn->scp.body);
-        _control_flow_ctx.pop_back();
-        return lle;
+        return LLE_OK;
     }
-    auto func = (llvm::Function*)llvm::Function::Create(
-        func_sig, llvm::GlobalVariable::ExternalLinkage,
-        _data_layout->getProgramAddressSpace(), func_name_mangled);
-    _module->getFunctionList().push_back(func);
-    if (isGlobalID(fn->id)) {
+    auto lt = llvm::Function::ExternalLinkage;
+    if (isLocalID(fn->id)) {
+        lt = llvm::Function::InternalLinkage;
+    }
+    else {
         _global_value_init_flags[fn->id] = true;
         _reset_after_emit.push_back(fn->id);
     }
+
+    llvm::Function* func =
+        llvm::Function::Create(func_sig, lt, func_name_mangled, _module);
     if (!func) return LLE_FATAL;
     *res = func;
     if (llfn) *llfn = func;
-    return LLE_OK;
+    llvm::BasicBlock* func_block =
+        llvm::BasicBlock::Create(_context, "", func, nullptr);
+    if (!func_block) return LLE_FATAL;
+    assert(_control_flow_ctx.size() == 0);
+    ControlFlowContext ctx;
+    _builder.SetInsertPoint(func_block);
+    lle = createScopeValue(fn->return_ctype, ctx);
+    if (lle) return lle;
+    ctx.first_block = func_block;
+    ctx.following_block = llvm::BasicBlock::Create(_context, "", func);
+    if (!ctx.following_block) return LLE_FATAL;
+    _builder.SetInsertPoint(ctx.following_block);
+    if (!ctx.value) {
+        _builder.CreateRetVoid();
+    }
+    else {
+        auto load = _builder.CreateAlignedLoad(ctx.value, ctx.value_align);
+        if (!load) return LLE_FATAL;
+        _builder.CreateRet(load);
+    }
+    _control_flow_ctx.push_back(ctx);
+    _curr_fn = func;
+    _builder.SetInsertPoint(func_block);
+    lle = addAstBodyIR(&fn->scp.body, false);
+    _control_flow_ctx.pop_back();
+    return lle;
 }
 llvm_error LLVMBackend::emitModuleIR(const std::string& ll_name)
 {

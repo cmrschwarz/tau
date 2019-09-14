@@ -3,17 +3,33 @@ public func printf(x: string, y: int, c: int);
 
 
 func foo(i: int)-> int {
-    x := 0;
-    if(i > 2){
-        x = 17;
-    }
-    else{
-        x = 4;
-    }
-    return x;
+   if(i < 5){
+       if(i < 3){
+           if(i == 1) return 1 else return 2;
+       }
+       else{
+          if(i == 3) return 3 else return 4;
+       }
+   }
+   else{
+       if(i < 7){
+           if(i == 5) return 5 else return 6;
+       }
+       else{
+          if(i == 7) return 7;
+          if(0)return 8;
+       }
+   }
 }
 
 public func main() -> int{
+    printf("foo: %i%c", foo(1), 10);
+    printf("foo: %i%c", foo(2), 10);
     printf("foo: %i%c", foo(3), 10);
+    printf("foo: %i%c", foo(4), 10);
+    printf("foo: %i%c", foo(5), 10);
+    printf("foo: %i%c", foo(6), 10);
+    printf("foo: %i%c", foo(7), 10);
+    printf("foo: %i%c", foo(8), 10);
     return 0;
 }

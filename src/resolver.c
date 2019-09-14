@@ -779,6 +779,7 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
 resolve_error
 resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype)
 {
+    ast_node_flags_set_resolving(&p->sym.node.flags);
     resolve_error re;
     if (p->type) {
         re = resolve_ast_node(r, p->type, st, &p->ctype, NULL);
@@ -798,6 +799,7 @@ resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype)
         if (re) return re;
     }
     if (ctype) *ctype = p->ctype;
+    ast_node_flags_set_resolved(&p->sym.node.flags);
     return PE_OK;
 }
 resolve_error resolve_expr_scope_access(
@@ -1075,7 +1077,7 @@ static inline resolve_error resolve_ast_node_raw(
 
         case EXPR_RETURN:
         case EXPR_BREAK: {
-            if (resolved) RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
+            if (resolved) RETURN_RESOLVED(value, ctype, NULL, UNREACHABLE_ELEM);
             expr_break* b = (expr_break*)n;
             re = resolve_ast_node(r, b->value, st, NULL, &b->value_ctype);
             if (re) return re;
@@ -1089,7 +1091,7 @@ static inline resolve_error resolve_ast_node_raw(
                 else {
                     ast_node_flags_set_resolved(&b->target->flags);
                     *tgtt = b->value_ctype;
-                    RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
+                    RETURN_RESOLVED(value, ctype, NULL, UNREACHABLE_ELEM);
                 }
             }
             else {
@@ -1100,7 +1102,10 @@ static inline resolve_error resolve_ast_node_raw(
                         get_break_target_ctype(r->curr_expr_block_owner);
                     if (ast_node_flags_get_resolved(
                             r->curr_expr_block_owner->flags)) {
-                        assert(false); // TODO: error, unreachable not unifiable
+                        if (*tgtt != UNREACHABLE_ELEM) {
+                            assert(false); // TODO: error, unreachable not
+                                           // unifiable
+                        }
                     }
                     else {
                         ast_node_flags_set_resolved(
@@ -1131,7 +1136,7 @@ static inline resolve_error resolve_ast_node_raw(
                     src_range_get_end(b->target->srange), "target scope here");
                 return RE_TYPE_MISSMATCH;
             }
-            RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
+            RETURN_RESOLVED(value, ctype, NULL, UNREACHABLE_ELEM);
         }
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
@@ -1150,11 +1155,21 @@ static inline resolve_error resolve_ast_node_raw(
             resolve_error re =
                 resolve_ast_node(r, ei->condition, st, NULL, NULL);
             if (re) return re;
+            ast_node* old_expr_block_owner = r->curr_expr_block_owner;
+            r->curr_expr_block_owner = NULL;
             re = resolve_ast_node(r, ei->if_body, st, NULL, &ctype_if);
+            if (!re) {
+                re = resolve_ast_node(r, ei->else_body, st, NULL, &ctype_else);
+            }
+            r->curr_expr_block_owner = old_expr_block_owner;
             if (re) return re;
-            re = resolve_ast_node(r, ei->else_body, st, NULL, &ctype_else);
-            if (re) return re;
-            if (!ctypes_unifiable(ctype_if, ctype_else)) {
+            if (ctype_if == UNREACHABLE_ELEM) {
+                ei->ctype = ctype_else;
+            }
+            else if (ctype_else == UNREACHABLE_ELEM) {
+                ei->ctype = ctype_if;
+            }
+            else if (!ctypes_unifiable(ctype_if, ctype_else)) {
                 error_log_report_annotated(
                     &r->tc->err_log, ES_RESOLVER, false, "type missmatch",
                     ast_node_get_file(n, st), src_range_get_start(n->srange),
@@ -1163,7 +1178,9 @@ static inline resolve_error resolve_ast_node_raw(
                     "values");
                 return RE_TYPE_MISSMATCH;
             }
-            ei->ctype = (ctype_if != UNREACHABLE_ELEM) ? ctype_if : ctype_else;
+            else {
+                ei->ctype = ctype_if;
+            }
             RETURN_RESOLVED(value, ctype, ei, ei->ctype);
         }
 
@@ -1278,8 +1295,13 @@ resolve_error resolve_expr_body(
     resolve_error re;
     bool second_pass = false;
     bool parenting_type_loop = false;
+    ast_elem* stmt_ctype = NULL;
+    ast_elem** stmt_ctype_ptr = &stmt_ctype;
     for (ast_node** n = b->elements; *n != NULL; n++) {
-        re = resolve_ast_node(r, *n, b->symtab, NULL, NULL);
+        re = resolve_ast_node(r, *n, b->symtab, NULL, stmt_ctype_ptr);
+        if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
+            stmt_ctype_ptr = NULL;
+        }
         if (!re) continue;
         if (re == RE_TYPE_LOOP) {
             if (r->type_loop_start == (ast_node*)curr_sym) {
@@ -1307,21 +1329,28 @@ resolve_error resolve_expr_body(
     if (parenting_type_loop) {
         return RE_TYPE_LOOP;
     }
-    if (!ast_node_flags_get_resolved(expr->flags)) {
-        if (!second_pass) { // means that it doesn't break anything -> void
-            ast_node_flags_set_resolved(&expr->flags);
-            RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
-        }
-    }
     if (second_pass) {
         for (ast_node** n = b->elements; *n != NULL; n++) {
-            re = resolve_ast_node(r, *n, b->symtab, NULL, NULL);
+            re = resolve_ast_node(r, *n, b->symtab, NULL, stmt_ctype_ptr);
             // TODO: if we have a type loop error,
             // make it originate from a(?) break statement
             if (re) return re;
+            if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
+                stmt_ctype_ptr = NULL;
+            }
         }
     }
-    assert(ast_node_flags_get_resolved(expr->flags));
+    // means no break occured
+    if (!ast_node_flags_get_resolved(expr->flags)) {
+        if (stmt_ctype_ptr) { // the end is reachable -> void
+            ast_node_flags_set_resolved(&expr->flags);
+            RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
+        }
+        else { // -> unreachable
+            ast_node_flags_set_resolved(&expr->flags);
+            RETURN_RESOLVED(value, ctype, NULL, UNREACHABLE_ELEM);
+        }
+    }
     return RE_OK;
 }
 // TODO: make sure we return!
@@ -1337,20 +1366,25 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
     re = resolve_ast_node(r, fn->return_type, st, &fn->return_ctype, NULL);
     if (re) return re;
     ast_node** n = b->elements;
+    ast_elem* stmt_ctype;
+    ast_elem** stmt_ctype_ptr = &stmt_ctype;
     while (*n) {
         re = add_ast_node_decls(r, st, NULL, *n, false);
         if (re) return re;
-        re = resolve_ast_node(r, *n, st, NULL, NULL);
+        re = resolve_ast_node(r, *n, st, NULL, stmt_ctype_ptr);
         if (re) return re;
+        if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
+            stmt_ctype_ptr = NULL;
+        }
         n++;
     }
-    if (n != b->elements && (**(n - 1)).kind != EXPR_RETURN &&
-        fn->return_ctype != VOID_ELEM) {
+    if (stmt_ctype_ptr && fn->return_ctype != VOID_ELEM) {
         ureg brace_end = src_range_get_end(fn->scp.body.srange);
         src_file* f = ast_node_get_file((ast_node*)fn, parent_st);
         error_log_report_annotated_thrice(
-            &r->tc->err_log, ES_RESOLVER, false, "expected return statement", f,
-            brace_end - 1, brace_end, "missing return statement", f,
+            &r->tc->err_log, ES_RESOLVER, false,
+            "reachable end of non void function", f, brace_end - 1, brace_end,
+            "missing return statement (or unreachable) ", f,
             src_range_get_start(fn->return_type->srange),
             src_range_get_end(fn->return_type->srange),
             "function returns non void type", f,
