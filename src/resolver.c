@@ -1185,10 +1185,9 @@ static inline resolve_error resolve_ast_node_raw(
         }
 
         case EXPR_LOOP: {
-            // TODO ctype
-            if (ctype) *ctype = NULL;
-            if (resolved) return RE_OK;
-            return add_simple_body_decls(r, st, &((expr_loop*)n)->body, false);
+            expr_loop* l = (expr_loop*)n;
+            if (resolved) RETURN_RESOLVED(value, ctype, n, l->ctype);
+            return resolve_expr_body(r, n, &l->body, st, value, ctype);
         }
         case EXPR_MACRO: {
             // TODO ctype
@@ -1516,4 +1515,10 @@ int resolver_init(resolver* r, thread_context* tc)
         return ERR;
     }
     return OK;
+}
+ast_elem* get_resolved_ast_node_ctype(ast_node* n)
+{
+    ast_elem* ctype;
+    resolve_ast_node_raw(NULL, n, NULL, NULL, &ctype);
+    return ctype;
 }

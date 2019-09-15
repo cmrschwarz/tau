@@ -378,22 +378,6 @@ bool LLVMBackend::isGlobalID(ureg id)
 {
     return !isLocalID(id);
 }
-ControlFlowContext& getTartetCFC(ast_node* target)
-{
-    switch (target->kind) {
-        case EXPR_BLOCK: {
-            return *(ControlFlowContext*)((expr_block*)target)
-                        ->control_flow_ctx;
-        }
-        case EXPR_LOOP: {
-            return *(ControlFlowContext*)((expr_loop*)target)->control_flow_ctx;
-        }
-        default: {
-            assert(false);
-            return *(ControlFlowContext*)NULL;
-        }
-    }
-}
 llvm_error LLVMBackend::addIfBranch(ast_node* branch)
 {
     ControlFlowContext& ctx = _control_flow_ctx.back();
@@ -419,7 +403,7 @@ llvm_error LLVMBackend::addIfBranch(ast_node* branch)
     }
     else {
         // TODO: proper handling for unreachable
-        ret = (branch->kind != EXPR_RETURN);
+        ret = (get_resolved_ast_node_ctype(branch) != UNREACHABLE_ELEM);
         ctx.continues_afterwards = ret;
         lle = getAstNodeIR(branch, false, NULL);
         if (lle) return lle;
@@ -532,6 +516,35 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                 _builder.CreateBr(tgt_ctx->following_block);
                 _builder.SetInsertPoint(tgt_ctx->following_block);
             }
+            return LLE_OK;
+        }
+        case EXPR_LOOP: {
+            expr_loop* l = (expr_loop*)n;
+            ControlFlowContext* ctx = &_control_flow_ctx.back();
+            llvm::BasicBlock* following_block;
+            if (ctx->continues_afterwards) {
+                following_block = llvm::BasicBlock::Create(
+                    _context, "", _curr_fn, ctx->following_block);
+            }
+            else {
+                following_block = ctx->following_block;
+            }
+            _control_flow_ctx.emplace_back();
+            ctx = &_control_flow_ctx.back();
+            l->control_flow_ctx = ctx;
+            ctx->following_block = following_block;
+            llvm_error lle = createScopeValue(l->ctype, *ctx);
+            if (lle) return lle;
+            ctx->first_block = llvm::BasicBlock::Create(
+                _context, "", _curr_fn, following_block);
+            if (!ctx->first_block) return LLE_FATAL;
+            if (!_builder.CreateBr(ctx->first_block)) return LLE_FATAL;
+            _builder.SetInsertPoint(ctx->first_block);
+            lle = addAstBodyIR(&l->body, true);
+            if (lle) return lle;
+            if (!_builder.CreateBr(ctx->first_block)) return LLE_FATAL;
+            _builder.SetInsertPoint(following_block);
+            _control_flow_ctx.pop_back();
             return LLE_OK;
         }
         case EXPR_CALL: {

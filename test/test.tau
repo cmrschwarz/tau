@@ -2,32 +2,30 @@
 public func printf(x: string, y: int, c: int);
 
 func foo(i: int)-> int {
-   return if(i < 5){
-       break if(i < 3){
+    return if(i < 5){
+        break if(i < 3){
            break if(i == 1) 1 else 2;
-       }
-       else{
-          break if(i == 3) 3 else 4;
-       };
-   }
-   else{
-       break if(i < 7){
-           break if(i == 5) 5 else 6;
-       }
-       else{
-           break if(i == 7) 7 else 8;
-       };
-   };
+        }
+        else{
+            break if(i == 3) 3 else 4;
+        };
+    }
+    else @foo{
+        if(i < 7){
+            break @foo if(i == 5) 5 else 6;
+        }
+        else{
+            break @foo if(i == 7) 7 else 8;
+        };
+    };
 }
 
 public func main() -> int{
-    printf("foo: %i%c", foo(1), 10);
-    printf("foo: %i%c", foo(2), 10);
-    printf("foo: %i%c", foo(3), 10);
-    printf("foo: %i%c", foo(4), 10);
-    printf("foo: %i%c", foo(5), 10);
-    printf("foo: %i%c", foo(6), 10);
-    printf("foo: %i%c", foo(7), 10);
-    printf("foo: %i%c", foo(8), 10);
+    i := 1;
+    loop @foo{
+        printf("foo: %i%c", foo(i), 10);
+        i=i+1;
+        if(i == 9)break @foo;
+    }
     return 0;
 }

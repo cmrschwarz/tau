@@ -44,4 +44,5 @@ int resolver_resolve(
 resolve_error add_import_group_decls(
     thread_context* tc, mdg_node* curr_mdg_node, src_file* f,
     sym_import_group* ig, symbol_table* st);
+ast_elem* get_resolved_ast_node_ctype(ast_node* n);
 #endif
