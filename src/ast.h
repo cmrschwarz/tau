@@ -250,6 +250,7 @@ typedef struct expr_break_s {
     ast_node* value; // NULL if no value provided
     ast_elem* value_ctype; // void if value not provided
 } expr_break;
+typedef struct expr_break_s expr_return;
 
 typedef struct expr_continue_s {
     ast_node node;

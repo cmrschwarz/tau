@@ -37,71 +37,71 @@ parse_error parse_braced_namable_body(
 parse_error parse_expr_in_parens(
     parser* p, ast_node* parent, ureg start, ureg end, ast_node** tgt);
 static const unsigned char op_precedence[] = {
-        [OP_POST_INCREMENT] = 15,
-        [OP_POST_DECREMENT] = 15,
-        [OP_CALL] = 15,
-        [OP_ACCESS] = 15,
-        [OP_SCOPE_ACCESS] = 15,
-        [OP_MEMBER_ACCESS] = 15,
+    [OP_POST_INCREMENT] = 15,
+    [OP_POST_DECREMENT] = 15,
+    [OP_CALL] = 15,
+    [OP_ACCESS] = 15,
+    [OP_SCOPE_ACCESS] = 15,
+    [OP_MEMBER_ACCESS] = 15,
 
-        [OP_PRE_INCREMENT] = 14,
-        [OP_PRE_DECREMENT] = 14,
-        [OP_UNARY_PLUS] = 14,
-        [OP_UNARY_MINUS] = 14,
-        [OP_NOT] = 14,
-        [OP_BITWISE_NOT] = 14,
-        [OP_DEREF] = 14,
-        [OP_POINTER_OF] = 14,
-        [OP_REF_OF] = 14,
-        [OP_RREF_OF] = 14,
-        [OP_CLOSURE_BY_VALUE] = 14,
-        [OP_CONST] = 14,
-        [OP_PP] = 14,
+    [OP_PRE_INCREMENT] = 14,
+    [OP_PRE_DECREMENT] = 14,
+    [OP_UNARY_PLUS] = 14,
+    [OP_UNARY_MINUS] = 14,
+    [OP_NOT] = 14,
+    [OP_BITWISE_NOT] = 14,
+    [OP_DEREF] = 14,
+    [OP_POINTER_OF] = 14,
+    [OP_REF_OF] = 14,
+    [OP_RREF_OF] = 14,
+    [OP_CLOSURE_BY_VALUE] = 14,
+    [OP_CONST] = 14,
+    [OP_PP] = 14,
 
-        [OP_BITWISE_AND] = 13,
+    [OP_BITWISE_AND] = 13,
 
-        [OP_BITWISE_XOR] = 12,
+    [OP_BITWISE_XOR] = 12,
 
-        [OP_BITWISE_OR] = 11,
+    [OP_BITWISE_OR] = 11,
 
-        [OP_MUL] = 10,
-        [OP_DIV] = 10,
-        [OP_MOD] = 10,
+    [OP_MUL] = 10,
+    [OP_DIV] = 10,
+    [OP_MOD] = 10,
 
-        [OP_ADD] = 9,
-        [OP_SUB] = 9,
+    [OP_ADD] = 9,
+    [OP_SUB] = 9,
 
-        [OP_LSHIFT] = 8,
-        [OP_RSHIFT] = 8,
+    [OP_LSHIFT] = 8,
+    [OP_RSHIFT] = 8,
 
-        [OP_CAST] = 7,
+    [OP_CAST] = 7,
 
-        [OP_LESS_THAN] = 6,
-        [OP_LESS_THAN_OR_EQUAL] = 6,
-        [OP_GREATER_THAN] = 6,
-        [OP_GREATER_THAN_OR_EQUAL] = 6,
+    [OP_LESS_THAN] = 6,
+    [OP_LESS_THAN_OR_EQUAL] = 6,
+    [OP_GREATER_THAN] = 6,
+    [OP_GREATER_THAN_OR_EQUAL] = 6,
 
-        [OP_EQUAL] = 5,
-        [OP_UNEQAL] = 5,
+    [OP_EQUAL] = 5,
+    [OP_UNEQAL] = 5,
 
-        [OP_AND] = 4,
+    [OP_AND] = 4,
 
-        [OP_XOR] = 3,
+    [OP_XOR] = 3,
 
-        [OP_OR] = 2,
+    [OP_OR] = 2,
 
-        [OP_ASSIGN] = 1,
-        [OP_ADD_ASSIGN] = 1,
-        [OP_SUB_ASSIGN] = 1,
-        [OP_MUL_ASSIGN] = 1,
-        [OP_DIV_ASSIGN] = 1,
-        [OP_MOD_ASSIGN] = 1,
-        [OP_LSHIFT_ASSIGN] = 1,
-        [OP_RSHIFT_ASSIGN] = 1,
-        [OP_BITWISE_AND_ASSIGN] = 1,
-        [OP_BITWISE_XOR_ASSIGN] = 1,
-        [OP_BITWISE_OR_ASSIGN] = 1,
-        [OP_BITWISE_NOT_ASSIGN] = 1,
+    [OP_ASSIGN] = 1,
+    [OP_ADD_ASSIGN] = 1,
+    [OP_SUB_ASSIGN] = 1,
+    [OP_MUL_ASSIGN] = 1,
+    [OP_DIV_ASSIGN] = 1,
+    [OP_MOD_ASSIGN] = 1,
+    [OP_LSHIFT_ASSIGN] = 1,
+    [OP_RSHIFT_ASSIGN] = 1,
+    [OP_BITWISE_AND_ASSIGN] = 1,
+    [OP_BITWISE_XOR_ASSIGN] = 1,
+    [OP_BITWISE_OR_ASSIGN] = 1,
+    [OP_BITWISE_NOT_ASSIGN] = 1,
 };
 
 #define PREC_BASELINE 0
@@ -996,8 +996,9 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             PEEK(p, t);
             parser_error_2a(
                 p, "unexpected token after opening parenthesis", t->start,
-                t->end, "expected an expression, a declaration or a closing "
-                        "parenthesis",
+                t->end,
+                "expected an expression, a declaration or a closing "
+                "parenthesis",
                 t_start, t_end, "opening parenthesis here");
             return PE_ERROR;
         }
@@ -1692,8 +1693,9 @@ parse_scope_access(parser* p, ast_node** ex, ast_node* lhs, bool member)
     PEEK(p, t);
     if (t->kind != TK_IDENTIFIER) {
         return parser_error_1a(
-            p, member ? "invalid operand for the member access operator"
-                      : "invalid operand for the scope access operator",
+            p,
+            member ? "invalid operand for the member access operator"
+                   : "invalid operand for the scope access operator",
             t->start, t->end, "expected an identifier");
     }
     esa->target.name = alloc_string_perm(p, t->str);
@@ -1894,14 +1896,14 @@ static inline parse_error parse_delimited_open_scope(
     if (pop_bpd(p, pe)) return PE_FATAL;
     if (!osc->scp.body.elements) return PE_FATAL;
     if (!osc->requires) return PE_FATAL;
+    if (pe) return pe;
     src_range_large srl;
     srl.start = start;
     srl.end = t->end;
     srl.file = p->lx.file;
     osc->scp.sym.node.srange = src_range_large_pack(p->lx.tc, &srl);
     if (osc->scp.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
-    if (!osc->requires) return PE_FATAL;
-    return pe;
+    return PE_OK;
 }
 parse_error parse_eof_delimited_open_scope(parser* p, open_scope* osc)
 {
@@ -2795,8 +2797,8 @@ parse_error parse_import_with_parent(
         }
         else {
             return parser_error_2a(
-                p, "invalid import syntax", t->start, t->end, "expected ::",
-                start, kw_end, "in this import statement");
+                p, "invalid import syntax", t->start, t->end,
+                "expected ::", start, kw_end, "in this import statement");
         }
     }
     bool has_ident = false;

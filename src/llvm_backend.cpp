@@ -257,7 +257,7 @@ llvm_error LLVMBackend::addAstBodyIR(ast_body* b, bool continues_afterwards)
     ControlFlowContext& ctx = _control_flow_ctx.back();
     ctx.continues_afterwards = true;
     for (ast_node** n = b->elements; *n; n++) {
-        if (!*(n + 1)) ctx.continues_afterwards = false;
+        if (!*(n + 1)) ctx.continues_afterwards = continues_afterwards;
         llvm_error lle = getAstNodeIR(*n, false, NULL);
         if (lle) return lle;
     }
@@ -346,6 +346,21 @@ llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align)
         }
     }
     return LLE_OK;
+}
+ControlFlowContext* LLVMBackend::getTartetCFC(ast_node* target)
+{
+    switch (target->kind) {
+        case EXPR_BLOCK: {
+            return (ControlFlowContext*)((expr_block*)target)->control_flow_ctx;
+        }
+        case EXPR_LOOP: {
+            return (ControlFlowContext*)((expr_loop*)target)->control_flow_ctx;
+        }
+        default: {
+            assert(false);
+            return (ControlFlowContext*)NULL;
+        }
+    }
 }
 bool LLVMBackend::isIDInModule(ureg id)
 {
@@ -488,11 +503,19 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             return getAstNodeIR(
                 (ast_node*)((expr_identifier*)n)->value.sym, load, vl);
         }
+        case EXPR_BREAK:
         case EXPR_RETURN: {
-            ControlFlowContext& fn_ctx = _control_flow_ctx.front();
-            auto ast_val = ((expr_break*)n)->value;
+            auto eb = (expr_break*)n;
+            ControlFlowContext* tgt_ctx;
+            if (n->kind == EXPR_BREAK) {
+                tgt_ctx = getTartetCFC(eb->target);
+            }
+            else {
+                tgt_ctx = &_control_flow_ctx.front();
+            }
+            auto ast_val = eb->value;
             llvm::Value* v;
-            assert(!_control_flow_ctx.back().continues_afterwards);
+            bool continues = _control_flow_ctx.back().continues_afterwards;
             if (ast_val) {
                 _control_flow_ctx.back().continues_afterwards = true;
                 // todo: where do we cast?
@@ -500,16 +523,15 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                 _control_flow_ctx.back().continues_afterwards = false;
                 if (lle) return lle;
                 if (!_builder.CreateAlignedStore(
-                        v, fn_ctx.value, fn_ctx.value_align))
+                        v, tgt_ctx->value, tgt_ctx->value_align))
                     return LLE_FATAL;
             }
-            _builder.CreateBr(fn_ctx.following_block);
-            _builder.SetInsertPoint(fn_ctx.following_block);
+            _control_flow_ctx.back().continues_afterwards = continues;
             assert(!vl);
-            return LLE_OK;
-        }
-        case EXPR_BREAK: {
-            assert(false);
+            if (!continues) {
+                _builder.CreateBr(tgt_ctx->following_block);
+                _builder.SetInsertPoint(tgt_ctx->following_block);
+            }
             return LLE_OK;
         }
         case EXPR_CALL: {

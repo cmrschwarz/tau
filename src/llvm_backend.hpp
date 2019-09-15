@@ -103,7 +103,7 @@ struct LLVMBackend {
   private:
     llvm_error addModulesIR(mdg_node** start, mdg_node** end);
     llvm_error addAstBodyIR(ast_body* n, bool continues_after);
-    ControlFlowContext& getTartetCFC(ast_node* target);
+    ControlFlowContext* getTartetCFC(ast_node* target);
     llvm_error addIfBranch(ast_node* branch);
 
   private:
