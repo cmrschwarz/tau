@@ -99,11 +99,12 @@ struct LLVMBackend {
     llvm_error createLLVMModule(
         mdg_node** start, mdg_node** end, ureg startid, ureg endid,
         ureg private_sym_count, LLVMModule** module);
-    llvm_error addIfBranch(ast_node* branch);
 
   private:
     llvm_error addModulesIR(mdg_node** start, mdg_node** end);
     llvm_error addAstBodyIR(ast_body* n, bool continues_after);
+    ControlFlowContext& getTartetCFC(ast_node* target);
+    llvm_error addIfBranch(ast_node* branch);
 
   private:
     bool isIDInModule(ureg id);

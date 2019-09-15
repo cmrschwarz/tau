@@ -12,7 +12,8 @@ int llvm_backend_init_globals()
     // InitializeAllTargetMCs();
     llvm::InitializeNativeTargetAsmParser();
     llvm::InitializeNativeTargetAsmPrinter();
-    const char* args[] = {"tauc", /*"-time-passes",*/
+    const char* args[] = {"tauc",
+                          /*"-time-passes",*/
                           /*"--debug-pass=Structure"*/};
 
     llvm::cl::ParseCommandLineOptions(sizeof(args) / sizeof(char*), args);
@@ -362,6 +363,22 @@ bool LLVMBackend::isGlobalID(ureg id)
 {
     return !isLocalID(id);
 }
+ControlFlowContext& getTartetCFC(ast_node* target)
+{
+    switch (target->kind) {
+        case EXPR_BLOCK: {
+            return *(ControlFlowContext*)((expr_block*)target)
+                        ->control_flow_ctx;
+        }
+        case EXPR_LOOP: {
+            return *(ControlFlowContext*)((expr_loop*)target)->control_flow_ctx;
+        }
+        default: {
+            assert(false);
+            return *(ControlFlowContext*)NULL;
+        }
+    }
+}
 llvm_error LLVMBackend::addIfBranch(ast_node* branch)
 {
     ControlFlowContext& ctx = _control_flow_ctx.back();
@@ -371,6 +388,7 @@ llvm_error LLVMBackend::addIfBranch(ast_node* branch)
     if (branch->kind == EXPR_BLOCK) {
         // TODO: we might need to cast the expr block return type?
         auto eb = (expr_block*)branch;
+        eb->control_flow_ctx = &ctx;
         ret = (eb->ctype != UNREACHABLE_ELEM);
         lle = addAstBodyIR(&eb->body, ret);
         if (lle) return lle;
@@ -381,7 +399,8 @@ llvm_error LLVMBackend::addIfBranch(ast_node* branch)
         ctx.continues_afterwards = true;
         lle = getAstNodeIR(branch, true, &v);
         if (lle) return lle;
-        if (!_builder.CreateStore(ctx.value, v)) return LLE_FATAL;
+        if (!_builder.CreateAlignedStore(v, ctx.value, ctx.value_align))
+            return LLE_FATAL;
     }
     else {
         // TODO: proper handling for unreachable
@@ -473,17 +492,24 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             ControlFlowContext& fn_ctx = _control_flow_ctx.front();
             auto ast_val = ((expr_break*)n)->value;
             llvm::Value* v;
+            assert(!_control_flow_ctx.back().continues_afterwards);
             if (ast_val) {
+                _control_flow_ctx.back().continues_afterwards = true;
                 // todo: where do we cast?
                 lle = getAstNodeIR(ast_val, true, &v);
+                _control_flow_ctx.back().continues_afterwards = false;
                 if (lle) return lle;
                 if (!_builder.CreateAlignedStore(
                         v, fn_ctx.value, fn_ctx.value_align))
                     return LLE_FATAL;
             }
-            assert(!_control_flow_ctx.back().continues_afterwards);
             _builder.CreateBr(fn_ctx.following_block);
+            _builder.SetInsertPoint(fn_ctx.following_block);
             assert(!vl);
+            return LLE_OK;
+        }
+        case EXPR_BREAK: {
+            assert(false);
             return LLE_OK;
         }
         case EXPR_CALL: {
@@ -551,7 +577,7 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                     assert(k != SC_STRUCT);
                     // local var
                     var_val = new llvm::AllocaInst(
-                        t, 0, nullptr, align, var->sym.name,
+                        t, 0, nullptr, align, "" /* var->sym.name*/,
                         _builder.GetInsertBlock());
                     if (!var_val) return LLE_FATAL;
                     if (n->kind == SYM_VAR_INITIALIZED) {
@@ -626,10 +652,6 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                     _context, "", _curr_fn, ctx->following_block);
             }
             else {
-                if (!ctx->following_block) {
-                    ctx->following_block =
-                        llvm::BasicBlock::Create(_context, "", _curr_fn);
-                }
                 following_block = ctx->following_block;
             }
             _control_flow_ctx.emplace_back();
@@ -637,7 +659,6 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             lle = createScopeValue(i->ctype, *ctx);
             if (lle) return lle;
             ctx->following_block = following_block;
-            i->control_flow_ctx = ctx;
             if (i->else_body) {
                 auto if_block = llvm::BasicBlock::Create(
                     _context, "", _curr_fn, following_block);
@@ -689,9 +710,9 @@ llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** vl)
         assert(false); // TODO
     }
     llvm::Value *lhs, *rhs;
-    llvm_error lle = getAstNodeIR(b->lhs, (b->node.op_kind != OP_ASSIGN), &lhs);
+    llvm_error lle = getAstNodeIR(b->rhs, true, &rhs);
     if (lle) return lle;
-    lle = getAstNodeIR(b->rhs, true, &rhs);
+    lle = getAstNodeIR(b->lhs, (b->node.op_kind != OP_ASSIGN), &lhs);
     if (lle) return lle;
     llvm::Value* v;
     switch (b->node.op_kind) {
@@ -704,8 +725,10 @@ llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** vl)
         case OP_LESS_THAN: v = _builder.CreateICmpSLT(lhs, rhs); break;
         case OP_EQUAL: v = _builder.CreateICmpEQ(lhs, rhs); break;
         case OP_ASSIGN: {
-            // TODO: align
-            v = _builder.CreateStore(rhs, lhs, false);
+            // TODO: get align from ctype
+            ureg align = lhs->getPointerAlignment(*_data_layout);
+            _builder.CreateAlignedStore(rhs, lhs, align);
+            if (vl) v = _builder.CreateAlignedLoad(lhs, align);
         } break;
         default: assert(false); return LLE_FATAL;
     }
@@ -785,18 +808,27 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Function** llfn)
     if (!func) return LLE_FATAL;
     *res = func;
     if (llfn) *llfn = func;
-    llvm::BasicBlock* func_block =
-        llvm::BasicBlock::Create(_context, "", func, nullptr);
+    llvm::BasicBlock* func_block = llvm::BasicBlock::Create(_context, "", func);
     if (!func_block) return LLE_FATAL;
     assert(_control_flow_ctx.size() == 0);
-    ControlFlowContext ctx;
+    _control_flow_ctx.emplace_back();
+    ControlFlowContext& ctx = _control_flow_ctx.back();
     _builder.SetInsertPoint(func_block);
     lle = createScopeValue(fn->return_ctype, ctx);
     if (lle) return lle;
     ctx.first_block = func_block;
     ctx.following_block = llvm::BasicBlock::Create(_context, "", func);
     if (!ctx.following_block) return LLE_FATAL;
-    _builder.SetInsertPoint(ctx.following_block);
+
+    _curr_fn = func;
+    _builder.SetInsertPoint(func_block);
+    lle = addAstBodyIR(&fn->scp.body, false);
+
+    if (_builder.GetInsertBlock() != ctx.following_block) {
+        _builder.CreateBr(ctx.following_block);
+        _builder.SetInsertPoint(ctx.following_block);
+    }
+
     if (!ctx.value) {
         _builder.CreateRetVoid();
     }
@@ -805,10 +837,6 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Function** llfn)
         if (!load) return LLE_FATAL;
         _builder.CreateRet(load);
     }
-    _control_flow_ctx.push_back(ctx);
-    _curr_fn = func;
-    _builder.SetInsertPoint(func_block);
-    lle = addAstBodyIR(&fn->scp.body, false);
     _control_flow_ctx.pop_back();
     return lle;
 }
@@ -841,6 +869,8 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     // CreatePasses(PerModulePasses, PerFunctionPasses);
     llvm::PassManagerBuilder pmb{};
     pmb.OptLevel = 0;
+    // pmb.VerifyInput = true;
+    // pmb.VerifyOutput = true;
     pmb.DisableTailCalls = true;
     pmb.DisableUnitAtATime = true;
     pmb.DisableUnrollLoops = true;
@@ -872,6 +902,7 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     CodeGenPasses.add(new llvm::TargetLibraryInfoWrapperPass(*TLII));
 
     auto file_type = llvm::TargetMachine::CGFT_ObjectFile;
+    // file_type = llvm::TargetMachine::CGFT_AssemblyFile;
     std::error_code EC;
     llvm::raw_fd_ostream file_stream{obj_name, EC, llvm::sys::fs::F_None};
     if (_target_machine->addPassesToEmitFile(
@@ -887,6 +918,7 @@ llvm_error LLVMBackend::emitModule(const std::string& obj_name)
     PerModulePasses.run(*_module);
 
     CodeGenPasses.run(*_module);
+    file_stream.flush();
     return LLE_OK;
 }
 llvm_error

@@ -239,9 +239,6 @@ void free_body_symtabs(ast_node* node, ast_body* b)
 }
 void mdg_node_fin(mdg_node* n)
 {
-    if (n->stage >= MS_RESOLVING) {
-        symbol_table_fin(n->symtab);
-    }
     if (n->stage >= MS_PARSING) {
         aseglist_iterator it;
         aseglist_iterator_begin(&it, &n->open_scopes);
@@ -250,6 +247,9 @@ void mdg_node_fin(mdg_node* n)
             if (!osc) break;
             free_body_symtabs((ast_node*)osc, &osc->scp.body);
         }
+    }
+    if (n->stage >= MS_RESOLVING) {
+        symbol_table_fin(n->symtab);
     }
     mdg_node_partial_fin(n, 0);
 }

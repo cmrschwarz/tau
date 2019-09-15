@@ -270,7 +270,6 @@ typedef struct expr_if_s {
     ast_node* if_body;
     ast_node* else_body;
     ast_elem* ctype;
-    void* control_flow_ctx;
 } expr_if;
 
 typedef struct expr_loop_s {
