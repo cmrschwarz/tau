@@ -24,7 +24,7 @@ public func main() -> int{
     i := 1;
     loop @foo{
         printf("foo: %i%c", foo(i), 10);
-        i=i+1;
+        i++;
         if(i == 9)break @foo;
     }
     return 0;

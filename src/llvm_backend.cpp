@@ -29,13 +29,13 @@ llvm_backend* llvm_backend_new(thread_context* tc)
     LLVMBackend* b =
         (LLVMBackend*)pool_alloc(&tc->permmem, sizeof(LLVMBackend));
     if (!b) return NULL;
-    if (LLVMBackend::InitLLVMBackend(b, tc)) return NULL;
+    if (LLVMBackend::Initialize(b, tc)) return NULL;
     return b;
 }
 
 void llvm_backend_delete(llvm_backend* llvmb)
 {
-    LLVMBackend::FinLLVMBackend((LLVMBackend*)llvmb);
+    LLVMBackend::Finalize((LLVMBackend*)llvmb);
 }
 
 llvm_error llvm_backend_emit_module(
@@ -126,7 +126,7 @@ LLVMBackend::~LLVMBackend()
     delete _target_machine;
 }
 
-int LLVMBackend::InitLLVMBackend(LLVMBackend* llvmb, thread_context* tc)
+int LLVMBackend::Initialize(LLVMBackend* llvmb, thread_context* tc)
 {
     void* res = new (llvmb) LLVMBackend(tc); // placement new is noexcept
     if (!res) return ERR;
@@ -138,7 +138,7 @@ llvm_error LLVMBackend::setup()
     addPrimitives();
     return LLE_OK;
 }
-void LLVMBackend::FinLLVMBackend(LLVMBackend* llvmb)
+void LLVMBackend::Finalize(LLVMBackend* llvmb)
 {
     llvmb->~LLVMBackend();
 }
@@ -212,10 +212,10 @@ llvm_error LLVMBackend::createLLVMModule(
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
     _module->setDataLayout(*_data_layout);
     llvm_error lle;
-    TIME(lle = addModulesIR(start, end););
+    TIME(lle = genModules(start, end););
     tflush();
     if (lle) return lle;
-    TIME(lle = emitModule(m->name););
+    TIME(lle = emitModuleObj(m->name););
     tflush();
     // PERF: instead of this last minute checking
     // just have different buffers for the different reset types
@@ -237,7 +237,7 @@ llvm_error LLVMBackend::createLLVMModule(
     return lle;
 }
 
-llvm_error LLVMBackend::addModulesIR(mdg_node** start, mdg_node** end)
+llvm_error LLVMBackend::genModules(mdg_node** start, mdg_node** end)
 {
     for (mdg_node** n = start; n != end; n++) {
         aseglist_iterator it;
@@ -245,20 +245,20 @@ llvm_error LLVMBackend::addModulesIR(mdg_node** start, mdg_node** end)
         for (open_scope* osc = (open_scope*)aseglist_iterator_next(&it); osc;
              osc = (open_scope*)aseglist_iterator_next(&it)) {
             for (ast_node** n = osc->scp.body.elements; *n; n++) {
-                llvm_error lle = getAstNodeIR(*n, false, NULL);
+                llvm_error lle = genAstNode(*n, NULL, NULL);
                 if (lle) return lle;
             }
         }
     }
     return LLE_OK;
 }
-llvm_error LLVMBackend::addAstBodyIR(ast_body* b, bool continues_afterwards)
+llvm_error LLVMBackend::genAstBody(ast_body* b, bool continues_afterwards)
 {
     ControlFlowContext& ctx = _control_flow_ctx.back();
     ctx.continues_afterwards = true;
     for (ast_node** n = b->elements; *n; n++) {
         if (!*(n + 1)) ctx.continues_afterwards = continues_afterwards;
-        llvm_error lle = getAstNodeIR(*n, false, NULL);
+        llvm_error lle = genAstNode(*n, NULL, NULL);
         if (lle) return lle;
     }
     return LLE_OK;
@@ -378,7 +378,7 @@ bool LLVMBackend::isGlobalID(ureg id)
 {
     return !isLocalID(id);
 }
-llvm_error LLVMBackend::addIfBranch(ast_node* branch)
+llvm_error LLVMBackend::genIfBranch(ast_node* branch)
 {
     ControlFlowContext& ctx = _control_flow_ctx.back();
     _builder.SetInsertPoint(ctx.first_block);
@@ -389,14 +389,14 @@ llvm_error LLVMBackend::addIfBranch(ast_node* branch)
         auto eb = (expr_block*)branch;
         eb->control_flow_ctx = &ctx;
         ret = (eb->ctype != UNREACHABLE_ELEM);
-        lle = addAstBodyIR(&eb->body, ret);
+        lle = genAstBody(&eb->body, ret);
         if (lle) return lle;
     }
     else if (ctx.value) {
         llvm::Value* v;
         ret = true;
         ctx.continues_afterwards = true;
-        lle = getAstNodeIR(branch, true, &v);
+        lle = genAstNode(branch, NULL, &v);
         if (lle) return lle;
         if (!_builder.CreateAlignedStore(v, ctx.value, ctx.value_align))
             return LLE_FATAL;
@@ -405,7 +405,7 @@ llvm_error LLVMBackend::addIfBranch(ast_node* branch)
         // TODO: proper handling for unreachable
         ret = (get_resolved_ast_node_ctype(branch) != UNREACHABLE_ELEM);
         ctx.continues_afterwards = ret;
-        lle = getAstNodeIR(branch, false, NULL);
+        lle = genAstNode(branch, NULL, NULL);
         if (lle) return lle;
     }
     if (ret) {
@@ -413,8 +413,7 @@ llvm_error LLVMBackend::addIfBranch(ast_node* branch)
     }
     return LLE_OK;
 }
-llvm_error
-LLVMBackend::createScopeValue(ast_elem* ctype, ControlFlowContext& ctx)
+llvm_error LLVMBackend::genScopeValue(ast_elem* ctype, ControlFlowContext& ctx)
 {
     if (ctype != VOID_ELEM && ctype != UNREACHABLE_ELEM) {
         llvm::Type* t;
@@ -430,7 +429,8 @@ LLVMBackend::createScopeValue(ast_elem* ctype, ControlFlowContext& ctx)
     }
     return LLE_OK;
 }
-llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
+llvm_error
+LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
     // TODO: proper error handling
     llvm_error lle;
@@ -440,8 +440,10 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             assert(!vl);
             return LLE_OK; // these are handled by the osc iterator
         case SC_STRUCT: return lookupCType((ast_elem*)n, NULL, NULL);
-        case SC_FUNC: return genFunctionIR((sc_func*)n, (llvm::Function**)vl);
-        case EXPR_OP_BINARY: return genBinaryOpIR((expr_op_binary*)n, vl);
+        case SC_FUNC: return genFunction((sc_func*)n, (llvm::Function**)vl);
+        case EXPR_OP_BINARY:
+            return genBinaryOp((expr_op_binary*)n, vl, vl_loaded);
+        case EXPR_OP_UNARY: return genUnaryOp((expr_op_unary*)n, vl, vl_loaded);
         case EXPR_LITERAL: {
             expr_literal* l = (expr_literal*)n;
             switch (n->pt_kind) {
@@ -451,12 +453,14 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                     auto c = llvm::ConstantInt::get(t, l->value.str, 10);
                     if (!c) return LLE_FATAL;
                     if (vl) *vl = c;
+                    if (vl_loaded) *vl_loaded = c;
                     return LLE_OK;
                 }
                 case PT_STRING: {
                     auto c = _builder.CreateGlobalStringPtr(l->value.str);
                     if (!c) return LLE_FATAL;
                     if (vl) *vl = c;
+                    if (vl_loaded) *vl_loaded = c;
                     return LLE_OK;
                 }
                 case PT_FLOAT: {
@@ -465,6 +469,7 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                         *new llvm::APFloat(
                             llvm::APFloatBase::IEEEsingle(), l->value.str));
                     if (vl) *vl = c;
+                    if (vl_loaded) *vl_loaded = c;
                     return LLE_OK;
                 }
                 default: assert(false);
@@ -475,17 +480,17 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             sc_func* f = (sc_func*)p->sym.declaring_st->owning_node;
             ureg param_nr = p - f->params;
             llvm::Function* fn;
-            lle = genFunctionIR(f, &fn);
+            lle = genFunction(f, &fn);
             if (lle) return lle;
             llvm::Argument* a = fn->arg_begin() + param_nr;
             if (!a) return LLE_FATAL;
-            assert(vl);
-            *vl = a;
+            assert(!vl && vl_loaded);
+            *vl_loaded = a;
             return LLE_OK;
         }
         case EXPR_IDENTIFIER: {
-            return getAstNodeIR(
-                (ast_node*)((expr_identifier*)n)->value.sym, load, vl);
+            return genAstNode(
+                (ast_node*)((expr_identifier*)n)->value.sym, vl, vl_loaded);
         }
         case EXPR_BREAK:
         case EXPR_RETURN: {
@@ -503,7 +508,7 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             if (ast_val) {
                 _control_flow_ctx.back().continues_afterwards = true;
                 // todo: where do we cast?
-                lle = getAstNodeIR(ast_val, true, &v);
+                lle = genAstNode(ast_val, NULL, &v);
                 _control_flow_ctx.back().continues_afterwards = false;
                 if (lle) return lle;
                 if (!_builder.CreateAlignedStore(
@@ -511,7 +516,7 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                     return LLE_FATAL;
             }
             _control_flow_ctx.back().continues_afterwards = continues;
-            assert(!vl);
+            assert(!vl && !vl_loaded);
             if (!continues) {
                 _builder.CreateBr(tgt_ctx->following_block);
                 _builder.SetInsertPoint(tgt_ctx->following_block);
@@ -533,17 +538,23 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             ctx = &_control_flow_ctx.back();
             l->control_flow_ctx = ctx;
             ctx->following_block = following_block;
-            llvm_error lle = createScopeValue(l->ctype, *ctx);
+            lle = genScopeValue(l->ctype, *ctx);
             if (lle) return lle;
             ctx->first_block = llvm::BasicBlock::Create(
                 _context, "", _curr_fn, following_block);
             if (!ctx->first_block) return LLE_FATAL;
             if (!_builder.CreateBr(ctx->first_block)) return LLE_FATAL;
             _builder.SetInsertPoint(ctx->first_block);
-            lle = addAstBodyIR(&l->body, true);
+            lle = genAstBody(&l->body, true);
             if (lle) return lle;
             if (!_builder.CreateBr(ctx->first_block)) return LLE_FATAL;
             _builder.SetInsertPoint(following_block);
+            if (vl) *vl = ctx->value;
+            if (vl_loaded) {
+                *vl_loaded =
+                    _builder.CreateAlignedLoad(ctx->value, ctx->value_align);
+                if (*vl_loaded) return LLE_FATAL;
+            }
             _control_flow_ctx.pop_back();
             return LLE_OK;
         }
@@ -553,17 +564,18 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                 &_tc->permmem, sizeof(llvm::Value*) * c->arg_count);
             if (!args) return LLE_FATAL;
             for (ureg i = 0; i < c->arg_count; i++) {
-                lle = getAstNodeIR(c->args[i], true, &args[i]);
+                lle = genAstNode(c->args[i], NULL, &args[i]);
                 if (lle) return lle;
             }
             llvm::ArrayRef<llvm::Value*> args_arr_ref(
                 args, args + c->arg_count);
             llvm::Function* callee;
-            lle = genFunctionIR(c->target, &callee);
+            lle = genFunction(c->target, &callee);
             if (lle) return lle;
             auto call = _builder.CreateCall(callee, args_arr_ref);
             if (!call) return LLE_FATAL;
             if (vl) *vl = call;
+            if (vl_loaded) *vl_loaded = call;
             return LLE_OK;
         }
         case SYM_VAR:
@@ -595,8 +607,8 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                     if (n->kind == SYM_VAR_INITIALIZED &&
                         isIDInModule(var->var_id)) {
                         llvm::Value* v;
-                        lle = getAstNodeIR(
-                            ((sym_var_initialized*)n)->initial_value, true, &v);
+                        lle = genAstNode(
+                            ((sym_var_initialized*)n)->initial_value, NULL, &v);
                         if (lle) return lle;
                         if (!(init = llvm::dyn_cast<llvm::Constant>(v))) {
                             assert(false); // must be constant, TODO: error
@@ -617,8 +629,8 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                     if (!var_val) return LLE_FATAL;
                     if (n->kind == SYM_VAR_INITIALIZED) {
                         llvm::Value* v;
-                        lle = getAstNodeIR(
-                            ((sym_var_initialized*)n)->initial_value, true, &v);
+                        lle = genAstNode(
+                            ((sym_var_initialized*)n)->initial_value, NULL, &v);
                         if (lle) return lle;
                         if (!_builder.CreateAlignedStore(
                                 v, var_val, align, false))
@@ -630,26 +642,21 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                     _global_value_init_flags[var->var_id] = true;
                 }
             }
-            if (!vl) return LLE_OK;
-            if (load) {
-                llvm::LoadInst* load =
-                    _builder.CreateAlignedLoad(*llvar, align);
-                if (!load) return LLE_FATAL;
-                *vl = load;
+            if (vl_loaded) {
+                *vl_loaded = _builder.CreateAlignedLoad(*llvar, align);
+                if (!*vl_loaded) return LLE_FATAL;
             }
-            else {
-                *vl = *llvar;
-            }
+            if (vl) *vl = *llvar;
             return LLE_OK;
         }
         case EXPR_SCOPE_ACCESS: {
             expr_scope_access* esa = (expr_scope_access*)n;
-            return getAstNodeIR((ast_node*)esa->target.sym, load, vl);
+            return genAstNode((ast_node*)esa->target.sym, vl, vl_loaded);
         }
         case EXPR_MEMBER_ACCESS: {
             auto ema = (expr_member_access*)n;
             llvm::Value* v;
-            lle = getAstNodeIR(ema->lhs, false, &v);
+            lle = genAstNode(ema->lhs, &v, NULL);
             if (lle) return lle;
             auto st = (sc_struct*)ema->target.sym->declaring_st->owning_node;
             assert(((ast_node*)st)->kind == SC_STRUCT);
@@ -665,11 +672,11 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             }
             assert(vl);
             auto gep = _builder.CreateStructGEP(v, idx);
-            if (load) {
-                *vl = _builder.CreateAlignedLoad(gep, align);
-                return LLE_OK;
+            if (vl_loaded) {
+                *vl_loaded = _builder.CreateAlignedLoad(gep, align);
+                if (!*vl_loaded) return LLE_FATAL;
             }
-            *vl = gep;
+            if (vl) *vl = gep;
             return LLE_OK;
         }
         case SYM_IMPORT_GROUP:
@@ -677,7 +684,7 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
         case EXPR_IF: {
             expr_if* i = (expr_if*)n;
             llvm::Value* cond;
-            lle = getAstNodeIR(i->condition, true, &cond);
+            lle = genAstNode(i->condition, NULL, &cond);
             if (lle) return lle;
 
             ControlFlowContext* ctx = &_control_flow_ctx.back();
@@ -691,7 +698,7 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
             }
             _control_flow_ctx.emplace_back();
             ctx = &_control_flow_ctx.back();
-            lle = createScopeValue(i->ctype, *ctx);
+            lle = genScopeValue(i->ctype, *ctx);
             if (lle) return lle;
             ctx->following_block = following_block;
             if (i->else_body) {
@@ -703,10 +710,10 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                 if (!else_block) return LLE_FATAL;
                 _builder.CreateCondBr(cond, if_block, else_block);
                 ctx->first_block = if_block;
-                lle = addIfBranch(i->if_body);
+                lle = genIfBranch(i->if_body);
                 if (lle) return lle;
                 ctx->first_block = else_block;
-                lle = addIfBranch(i->else_body);
+                lle = genIfBranch(i->else_body);
                 if (lle) return lle;
             }
             else {
@@ -716,21 +723,20 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
                 if (!_builder.CreateCondBr(cond, if_block, following_block))
                     return LLE_FATAL;
                 ctx->first_block = if_block;
-                lle = addIfBranch(i->if_body);
+                lle = genIfBranch(i->if_body);
                 if (lle) return lle;
             }
             auto val = ctx->value;
             ureg align = ctx->value_align;
             _control_flow_ctx.pop_back();
             _builder.SetInsertPoint(following_block);
-            if (!vl) return LLE_OK;
+            if (!vl && !vl_loaded) return LLE_OK;
             assert(val);
-            if (!load) {
-                *vl = val;
-                return LLE_OK;
+            if (vl) *vl = val;
+            if (vl_loaded) {
+                *vl_loaded = _builder.CreateAlignedLoad(val, align);
+                if (!*vl_loaded) return LLE_FATAL;
             }
-            *vl = _builder.CreateAlignedLoad(val, align);
-            if (!*vl) return LLE_FATAL;
             return LLE_OK;
         }
         default: assert(false);
@@ -738,16 +744,49 @@ llvm_error LLVMBackend::getAstNodeIR(ast_node* n, bool load, llvm::Value** vl)
     assert(false);
     return LLE_FATAL;
 }
-
-llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** vl)
+llvm_error LLVMBackend::genUnaryOp(
+    expr_op_unary* u, llvm::Value** vl, llvm::Value** vl_loaded)
+{
+    if (u->op->kind == SC_FUNC) {
+        assert(false); // TODO
+    }
+    llvm::Value* child;
+    llvm::Value* child_loaded;
+    llvm::Value* res;
+    switch (u->node.op_kind) {
+        case OP_POST_INCREMENT: {
+            llvm_error lle = genAstNode(u->child, &child, &child_loaded);
+            if (lle) return lle;
+            res = child_loaded;
+            llvm::Value* add = _builder.CreateNSWAdd(
+                child_loaded,
+                llvm::ConstantInt::get(_primitive_types[PT_INT], 1));
+            _builder.CreateAlignedStore(
+                add, child, child->getPointerAlignment(*_data_layout));
+        } break;
+        default: assert(false); return LLE_FATAL;
+    }
+    assert(!vl);
+    if (vl_loaded) *vl_loaded = res;
+    return LLE_OK;
+}
+llvm_error LLVMBackend::genBinaryOp(
+    expr_op_binary* b, llvm::Value** vl, llvm::Value** vl_loaded)
 {
     if (b->op->kind == SC_FUNC) {
         assert(false); // TODO
     }
     llvm::Value *lhs, *rhs;
-    llvm_error lle = getAstNodeIR(b->rhs, true, &rhs);
+    llvm_error lle;
+    if (b->node.op_kind == OP_ASSIGN) {
+        lle = genAstNode(b->lhs, &lhs, NULL);
+    }
+    else {
+        lle = genAstNode(b->lhs, NULL, &lhs);
+    }
+    lle = genAstNode(b->rhs, NULL, &rhs);
     if (lle) return lle;
-    lle = getAstNodeIR(b->lhs, (b->node.op_kind != OP_ASSIGN), &lhs);
+
     if (lle) return lle;
     llvm::Value* v;
     switch (b->node.op_kind) {
@@ -762,12 +801,14 @@ llvm_error LLVMBackend::genBinaryOpIR(expr_op_binary* b, llvm::Value** vl)
         case OP_ASSIGN: {
             // TODO: get align from ctype
             ureg align = lhs->getPointerAlignment(*_data_layout);
+            // TODO: resolver has to make sure lhs is an lvalue
             _builder.CreateAlignedStore(rhs, lhs, align);
             if (vl) v = _builder.CreateAlignedLoad(lhs, align);
         } break;
         default: assert(false); return LLE_FATAL;
     }
-    if (vl) *vl = v;
+    if (vl_loaded) *vl_loaded = v;
+    assert(!vl);
     return LLE_OK;
 }
 char* name_mangle(sc_func* fn)
@@ -785,7 +826,7 @@ char* name_mangle(sc_func* fn)
     *(res + mnl + fnl + 2) = '\0';
     return res;
 }
-llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Function** llfn)
+llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
 {
     llvm::Function** res = lookupFunctionRaw(fn->id);
     if (*res) {
@@ -849,7 +890,7 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Function** llfn)
     _control_flow_ctx.emplace_back();
     ControlFlowContext& ctx = _control_flow_ctx.back();
     _builder.SetInsertPoint(func_block);
-    lle = createScopeValue(fn->return_ctype, ctx);
+    lle = genScopeValue(fn->return_ctype, ctx);
     if (lle) return lle;
     ctx.first_block = func_block;
     ctx.following_block = llvm::BasicBlock::Create(_context, "", func);
@@ -857,7 +898,7 @@ llvm_error LLVMBackend::genFunctionIR(sc_func* fn, llvm::Function** llfn)
 
     _curr_fn = func;
     _builder.SetInsertPoint(func_block);
-    lle = addAstBodyIR(&fn->scp.body, false);
+    lle = genAstBody(&fn->scp.body, false);
 
     if (_builder.GetInsertBlock() != ctx.following_block) {
         _builder.CreateBr(ctx.following_block);
@@ -883,7 +924,7 @@ llvm_error LLVMBackend::emitModuleIR(const std::string& ll_name)
     ir_stream.flush();
     return LLE_OK;
 }
-llvm_error LLVMBackend::emitModule(const std::string& obj_name)
+llvm_error LLVMBackend::emitModuleObj(const std::string& obj_name)
 {
     tprintf("emmitting %s ", (char*)obj_name.c_str());
     if (true) {

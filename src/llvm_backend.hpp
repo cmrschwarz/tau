@@ -89,10 +89,8 @@ struct LLVMBackend {
   public:
     LLVMBackend(thread_context* tc);
     ~LLVMBackend();
-    static int InitLLVMBackend(LLVMBackend* llvmb, thread_context* tc);
-    static void FinLLVMBackend(LLVMBackend* llvmb);
-
-  public:
+    static int Initialize(LLVMBackend* llvmb, thread_context* tc);
+    static void Finalize(LLVMBackend* llvmb);
     llvm_error setup();
 
   public:
@@ -101,10 +99,7 @@ struct LLVMBackend {
         ureg private_sym_count, LLVMModule** module);
 
   private:
-    llvm_error addModulesIR(mdg_node** start, mdg_node** end);
-    llvm_error addAstBodyIR(ast_body* n, bool continues_after);
-    ControlFlowContext* getTartetCFC(ast_node* target);
-    llvm_error addIfBranch(ast_node* branch);
+    void addPrimitives();
 
   private:
     bool isIDInModule(ureg id);
@@ -113,22 +108,31 @@ struct LLVMBackend {
     static bool isGlobalID(ureg id);
 
   private:
-    void addPrimitives();
+    ControlFlowContext* getTartetCFC(ast_node* target);
     void** lookupAstElem(ureg id);
     llvm::Value** lookupVariableRaw(ureg id);
     llvm::Function** lookupFunctionRaw(ureg id);
     llvm::Type** lookupTypeRaw(ureg id);
     llvm_error lookupCType(ast_elem* e, llvm::Type** t, ureg* align);
-    llvm_error createScopeValue(ast_elem* ctype, ControlFlowContext& ctx);
-
-    // val can be NULL
-    llvm_error getAstNodeIR(ast_node* n, bool load, llvm::Value** vl);
-    llvm_error genFunctionIR(sc_func* fn, llvm::Function** llfn);
-    llvm_error genBinaryOpIR(expr_op_binary* b, llvm::Value** vl);
 
   private:
-    llvm_error emitModule(const std::string& obj_name);
+    llvm_error genModules(mdg_node** start, mdg_node** end);
+    llvm_error genAstBody(ast_body* n, bool continues_after);
+    llvm_error genIfBranch(ast_node* branch);
+    llvm_error genScopeValue(ast_elem* ctype, ControlFlowContext& ctx);
+
+    llvm_error
+    genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded);
+    llvm_error genFunction(sc_func* fn, llvm::Function** llfn);
+    llvm_error
+    genBinaryOp(expr_op_binary* b, llvm::Value** vl, llvm::Value** vl_loaded);
+    llvm_error
+    genUnaryOp(expr_op_unary* u, llvm::Value** vl, llvm::Value** vl_loaded);
+
+  private:
+    llvm_error emitModuleObj(const std::string& obj_name);
     llvm_error emitModuleIR(const std::string& ll_name);
+    llvm_error emitModuleASM(const std::string& asm_name);
 };
 
 llvm_error

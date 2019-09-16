@@ -644,6 +644,20 @@ resolve_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
     assert(false); // TODO
     return RE_OK;
 }
+resolve_error choose_unary_operator_overload(
+    resolver* r, expr_op_unary* ou, symbol_table* st, ast_elem** ctype)
+{
+    ast_elem* child_type;
+    resolve_error re = resolve_ast_node(r, ou->child, st, NULL, &child_type);
+    if (re) return re;
+    if (child_type->kind == PRIMITIVE) {
+        ou->op = child_type;
+        if (ctype) *ctype = child_type;
+        return RE_OK;
+    }
+    assert(false); // TODO
+    return RE_FATAL;
+}
 resolve_error choose_binary_operator_overload(
     resolver* r, expr_op_binary* ob, symbol_table* st, ast_elem** ctype)
 {
@@ -915,7 +929,20 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_CONTINUE:
         case EXPR_OP_UNARY: {
-            // TODO
+            expr_op_unary* ou = (expr_op_unary*)n;
+            if (resolved) {
+                if (ou->op->kind == PRIMITIVE) {
+                    *ctype =
+                        (ast_elem*)&PRIMITIVES[((ast_node*)ou->op)->pt_kind];
+                }
+                else {
+                    *ctype = ((sc_func*)ou->op)->return_ctype;
+                }
+                return RE_OK;
+            }
+            re = choose_unary_operator_overload(r, ou, st, ctype);
+            if (re) return re;
+            ast_node_flags_set_resolved(&n->flags);
             return RE_OK;
         }
         case EXPR_PARENTHESES: {
