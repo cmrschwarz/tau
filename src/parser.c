@@ -1941,10 +1941,10 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     parse_error pe = parse_eof_delimited_open_scope(p, &j->file->root.oscope);
     lx_close_file(&p->lx);
     if (!pe) {
-        job_queue_preorder_job(&p->lx.tc->t->jobqueue);
-        if (src_file_done_parsing(j->file, p->lx.tc)) pe = PE_FATAL;
+        pe = thread_context_preorder_job(p->lx.tc);
+        if (!pe && src_file_done_parsing(j->file, p->lx.tc)) pe = PE_FATAL;
     }
-    else {
+    if (pe) {
         free_body_symtabs(
             (ast_node*)&j->file->root.oscope.scp,
             &j->file->root.oscope.scp.body);
@@ -2364,10 +2364,12 @@ parse_error parse_module_frame_decl(
     PEEK(p, t);
     mdg_node* parent = p->current_module;
     p->current_module = mdgn;
-    if (t->kind == TK_SEMICOLON) {
+    bool single_file_module = false;
+    if (!extend && t->kind == TK_SEMICOLON) {
         pe = check_if_first_stmt(p, n, start, t->end, false);
         if (!pe) {
             lx_consume(&p->lx);
+            single_file_module = true;
             pe = parse_delimited_open_scope(p, md, TK_EOF, TK_BRACE_CLOSE);
         }
     }
@@ -2381,6 +2383,10 @@ parse_error parse_module_frame_decl(
     *n = (ast_node*)md;
     // TODO: add a dummy symbol with the module name to avoid redeclaration
     // curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
+    if (single_file_module) {
+        int r = thread_context_preorder_job(p->lx.tc);
+        if (r) return RE_FATAL;
+    }
     mdg_node_add_osc(mdgn, (open_scope*)md, p->lx.tc->t);
     if (*(void**)md->requires == NULL) {
         if (mdg_node_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc)) return PE_FATAL;

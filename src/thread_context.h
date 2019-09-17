@@ -22,6 +22,7 @@ typedef struct thread_context_s {
     stack tempstack;
     llvm_backend* llvmb;
     sbuffer modules;
+    bool has_preordered;
 } thread_context;
 
 typedef struct worker_thread {
@@ -37,5 +38,6 @@ int thread_context_init(thread_context* tc, tauc* t);
 void thread_context_fin(thread_context* tc);
 void thread_context_run(thread_context* tc);
 int thread_context_do_job(thread_context* tc, job* j);
+int thread_context_preorder_job(thread_context* tc);
 
 #endif

@@ -97,7 +97,7 @@ int tauc_run(int argc, char** argv)
     }
     r = tauc_init(&t);
     if (!r) {
-        job_queue_preorder_job(&t.jobqueue);
+        thread_context_preorder_job(&t.main_thread_context);
         for (int i = 1; i < argc; i++) {
             src_file* f = file_map_get_file_from_path(
                 &t.filemap, string_from_cstr(argv[i]));

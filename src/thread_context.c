@@ -59,6 +59,7 @@ int thread_context_init(thread_context* tc, tauc* t)
     if (r) return thread_context_partial_fin(tc, r, 8);
     tc->llvmb = llvm_backend_new(tc);
     if (!tc->llvmb) return thread_context_partial_fin(tc, -1, 9);
+    tc->has_preordered = false;
     return OK;
 }
 int thread_context_do_job(thread_context* tc, job* j)
@@ -149,12 +150,11 @@ void thread_context_run(thread_context* tc)
 {
     int r = OK;
     job j;
-    bool preordered = true;
     while (true) {
         r = job_queue_pop(
-            &tc->t->jobqueue, &j, preordered,
+            &tc->t->jobqueue, &j, tc->has_preordered,
             atomic_ureg_load(&tc->t->thread_count));
-        preordered = false;
+        tc->has_preordered = false;
         if (r == JQ_DONE) {
             r = OK;
             break;
@@ -169,4 +169,10 @@ void thread_context_run(thread_context* tc)
         if (r) break;
     }
     debug_utils_free_res();
+}
+int thread_context_preorder_job(thread_context* tc)
+{
+    if (tc->has_preordered) return OK;
+    tc->has_preordered = true;
+    return job_queue_preorder_job(&tc->t->jobqueue);
 }
