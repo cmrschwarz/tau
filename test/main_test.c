@@ -187,20 +187,7 @@ int list_builder_test()
 int release_test()
 {
     static char* cli_args[2] = {"", "test/test.tau"};
-    int r = master_error_log_init();
-    if (!r) {
-        r = tauc_init();
-        if (!r) {
-            tauc_run(2, cli_args);
-            master_error_log_unwind();
-            r = tauc_fin();
-        }
-        else {
-            master_error_log_unwind();
-        }
-        master_error_log_fin();
-    }
-    return r;
+    return tauc_run(2, cli_args);
 }
 int llvmtest_main();
 #include <utils/debug_utils.h>

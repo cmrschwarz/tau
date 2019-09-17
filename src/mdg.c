@@ -481,7 +481,7 @@ void mdg_node_report_missing_import(
     src_range_unpack(tgt_sym->sym.node.srange, &tgt_sym_srl);
     if (!tgt_group) {
         error_log_report_annotated(
-            &tc->err_log, ES_RESOLVER, false,
+            tc->err_log, ES_RESOLVER, false,
             "missing definition for imported module", f, tgt_sym_srl.start,
             tgt_sym_srl.end, "imported here");
         return;
@@ -489,7 +489,7 @@ void mdg_node_report_missing_import(
     src_range_large tgt_group_srl;
     src_range_unpack(tgt_group->sym.node.srange, &tgt_group_srl);
     error_log_report_annotated_twice(
-        &tc->err_log, ES_RESOLVER, false,
+        tc->err_log, ES_RESOLVER, false,
         "missing definition for imported module", f, tgt_sym_srl.start,
         tgt_sym_srl.end, "imported here", f, tgt_group_srl.start,
         tgt_group_srl.end, NULL);
@@ -864,7 +864,7 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
                         // it's in the same file the redeclaration is always
                         // below
                         error_log_report_annotated_twice(
-                            &tc->err_log, ES_RESOLVER, false,
+                            tc->err_log, ES_RESOLVER, false,
                             "module redeclared", srl_mod.file, srl_mod.start,
                             srl_mod.end, "redeclaration here", srl.file,
                             srl.start, srl.end, "already declared here");
@@ -880,7 +880,7 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
                 src_range_unpack(first_target->scp.sym.node.srange, &srl);
                 // THINK: maybe report extend count here or report all
                 error_log_report_annotated(
-                    &tc->err_log, ES_RESOLVER, false,
+                    tc->err_log, ES_RESOLVER, false,
                     "extend without module declaration", srl.file, srl.start,
                     srl.end, "extend here");
                 res = ERR;

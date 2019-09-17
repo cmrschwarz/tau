@@ -10,7 +10,7 @@
 #include "llvm_backend_api.h"
 
 typedef struct thread_context_s {
-    error_log err_log;
+    error_log* err_log;
     pool permmem;
     pool tempmem;
     list_builder listb;

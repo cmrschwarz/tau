@@ -22,87 +22,103 @@
 #define ANSICOLOR_BOLD "\x1B[1m"
 #define ANSICOLOR_CLEAR "\x1B[0m"
 
-#define pec(color)                                                             \
+#define pec(mel, color)                                                        \
     do {                                                                       \
-        if (MASTER_ERROR_LOG.err_tty) pe(color);                               \
+        if (mel->err_tty) pe(color);                                           \
     } while (false)
-#define pect(color, text)                                                      \
+#define pect(mel, color, text)                                                 \
     do {                                                                       \
-        if (MASTER_ERROR_LOG.err_tty)                                          \
+        if (mel->err_tty)                                                      \
             pe(color text);                                                    \
         else                                                                   \
             pe(text);                                                          \
     } while (false)
-#define pectc(color, text, color2)                                             \
+#define pectc(mel, color, text, color2)                                        \
     do {                                                                       \
-        if (MASTER_ERROR_LOG.err_tty)                                          \
+        if (mel->err_tty)                                                      \
             pe(color text color2);                                             \
         else                                                                   \
             pe(text);                                                          \
     } while (false)
-#define pectct(color, text, color2, text2)                                     \
+#define pectct(mel, color, text, color2, text2)                                \
     do {                                                                       \
-        if (MASTER_ERROR_LOG.err_tty)                                          \
+        if (mel->err_tty)                                                      \
             pe(color text color2 text2);                                       \
         else                                                                   \
             pe(text text2);                                                    \
     } while (false)
-master_error_log MASTER_ERROR_LOG;
 
-int master_error_log_init()
+int master_error_log_init(master_error_log* mel, file_map* filemap)
 {
-    int r = aseglist_init(&MASTER_ERROR_LOG.error_logs);
+    int r = aseglist_init(&mel->error_logs);
     if (r) return r;
-    r = atomic_pool_init(&MASTER_ERROR_LOG.error_pool);
+    r = atomic_pool_init(&mel->error_pool);
     if (r) {
-        aseglist_fin(&MASTER_ERROR_LOG.error_logs);
+        aseglist_fin(&mel->error_logs);
         return r;
     }
-    MASTER_ERROR_LOG.global_error_count = 0;
-    MASTER_ERROR_LOG.tab_size = 4; // TODO: make configurable
-    MASTER_ERROR_LOG.tab_spaces = "    ";
-    MASTER_ERROR_LOG.err_tty = isatty(fileno(stderr));
-    MASTER_ERROR_LOG.max_err_line_length = 80;
-    MASTER_ERROR_LOG.sane_err_line_length = 80;
-    return OK;
-}
-void master_error_log_fin()
-{
-    atomic_pool_fin(&MASTER_ERROR_LOG.error_pool);
-    aseglist_fin(&MASTER_ERROR_LOG.error_logs);
-}
-
-void master_error_log_report(char* critical_error)
-{
-    if (MASTER_ERROR_LOG.global_error_count >= TAUC_MAX_GLOBAL_ERRORS - 1) {
-        MASTER_ERROR_LOG.global_errors[TAUC_MAX_GLOBAL_ERRORS - 1] =
-            "global error log memory exhausted";
-    }
-    else {
-        MASTER_ERROR_LOG.global_errors[MASTER_ERROR_LOG.global_error_count] =
-            critical_error;
-        MASTER_ERROR_LOG.global_error_count++;
-    }
-}
-
-int error_log_init(error_log* el)
-{
-    el->errors = NULL;
-    el->critical_failiure_point = FAILURE_NONE;
-    int r = aseglist_add(&MASTER_ERROR_LOG.error_logs, el);
-    if (r) return r;
+    mel->filemap = filemap;
+    mel->global_error_count = 0;
+    mel->tab_size = 4; // TODO: make configurablef
+    mel->tab_spaces = "    ";
+    mel->err_tty = isatty(fileno(stderr));
+    mel->max_err_line_length = 80;
+    mel->sane_err_line_length = 80;
+    mel->alloc_failiure = false;
     return OK;
 }
 void error_log_fin(error_log* el)
 {
 }
+void master_error_log_fin(master_error_log* mel)
+{
+    aseglist_iterator it;
+    aseglist_iterator_begin(&it, &mel->error_logs);
+    for (error_log* el = aseglist_iterator_next(&it); el;
+         el = aseglist_iterator_next(&it)) {
+        error_log_fin(el);
+    }
+    atomic_pool_fin(&mel->error_pool);
+    aseglist_fin(&mel->error_logs);
+}
 
+void* master_error_log_alloc(master_error_log* mel, ureg size)
+{
+    void* e = atomic_pool_alloc(&mel->error_pool, size);
+    if (!e) mel->alloc_failiure = true;
+    return e;
+}
 void* error_log_alloc(error_log* el, ureg size)
 {
-    void* e = atomic_pool_alloc(&MASTER_ERROR_LOG.error_pool, size);
+    void* e = atomic_pool_alloc(&el->mel->error_pool, size);
     if (!e) error_log_report_allocation_failiure(el);
     return e;
 }
+
+void master_error_log_report(master_error_log* mel, char* critical_error)
+{
+    if (mel->global_error_count >= TAUC_MAX_GLOBAL_ERRORS - 1) {
+        mel->global_errors[TAUC_MAX_GLOBAL_ERRORS - 1] =
+            "global error log memory exhausted";
+    }
+    else {
+        mel->global_errors[mel->global_error_count] = critical_error;
+        mel->global_error_count++;
+    }
+}
+
+error_log* error_log_create(master_error_log* mel)
+{
+    error_log* el = master_error_log_alloc(mel, sizeof(error_log));
+    if (!el) return NULL;
+    int r = aseglist_add(&mel->error_logs, el);
+    if (r) return NULL;
+    el->mel = mel;
+    el->errors = NULL;
+    el->critical_failiure_point = FAILURE_NONE;
+    return el;
+}
+
 static inline void error_fill(
     error* e, error_stage stage, bool warn, error_kind type,
     const char* message, src_file* file, ureg position)
@@ -237,10 +253,11 @@ ureg get_line_nr_offset(ureg max_line)
     }
     return 1;
 }
-int print_filepath(ureg line_nr_offset, src_pos pos, src_file* file)
+int print_filepath(
+    master_error_log* mel, ureg line_nr_offset, src_pos pos, src_file* file)
 {
     for (ureg r = 0; r < line_nr_offset; r++) pe(" ");
-    pectc(ANSICOLOR_BLUE, "==> ", ANSICOLOR_CLEAR);
+    pectc(mel, ANSICOLOR_BLUE, "==> ", ANSICOLOR_CLEAR);
     src_file_print_path(file, true);
     // TODO: the column index is currently based on the number of byte,
     // not the number of unicode code points, but tools expect the latter
@@ -266,7 +283,8 @@ typedef struct err_point {
     const char* message_color;
 } err_point;
 void print_until(
-    ureg* bpos, ureg* next, char* buffer, ureg* after_tab, sreg* length_diff)
+    master_error_log* mel, ureg* bpos, ureg* next, char* buffer,
+    ureg* after_tab, sreg* length_diff)
 {
     while (*bpos < *next) {
         unsigned char curr = (unsigned char)buffer[*bpos];
@@ -289,9 +307,9 @@ void print_until(
                 buffer[*bpos] = '\0';
                 pe(&buffer[*after_tab]);
             }
-            pe(MASTER_ERROR_LOG.tab_spaces);
+            pe(mel->tab_spaces);
             *after_tab = *bpos + 1;
-            *length_diff = *length_diff + (MASTER_ERROR_LOG.tab_size - 1);
+            *length_diff = *length_diff + (mel->tab_size - 1);
         }
         *bpos = *bpos + 1;
     }
@@ -302,11 +320,10 @@ void print_until(
         buffer[*next] = temp;
     }
 }
-void print_msg(const char* msg, ureg msg_len)
+void print_msg(master_error_log* mel, const char* msg, ureg msg_len)
 {
-    if (msg_len > MASTER_ERROR_LOG.max_err_line_length) {
-        for (ureg i = 0; i < MASTER_ERROR_LOG.max_err_line_length - 4 - 3;
-             i++) {
+    if (msg_len > mel->max_err_line_length) {
+        for (ureg i = 0; i < mel->max_err_line_length - 4 - 3; i++) {
             fputc(msg[i], stderr);
         }
         pe("...");
@@ -315,33 +332,37 @@ void print_msg(const char* msg, ureg msg_len)
         pe(msg);
     }
 }
-void printCriticalThreadError(const char* msg)
+void printCriticalThreadError(master_error_log* mel, const char* msg)
 {
     pectc(
-        ANSICOLOR_RED ANSICOLOR_BOLD,
+        mel, ANSICOLOR_RED ANSICOLOR_BOLD,
         "critical error in worker thread: ", ANSICOLOR_CLEAR);
     pe(msg);
     pe("\n");
 }
-void printCriticalError(const char* msg)
+void printCriticalError(master_error_log* mel, const char* msg)
 {
-    pectc(ANSICOLOR_RED ANSICOLOR_BOLD, "critical error: ", ANSICOLOR_CLEAR);
+    pectc(
+        mel, ANSICOLOR_RED ANSICOLOR_BOLD, "critical error: ", ANSICOLOR_CLEAR);
     pe(msg);
     pe("\n");
 }
-void printFileIOError(src_file* f)
+void printFileIOError(master_error_log* mel, src_file* f)
 {
-    pectc(ANSICOLOR_RED ANSICOLOR_BOLD, "reporting error: ", ANSICOLOR_CLEAR);
+    pectc(
+        mel, ANSICOLOR_RED ANSICOLOR_BOLD,
+        "reporting error: ", ANSICOLOR_CLEAR);
     pe("file IO error prevents giving error context in '");
     src_file_print_path(f, true);
     pe("'\n");
 }
-void printAllocationError()
+void printAllocationError(master_error_log* mel)
 {
-    printCriticalError("memory allocation failiure during error reporting");
+    printCriticalError(
+        mel, "memory allocation failiure during error reporting");
 }
 #define IO_ERR STATUS_1
-int open_src_file(src_file* file)
+int open_src_file(master_error_log* mel, src_file* file)
 {
     char pathbuff[256];
     ureg pathlen = src_file_get_path_len(file);
@@ -353,7 +374,7 @@ int open_src_file(src_file* file)
     else {
         path = tmalloc(pathlen + 1);
         if (!path) {
-            printAllocationError();
+            printAllocationError(mel);
             return ERR;
         }
         src_file_write_path(file, pathbuff);
@@ -361,7 +382,7 @@ int open_src_file(src_file* file)
     file->file_stream = fopen(path, "r");
     if (file->file_stream == NULL) {
         file->file_stream = (void*)NULL_PTR_PTR;
-        printFileIOError(file);
+        printFileIOError(mel, file);
         return IO_ERR;
     }
     return OK;
@@ -369,8 +390,8 @@ int open_src_file(src_file* file)
 // TODO: allow putting annotation above with  vvv/,,, error here or
 // TODO: redo this mess
 int print_src_line(
-    src_file* file, ureg line, ureg max_line_length, err_point* ep_start,
-    err_point* ep_end)
+    master_error_log* mel, src_file* file, ureg line, ureg max_line_length,
+    err_point* ep_start, err_point* ep_end)
 {
     while (ep_start && ep_end - 1 >= ep_start) {
         if ((ep_end - 1)->message == NULL) {
@@ -380,12 +401,12 @@ int print_src_line(
             break;
         }
     }
-    pec(ANSICOLOR_BOLD ANSICOLOR_BLUE);
+    pec(mel, ANSICOLOR_BOLD ANSICOLOR_BLUE);
     fprintf(stderr, "%zu", line + 1);
     ureg space = max_line_length - get_line_nr_offset(line);
     for (ureg i = 0; i < space; i++) pe(" ");
     pe(" |");
-    pec(ANSICOLOR_CLEAR);
+    pec(mel, ANSICOLOR_CLEAR);
     static char buffer[LINE_BUFFER_SIZE];
     ureg start, length;
     src_pos_get_line_bounds(&file->src_map, line, &start, &length);
@@ -436,9 +457,8 @@ int print_src_line(
                 }
             }
         }
-        if (pos + buff_len - ((!end_of_line) * 3) >
-            MASTER_ERROR_LOG.max_err_line_length) {
-            buff_len = MASTER_ERROR_LOG.max_err_line_length - pos;
+        if (pos + buff_len - ((!end_of_line) * 3) > mel->max_err_line_length) {
+            buff_len = mel->max_err_line_length - pos;
             length = pos + buff_len;
             end_of_line = true;
             buffer[buff_len - 3] = '.';
@@ -474,7 +494,7 @@ int print_src_line(
             if (ep_pos->col_start >= pos) {
                 if (ep_pos->col_start == pos) {
                     ep_pos->length_diff_start = length_diff;
-                    pec(ep_pos->squigly_color);
+                    pec(mel, ep_pos->squigly_color);
                     next = ep_pos->col_end;
                     mode = 1;
                 }
@@ -505,22 +525,22 @@ int print_src_line(
             ureg d = next - pos;
             if (d > buff_len - bpos) break;
             ureg after_tab = bpos;
-            print_until(&bpos, &next, buffer, &after_tab, &length_diff);
+            print_until(mel, &bpos, &next, buffer, &after_tab, &length_diff);
             switch (mode) {
                 case 3: (ep_pos + 1)->length_diff_start = length_diff;
                 // fallthrough
                 case 0:
                     ep_pos->length_diff_start = length_diff;
-                    pec(ep_pos->squigly_color);
+                    pec(mel, ep_pos->squigly_color);
                     break;
                 case 1:
                     ep_pos->length_diff_end = length_diff;
                     ep_pos++;
-                    pec(ANSICOLOR_CLEAR);
+                    pec(mel, ANSICOLOR_CLEAR);
                     break;
                 case 2:
                     (ep_pos + 1)->length_diff_start = length_diff;
-                    pec((ep_pos + 1)->squigly_color);
+                    pec(mel, (ep_pos + 1)->squigly_color);
                     break;
                 default: assert(false);
             }
@@ -528,7 +548,7 @@ int print_src_line(
         }
         if (end == pos) continue;
         ureg after_tab = bpos;
-        print_until(&bpos, &buff_len, buffer, &after_tab, &length_diff);
+        print_until(mel, &bpos, &buff_len, buffer, &after_tab, &length_diff);
         pos += buff_len;
     }
     if (ep_end == ep_start) {
@@ -540,13 +560,12 @@ int print_src_line(
     ureg msg_len = strlen(ep_pos->message);
     if (ep_end != ep_start && msg_len > 0 &&
         ep_pos->col_end + has_newline == length &&
-        length + length_diff + 4 + msg_len + 4 <=
-            MASTER_ERROR_LOG.sane_err_line_length) {
-        pectc(ANSICOLOR_BLUE ANSICOLOR_BOLD, " <- ", ANSICOLOR_CLEAR);
-        pec(ep_pos->message_color);
+        length + length_diff + 4 + msg_len + 4 <= mel->sane_err_line_length) {
+        pectc(mel, ANSICOLOR_BLUE ANSICOLOR_BOLD, " <- ", ANSICOLOR_CLEAR);
+        pec(mel, ep_pos->message_color);
         pe(ep_pos->message);
         ep_pos++;
-        pect(ANSICOLOR_CLEAR, "\n");
+        pect(mel, ANSICOLOR_CLEAR, "\n");
         ep_end--;
     }
     else {
@@ -559,21 +578,20 @@ int print_src_line(
             continue;
         }
         for (ureg i = 0; i < max_line_length; i++) pe(" ");
-        pectc(ANSICOLOR_BOLD ANSICOLOR_BLUE, " |", ANSICOLOR_CLEAR);
+        pectc(mel, ANSICOLOR_BOLD ANSICOLOR_BLUE, " |", ANSICOLOR_CLEAR);
         ureg space_before = ep_pos->col_start + ep_pos->length_diff_start;
         msg_len = strlen(ep_pos->message);
-        if (space_before > MASTER_ERROR_LOG.max_err_line_length) {
-            if (msg_len < MASTER_ERROR_LOG.max_err_line_length) {
-                for (ureg i = 0;
-                     i < MASTER_ERROR_LOG.max_err_line_length - msg_len - 5;
+        if (space_before > mel->max_err_line_length) {
+            if (msg_len < mel->max_err_line_length) {
+                for (ureg i = 0; i < mel->max_err_line_length - msg_len - 5;
                      i++)
                     pe(" ");
             }
-            pec(ep_pos->message_color);
-            print_msg(ep_pos->message, msg_len);
-            pec(ANSICOLOR_CLEAR);
+            pec(mel, ep_pos->message_color);
+            print_msg(mel, ep_pos->message, msg_len);
+            pec(mel, ANSICOLOR_CLEAR);
             pe("  ...^");
-            pect(ANSICOLOR_CLEAR, "\n");
+            pect(mel, ANSICOLOR_CLEAR, "\n");
             ep_pos++;
             continue;
         }
@@ -586,9 +604,9 @@ int print_src_line(
             if (msg_before) {
                 sreg blank_space = (sreg)space_before - msg_len;
                 for (sreg i = 0; i < blank_space; i++) pe(" ");
-                pec(ep_pos->message_color);
-                print_msg(ep_pos->message, msg_len);
-                pec(ep_pos->squigly_color);
+                pec(mel, ep_pos->message_color);
+                print_msg(mel, ep_pos->message, msg_len);
+                pec(mel, ep_pos->squigly_color);
                 if (blank_space > 0) {
                     for (ureg i = 0; i != squig_len; i++) pe("^");
                 }
@@ -602,10 +620,10 @@ int print_src_line(
             }
             else {
                 for (ureg i = 0; i < space_before; i++) pe(" ");
-                pec(ep_pos->squigly_color);
+                pec(mel, ep_pos->squigly_color);
                 for (ureg i = 0; i != squig_len; i++) pe("^");
-                pect(ANSICOLOR_CLEAR, " ");
-                pec(ep_pos->message_color);
+                pect(mel, ANSICOLOR_CLEAR, " ");
+                pec(mel, ep_pos->message_color);
                 pe(ep_pos->message);
                 col = ep_pos->col_end + ep_pos->length_diff_end + 1 + msg_len;
             }
@@ -622,7 +640,7 @@ int print_src_line(
                 }
             }
             ep_pos = next;
-            pect(ANSICOLOR_CLEAR, "\n");
+            pect(mel, ANSICOLOR_CLEAR, "\n");
             break;
         }
     }
@@ -698,27 +716,27 @@ ureg extend_em(
     err_points[1].line = end.line;
     return 2;
 }
-int report_error(error* e)
+int report_error(master_error_log* mel, error* e)
 {
     static err_point err_points[ERR_POINT_BUFFER_SIZE];
-    pec(ANSICOLOR_BOLD);
+    pec(mel, ANSICOLOR_BOLD);
     switch (e->stage) {
-        case ES_TOKENIZER: pect(ANSICOLOR_GREEN, "lexer "); break;
-        case ES_PARSER: pect(ANSICOLOR_CYAN, "parser "); break;
-        case ES_RESOLVER: pect(ANSICOLOR_MAGENTA, "resolver "); break;
+        case ES_TOKENIZER: pect(mel, ANSICOLOR_GREEN, "lexer "); break;
+        case ES_PARSER: pect(mel, ANSICOLOR_CYAN, "parser "); break;
+        case ES_RESOLVER: pect(mel, ANSICOLOR_MAGENTA, "resolver "); break;
         default: break;
     }
     if (e->warn) {
-        pect(ANSICOLOR_YELLOW, "warning: ");
+        pect(mel, ANSICOLOR_YELLOW, "warning: ");
     }
     else {
-        pect(ANSICOLOR_RED, "error: ");
+        pect(mel, ANSICOLOR_RED, "error: ");
     }
     pe(e->message);
-    pect(ANSICOLOR_CLEAR, "\n");
+    pect(mel, ANSICOLOR_CLEAR, "\n");
     if (!e->file) return OK;
     if (e->file->file_stream == NULL) {
-        int r = open_src_file(e->file);
+        int r = open_src_file(mel, e->file);
         if (r == IO_ERR) return OK;
         if (r != OK) return ERR;
     }
@@ -764,7 +782,7 @@ int report_error(error* e)
                 for (ureg i = 0; i < ema->annot_count; i++) {
                     if (ea->file->file_stream == (void*)NULL_PTR_PTR) return OK;
                     if (ea->file->file_stream == NULL) {
-                        int r = open_src_file(ea->file);
+                        int r = open_src_file(mel, ea->file);
                         if (r == IO_ERR) return OK;
                         if (r != OK) return ERR;
                     }
@@ -788,7 +806,8 @@ int report_error(error* e)
                 }
             } break;
             default: {
-                if (print_filepath(get_line_nr_offset(pos.line), pos, e->file))
+                if (print_filepath(
+                        mel, get_line_nr_offset(pos.line), pos, e->file))
                     return ERR;
                 return OK;
             } break;
@@ -799,7 +818,7 @@ int report_error(error* e)
         }
 
         ureg line_nr_offset = get_line_nr_offset(max_line);
-        if (print_filepath(line_nr_offset, pos, e->file)) return ERR;
+        if (print_filepath(mel, line_nr_offset, pos, e->file)) return ERR;
         error_main_file = e->file;
         err_points_grail_sort(err_points, err_point_count);
 
@@ -813,7 +832,7 @@ int report_error(error* e)
                 i++;
             }
             if (print_src_line(
-                    file, line, line_nr_offset, &err_points[start],
+                    mel, file, line, line_nr_offset, &err_points[start],
                     &err_points[i]))
                 return ERR;
             start = i;
@@ -823,17 +842,17 @@ int report_error(error* e)
                 src_pos sp;
                 sp.line = err_points[start].line;
                 sp.column = err_points[start].col_start;
-                print_filepath(1, sp, file);
+                print_filepath(mel, 1, sp, file);
             }
             else {
                 if (err_points[start].line > line + 2) {
                     pectct(
-                        ANSICOLOR_BOLD ANSICOLOR_BLUE, "...", ANSICOLOR_CLEAR,
-                        "\n");
+                        mel, ANSICOLOR_BOLD ANSICOLOR_BLUE, "...",
+                        ANSICOLOR_CLEAR, "\n");
                 }
                 else if (err_points[start].line == line + 2) {
                     if (print_src_line(
-                            file, line + 1, line_nr_offset, NULL, NULL))
+                            mel, file, line + 1, line_nr_offset, NULL, NULL))
                         return ERR;
                 }
             }
@@ -841,7 +860,8 @@ int report_error(error* e)
     }
     else {
         if (print_filepath(
-                1, src_map_get_pos(&e->file->src_map, e->position), e->file))
+                mel, 1, src_map_get_pos(&e->file->src_map, e->position),
+                e->file))
             return ERR;
     }
     return OK;
@@ -864,11 +884,11 @@ int compare_errs(const error* a, const error* b)
 #define SORT_TYPE error*
 #define SORT_CMP(x, y) compare_errs(x, y)
 #include "sort.h"
-void master_error_log_unwind()
+void master_error_log_unwind(master_error_log* mel)
 {
     ureg err_count = 0;
     aseglist_iterator it;
-    aseglist_iterator_begin(&it, &MASTER_ERROR_LOG.error_logs);
+    aseglist_iterator_begin(&it, &mel->error_logs);
     for (error_log* el = aseglist_iterator_next(&it); el != NULL;
          el = aseglist_iterator_next(&it)) {
         error* e = el->errors;
@@ -882,7 +902,7 @@ void master_error_log_unwind()
         if (errors != NULL) {
             // insert backwards to revert linked list order
             error** pos = errors + err_count - 1;
-            aseglist_iterator_begin(&it, &MASTER_ERROR_LOG.error_logs);
+            aseglist_iterator_begin(&it, &mel->error_logs);
             for (error_log* el = aseglist_iterator_next(&it); el != NULL;
                  el = aseglist_iterator_next(&it)) {
                 error* e = el->errors;
@@ -895,17 +915,17 @@ void master_error_log_unwind()
             // stable, in place sorting
             errors_grail_sort(errors, err_count);
             for (error** e = errors; e != errors + err_count; e++) {
-                if (report_error(*e)) {
+                if (report_error(mel, *e)) {
                     break;
                 }
                 if (e != errors + err_count - 1 ||
-                    MASTER_ERROR_LOG.global_error_count > 0 || errors == NULL) {
+                    mel->global_error_count > 0 || errors == NULL) {
                     pe("\n");
                 }
             }
             tfree(errors);
             file_map_iterator fmi;
-            file_map_iterator_begin(&fmi, &TAUC.filemap);
+            file_map_iterator_begin(&fmi, mel->filemap);
             while (true) {
                 src_file* f = file_map_iterator_next_file(&fmi);
                 if (!f) break;
@@ -915,18 +935,18 @@ void master_error_log_unwind()
             }
         }
         else {
-            printAllocationError();
+            printAllocationError(mel);
         }
     }
-    aseglist_iterator_begin(&it, &MASTER_ERROR_LOG.error_logs);
+    aseglist_iterator_begin(&it, &mel->error_logs);
     for (error_log* el = aseglist_iterator_next(&it); el != NULL;
          el = aseglist_iterator_next(&it)) {
         if (el->critical_failiure_point != FAILURE_NONE) {
-            printCriticalThreadError(el->critical_failiure_msg);
+            printCriticalThreadError(mel, el->critical_failiure_msg);
         }
     }
-    for (ureg i = 0; i < MASTER_ERROR_LOG.global_error_count; i++) {
-        printCriticalError(MASTER_ERROR_LOG.global_errors[i]);
+    for (ureg i = 0; i < mel->global_error_count; i++) {
+        printCriticalError(mel, mel->global_errors[i]);
     }
 }
 

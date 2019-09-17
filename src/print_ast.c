@@ -39,7 +39,7 @@ void pinn(char* c)
 void print_indent(ureg indent)
 {
     for (ureg i = 0; i < indent; i++) {
-        p(MASTER_ERROR_LOG.tab_spaces);
+        p("    ");
     }
 }
 void print_requires(file_require* r, ureg indent)

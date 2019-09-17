@@ -13,20 +13,21 @@ static inline int tauc_partial_fin(int r, int i)
 {
     switch (i) {
         case -1:
-        case 11: mdg_fin(&TAUC.mdg);
-        case 10: thread_context_fin(&TAUC.main_thread_context);
-        case 9: fin_global_symtab();
-        case 8: atomic_ureg_fin(&TAUC.linking_holdups);
-        case 7: atomic_sreg_fin(&TAUC.error_code);
-        case 6: atomic_ureg_fin(&TAUC.node_ids);
-        case 5: atomic_ureg_fin(&TAUC.thread_count);
-        case 4: aseglist_fin(&TAUC.worker_threads);
-        case 3: job_queue_fin(&TAUC.jobqueue);
-        case 2: file_map_fin(&TAUC.filemap);
+        case 10: mdg_fin(&TAUC.mdg);
+        case -2: // skip mdg because we freed that earlier when we still had all
+                 // threads and their permmem
+        case 9: thread_context_fin(&TAUC.main_thread_context);
+        case 8: fin_global_symtab();
+        case 7: atomic_ureg_fin(&TAUC.linking_holdups);
+        case 6: atomic_sreg_fin(&TAUC.error_code);
+        case 5: atomic_ureg_fin(&TAUC.node_ids);
+        case 4: atomic_ureg_fin(&TAUC.thread_count);
+        case 3: aseglist_fin(&TAUC.worker_threads);
+        case 2: job_queue_fin(&TAUC.jobqueue);
         case 1: llvm_backend_fin_globals();
         case 0: break;
     }
-    if (r) master_error_log_report("memory allocation failed");
+    if (r) master_error_log_report(&TAUC.mel, "memory allocation failed");
     return r;
 }
 int tauc_init()
@@ -35,27 +36,25 @@ int tauc_init()
     if (r) return tauc_partial_fin(r, 0); // ^ this doesn't need to be fin'd
     r = llvm_backend_init_globals();
     if (r) return tauc_partial_fin(r, 0);
-    r = file_map_init(&TAUC.filemap);
-    if (r) return tauc_partial_fin(r, 1);
     r = job_queue_init(&TAUC.jobqueue);
-    if (r) return tauc_partial_fin(r, 2);
+    if (r) return tauc_partial_fin(r, 1);
     r = aseglist_init(&TAUC.worker_threads);
-    if (r) return tauc_partial_fin(r, 3);
+    if (r) return tauc_partial_fin(r, 2);
     r = atomic_ureg_init(&TAUC.thread_count, 1);
-    if (r) return tauc_partial_fin(r, 4);
+    if (r) return tauc_partial_fin(r, 3);
     r = atomic_ureg_init(&TAUC.node_ids, 0);
-    if (r) return tauc_partial_fin(r, 5);
+    if (r) return tauc_partial_fin(r, 4);
     r = atomic_sreg_init(&TAUC.error_code, 0);
-    if (r) return tauc_partial_fin(r, 6);
+    if (r) return tauc_partial_fin(r, 5);
     // 1 for release generation, one for final sanity check
     r = atomic_ureg_init(&TAUC.linking_holdups, 2);
-    if (r) return tauc_partial_fin(r, 7);
+    if (r) return tauc_partial_fin(r, 6);
     r = init_global_symtab(); // needs node_ids
-    if (r) return tauc_partial_fin(r, 8);
+    if (r) return tauc_partial_fin(r, 7);
     r = thread_context_init(&TAUC.main_thread_context);
-    if (r) return tauc_partial_fin(r, 9);
+    if (r) return tauc_partial_fin(r, 8);
     r = mdg_init(&TAUC.mdg);
-    if (r) return tauc_partial_fin(r, 10);
+    if (r) return tauc_partial_fin(r, 9);
     return OK;
 }
 int tauc_fin()
@@ -83,24 +82,40 @@ int tauc_fin()
         tfree(wt);
     }
 
-    tauc_partial_fin(0, 10);
+    tauc_partial_fin(0, -2);
     return atomic_sreg_load_flat(&TAUC.error_code);
 }
 
-void tauc_run(int argc, char** argv)
+int tauc_run(int argc, char** argv)
 {
-    if (argc < 2) return;
-    job_queue_preorder_job(&TAUC.jobqueue);
-    for (int i = 1; i < argc; i++) {
-        src_file* f = file_map_get_file_from_path(
-            &TAUC.filemap, string_from_cstr(argv[i]));
-        if (!f) {
-            tauc_error_occured(ERR);
-            return;
-        }
-        src_file_require(f, NULL, SRC_RANGE_INVALID, TAUC.mdg.root_node);
+    if (argc < 2) return OK;
+    int r = file_map_init(&TAUC.filemap);
+    if (r) return r;
+    r = master_error_log_init(&TAUC.mel, &TAUC.filemap);
+    if (r) {
+        file_map_fin(&TAUC.filemap);
+        return r;
     }
-    thread_context_run(&TAUC.main_thread_context);
+    r = tauc_init();
+    if (!r) {
+        job_queue_preorder_job(&TAUC.jobqueue);
+        for (int i = 1; i < argc; i++) {
+            src_file* f = file_map_get_file_from_path(
+                &TAUC.filemap, string_from_cstr(argv[i]));
+            if (!f) {
+                tauc_error_occured(ERR);
+                r = ERR;
+                break;
+            }
+            src_file_require(f, NULL, SRC_RANGE_INVALID, TAUC.mdg.root_node);
+        }
+        if (!r) thread_context_run(&TAUC.main_thread_context);
+        r = tauc_fin();
+    }
+    master_error_log_unwind(&TAUC.mel);
+    master_error_log_fin(&TAUC.mel);
+    file_map_fin(&TAUC.filemap);
+    return r;
 }
 
 void worker_thread_fn(void* ctx)
@@ -138,7 +153,7 @@ int tauc_add_worker_thread()
         // succeeded
         thread_context_fin(&wt->tc);
         error_log_report_critical_failiure(
-            &wt->tc.err_log, "failed to spawn additional worker thread");
+            wt->tc.err_log, "failed to spawn additional worker thread");
         wt->spawn_failed = true;
         return OK; // this is intentional, see above
     }

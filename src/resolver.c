@@ -44,7 +44,7 @@ report_unknown_symbol(resolver* r, ast_node* n, symbol_table* st)
         src_range_unpack(n->srange, &srl);
     }
     error_log_report_annotated(
-        &r->tc->err_log, ES_RESOLVER, false, "unknown symbol",
+        r->tc->err_log, ES_RESOLVER, false, "unknown symbol",
         ast_node_get_file(n, st), srl.start, srl.end,
         "use of an undefined symbol");
     return RE_UNKNOWN_SYMBOL;
@@ -54,7 +54,7 @@ static resolve_error report_redeclaration_error_raw(
     src_file* prev_file)
 {
     error_log_report_annotated_twice(
-        &tc->err_log, ES_RESOLVER, false, "symbol redeclaration", redecl_file,
+        tc->err_log, ES_RESOLVER, false, "symbol redeclaration", redecl_file,
         src_range_get_start(redecl->node.srange),
         src_range_get_end(redecl->node.srange),
         "a symbol of this name is already defined in this "
@@ -1077,7 +1077,7 @@ static inline resolve_error resolve_ast_node_raw(
                     if (!re) {
                         if (!ctypes_unifiable(vi->var.ctype, val_type)) {
                             error_log_report_annotated_twice(
-                                &r->tc->err_log, ES_RESOLVER, false,
+                                r->tc->err_log, ES_RESOLVER, false,
                                 "type missmatch in variable declaration",
                                 ast_node_get_file(vi->var.type, st),
                                 src_range_get_start(vi->var.type->srange),
@@ -1153,7 +1153,7 @@ static inline resolve_error resolve_ast_node_raw(
                 ureg vstart, vend;
                 ast_node_get_bounds(b->value, &vstart, &vend);
                 error_log_report_annotated_twice(
-                    &r->tc->err_log, ES_RESOLVER, false, "type missmatch",
+                    r->tc->err_log, ES_RESOLVER, false, "type missmatch",
                     ast_node_get_file((ast_node*)b, st), vstart, vend,
                     "the type returned from here doesn't match the target "
                     "scope's",
@@ -1198,7 +1198,7 @@ static inline resolve_error resolve_ast_node_raw(
             }
             else if (!ctypes_unifiable(ctype_if, ctype_else)) {
                 error_log_report_annotated(
-                    &r->tc->err_log, ES_RESOLVER, false, "type missmatch",
+                    r->tc->err_log, ES_RESOLVER, false, "type missmatch",
                     ast_node_get_file(n, st), src_range_get_start(n->srange),
                     src_range_get_end(n->srange),
                     "if body and else body evaluate to differently typed "
@@ -1273,7 +1273,7 @@ static inline void report_type_loop(resolver* r)
     ureg annot_count = stack_size(&r->error_stack) / 2;
     annot_count--; // the starting type is on the stack twice
     error* e = error_log_create_error(
-        &r->tc->err_log, ES_RESOLVER, false, "type inference cycle", srl.file,
+        r->tc->err_log, ES_RESOLVER, false, "type inference cycle", srl.file,
         srl.start, srl.end, "type definition depends on itself", annot_count);
     for (ureg i = 0; i < annot_count; i++) {
         n = (ast_node*)stack_pop(&r->error_stack);
@@ -1285,7 +1285,7 @@ static inline void report_type_loop(resolver* r)
     }
     stack_pop(&r->error_stack);
     stack_pop(&r->error_stack);
-    error_log_report(&r->tc->err_log, e);
+    error_log_report(r->tc->err_log, e);
 }
 static resolve_error resolve_ast_node(
     resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
@@ -1408,7 +1408,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
         ureg brace_end = src_range_get_end(fn->scp.body.srange);
         src_file* f = ast_node_get_file((ast_node*)fn, parent_st);
         error_log_report_annotated_thrice(
-            &r->tc->err_log, ES_RESOLVER, false,
+            r->tc->err_log, ES_RESOLVER, false,
             "reachable end of non void function", f, brace_end - 1, brace_end,
             "missing return statement (or unreachable) ", f,
             src_range_get_start(fn->return_type->srange),

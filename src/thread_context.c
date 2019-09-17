@@ -9,14 +9,13 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
 {
     switch (i) {
         case -1:
-        case 11: llvm_backend_delete(tc->llvmb);
-        case 10: list_builder_fin(&tc->listb2);
-        case 9: list_builder_fin(&tc->listb);
-        case 8: stack_fin(&tc->tempstack);
-        case 7: scc_detector_fin(&tc->sccd);
-        case 6: resolver_fin(&tc->r);
-        case 5: parser_fin(&tc->p);
-        case 4: error_log_fin(&tc->err_log);
+        case 10: llvm_backend_delete(tc->llvmb);
+        case 9: list_builder_fin(&tc->listb2);
+        case 8: list_builder_fin(&tc->listb);
+        case 7: stack_fin(&tc->tempstack);
+        case 6: scc_detector_fin(&tc->sccd);
+        case 5: resolver_fin(&tc->r);
+        case 4: parser_fin(&tc->p);
         case 3: pool_fin(&tc->tempmem);
         case 2: sbuffer_fin(&tc->modules);
         case 1:
@@ -26,7 +25,9 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
             debug_utils_free_res();
         case 0: break;
     }
-    if (r) master_error_log_report("thread context initialization failed");
+    if (r)
+        master_error_log_report(
+            &TAUC.mel, "thread context initialization failed");
     return r;
 }
 void thread_context_fin(thread_context* tc)
@@ -41,22 +42,22 @@ int thread_context_init(thread_context* tc)
     if (r) return thread_context_partial_fin(tc, r, 1);
     r = pool_init(&tc->tempmem);
     if (r) return thread_context_partial_fin(tc, r, 2);
-    r = error_log_init(&tc->err_log);
-    if (r) return thread_context_partial_fin(tc, r, 3);
+    tc->err_log = error_log_create(&TAUC.mel);
+    if (!tc->err_log) return thread_context_partial_fin(tc, r, 2);
     r = parser_init(&tc->p, tc);
-    if (r) return thread_context_partial_fin(tc, r, 4);
+    if (r) return thread_context_partial_fin(tc, r, 3);
     r = resolver_init(&tc->r, tc);
-    if (r) return thread_context_partial_fin(tc, r, 5);
+    if (r) return thread_context_partial_fin(tc, r, 4);
     r = scc_detector_init(&tc->sccd, &tc->permmem);
-    if (r) return thread_context_partial_fin(tc, r, 6);
+    if (r) return thread_context_partial_fin(tc, r, 5);
     r = stack_init(&tc->tempstack, &tc->permmem);
-    if (r) return thread_context_partial_fin(tc, r, 7);
+    if (r) return thread_context_partial_fin(tc, r, 6);
     r = list_builder_init(&tc->listb, &tc->tempmem, 64);
-    if (r) return thread_context_partial_fin(tc, r, 8);
+    if (r) return thread_context_partial_fin(tc, r, 7);
     r = list_builder_init(&tc->listb2, &tc->tempmem, 64);
-    if (r) return thread_context_partial_fin(tc, r, 9);
+    if (r) return thread_context_partial_fin(tc, r, 8);
     tc->llvmb = llvm_backend_new(tc);
-    if (!tc->llvmb) return thread_context_partial_fin(tc, -1, 10);
+    if (!tc->llvmb) return thread_context_partial_fin(tc, -1, 9);
     return OK;
 }
 int thread_context_do_job(thread_context* tc, job* j)
@@ -106,7 +107,7 @@ int thread_context_do_job(thread_context* tc, job* j)
                     if (lh == 1) can_link = true;
                 }
                 else {
-                    error_log_report_allocation_failiure(&tc->err_log);
+                    error_log_report_allocation_failiure(tc->err_log);
                     r = ERR;
                     if (llvm_delete_objs(&mod, &mod + 1)) {
                         // TODO: think about how to handle this

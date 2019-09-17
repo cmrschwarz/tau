@@ -6,6 +6,11 @@
 #include "utils/threading.h"
 
 typedef struct tauc {
+    // these two are still needed for error reporting after
+    // the compiler has run
+    master_error_log mel;
+    file_map filemap;
+
     thread_context main_thread_context;
     aseglist worker_threads;
     atomic_ureg thread_count;
@@ -13,7 +18,6 @@ typedef struct tauc {
     // task that changes this to 0 does the linking.
     atomic_ureg linking_holdups;
     module_dependency_graph mdg;
-    file_map filemap;
     job_queue jobqueue;
     atomic_sreg error_code;
     atomic_ureg node_ids; // stores the max used id
@@ -29,14 +33,8 @@ int tauc_request_resolve_multiple(mdg_node** start, mdg_node** end);
 int tauc_request_finalize();
 bool tauc_success_so_far();
 void tauc_error_occured(int ec);
-
 int tauc_link();
 
 // MAIN THREAD ONLY
-int tauc_init();
-void tauc_run(int argc, char** argv); // errors are returned by fin instead
-
-// returns a non zero error code if any thread had a failiure
-// during its run. the fin itself can't fail
-int tauc_fin();
+int tauc_run(int argc, char** argv); // errors are returned by fin instead
 #endif

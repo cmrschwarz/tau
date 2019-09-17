@@ -246,7 +246,7 @@ static inline bool is_kw_valid_label(token_kind t)
 static inline void* alloc_ppool(parser* p, ureg size, pool* pool)
 {
     void* mem = pool_alloc(pool, size);
-    if (!mem) error_log_report_allocation_failiure(&p->lx.tc->err_log);
+    if (!mem) error_log_report_allocation_failiure(p->lx.tc->err_log);
     return mem;
 }
 static inline void* alloc_temp(parser* p, ureg size)
@@ -279,7 +279,7 @@ static inline parse_error
 parser_error_1a(parser* p, char* msg, ureg start, ureg end, char* annot)
 {
     error_log_report_annotated(
-        &p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.file, start, end,
+        p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.file, start, end,
         annot);
     return PE_ERROR;
 }
@@ -288,8 +288,8 @@ static inline parse_error parser_error_2a(
     ureg end2, char* annot2)
 {
     error_log_report_annotated_twice(
-        &p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.file, start, end,
-        annot, p->lx.file, start2, end2, annot2);
+        p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.file, start, end, annot,
+        p->lx.file, start2, end2, annot2);
     return PE_ERROR;
 }
 static inline parse_error parser_error_3a(
@@ -297,9 +297,8 @@ static inline parse_error parser_error_3a(
     ureg end2, char* annot2, ureg start3, ureg end3, char* annot3)
 {
     error_log_report_annotated_thrice(
-        &p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.file, start, end,
-        annot, p->lx.file, start2, end2, annot2, p->lx.file, start3, end3,
-        annot3);
+        p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.file, start, end, annot,
+        p->lx.file, start2, end2, annot2, p->lx.file, start3, end3, annot3);
     return PE_ERROR;
 }
 static inline body_parse_data* get_bpd(parser* p)
@@ -526,7 +525,7 @@ static inline void parser_error_unexpected_token(
 {
     const char* strs[] = {"expected ", "'", token_strings[exp_tt], "'"};
     char* annot = error_log_cat_strings(
-        &p->lx.tc->err_log, sizeof(strs) / sizeof(char*), strs);
+        p->lx.tc->err_log, sizeof(strs) / sizeof(char*), strs);
     parser_error_2a(p, msg, t->start, t->end, annot, ctx_start, ctx_end, ctx);
 }
 static inline void
@@ -732,7 +731,7 @@ parse_error parse_expr_node_list(
         if (pe == PE_EOEX) {
             PEEK(p, t);
             char* msg = error_log_cat_strings_3(
-                &p->lx.tc->err_log, "invalid ", type, " syntax");
+                p->lx.tc->err_log, "invalid ", type, " syntax");
             if (!msg) return PE_FATAL;
             parser_error_1a(
                 p, msg, t->start, t->end, "expected expression after ','");
@@ -868,7 +867,7 @@ static inline parse_error require_default_flags(
 {
     if (flags == AST_NODE_FLAGS_DEFAULT) return PE_OK;
     char* loc_msg = error_log_cat_strings_2(
-        &p->lx.tc->err_log, token_strings[t->kind],
+        p->lx.tc->err_log, token_strings[t->kind],
         " does not accept any modifiers");
     if (!loc_msg) return PE_FATAL;
     parser_error_2a(
@@ -1920,7 +1919,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
             src_range_large srl;
             src_range_unpack(j->requiring_srange, &srl);
             error_log_report_annotated(
-                &p->lx.tc->err_log, ES_TOKENIZER, false,
+                p->lx.tc->err_log, ES_TOKENIZER, false,
                 "required file doesn't exist", j->requiring_file, srl.start,
                 srl.end, "required here");
         }
@@ -1929,10 +1928,10 @@ parse_error parser_parse_file(parser* p, job_parse* j)
             if (!file_path) return PE_FATAL;
             src_file_write_path(j->file, file_path);
             char* msg = error_log_cat_strings_3(
-                &p->lx.tc->err_log, "the requirested file \"", file_path,
+                p->lx.tc->err_log, "the requirested file \"", file_path,
                 "\" doesn't exist");
             tfree(file_path);
-            error_log_report_critical_failiure(&p->lx.tc->err_log, msg);
+            error_log_report_critical_failiure(p->lx.tc->err_log, msg);
         }
         return PE_LX_ERROR;
     }
@@ -1965,7 +1964,7 @@ static inline int
 report_redundant_specifier(parser* p, const char* spec, ureg start, ureg end)
 {
     char* msg = error_log_cat_strings_3(
-        &p->lx.tc->err_log, "redundant ", spec, " specifier");
+        p->lx.tc->err_log, "redundant ", spec, " specifier");
     if (!msg) return ERR;
     parser_error_1a(p, "redundant access modifiers specified", start, end, msg);
     return OK;
@@ -1986,10 +1985,10 @@ static inline parse_error ast_flags_from_kw_set_access_mod(
             msgstrs[2] = "' conflicts with previous '";
             msgstrs[3] = access_modifier_string(old_am);
             msgstrs[4] = "'";
-            char* msg = error_log_cat_strings(&p->lx.tc->err_log, 4, msgstrs);
+            char* msg = error_log_cat_strings(p->lx.tc->err_log, 4, msgstrs);
             if (!msg) return PE_FATAL;
             error_log_report_annotated(
-                &p->lx.tc->err_log, ES_PARSER, false,
+                p->lx.tc->err_log, ES_PARSER, false,
                 "conflicting access modifiers specified", p->lx.file, start,
                 end, msg);
         }
@@ -2113,7 +2112,7 @@ parse_error parse_param_list(
             char* e2 = generic ? "expected ',' or ']' in generic parameter list"
                                : "expected ',' or ')' in parameter list";
             error_log_report_annotated_twice(
-                &p->lx.tc->err_log, ES_PARSER, false, e1, p->lx.file, t->start,
+                p->lx.tc->err_log, ES_PARSER, false, e1, p->lx.file, t->start,
                 t->end, e2, p->lx.file, ctx_start, ctx_end, msg);
             pe = PE_ERROR;
             break;

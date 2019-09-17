@@ -8,6 +8,7 @@
 #include "utils/error.h"
 #include "utils/pool.h"
 #include "utils/threading.h"
+#include "file_map.h"
 
 typedef struct src_file_s src_file;
 
@@ -65,6 +66,7 @@ typedef struct error_annotation_s {
 typedef struct master_error_log_s master_error_log;
 
 typedef struct error_log_s {
+    master_error_log* mel;
     error* errors;
     error* critical_failiure_point;
     const char* critical_failiure_msg;
@@ -73,6 +75,7 @@ typedef struct error_log_s {
 typedef struct master_error_log_s {
     aseglist error_logs;
     char* global_errors[TAUC_MAX_GLOBAL_ERRORS];
+    file_map* filemap;
     ureg global_error_count;
     ureg tab_size;
     const char* tab_spaces;
@@ -80,18 +83,18 @@ typedef struct master_error_log_s {
     sreg max_err_line_length;
     sreg sane_err_line_length;
     atomic_pool error_pool;
+    bool alloc_failiure;
 } master_error_log;
 
 // MAIN THREAD ONLY
-extern master_error_log MASTER_ERROR_LOG;
-int master_error_log_init();
-void master_error_log_report(char* critical_error);
-void master_error_log_unwind();
-void master_error_log_fin();
+int master_error_log_init(master_error_log* mel, file_map* filemap);
+void master_error_log_report(master_error_log* mel, char* critical_error);
+void master_error_log_unwind(master_error_log* mel);
+void master_error_log_fin(master_error_log* mel);
 
 // THREAD SAFE
-int error_log_init(error_log* el);
-void error_log_fin(error_log* el);
+error_log* error_log_create(
+    master_error_log* mel); // these get free'd on master_error_log_fin
 bool error_log_sane_state(error_log* el);
 void error_log_report_simple(
     error_log* el, error_stage stage, bool warn, const char* message,
