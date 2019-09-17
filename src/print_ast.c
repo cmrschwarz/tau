@@ -392,37 +392,23 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             pc(']');
             print_body_braced(&t->scp.body, cmdg, indent);
         } break;
-        case OSC_MODULE: {
+        case OSC_MODULE:
+        case OSC_EXTEND: {
             osc_module* m = (osc_module*)n;
-            p("module ");
+            p(n->kind == OSC_EXTEND ? "extend " : "module ");
             pinn(m->oscope.scp.sym.name);
             print_open_scope_body(&m->oscope, cmdg, indent);
         } break;
-        case OSC_MODULE_GENERIC: {
+        case OSC_MODULE_GENERIC:
+        case OSC_EXTEND_GENERIC: {
             osc_module_generic* m = (osc_module_generic*)n;
-            p("module ");
+            p(n->kind == OSC_EXTEND ? "extend " : "module ");
             pinn(m->oscope.scp.sym.name);
             p("[");
             print_sym_params(
                 m->generic_params, m->generic_param_count, cmdg, indent);
             pc(']');
             print_open_scope_body(&m->oscope, cmdg, indent);
-        } break;
-        case OSC_EXTEND: {
-            osc_extend* e = (osc_extend*)n;
-            p("extend ");
-            pinn(e->oscope.scp.sym.name);
-            print_open_scope_body(&e->oscope, cmdg, indent);
-        } break;
-        case OSC_EXTEND_GENERIC: {
-            osc_extend_generic* e = (osc_extend_generic*)n;
-            p("extend ");
-            pinn(e->oscope.scp.sym.name);
-            p("[");
-            print_sym_params(
-                e->generic_params, e->generic_param_count, cmdg, indent);
-            pc(']');
-            print_open_scope_body(&e->oscope, cmdg, indent);
         } break;
         case EXPR_PP: {
             pc('#');

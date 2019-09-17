@@ -194,6 +194,7 @@ typedef struct scope_s {
     ast_body body;
 } scope;
 
+// TODO: rename this to module frame?
 typedef struct open_scope_s {
     scope scp;
     file_require* requires;
@@ -313,6 +314,18 @@ typedef struct sym_param_s {
     ast_node* default_value;
 } sym_param;
 
+typedef struct osc_module_s {
+    open_scope oscope;
+} osc_module;
+typedef osc_module osc_extend;
+
+typedef struct osc_module_generic_s {
+    open_scope oscope;
+    sym_param* generic_params;
+    ureg generic_param_count;
+} osc_module_generic;
+typedef osc_module_generic osc_extend_generic;
+
 typedef struct sc_func_s {
     scope scp;
     sym_param* params;
@@ -357,26 +370,6 @@ typedef struct sc_trait_generic_s {
     sym_param* generic_params;
     ureg generic_param_count;
 } sc_trait_generic;
-
-typedef struct osc_module_s {
-    open_scope oscope;
-} osc_module;
-
-typedef struct osc_module_generic_s {
-    open_scope oscope;
-    sym_param* generic_params;
-    ureg generic_param_count;
-} osc_module_generic;
-
-typedef struct osc_extend_s {
-    open_scope oscope;
-} osc_extend;
-
-typedef struct osc_extend_generic_s {
-    open_scope oscope;
-    sym_param* generic_params;
-    ureg generic_param_count;
-} osc_extend_generic;
 
 typedef struct sym_var_s {
     symbol sym;

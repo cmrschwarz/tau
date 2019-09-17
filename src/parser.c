@@ -2309,8 +2309,9 @@ parse_error check_if_first_stmt(
     }
     return PE_OK;
 }
-parse_error parse_module_decl(
-    parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)
+parse_error parse_module_frame_decl(
+    parser* p, ast_node_flags flags, ureg start, ureg flags_end, bool extend,
+    ast_node** n)
 {
     lx_void(&p->lx);
     token *t, *t2;
@@ -2339,7 +2340,7 @@ parse_error parse_module_decl(
         pe = parse_param_list(
             p, (symbol*)md, &mod_gen->generic_params,
             &mod_gen->generic_param_count, true, start, decl_end,
-            "in this module declaration");
+            "in this module frame declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -2348,8 +2349,14 @@ parse_error parse_module_decl(
         if (!md) return PE_FATAL;
         lx_void(&p->lx);
     }
-    ast_node_init_with_flags(
-        (ast_node*)md, mod_gen ? OSC_MODULE_GENERIC : OSC_MODULE, flags);
+    ast_node_kind kind;
+    if (extend) {
+        kind = mod_gen ? OSC_EXTEND_GENERIC : OSC_EXTEND;
+    }
+    else {
+        kind = mod_gen ? OSC_MODULE_GENERIC : OSC_MODULE;
+    }
+    ast_node_init_with_flags((ast_node*)md, kind, flags);
     md->scp.sym.node.srange =
         src_range_pack(p->lx.tc, start, decl_end, p->lx.file);
     if (md->scp.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
@@ -2381,73 +2388,6 @@ parse_error parse_module_decl(
         if (mdg_node_parsed(&TAUC.mdg, mdgn, p->lx.tc)) return PE_FATAL;
     }
     return PE_OK; // consider PE_NO_STMT
-}
-parse_error parse_extend_decl(
-    parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)
-{
-    lx_void(&p->lx);
-    token *t, *t2;
-    parse_error pe;
-    PEEK(p, t);
-    if (t->kind != TK_IDENTIFIER) {
-        parser_error_2a(
-            p, "invalid extend declaration syntax", t->start, t->end,
-            "expected extend identifier", start, t->end,
-            "in this extend declaration");
-        return PE_ERROR;
-    }
-    mdg_node* mdgn = mdg_found_node(&TAUC.mdg, p->current_module, t->str);
-    if (mdgn == NULL) return PE_FATAL;
-    ureg decl_end = t->end;
-    t2 = lx_peek_2nd(&p->lx);
-    if (!t2) return PE_LX_ERROR;
-    open_scope* ex;
-    osc_extend_generic* eg = NULL;
-    if (t2->kind == TK_BRACKET_OPEN) {
-        eg = alloc_perm(p, sizeof(osc_extend_generic));
-        if (!eg) return PE_FATAL;
-        ex = (open_scope*)eg;
-        lx_void_n(&p->lx, 2);
-        pe = parse_param_list(
-            p, (symbol*)ex, &eg->generic_params, &eg->generic_param_count, true,
-            start, decl_end, "in this extend declaration");
-        if (pe) return pe;
-    }
-    else {
-        ex = alloc_perm(p, sizeof(osc_extend));
-        if (!ex) return PE_FATAL;
-        lx_void(&p->lx);
-    }
-    ex->scp.sym.node.srange =
-        src_range_pack(p->lx.tc, start, decl_end, p->lx.file);
-    if (ex->scp.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
-    ast_node_init_with_flags(
-        (ast_node*)ex, eg ? OSC_EXTEND_GENERIC : OSC_EXTEND, flags);
-    ex->scp.sym.name = mdgn->name;
-    PEEK(p, t);
-    mdg_node* parent = p->current_module;
-    p->current_module = mdgn;
-    if (t->kind == TK_SEMICOLON) {
-        pe = check_if_first_stmt(p, n, start, t->end, false);
-        if (!pe) {
-            lx_consume(&p->lx);
-            pe = parse_delimited_open_scope(p, ex, TK_EOF, TK_BRACE_CLOSE);
-        }
-    }
-    else {
-        pe = parse_open_scope_body(
-            p, ex, mdgn, eg ? eg->generic_param_count : 0);
-    }
-    if (pe) {
-        p->current_module = parent;
-        return pe;
-    }
-    p->current_module = parent;
-    *n = (ast_node*)ex;
-    curr_scope_add_decls(p, ast_node_flags_get_access_mod(flags), 1);
-    mdg_node_add_osc(mdgn, (open_scope*)ex);
-    return PE_OK; // DEBUG
-    // return PE_NO_STMT;
 }
 parse_error parse_trait_decl(
     parser* p, ast_node_flags flags, ureg start, ureg flags_end, ast_node** n)
@@ -3053,9 +2993,11 @@ parse_error parse_statement(parser* p, ast_node** tgt)
             case TK_KW_TRAIT:
                 return parse_trait_decl(p, flags, start, flags_end, tgt);
             case TK_KW_MODULE:
-                return parse_module_decl(p, flags, start, flags_end, tgt);
+                return parse_module_frame_decl(
+                    p, flags, start, flags_end, false, tgt);
             case TK_KW_EXTEND:
-                return parse_extend_decl(p, flags, start, flags_end, tgt);
+                return parse_module_frame_decl(
+                    p, flags, start, flags_end, true, tgt);
             case TK_KW_USING:
                 return parse_using(p, flags, start, flags_end, tgt);
             case TK_KW_REQUIRE:
