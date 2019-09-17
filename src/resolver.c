@@ -1019,9 +1019,7 @@ static inline resolve_error resolve_ast_node_raw(
         case SYM_IMPORT_MODULE: {
             assert(!ctype);
             if (!resolved) ast_flags_set_resolved(&n->flags);
-            RETURN_RESOLVED(
-                value, ctype,
-                ((sym_import_module*)n)->target->symtab->owning_node, NULL);
+            RETURN_RESOLVED(value, ctype, n, NULL);
             return RE_OK;
         }
         case SYM_IMPORT_SYMBOL: {
@@ -1039,7 +1037,9 @@ static inline resolve_error resolve_ast_node_raw(
             re = resolve_ast_node(r, (ast_node*)*s, sym_st, value, ctype);
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
-            return RE_OK;
+            RETURN_RESOLVED(
+                value, ctype, is->target.sym,
+                get_resolved_symbol_ctype(is->target.sym));
         }
         case STMT_USING:
         case SYM_NAMED_USING:

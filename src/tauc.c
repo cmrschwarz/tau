@@ -67,7 +67,7 @@ int tauc_fin(tauc* t)
     while (true) {
         wt = aseglist_iterator_next(&it);
         if (!wt) break;
-        if (wt->spawn_failed) {
+        if (!wt->spawn_failed) {
             thread_join(&wt->thr);
         }
     }
