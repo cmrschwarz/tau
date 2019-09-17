@@ -718,7 +718,7 @@ ast_elem** get_break_target_ctype(ast_node* n)
         case EXPR_BLOCK: return &((expr_block*)n)->ctype;
         case EXPR_IF: return &((expr_if*)n)->ctype;
         case EXPR_LOOP: return &((expr_loop*)n)->ctype;
-        default: assert(false);
+        default: assert(false); return NULL;
     }
 }
 resolve_error get_resolved_symbol_symtab(

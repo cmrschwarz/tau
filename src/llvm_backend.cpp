@@ -839,7 +839,7 @@ llvm_error LLVMBackend::genBinaryOp(
             ureg align = lhs->getPointerAlignment(*_data_layout);
             // TODO: resolver has to make sure lhs is an lvalue
             _builder.CreateAlignedStore(rhs, lhs, align);
-            if (vl) v = _builder.CreateAlignedLoad(lhs, align);
+            if (vl_loaded) v = _builder.CreateAlignedLoad(lhs, align);
         } break;
         default: assert(false); return LLE_FATAL;
     }
