@@ -13,10 +13,11 @@ static inline int tauc_partial_fin(int r, int i)
 {
     switch (i) {
         case -1:
-        case 10: mdg_fin(&TAUC.mdg);
-        case 9: thread_context_fin(&TAUC.main_thread_context);
-        case 8: fin_global_symtab();
-        case 7: atomic_ureg_fin(&TAUC.linking_holdups);
+        case 11: mdg_fin(&TAUC.mdg);
+        case 10: thread_context_fin(&TAUC.main_thread_context);
+        case 9: fin_global_symtab();
+        case 8: atomic_ureg_fin(&TAUC.linking_holdups);
+        case 7: atomic_sreg_fin(&TAUC.error_code);
         case 6: atomic_ureg_fin(&TAUC.node_ids);
         case 5: atomic_ureg_fin(&TAUC.thread_count);
         case 4: aseglist_fin(&TAUC.worker_threads);
@@ -44,28 +45,20 @@ int tauc_init()
     if (r) return tauc_partial_fin(r, 4);
     r = atomic_ureg_init(&TAUC.node_ids, 0);
     if (r) return tauc_partial_fin(r, 5);
+    r = atomic_sreg_init(&TAUC.error_code, 0);
+    if (r) return tauc_partial_fin(r, 6);
     // 1 for release generation, one for final sanity check
     r = atomic_ureg_init(&TAUC.linking_holdups, 2);
-    if (r) return tauc_partial_fin(r, 6);
-    r = init_global_symtab(); // needs node_ids
     if (r) return tauc_partial_fin(r, 7);
-    r = thread_context_init(&TAUC.main_thread_context);
+    r = init_global_symtab(); // needs node_ids
     if (r) return tauc_partial_fin(r, 8);
-    r = mdg_init(&TAUC.mdg);
+    r = thread_context_init(&TAUC.main_thread_context);
     if (r) return tauc_partial_fin(r, 9);
+    r = mdg_init(&TAUC.mdg);
+    if (r) return tauc_partial_fin(r, 10);
     return OK;
 }
-int tauc_request_end()
-{
-    // TODO: make sure this only ever gets done once
-    job jb;
-    jb.kind = JOB_FINALIZE;
-    ureg w, j;
-    int r = job_queue_push(&TAUC.jobqueue, &jb, &w, &j);
-    if (r != ERR) return OK;
-    return ERR;
-}
-void tauc_fin()
+int tauc_fin()
 {
     aseglist_iterator it;
     worker_thread* wt;
@@ -77,8 +70,7 @@ void tauc_fin()
     while (true) {
         wt = aseglist_iterator_next(&it);
         if (!wt) break;
-        worker_thread_status wts = atomic_ureg_load(&wt->status);
-        if (wts != WTS_FAILED) {
+        if (wt->spawn_failed) {
             thread_join(&wt->thr);
         }
     }
@@ -91,20 +83,24 @@ void tauc_fin()
         tfree(wt);
     }
 
-    tauc_partial_fin(0, 9);
+    tauc_partial_fin(0, 10);
+    return atomic_sreg_load_flat(&TAUC.error_code);
 }
 
-int tauc_run(int argc, char** argv)
+void tauc_run(int argc, char** argv)
 {
-    if (argc < 2) return 0;
+    if (argc < 2) return;
     job_queue_preorder_job(&TAUC.jobqueue);
     for (int i = 1; i < argc; i++) {
         src_file* f = file_map_get_file_from_path(
             &TAUC.filemap, string_from_cstr(argv[i]));
-        if (!f) return ERR;
+        if (!f) {
+            tauc_error_occured(ERR);
+            return;
+        }
         src_file_require(f, NULL, SRC_RANGE_INVALID, TAUC.mdg.root_node);
     }
-    return thread_context_run(&TAUC.main_thread_context);
+    thread_context_run(&TAUC.main_thread_context);
 }
 
 void worker_thread_fn(void* ctx)
@@ -113,7 +109,6 @@ void worker_thread_fn(void* ctx)
     tflush();
     worker_thread* wt = (worker_thread*)ctx;
     thread_context_run(&wt->tc);
-    atomic_ureg_store(&wt->status, WTS_TERMINATED);
 }
 int tauc_add_worker_thread()
 {
@@ -127,12 +122,7 @@ int tauc_add_worker_thread()
         tfree(wt);
         return r;
     }
-    r = atomic_ureg_init(&wt->status, WTS_RUNNING);
-    if (r) {
-        thread_context_fin(&wt->tc);
-        tfree(wt);
-        return r;
-    }
+    wt->spawn_failed = false;
     r = aseglist_add(&TAUC.worker_threads, wt);
     if (r) {
         thread_context_fin(&wt->tc);
@@ -149,7 +139,7 @@ int tauc_add_worker_thread()
         thread_context_fin(&wt->tc);
         error_log_report_critical_failiure(
             &wt->tc.err_log, "failed to spawn additional worker thread");
-        atomic_ureg_store(&wt->status, WTS_FAILED);
+        wt->spawn_failed = true;
         return OK; // this is intentional, see above
     }
     return OK;
@@ -159,6 +149,7 @@ int tauc_add_job(job* j)
 {
     ureg waiters, jobs;
     int r = job_queue_push(&TAUC.jobqueue, j, &waiters, &jobs);
+    assert(r != JQ_DONE);
     if (r) return r;
     if (jobs > waiters) {
         ureg max_tc = plattform_get_virt_core_count();
@@ -198,6 +189,12 @@ int tauc_request_resolve_single(mdg_node* node)
     j.kind = JOB_RESOLVE;
     // we can't use start and end here since jobs are copied by value
     j.concrete.resolve.single_store = node;
+    return tauc_add_job(&j);
+}
+int tauc_request_finalize()
+{
+    job j;
+    j.kind = JOB_FINALIZE;
     return tauc_add_job(&j);
 }
 int tauc_link()
@@ -241,4 +238,15 @@ int tauc_link()
     }
     tfree(mods);
     return r;
+}
+void tauc_error_occured(int ec)
+{
+    sreg ov = 0;
+    while (ov == 0) {
+        if (atomic_sreg_cas(&TAUC.error_code, &ov, (sreg)ec)) break;
+    }
+}
+bool tauc_success_so_far()
+{
+    return (atomic_sreg_load(&TAUC.error_code) == OK);
 }

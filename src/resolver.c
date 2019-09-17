@@ -1484,7 +1484,7 @@ resolve_error resolver_resolve(
     bool contains_root = false;
     for (mdg_node** i = start; i != end; i++) {
         if (*i == TAUC.mdg.root_node) {
-            tauc_request_end();
+            if (tauc_request_finalize()) return RE_FATAL;
             contains_root = true;
         }
         int r = symbol_table_init(

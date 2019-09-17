@@ -2,7 +2,7 @@
 public func printf(x: string, y: int, c: int);
 
 func foo(i: int)-> int {
-    return if(i < 5){
+    return if(i < 5){x
         break if(i < 3){
            break if(i == 1) 1 else 2;
         }

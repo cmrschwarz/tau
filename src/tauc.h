@@ -5,18 +5,6 @@
 #include "thread_context.h"
 #include "utils/threading.h"
 
-typedef enum worker_thread_status {
-    WTS_RUNNING,
-    WTS_TERMINATED,
-    WTS_FAILED,
-} worker_thread_status;
-
-typedef struct worker_thread {
-    thread_context tc;
-    atomic_ureg status;
-    thread thr;
-} worker_thread;
-
 typedef struct tauc {
     thread_context main_thread_context;
     aseglist worker_threads;
@@ -27,19 +15,28 @@ typedef struct tauc {
     module_dependency_graph mdg;
     file_map filemap;
     job_queue jobqueue;
+    atomic_sreg error_code;
     atomic_ureg node_ids; // stores the max used id
 } tauc;
 
 extern struct tauc TAUC;
 
-// MAIN THREAD ONLY
-int tauc_init();
-int tauc_run(int argc, char** argv);
+// THREADSAFE
 int tauc_request_parse(
     src_file* f, src_file* requiring_file, src_range requiring_stmt);
 int tauc_request_resolve_single(mdg_node* node);
 int tauc_request_resolve_multiple(mdg_node** start, mdg_node** end);
-int tauc_request_end();
+int tauc_request_finalize();
+bool tauc_success_so_far();
+void tauc_error_occured(int ec);
+
 int tauc_link();
-void tauc_fin();
+
+// MAIN THREAD ONLY
+int tauc_init();
+void tauc_run(int argc, char** argv); // errors are returned by fin instead
+
+// returns a non zero error code if any thread had a failiure
+// during its run. the fin itself can't fail
+int tauc_fin();
 #endif

@@ -41,7 +41,7 @@ int thread_context_init(thread_context* tc)
     if (r) return thread_context_partial_fin(tc, r, 1);
     r = pool_init(&tc->tempmem);
     if (r) return thread_context_partial_fin(tc, r, 2);
-    error_log_init(&tc->err_log, &tc->permmem);
+    r = error_log_init(&tc->err_log);
     if (r) return thread_context_partial_fin(tc, r, 3);
     r = parser_init(&tc->p, tc);
     if (r) return thread_context_partial_fin(tc, r, 4);
@@ -61,15 +61,18 @@ int thread_context_init(thread_context* tc)
 }
 int thread_context_do_job(thread_context* tc, job* j)
 {
+
     if (j->kind == JOB_PARSE) {
-        int r;
-        TIME(r = parser_parse_file(&tc->p, &j->concrete.parse););
+        parse_error pe;
+        TIME(pe = parser_parse_file(&tc->p, &j->concrete.parse););
         tflush();
-        return r;
+        if (pe) tauc_error_occured(pe);
+        if (pe == PE_FATAL) return ERR;
+        return OK;
     }
     if (j->kind == JOB_RESOLVE) {
+        int r = OK;
         bool can_link = false;
-        int r;
         mdg_node **start, **end;
         if (j->concrete.resolve.single_store) {
             start = &j->concrete.resolve.single_store;
@@ -80,15 +83,21 @@ int thread_context_do_job(thread_context* tc, job* j)
             end = j->concrete.resolve.end;
         }
         ureg startid, endid, private_sym_count;
-        TIME(
-            r = resolver_resolve(
-                &tc->r, start, end, &startid, &endid, &private_sym_count););
-        tflush();
-        if (!r) {
+
+        resolve_error re;
+        TIME(re = resolver_resolve(
+                 &tc->r, start, end, &startid, &endid, &private_sym_count););
+        if (re == RE_FATAL) r = ERR;
+        // don't bother creating objs if we had any error somewhere
+        // since we can't create the final exe anyways
+        // (this needs to change this later once we can reuse objs)
+        if (!re && tauc_success_so_far()) {
             llvm_module* mod;
-            r = llvm_backend_emit_module(
+            llvm_error lle = llvm_backend_emit_module(
                 tc->llvmb, start, end, startid, endid, private_sym_count, &mod);
-            if (!r) {
+            if (lle) tauc_error_occured(lle);
+            if (lle == LLE_FATAL) r = ERR;
+            if (!lle) {
                 llvm_module** tgt =
                     sbuffer_append(&tc->modules, sizeof(llvm_module*));
                 if (tgt) {
@@ -97,16 +106,25 @@ int thread_context_do_job(thread_context* tc, job* j)
                     if (lh == 1) can_link = true;
                 }
                 else {
+                    error_log_report_allocation_failiure(&tc->err_log);
                     r = ERR;
+                    if (llvm_delete_objs(&mod, &mod + 1)) {
+                        // TODO: think about how to handle this
+                        assert(false);
+                        return ERR;
+                    }
+                    llvm_free_module(mod);
                 }
             }
         }
         if (!j->concrete.resolve.single_store) tfree(j->concrete.resolve.start);
-        if (r) return r;
-        if (can_link) return tauc_link();
+        if (can_link) r = tauc_link();
         return r;
     }
     if (j->kind == JOB_FINALIZE) {
+        // PERF: this is currently done twice in case of an error:
+        // once in the job_queue itself once everybody is waiting
+        // and then again here
         job_queue_stop(&TAUC.jobqueue);
         // DEBUG:
         // print_mdg_node(TAUC.mdg.root_node, 0);
@@ -118,13 +136,14 @@ int thread_context_do_job(thread_context* tc, job* j)
                 TIME(r = tauc_link(););
             }
         }
+        tauc_error_occured(r);
         return r;
     }
-    error_log_report_critical_failiure(&tc->err_log, "unknown job type");
+    assert(false); // unknown job type
     return ERR;
 }
 #include <utils/debug_utils.h>
-int thread_context_run(thread_context* tc)
+void thread_context_run(thread_context* tc)
 {
     int r = OK;
     job j;
@@ -138,11 +157,7 @@ int thread_context_run(thread_context* tc)
         }
         if (r != OK) break;
         r = thread_context_do_job(tc, &j);
-        if (r) {
-            job_queue_preorder_job(&TAUC.jobqueue);
-            tauc_request_end();
-        }
+        if (r) break;
     }
     debug_utils_free_res();
-    return r;
 }

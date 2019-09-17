@@ -1829,7 +1829,7 @@ void report_missing_semicolon(parser* p, ureg start, ureg end)
     parser_error_2a(
         p, "missing semicolon ", t->start, t->end,
         "expected ';' to terminate the statement", start, end,
-        "statement started here");
+        "statement here");
 }
 parse_error handle_semicolon_after_statement(parser* p, ast_node* s)
 {
@@ -1941,8 +1941,8 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     ast_node_init((ast_node*)&j->file->root, OSC_EXTEND);
     parse_error pe = parse_eof_delimited_open_scope(p, &j->file->root.oscope);
     lx_close_file(&p->lx);
-    job_queue_preorder_job(&TAUC.jobqueue);
     if (!pe) {
+        job_queue_preorder_job(&TAUC.jobqueue);
         if (src_file_done_parsing(j->file, p->lx.tc)) pe = PE_FATAL;
     }
     else {
@@ -2329,7 +2329,7 @@ parse_error parse_module_frame_decl(
     ureg decl_end = t->end;
 
     t2 = lx_peek_2nd(&p->lx);
-    if (!t2) return PE_FATAL;
+    if (!t2) return PE_LX_ERROR;
     open_scope* md;
     osc_module_generic* mod_gen = NULL;
     if (t2->kind == TK_BRACKET_OPEN) {

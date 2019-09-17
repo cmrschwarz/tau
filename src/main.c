@@ -28,10 +28,10 @@ int main_release(int argc, char** argv)
     // main programm
     r = tauc_init();
     if (!r) {
-        r = tauc_run(argc, argv);
+        tauc_run(argc, argv);
         // report any erros that occured
         master_error_log_unwind();
-        tauc_fin(); // UGLY: most of tauc isn't required for error reporting
+        r = tauc_fin(); // UGLY: most of tauc isn't required for error reporting
     }
     else {
         master_error_log_unwind();

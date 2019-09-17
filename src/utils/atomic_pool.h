@@ -5,8 +5,6 @@
 #include "threading.h"
 
 // TODO: make this lock free
-// TOOD: the thread allocator in here is problematic,
-// consider ditching tal alltogether
 typedef struct atomic_pool_s {
     pool basepool;
     mutex mtx;

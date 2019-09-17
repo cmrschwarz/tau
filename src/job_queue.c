@@ -63,7 +63,16 @@ int job_queue_pop(job_queue* jq, job* j, bool has_preordered)
         if (!has_preordered) jq->waiters++;
         do {
             if (jq->jobs == UREG_MAX) break;
-            assert(jq->waiters < atomic_ureg_load(&TAUC.thread_count));
+            // Everybody is waiting. This happens when (non fatal) errors
+            // occured so we are missing dependencies to continue.
+            // Just let somebody do the finalize and exit gracefully.
+            if (jq->waiters == atomic_ureg_load(&TAUC.thread_count)) {
+                jq->jobs = UREG_MAX;
+                mutex_unlock(&jq->lock);
+                cond_var_notify_all(&jq->has_jobs);
+                j->kind = JOB_FINALIZE;
+                return OK;
+            }
             cond_var_wait(&jq->has_jobs, &jq->lock);
         } while (jq->head == jq->tail);
         jq->waiters--;

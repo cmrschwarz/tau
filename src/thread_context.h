@@ -23,9 +23,18 @@ typedef struct thread_context_s {
     sbuffer modules;
 } thread_context;
 
+typedef struct worker_thread {
+    thread_context tc;
+    // we add the thread to the list first and launch it afterwards, because
+    // we it's a pain to selectively free all the resources of this tc right
+    // away in case the launch fails
+    bool spawn_failed;
+    thread thr;
+} worker_thread;
+
 int thread_context_init(thread_context* tc);
 void thread_context_fin(thread_context* tc);
-int thread_context_run(thread_context* tc);
+void thread_context_run(thread_context* tc);
 int thread_context_do_job(thread_context* tc, job* j);
 
 #endif

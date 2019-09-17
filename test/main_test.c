@@ -191,9 +191,9 @@ int release_test()
     if (!r) {
         r = tauc_init();
         if (!r) {
-            r = tauc_run(2, cli_args);
+            tauc_run(2, cli_args);
             master_error_log_unwind();
-            tauc_fin();
+            r = tauc_fin();
         }
         else {
             master_error_log_unwind();

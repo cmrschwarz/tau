@@ -68,7 +68,6 @@ typedef struct error_log_s {
     error* errors;
     error* critical_failiure_point;
     const char* critical_failiure_msg;
-    pool* error_mem_pool;
 } error_log;
 
 typedef struct master_error_log_s {
@@ -80,6 +79,7 @@ typedef struct master_error_log_s {
     bool err_tty;
     sreg max_err_line_length;
     sreg sane_err_line_length;
+    atomic_pool error_pool;
 } master_error_log;
 
 // MAIN THREAD ONLY
@@ -90,7 +90,7 @@ void master_error_log_unwind();
 void master_error_log_fin();
 
 // THREAD SAFE
-void error_log_init(error_log* el, pool* error_mem_pool);
+int error_log_init(error_log* el);
 void error_log_fin(error_log* el);
 bool error_log_sane_state(error_log* el);
 void error_log_report_simple(

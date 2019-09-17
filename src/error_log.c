@@ -53,6 +53,11 @@ int master_error_log_init()
 {
     int r = aseglist_init(&MASTER_ERROR_LOG.error_logs);
     if (r) return r;
+    r = atomic_pool_init(&MASTER_ERROR_LOG.error_pool);
+    if (r) {
+        aseglist_fin(&MASTER_ERROR_LOG.error_logs);
+        return r;
+    }
     MASTER_ERROR_LOG.global_error_count = 0;
     MASTER_ERROR_LOG.tab_size = 4; // TODO: make configurable
     MASTER_ERROR_LOG.tab_spaces = "    ";
@@ -63,6 +68,7 @@ int master_error_log_init()
 }
 void master_error_log_fin()
 {
+    atomic_pool_fin(&MASTER_ERROR_LOG.error_pool);
     aseglist_fin(&MASTER_ERROR_LOG.error_logs);
 }
 
@@ -79,12 +85,13 @@ void master_error_log_report(char* critical_error)
     }
 }
 
-void error_log_init(error_log* el, pool* error_mem_pool)
+int error_log_init(error_log* el)
 {
-    aseglist_add(&MASTER_ERROR_LOG.error_logs, el);
     el->errors = NULL;
-    el->error_mem_pool = error_mem_pool;
     el->critical_failiure_point = FAILURE_NONE;
+    int r = aseglist_add(&MASTER_ERROR_LOG.error_logs, el);
+    if (r) return r;
+    return OK;
 }
 void error_log_fin(error_log* el)
 {
@@ -92,7 +99,7 @@ void error_log_fin(error_log* el)
 
 void* error_log_alloc(error_log* el, ureg size)
 {
-    void* e = pool_alloc(el->error_mem_pool, size);
+    void* e = atomic_pool_alloc(&MASTER_ERROR_LOG.error_pool, size);
     if (!e) error_log_report_allocation_failiure(el);
     return e;
 }
@@ -311,8 +318,8 @@ void print_msg(const char* msg, ureg msg_len)
 void printCriticalThreadError(const char* msg)
 {
     pectc(
-        ANSICOLOR_RED ANSICOLOR_BOLD, "critical error in worker thread: ",
-        ANSICOLOR_CLEAR);
+        ANSICOLOR_RED ANSICOLOR_BOLD,
+        "critical error in worker thread: ", ANSICOLOR_CLEAR);
     pe(msg);
     pe("\n");
 }
@@ -500,8 +507,7 @@ int print_src_line(
             ureg after_tab = bpos;
             print_until(&bpos, &next, buffer, &after_tab, &length_diff);
             switch (mode) {
-                case 3:
-                    (ep_pos + 1)->length_diff_start = length_diff;
+                case 3: (ep_pos + 1)->length_diff_start = length_diff;
                 // fallthrough
                 case 0:
                     ep_pos->length_diff_start = length_diff;
