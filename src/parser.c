@@ -1935,13 +1935,13 @@ parse_error parser_parse_file(parser* p, job_parse* j)
         }
         return PE_LX_ERROR;
     }
-    p->current_module = TAUC.mdg.root_node;
-    j->file->root.oscope.scp.sym.name = TAUC.mdg.root_node->name;
+    p->current_module = p->lx.tc->t->mdg.root_node;
+    j->file->root.oscope.scp.sym.name = p->lx.tc->t->mdg.root_node->name;
     ast_node_init((ast_node*)&j->file->root, OSC_EXTEND);
     parse_error pe = parse_eof_delimited_open_scope(p, &j->file->root.oscope);
     lx_close_file(&p->lx);
     if (!pe) {
-        job_queue_preorder_job(&TAUC.jobqueue);
+        job_queue_preorder_job(&p->lx.tc->t->jobqueue);
         if (src_file_done_parsing(j->file, p->lx.tc)) pe = PE_FATAL;
     }
     else {
@@ -2323,7 +2323,8 @@ parse_error parse_module_frame_decl(
             "in this module declaration");
         return PE_ERROR;
     }
-    mdg_node* mdgn = mdg_found_node(&TAUC.mdg, p->current_module, t->str);
+    mdg_node* mdgn =
+        mdg_found_node(&p->lx.tc->t->mdg, p->current_module, t->str);
     if (mdgn == NULL) return PE_FATAL;
     ureg decl_end = t->end;
 
@@ -2380,9 +2381,9 @@ parse_error parse_module_frame_decl(
     *n = (ast_node*)md;
     // TODO: add a dummy symbol with the module name to avoid redeclaration
     // curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
-    mdg_node_add_osc(mdgn, (open_scope*)md);
+    mdg_node_add_osc(mdgn, (open_scope*)md, p->lx.tc->t);
     if (*(void**)md->requires == NULL) {
-        if (mdg_node_parsed(&TAUC.mdg, mdgn, p->lx.tc)) return PE_FATAL;
+        if (mdg_node_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc)) return PE_FATAL;
     }
     return PE_OK; // consider PE_NO_STMT
 }
@@ -2715,7 +2716,7 @@ parse_error parse_import_with_parent(
 {
     token *t, *t2;
     PEEK(p, t);
-    ureg istart = (parent == TAUC.mdg.root_node) ? start : t->start;
+    ureg istart = (parent == p->lx.tc->t->mdg.root_node) ? start : t->start;
     ureg end;
     PEEK_SND(p, t2);
     char* name = NULL;
@@ -2725,7 +2726,7 @@ parse_error parse_import_with_parent(
         lx_void_n(&p->lx, 2);
         PEEK(p, t);
     }
-    if (t->kind == TK_KW_SELF && TAUC.mdg.root_node == parent) {
+    if (t->kind == TK_KW_SELF && p->lx.tc->t->mdg.root_node == parent) {
         parent = p->current_module;
         ast_flags_set_relative_import(&flags);
         if (t2->kind == TK_DOUBLE_COLON) {
@@ -2741,7 +2742,7 @@ parse_error parse_import_with_parent(
     bool has_ident = false;
     while (t->kind == TK_IDENTIFIER) {
         has_ident = true;
-        parent = mdg_get_node(&TAUC.mdg, parent, t->str, MS_NOT_FOUND);
+        parent = mdg_get_node(&p->lx.tc->t->mdg, parent, t->str, MS_NOT_FOUND);
         // if the node doesn't exist it gets created here,
         // we will find out (and report) once all required files are parsed
         // if
@@ -2836,7 +2837,8 @@ parse_error parse_import(
     lx_void(&p->lx);
     ureg decl_cnt = 0;
     parse_error pe = parse_import_with_parent(
-        p, flags, start, kw_end, TAUC.mdg.root_node, &decl_cnt, (symbol**)tgt);
+        p, flags, start, kw_end, p->lx.tc->t->mdg.root_node, &decl_cnt,
+        (symbol**)tgt);
     if (pe) return pe;
     curr_scope_add_decls(p, ast_flags_get_access_mod(flags), decl_cnt);
     return PE_OK;
@@ -2864,7 +2866,7 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
         return PE_ERROR;
     }
     src_file* f = file_map_get_file_from_relative_path(
-        &TAUC.filemap, p->lx.file->head.parent, t->str);
+        &p->lx.tc->t->filemap, p->lx.file->head.parent, t->str);
     lx_void(&p->lx);
     PEEK(p, t);
     if (t->kind != TK_SEMICOLON) {
@@ -2881,7 +2883,8 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     bool needed = (p->current_module->stage != MS_UNNEEDED);
     rwslock_end_read(&p->current_module->stage_lock);
     if (needed) {
-        int r = src_file_require(f, p->lx.file, rq.srange, p->current_module);
+        int r = src_file_require(
+            f, p->lx.tc->t, p->lx.file, rq.srange, p->current_module);
         if (r == ERR) return PE_FATAL;
         if (r != SF_ALREADY_PARSED) {
             atomic_ureg_inc(&p->current_module->unparsed_files);

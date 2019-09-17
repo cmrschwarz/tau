@@ -220,7 +220,7 @@ resolve_error add_import_group_decls(
             }
             else {
                 re = add_sym_import_module_decl(
-                    tc, f, st, im, TAUC.mdg.root_node, im->target, NULL);
+                    tc, f, st, im, tc->t->mdg.root_node, im->target, NULL);
             }
             if (re) return re;
         }
@@ -341,7 +341,7 @@ static resolve_error add_ast_node_decls(
                 stop = (mdg_node*)pst->owning_node;
             }
             else {
-                stop = TAUC.mdg.root_node;
+                stop = r->tc->t->mdg.root_node;
             }
             return add_sym_import_module_decl(
                 r->tc, NULL, st, im, stop, im->target, NULL);
@@ -1045,7 +1045,8 @@ static inline resolve_error resolve_ast_node_raw(
         case SYM_NAMED_USING:
         case STMT_COMPOUND_ASSIGN: {
             // TODO
-            return RE_OK;
+            assert(false);
+            return RE_FATAL;
         }
         case SYM_VAR: {
             sym_var* v = (sym_var*)n;
@@ -1483,8 +1484,8 @@ resolve_error resolver_resolve(
     print_debug_info(r);
     bool contains_root = false;
     for (mdg_node** i = start; i != end; i++) {
-        if (*i == TAUC.mdg.root_node) {
-            if (tauc_request_finalize()) return RE_FATAL;
+        if (*i == r->tc->t->mdg.root_node) {
+            if (tauc_request_finalize(r->tc->t)) return RE_FATAL;
             contains_root = true;
         }
         int r = symbol_table_init(
@@ -1494,7 +1495,7 @@ resolve_error resolver_resolve(
         if (!(**i).symtab) return RE_FATAL;
         (**i).symtab->parent = GLOBAL_SYMTAB;
     }
-    if (!contains_root) atomic_ureg_inc(&TAUC.linking_holdups);
+    if (!contains_root) atomic_ureg_inc(&r->tc->t->linking_holdups);
     for (mdg_node** i = start; i != end; i++) {
         aseglist_iterator asi;
         aseglist_iterator_begin(&asi, &(**i).open_scopes);
@@ -1518,7 +1519,7 @@ resolve_error resolver_resolve(
     }
 
     if (re) return re;
-    *startid = atomic_ureg_add(&TAUC.node_ids, r->public_sym_count);
+    *startid = atomic_ureg_add(&r->tc->t->node_ids, r->public_sym_count);
     *endid = *startid + r->public_sym_count;
     *private_sym_count = r->private_sym_count - UREGH_MAX;
     adjust_ids(*startid, start, end);

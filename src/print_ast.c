@@ -159,7 +159,7 @@ void print_ast_node_nl(ast_node* n, mdg_node* cmdg, ureg indent)
 }
 bool print_mdg_node_until(mdg_node* m, mdg_node* stop)
 {
-    if (m == stop) return false;
+    if (m->parent == stop) return false;
     if (print_mdg_node_until(m->parent, stop)) p("::");
     p(m->name);
     return true;
@@ -176,6 +176,7 @@ char* get_expr_name(ast_node* n)
         case EXPR_BLOCK: return ((expr_block*)n)->name;
         case EXPR_MACRO: return ((expr_macro*)n)->name;
         case EXPR_MATCH: return ((expr_match*)n)->name;
+        case EXPR_LOOP: return ((expr_loop*)n)->name;
         default: assert(false); return NULL;
     }
 }
@@ -192,10 +193,10 @@ void print_ast_elem_name(ast_elem* n)
     }
 }
 void print_import_group(
-    sym_import_group* g, mdg_node* block_parent, ureg indent)
+    sym_import_group* g, mdg_node* block_parents_parent, ureg indent)
 {
     // TODO: improve this mess
-    if (print_mdg_node_until(g->parent.mdgn, block_parent)) p("::");
+    if (print_mdg_node_until(g->parent.mdgn, block_parents_parent)) p("::");
     symbol** c;
     symbol** cend;
     if (ast_flags_get_resolved(g->sym.node.flags)) {
@@ -219,11 +220,11 @@ void print_import_group(
         if (!syms) print_indent(indent + 1);
         if ((**c).node.kind == SYM_IMPORT_GROUP) {
             print_import_group(
-                (sym_import_group*)*c, g->parent.mdgn, indent + 1);
+                (sym_import_group*)*c, g->parent.mdgn->parent, indent + 1);
         }
         else if ((**c).node.kind == SYM_IMPORT_MODULE) {
             print_mdg_node_until(
-                ((sym_import_module*)*c)->target, g->parent.mdgn);
+                ((sym_import_module*)*c)->target, g->parent.mdgn->parent);
         }
         else if ((**c).node.kind == SYM_IMPORT_SYMBOL) {
             // TODO: remove if aboce by fixing unnamed group containing parent
@@ -291,21 +292,20 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             sym_import_module* im = (sym_import_module*)n;
             if (ast_flags_get_relative_import(n->flags)) {
                 p("self::");
-                print_mdg_node_until(im->target, cmdg);
+                print_mdg_node_until(im->target, cmdg->parent);
             }
             else {
-                print_mdg_node_until(im->target, TAUC.mdg.root_node);
+                print_mdg_node_until(im->target, NULL);
             }
         } break;
         case SYM_IMPORT_GROUP: {
             p("import ");
             if (ast_flags_get_relative_import(n->flags)) {
                 p("self::");
-                print_import_group((sym_import_group*)n, cmdg, indent);
+                print_import_group((sym_import_group*)n, cmdg->parent, indent);
             }
             else {
-                print_import_group(
-                    (sym_import_group*)n, TAUC.mdg.root_node, indent);
+                print_import_group((sym_import_group*)n, NULL, indent);
             }
         } break;
         case STMT_COMPOUND_ASSIGN: {

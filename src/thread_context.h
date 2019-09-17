@@ -8,8 +8,9 @@
 #include "utils/pool.h"
 #include "utils/stack.h"
 #include "llvm_backend_api.h"
-
+typedef struct tauc_s tauc;
 typedef struct thread_context_s {
+    tauc* t;
     error_log* err_log;
     pool permmem;
     pool tempmem;
@@ -32,7 +33,7 @@ typedef struct worker_thread {
     thread thr;
 } worker_thread;
 
-int thread_context_init(thread_context* tc);
+int thread_context_init(thread_context* tc, tauc* t);
 void thread_context_fin(thread_context* tc);
 void thread_context_run(thread_context* tc);
 int thread_context_do_job(thread_context* tc, job* j);

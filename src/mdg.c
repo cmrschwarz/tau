@@ -214,7 +214,13 @@ static void free_astn_symtabs(ast_node* n)
             }
             free_astn_symtabs(c->lhs);
         } break;
+        case EXPR_MEMBER_ACCESS:
+        case EXPR_SCOPE_ACCESS: {
+            expr_scope_access* esa = (expr_scope_access*)n;
+            free_astn_symtabs(esa->lhs);
+        }
         case EXPR_IDENTIFIER:
+        case SYM_IMPORT_MODULE:
         case EXPR_LITERAL: break;
         default: assert(false);
     }
@@ -497,7 +503,6 @@ void mdg_node_report_missing_import(
 int scc_detector_strongconnect(
     thread_context* tc, mdg_node* n, sccd_node* sn, mdg_node* caller)
 {
-
     if (n->stage == MS_NOT_FOUND) {
         mdg_node* par = n->parent;
         while (true) {
@@ -598,7 +603,7 @@ int scc_detector_strongconnect(
             rwslock_end_write(&n->stage_lock);
             sn->index = tc->sccd.dfs_start_index;
             if (success) {
-                tauc_request_resolve_single(n);
+                tauc_request_resolve_single(tc->t, n);
             }
             return ret;
         }
@@ -631,7 +636,7 @@ int scc_detector_strongconnect(
         }
         if (success) {
             tauc_request_resolve_multiple(
-                node_list, ptradd(node_list, list_size));
+                tc->t, node_list, ptradd(node_list, list_size));
         }
         else {
             tfree(node_list);
@@ -715,7 +720,7 @@ int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc)
     }
     return OK;
 }
-int mdg_node_add_osc(mdg_node* n, open_scope* osc)
+int mdg_node_add_osc(mdg_node* n, open_scope* osc, tauc* t)
 {
     int r;
     bool needed;
@@ -731,7 +736,8 @@ int mdg_node_add_osc(mdg_node* n, open_scope* osc)
     if (needed) {
         file_require* r = osc->requires;
         while (*(void**)r && !r->handled) {
-            src_file_require(r->file, open_scope_get_file(osc), r->srange, n);
+            src_file_require(
+                r->file, t, open_scope_get_file(osc), r->srange, n);
             r++;
         }
     }
@@ -801,7 +807,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
                 file_require* r = osc->requires;
                 while (*(void**)r) {
                     src_file_require(
-                        r->file, open_scope_get_file(osc), r->srange, n);
+                        r->file, tc->t, open_scope_get_file(osc), r->srange, n);
                     r++;
                 }
             }

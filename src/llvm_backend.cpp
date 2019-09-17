@@ -97,7 +97,7 @@ int llvm_initialize_primitive_information()
 
 LLVMBackend::LLVMBackend(thread_context* tc)
     : _tc(tc), _context(), _builder(_context),
-      _global_value_store(atomic_ureg_load(&TAUC.node_ids), NULL)
+      _global_value_store(atomic_ureg_load(&tc->t->node_ids), NULL)
 {
     std::string err;
     auto target_triple = "x86_64-pc-linux-gnu"; // LLVMGetDefaultTargetTriple();
@@ -816,7 +816,7 @@ char* name_mangle(sc_func* fn)
     symbol_table* st = fn->scp.body.symtab;
     while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
     mdg_node* n = (mdg_node*)st->owning_node;
-    if (n == TAUC.mdg.root_node) return fn->scp.sym.name;
+    if (n->parent == NULL) return fn->scp.sym.name;
     ureg mnl = strlen(n->name);
     ureg fnl = strlen(fn->scp.sym.name);
     char* res = (char*)malloc(mnl + fnl + 3); // TODO: manage mem properly

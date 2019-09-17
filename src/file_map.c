@@ -91,7 +91,7 @@ src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
 }
 
 int src_file_require(
-    src_file* f, src_file* requiring_file, src_range requiring_srange,
+    src_file* f, tauc* t, src_file* requiring_file, src_range requiring_srange,
     mdg_node* n)
 {
     src_file_stage prev_stage;
@@ -110,7 +110,7 @@ int src_file_require(
         case SFS_UNPARSED: return OK;
         case SFS_UNNEEDED: {
             aseglist_add(&f->requiring_modules, n);
-            return tauc_request_parse(f, requiring_file, requiring_srange);
+            return tauc_request_parse(t, f, requiring_file, requiring_srange);
         }
         default: {
             panic("unkown file stage");
@@ -194,11 +194,11 @@ int src_file_done_parsing(src_file* f, thread_context* tc)
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &f->requiring_modules);
     rwslock_end_write(&f->stage_lock);
-    aseglist_add(&TAUC.mdg.root_node->open_scopes, &f->root);
+    aseglist_add(&tc->t->mdg.root_node->open_scopes, &f->root);
     while (true) {
         mdg_node* m = aseglist_iterator_next(&it);
         if (!m) break;
-        int r = mdg_node_file_parsed(&TAUC.mdg, m, tc);
+        int r = mdg_node_file_parsed(&tc->t->mdg, m, tc);
         if (r) return r;
     }
     return OK;

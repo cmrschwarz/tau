@@ -27,22 +27,23 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
     }
     if (r)
         master_error_log_report(
-            &TAUC.mel, "thread context initialization failed");
+            &tc->t->mel, "thread context initialization failed");
     return r;
 }
 void thread_context_fin(thread_context* tc)
 {
     thread_context_partial_fin(tc, 0, -1);
 }
-int thread_context_init(thread_context* tc)
+int thread_context_init(thread_context* tc, tauc* t)
 {
+    tc->t = t;
     int r = pool_init(&tc->permmem);
     if (r) return thread_context_partial_fin(tc, r, 0);
     r = sbuffer_init(&tc->modules, sizeof(llvm_module*) * 8);
     if (r) return thread_context_partial_fin(tc, r, 1);
     r = pool_init(&tc->tempmem);
     if (r) return thread_context_partial_fin(tc, r, 2);
-    tc->err_log = error_log_create(&TAUC.mel);
+    tc->err_log = error_log_create(&t->mel);
     if (!tc->err_log) return thread_context_partial_fin(tc, r, 2);
     r = parser_init(&tc->p, tc);
     if (r) return thread_context_partial_fin(tc, r, 3);
@@ -67,7 +68,7 @@ int thread_context_do_job(thread_context* tc, job* j)
         parse_error pe;
         TIME(pe = parser_parse_file(&tc->p, &j->concrete.parse););
         tflush();
-        if (pe) tauc_error_occured(pe);
+        if (pe) tauc_error_occured(tc->t, pe);
         if (pe == PE_FATAL) return ERR;
         return OK;
     }
@@ -92,18 +93,18 @@ int thread_context_do_job(thread_context* tc, job* j)
         // don't bother creating objs if we had any error somewhere
         // since we can't create the final exe anyways
         // (this needs to change this later once we can reuse objs)
-        if (!re && tauc_success_so_far()) {
+        if (!re && tauc_success_so_far(tc->t)) {
             llvm_module* mod;
             llvm_error lle = llvm_backend_emit_module(
                 tc->llvmb, start, end, startid, endid, private_sym_count, &mod);
-            if (lle) tauc_error_occured(lle);
+            if (lle) tauc_error_occured(tc->t, lle);
             if (lle == LLE_FATAL) r = ERR;
             if (!lle) {
                 llvm_module** tgt =
                     sbuffer_append(&tc->modules, sizeof(llvm_module*));
                 if (tgt) {
                     *tgt = mod;
-                    ureg lh = atomic_ureg_dec(&TAUC.linking_holdups);
+                    ureg lh = atomic_ureg_dec(&tc->t->linking_holdups);
                     if (lh == 1) can_link = true;
                 }
                 else {
@@ -119,25 +120,25 @@ int thread_context_do_job(thread_context* tc, job* j)
             }
         }
         if (!j->concrete.resolve.single_store) tfree(j->concrete.resolve.start);
-        if (can_link) r = tauc_link();
+        if (can_link) r = tauc_link(tc->t);
         return r;
     }
     if (j->kind == JOB_FINALIZE) {
         // PERF: this is currently done twice in case of an error:
         // once in the job_queue itself once everybody is waiting
         // and then again here
-        job_queue_stop(&TAUC.jobqueue);
+        job_queue_stop(&tc->t->jobqueue);
         // DEBUG:
-        // print_mdg_node(TAUC.mdg.root_node, 0);
+        // print_mdg_node(tc->t->mdg.root_node, 0);
         // puts("");
-        int r = mdg_final_sanity_check(&TAUC.mdg, tc);
+        int r = mdg_final_sanity_check(&tc->t->mdg, tc);
         if (!r) {
-            ureg lh = atomic_ureg_dec(&TAUC.linking_holdups);
+            ureg lh = atomic_ureg_dec(&tc->t->linking_holdups);
             if (lh == 1) {
-                TIME(r = tauc_link(););
+                TIME(r = tauc_link(tc->t););
             }
         }
-        tauc_error_occured(r);
+        tauc_error_occured(tc->t, r);
         return r;
     }
     assert(false); // unknown job type
@@ -150,13 +151,20 @@ void thread_context_run(thread_context* tc)
     job j;
     bool preordered = true;
     while (true) {
-        r = job_queue_pop(&TAUC.jobqueue, &j, preordered);
+        r = job_queue_pop(
+            &tc->t->jobqueue, &j, preordered,
+            atomic_ureg_load(&tc->t->thread_count));
         preordered = false;
         if (r == JQ_DONE) {
             r = OK;
             break;
         }
-        if (r != OK) break;
+        else if (r == JQ_WAITER_COUNT_REACHED) {
+            j.kind = JOB_FINALIZE;
+        }
+        else if (r != OK) {
+            break;
+        }
         r = thread_context_do_job(tc, &j);
         if (r) break;
     }

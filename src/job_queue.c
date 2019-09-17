@@ -56,29 +56,27 @@ int job_queue_try_pop(job_queue* jq, job* j)
     mutex_unlock(&jq->lock);
     return r;
 }
-int job_queue_pop(job_queue* jq, job* j, bool has_preordered)
+int job_queue_pop(
+    job_queue* jq, job* j, bool has_preordered, ureg break_on_waiter_count)
 {
     mutex_lock(&jq->lock);
+    if (has_preordered) jq->preorders--;
     if (jq->head == jq->tail) {
-        if (!has_preordered) jq->waiters++;
+        jq->waiters++;
         do {
             if (jq->jobs == UREG_MAX) break;
             // Everybody is waiting. This happens when (non fatal) errors
             // occured so we are missing dependencies to continue.
             // Just let somebody do the finalize and exit gracefully.
-            if (jq->waiters == atomic_ureg_load(&TAUC.thread_count)) {
+            if (jq->waiters == break_on_waiter_count) {
                 jq->jobs = UREG_MAX;
                 mutex_unlock(&jq->lock);
                 cond_var_notify_all(&jq->has_jobs);
-                j->kind = JOB_FINALIZE;
-                return OK;
+                return JQ_WAITER_COUNT_REACHED;
             }
             cond_var_wait(&jq->has_jobs, &jq->lock);
         } while (jq->head == jq->tail);
         jq->waiters--;
-    }
-    else {
-        if (has_preordered) jq->waiters--;
     }
     if (jq->jobs == UREG_MAX) {
         mutex_unlock(&jq->lock);
@@ -124,7 +122,7 @@ int job_queue_push(job_queue* jq, const job* jb, ureg* waiters, ureg* jobs)
         j = jq->head - 1;
     }
     *j = *jb;
-    *waiters = jq->waiters;
+    *waiters = jq->waiters + jq->preorders;
     *jobs = ++jq->jobs;
     mutex_unlock(&jq->lock);
     if (*waiters > 0) cond_var_notify_one(&jq->has_jobs);
@@ -133,7 +131,7 @@ int job_queue_push(job_queue* jq, const job* jb, ureg* waiters, ureg* jobs)
 int job_queue_preorder_job(job_queue* jq)
 {
     mutex_lock(&jq->lock);
-    jq->waiters++;
+    jq->preorders++;
     mutex_unlock(&jq->lock);
     return OK;
 }

@@ -12,6 +12,7 @@
 // mdg: module dependency graph
 typedef struct mdg_deps_list_s mdg_deps_list;
 typedef struct thread_context_s thread_context;
+typedef struct tauc_s tauc;
 
 typedef enum module_stage_e {
     MS_NOT_FOUND, // required but not found in src
@@ -115,7 +116,7 @@ int mdg_node_resolved(mdg_node* n, thread_context* tc);
 int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc);
 int mdg_node_add_dependency(
     mdg_node* n, mdg_node* dependency, thread_context* tc);
-int mdg_node_add_osc(mdg_node* n, open_scope* osc);
+int mdg_node_add_osc(mdg_node* n, open_scope* osc, tauc* t);
 
 int scc_detector_init(scc_detector* d, pool* mem_src);
 int scc_detector_run(thread_context* tc, mdg_node* n);

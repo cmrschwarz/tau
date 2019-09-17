@@ -10,6 +10,7 @@
 #include "utils/threading.h"
 #include <stdio.h>
 
+typedef struct tauc_s tauc;
 typedef struct src_dir_s src_dir;
 typedef struct thread_context_s thread_context;
 typedef struct open_scope_s open_scope;
@@ -56,7 +57,7 @@ int src_file_done_parsing(src_file* f, thread_context* tc);
 #define SF_ALREADY_PARSED STATUS_1
 // requiring file and srange are purely for error reporting
 int src_file_require(
-    src_file* f, src_file* requiring_file, src_range requiring_srange,
+    src_file* f, tauc* t, src_file* requiring_file, src_range requiring_srange,
     mdg_node* n);
 
 typedef struct file_map_s {

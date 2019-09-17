@@ -5,7 +5,7 @@
 #include "thread_context.h"
 #include "utils/threading.h"
 
-typedef struct tauc {
+typedef struct tauc_s {
     // these two are still needed for error reporting after
     // the compiler has run
     master_error_log mel;
@@ -23,17 +23,15 @@ typedef struct tauc {
     atomic_ureg node_ids; // stores the max used id
 } tauc;
 
-extern struct tauc TAUC;
-
 // THREADSAFE
 int tauc_request_parse(
-    src_file* f, src_file* requiring_file, src_range requiring_stmt);
-int tauc_request_resolve_single(mdg_node* node);
-int tauc_request_resolve_multiple(mdg_node** start, mdg_node** end);
-int tauc_request_finalize();
-bool tauc_success_so_far();
-void tauc_error_occured(int ec);
-int tauc_link();
+    tauc* t, src_file* f, src_file* requiring_file, src_range requiring_stmt);
+int tauc_request_resolve_single(tauc* t, mdg_node* node);
+int tauc_request_resolve_multiple(tauc* t, mdg_node** start, mdg_node** end);
+int tauc_request_finalize(tauc* t);
+bool tauc_success_so_far(tauc* t);
+void tauc_error_occured(tauc* t, int ec);
+int tauc_link(tauc* t);
 
 // MAIN THREAD ONLY
 int tauc_run(int argc, char** argv); // errors are returned by fin instead

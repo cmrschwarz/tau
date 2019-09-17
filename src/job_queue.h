@@ -39,6 +39,7 @@ typedef struct job_queue_s {
     job* head;
     job* tail;
     ureg waiters;
+    ureg preorders;
     ureg jobs;
     cond_var has_jobs;
     mutex lock;
@@ -49,10 +50,19 @@ void job_queue_fin(job_queue* jq);
 
 #define JQ_DONE STATUS_1
 #define JQ_NONE STATUS_2
+#define JQ_WAITER_COUNT_REACHED STATUS_2
+
 // these return OK, ERR, or JQ_DONE
 int job_queue_push(job_queue* jq, const job* jb, ureg* waiters, ureg* jobs);
-int job_queue_pop(job_queue* jq, job* j, bool has_preordered);
+
+// returns OK, ERR or JQ_WAITER_COUNT_REACHED
+int job_queue_pop(
+    job_queue* jq, job* j, bool has_preordered, ureg break_on_waiter_count);
+
+// returns OK or ERR
 int job_queue_preorder_job(job_queue* jq);
+
+// returns OK or JQ_NONE
 int job_queue_try_pop(job_queue* jq, job* j);
 
 void job_queue_stop(job_queue* jq);
