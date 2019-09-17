@@ -419,9 +419,10 @@ llvm_error LLVMBackend::genScopeValue(ast_elem* ctype, ControlFlowContext& ctx)
         llvm::Type* t;
         llvm_error lle = lookupCType(ctype, &t, &ctx.value_align);
         if (lle) return lle;
-        ctx.value = new llvm::AllocaInst(
-            t, 0, nullptr, ctx.value_align, "", _builder.GetInsertBlock());
-        if (!ctx.value) return LLE_FATAL;
+        auto all = new llvm::AllocaInst(t, 0, nullptr, ctx.value_align, "");
+        if (!all) return LLE_FATAL;
+        ctx.value = all;
+        _builder.Insert(all);
     }
     else {
         ctx.value = NULL;
@@ -496,15 +497,49 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case EXPR_RETURN: {
             auto eb = (expr_break*)n;
             ControlFlowContext* tgt_ctx;
+            bool continues = _control_flow_ctx.back().continues_afterwards;
+            auto ast_val = eb->value;
+            llvm::Value* v;
             if (n->kind == EXPR_BREAK) {
                 tgt_ctx = getTartetCFC(eb->target);
             }
             else {
                 tgt_ctx = &_control_flow_ctx.front();
+                if (tgt_ctx->following_block == NULL) {
+                    if (!continues && tgt_ctx == &_control_flow_ctx.back()) {
+                        if (ast_val) {
+                            _control_flow_ctx.back().continues_afterwards =
+                                true;
+                            lle = genAstNode(ast_val, NULL, &v);
+                            _control_flow_ctx.back().continues_afterwards =
+                                false;
+                            if (lle) return lle;
+                            _builder.CreateRet(v);
+                            return LLE_OK;
+                        }
+                        else {
+                            _builder.CreateRetVoid();
+                            return LLE_OK;
+                        }
+                    }
+                    else {
+                        auto curr_ib = _builder.GetInsertBlock();
+                        auto curr_ip = _builder.GetInsertPoint();
+                        _builder.SetInsertPoint(
+                            tgt_ctx->first_block,
+                            tgt_ctx->first_block->getInstList().begin());
+                        genScopeValue(
+                            _curr_fn_ast_node->return_ctype, *tgt_ctx);
+                        tgt_ctx->following_block =
+                            llvm::BasicBlock::Create(_context, "", _curr_fn);
+                        _builder.SetInsertPoint(curr_ib, curr_ip);
+                        for (auto& c : _control_flow_ctx) {
+                            if (c.following_block == NULL)
+                                c.following_block = tgt_ctx->following_block;
+                        }
+                    }
+                }
             }
-            auto ast_val = eb->value;
-            llvm::Value* v;
-            bool continues = _control_flow_ctx.back().continues_afterwards;
             if (ast_val) {
                 _control_flow_ctx.back().continues_afterwards = true;
                 // todo: where do we cast?
@@ -623,10 +658,11 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     // These should be handled by member access
                     assert(k != SC_STRUCT);
                     // local var
-                    var_val = new llvm::AllocaInst(
-                        t, 0, nullptr, align, "" /* var->sym.name*/,
-                        _builder.GetInsertBlock());
-                    if (!var_val) return LLE_FATAL;
+                    auto all = new llvm::AllocaInst(
+                        t, 0, nullptr, align, "" /* var->sym.name*/);
+                    if (!all) return LLE_FATAL;
+                    var_val = all;
+                    _builder.Insert(all);
                     if (n->kind == SYM_VAR_INITIALIZED) {
                         llvm::Value* v;
                         lle = genAstNode(
@@ -890,28 +926,28 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
     _control_flow_ctx.emplace_back();
     ControlFlowContext& ctx = _control_flow_ctx.back();
     _builder.SetInsertPoint(func_block);
-    lle = genScopeValue(fn->return_ctype, ctx);
-    if (lle) return lle;
+    // lle = genScopeValue(fn->return_ctype, ctx);
+    // if (lle) return lle;
     ctx.first_block = func_block;
-    ctx.following_block = llvm::BasicBlock::Create(_context, "", func);
-    if (!ctx.following_block) return LLE_FATAL;
+    ctx.following_block = NULL;
 
     _curr_fn = func;
+    _curr_fn_ast_node = fn;
     _builder.SetInsertPoint(func_block);
     lle = genAstBody(&fn->scp.body, false);
-
-    if (_builder.GetInsertBlock() != ctx.following_block) {
-        _builder.CreateBr(ctx.following_block);
-        _builder.SetInsertPoint(ctx.following_block);
-    }
-
-    if (!ctx.value) {
-        _builder.CreateRetVoid();
-    }
-    else {
-        auto load = _builder.CreateAlignedLoad(ctx.value, ctx.value_align);
-        if (!load) return LLE_FATAL;
-        _builder.CreateRet(load);
+    if (ctx.following_block) {
+        if (_builder.GetInsertBlock() != ctx.following_block) {
+            // _builder.CreateBr(ctx.following_block);
+            _builder.SetInsertPoint(ctx.following_block);
+        }
+        if (!ctx.value) {
+            _builder.CreateRetVoid();
+        }
+        else {
+            auto load = _builder.CreateAlignedLoad(ctx.value, ctx.value_align);
+            if (!load) return LLE_FATAL;
+            _builder.CreateRet(load);
+        }
     }
     _control_flow_ctx.pop_back();
     return lle;

@@ -10012,4 +10012,3 @@ public func main() -> int{
     printf("foo: %i%c", foo::f10000() + bar::f10000() + baz::f10000(), 10);
     return 0;
 }
-

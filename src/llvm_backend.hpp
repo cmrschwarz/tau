@@ -82,6 +82,7 @@ struct LLVMBackend {
     llvm::TargetMachine* _target_machine;
     llvm::DataLayout* _data_layout;
     llvm::Function* _curr_fn;
+    sc_func* _curr_fn_ast_node;
     ureg _mod_startid;
     ureg _mod_endid;
     ureg _private_sym_count;

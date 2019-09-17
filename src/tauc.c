@@ -63,7 +63,6 @@ int tauc_fin(tauc* t)
 
     // tauc_request_end();
     // thread_context_run(&t->main_thread_context);
-    job_queue_stop(&t->jobqueue);
     while (true) {
         wt = aseglist_iterator_next(&it);
         if (!wt) break;

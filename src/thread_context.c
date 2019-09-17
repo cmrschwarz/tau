@@ -125,9 +125,6 @@ int thread_context_do_job(thread_context* tc, job* j)
         return r;
     }
     if (j->kind == JOB_FINALIZE) {
-        // PERF: this is currently done twice in case of an error:
-        // once in the job_queue itself once everybody is waiting
-        // and then again here
         job_queue_stop(&tc->t->jobqueue);
         // DEBUG:
         // print_mdg_node(tc->t->mdg.root_node, 0);

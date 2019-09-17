@@ -189,7 +189,7 @@ int list_builder_test()
 }
 int release_test()
 {
-    static char* cli_args[2] = {"", "test/bigtest/footest.tau"};
+    static char* cli_args[2] = {"", "test/test.tau"};
     return tauc_run(2, cli_args);
 }
 int llvmtest_main();
