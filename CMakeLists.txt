@@ -3,7 +3,7 @@ project(tau C CXX)
 
 set(TAUC_C_SRCS
     ./src/lexer.c
-    ./src/ast_node_flags.c
+    ./src/ast_flags.c
     ./src/parser.c
     ./src/resolver.c
     ./src/symbol_table.c
@@ -90,4 +90,3 @@ target_link_libraries(tauc LINK_PUBLIC
 )
 
 add_dependencies(tauc ${TAU_DEPS_DEPS})
-

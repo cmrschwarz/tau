@@ -74,10 +74,10 @@ static resolve_error
 add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
 {
     sym->declaring_st = st;
-    symbol_table* tgtst = (sst && ast_node_flags_get_access_mod(
-                                      sym->node.flags) != AM_UNSPECIFIED)
-                              ? sst
-                              : st;
+    symbol_table* tgtst =
+        (sst && ast_flags_get_access_mod(sym->node.flags) != AM_UNSPECIFIED)
+            ? sst
+            : st;
     symbol** conflict;
     conflict = symbol_table_insert(tgtst, sym);
     if (conflict) {
@@ -214,7 +214,7 @@ resolve_error add_import_group_decls(
         else {
             assert(s->node.kind == SYM_IMPORT_MODULE);
             sym_import_module* im = (sym_import_module*)s;
-            if (ast_node_flags_get_relative_import(s->node.flags)) {
+            if (ast_flags_get_relative_import(s->node.flags)) {
                 re = add_sym_import_module_decl(
                     tc, f, st, im, curr_mdg_node, im->target, NULL);
             }
@@ -244,31 +244,31 @@ static resolve_error add_ast_node_decls(
         case SC_TRAIT: {
             re = add_symbol(r, st, sst, (symbol*)n);
             if (public_st &&
-                ast_node_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
+                ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
                 ((sc_struct*)n)->id = r->public_sym_count++;
             }
             else {
                 ((sc_struct*)n)->id = r->private_sym_count++;
             }
             if (re) return re;
-            public_st = public_st &&
-                        ast_node_flags_get_access_mod(n->flags) >= AM_PROTECTED;
+            public_st =
+                public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED;
             return add_simple_body_decls(r, st, &((scope*)n)->body, public_st);
         }
 
         case SC_FUNC: {
             sc_func* fn = (sc_func*)n;
             if (public_st &&
-                ast_node_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
+                ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
                 fn->id = r->public_sym_count++;
             }
             else {
                 fn->id = r->private_sym_count++;
             }
-            symbol_table* tgtst = (sst && ast_node_flags_get_access_mod(
-                                              n->flags) != AM_UNSPECIFIED)
-                                      ? sst
-                                      : st;
+            symbol_table* tgtst =
+                (sst && ast_flags_get_access_mod(n->flags) != AM_UNSPECIFIED)
+                    ? sst
+                    : st;
             symbol** conflict;
             symbol* sym = (symbol*)n;
             sym->declaring_st = st;
@@ -332,7 +332,7 @@ static resolve_error add_ast_node_decls(
         case SYM_IMPORT_MODULE: {
             sym_import_module* im = (sym_import_module*)n;
             mdg_node* stop;
-            if (ast_node_flags_get_relative_import(n->flags)) {
+            if (ast_flags_get_relative_import(n->flags)) {
                 symbol_table* pst = st;
                 while (pst->owning_node->kind != ELEM_MDG_NODE) {
                     pst = pst->parent;
@@ -360,7 +360,7 @@ static resolve_error add_ast_node_decls(
         }
         case SYM_VAR: {
             if (public_st &&
-                ast_node_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
+                ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
                 ((sym_var*)n)->var_id = r->public_sym_count++;
             }
             else {
@@ -787,13 +787,13 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
         }
     } while (next);
     ip->children.symtab = pst;
-    ast_node_flags_set_resolved(&ip->sym.node.flags);
+    ast_flags_set_resolved(&ip->sym.node.flags);
     return RE_OK;
 }
 resolve_error
 resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype)
 {
-    ast_node_flags_set_resolving(&p->sym.node.flags);
+    ast_flags_set_resolving(&p->sym.node.flags);
     resolve_error re;
     if (p->type) {
         re = resolve_ast_node(r, p->type, st, &p->ctype, NULL);
@@ -813,7 +813,7 @@ resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype)
         if (re) return re;
     }
     if (ctype) *ctype = p->ctype;
-    ast_node_flags_set_resolved(&p->sym.node.flags);
+    ast_flags_set_resolved(&p->sym.node.flags);
     return PE_OK;
 }
 resolve_error resolve_expr_scope_access(
@@ -840,7 +840,7 @@ resolve_error resolve_expr_scope_access(
     assert(rhs_val != NULL && ast_elem_is_symbol(rhs_val)); // TODO: log error
     esa->target.sym = (symbol*)lhs_val;
     if (value) *value = rhs_val;
-    ast_node_flags_set_resolved(&esa->node.flags);
+    ast_flags_set_resolved(&esa->node.flags);
     return RE_OK;
 }
 access_modifier check_member_access(symbol_table* st, scope* tgt)
@@ -868,7 +868,7 @@ resolve_error resolve_expr_member_accesss(
     if (!*rhs) return report_unknown_symbol(r, (ast_node*)ema, sc->body.symtab);
     ema->target.sym = *rhs;
     resolve_ast_node(r, (ast_node*)*rhs, decl_st, value, ctype);
-    ast_node_flags_set_resolved(&ema->node.flags);
+    ast_flags_set_resolved(&ema->node.flags);
     return RE_OK;
 }
 // the symbol table is not the one that contains the symbol, but the one
@@ -885,16 +885,16 @@ static inline resolve_error resolve_ast_node_raw(
         return RE_OK;
     }
     // PERF: find a way to avoid checking in sub exprs
-    bool resolved = ast_node_flags_get_resolved(n->flags);
+    bool resolved = ast_flags_get_resolved(n->flags);
     if (resolved) {
         if (!ctype && !value) return RE_OK;
     }
     else {
-        if (ast_node_flags_get_resolving(n->flags)) {
+        if (ast_flags_get_resolving(n->flags)) {
             r->type_loop_start = n;
             return RE_TYPE_LOOP;
         }
-        ast_node_flags_set_resolving(&n->flags);
+        ast_flags_set_resolving(&n->flags);
     }
     resolve_error re;
     switch (n->kind) {
@@ -918,7 +918,7 @@ static inline resolve_error resolve_ast_node_raw(
             re = resolve_ast_node(r, (ast_node*)*s, sym_st, value, ctype);
             if (re) return re;
             e->value.sym = *s;
-            ast_node_flags_set_resolved(&n->flags);
+            ast_flags_set_resolved(&n->flags);
             return RE_OK;
         }
         case EXPR_CALL: {
@@ -942,7 +942,7 @@ static inline resolve_error resolve_ast_node_raw(
             }
             re = choose_unary_operator_overload(r, ou, st, ctype);
             if (re) return re;
-            ast_node_flags_set_resolved(&n->flags);
+            ast_flags_set_resolved(&n->flags);
             return RE_OK;
         }
         case EXPR_PARENTHESES: {
@@ -963,7 +963,7 @@ static inline resolve_error resolve_ast_node_raw(
             }
             re = choose_binary_operator_overload(r, ob, st, ctype);
             if (re) return re;
-            ast_node_flags_set_resolved(&n->flags);
+            ast_flags_set_resolved(&n->flags);
             return RE_OK;
         }
         case EXPR_MEMBER_ACCESS: {
@@ -994,7 +994,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (resolved) return RE_OK;
             re = resolve_body(r, &((scope*)n)->body);
             if (re) return re;
-            ast_node_flags_set_resolved(&n->flags);
+            ast_flags_set_resolved(&n->flags);
             return RE_OK;
         }
 
@@ -1013,12 +1013,12 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case SYM_IMPORT_GROUP: {
             assert(!value && !ctype);
-            if (!resolved) ast_node_flags_set_resolved(&n->flags);
+            if (!resolved) ast_flags_set_resolved(&n->flags);
             return RE_OK;
         }
         case SYM_IMPORT_MODULE: {
             assert(!ctype);
-            if (!resolved) ast_node_flags_set_resolved(&n->flags);
+            if (!resolved) ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(
                 value, ctype,
                 ((sym_import_module*)n)->target->symtab->owning_node, NULL);
@@ -1038,7 +1038,7 @@ static inline resolve_error resolve_ast_node_raw(
             is->target.sym = *s;
             re = resolve_ast_node(r, (ast_node*)*s, sym_st, value, ctype);
             if (re) return re;
-            ast_node_flags_set_resolved(&n->flags);
+            ast_flags_set_resolved(&n->flags);
             return RE_OK;
         }
         case STMT_USING:
@@ -1057,7 +1057,7 @@ static inline resolve_error resolve_ast_node_raw(
             r->curr_symbol_decl = prev_sym_decl;
             if (re) return re;
             v->ctype = type;
-            ast_node_flags_set_resolved(&n->flags);
+            ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, v, v->ctype);
         }
         case SYM_VAR_INITIALIZED: {
@@ -1098,7 +1098,7 @@ static inline resolve_error resolve_ast_node_raw(
             }
             r->curr_symbol_decl = prev_sym_decl;
             if (re) return re;
-            ast_node_flags_set_resolved(&n->flags);
+            ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, vi, vi->var.ctype);
         }
 
@@ -1108,15 +1108,15 @@ static inline resolve_error resolve_ast_node_raw(
             expr_break* b = (expr_break*)n;
             re = resolve_ast_node(r, b->value, st, NULL, &b->value_ctype);
             if (re) return re;
-            ast_node_flags_set_resolved(&n->flags);
+            ast_flags_set_resolved(&n->flags);
             ast_elem* tgt_type;
             if (n->kind == EXPR_BREAK) {
                 ast_elem** tgtt = get_break_target_ctype(b->target);
-                if (ast_node_flags_get_resolved(b->target->flags)) {
+                if (ast_flags_get_resolved(b->target->flags)) {
                     tgt_type = *tgtt;
                 }
                 else {
-                    ast_node_flags_set_resolved(&b->target->flags);
+                    ast_flags_set_resolved(&b->target->flags);
                     *tgtt = b->value_ctype;
                     RETURN_RESOLVED(value, ctype, NULL, UNREACHABLE_ELEM);
                 }
@@ -1127,7 +1127,7 @@ static inline resolve_error resolve_ast_node_raw(
                 if (r->curr_expr_block_owner) {
                     ast_elem** tgtt =
                         get_break_target_ctype(r->curr_expr_block_owner);
-                    if (ast_node_flags_get_resolved(
+                    if (ast_flags_get_resolved(
                             r->curr_expr_block_owner->flags)) {
                         if (*tgtt != UNREACHABLE_ELEM) {
                             assert(false); // TODO: error, unreachable not
@@ -1135,7 +1135,7 @@ static inline resolve_error resolve_ast_node_raw(
                         }
                     }
                     else {
-                        ast_node_flags_set_resolved(
+                        ast_flags_set_resolved(
                             &r->curr_expr_block_owner->flags);
                         *tgtt = UNREACHABLE_ELEM;
                     }
@@ -1298,13 +1298,13 @@ static resolve_error resolve_ast_node(
             stack_push(&r->error_stack, n);
         }
         if (r->type_loop_start == n) {
-            if (!ast_node_flags_get_resolving(n->flags)) {
-                ast_node_flags_clear_resolving(&n->flags);
+            if (!ast_flags_get_resolving(n->flags)) {
+                ast_flags_clear_resolving(&n->flags);
                 report_type_loop(r);
                 return RE_ERROR;
             }
         }
-        ast_node_flags_clear_resolving(&n->flags);
+        ast_flags_clear_resolving(&n->flags);
     }
     return re;
 }
@@ -1331,7 +1331,7 @@ resolve_error resolve_expr_body(
         if (!re) continue;
         if (re == RE_TYPE_LOOP) {
             if (r->type_loop_start == (ast_node*)curr_sym) {
-                ast_node_flags_set_resolving(&curr_sym->node.flags);
+                ast_flags_set_resolving(&curr_sym->node.flags);
                 if (r->retracing_type_loop) {
                     stack_clear(&r->error_stack);
                 }
@@ -1367,13 +1367,13 @@ resolve_error resolve_expr_body(
         }
     }
     // means no break occured
-    if (!ast_node_flags_get_resolved(expr->flags)) {
+    if (!ast_flags_get_resolved(expr->flags)) {
         if (stmt_ctype_ptr) { // the end is reachable -> void
-            ast_node_flags_set_resolved(&expr->flags);
+            ast_flags_set_resolved(&expr->flags);
             RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
         }
         else { // -> unreachable
-            ast_node_flags_set_resolved(&expr->flags);
+            ast_flags_set_resolved(&expr->flags);
             RETURN_RESOLVED(value, ctype, NULL, UNREACHABLE_ELEM);
         }
     }
@@ -1418,7 +1418,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
             src_range_get_end(fn->scp.sym.node.srange), NULL);
         return RE_TYPE_MISSMATCH;
     }
-    ast_node_flags_set_resolved(&fn->scp.sym.node.flags);
+    ast_flags_set_resolved(&fn->scp.sym.node.flags);
     return RE_OK;
 }
 resolve_error resolve_body(resolver* r, ast_body* b)
@@ -1434,19 +1434,19 @@ void adjust_node_ids(ureg sym_offset, ast_node* n)
 {
     switch (n->kind) {
         case SC_FUNC: {
-            if (ast_node_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
+            if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             sc_func* fn = (sc_func*)n;
             fn->id += sym_offset;
             return;
         }
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: {
-            if (ast_node_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
+            if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             ((sym_var*)n)->var_id += sym_offset;
             return;
         }
         case SC_STRUCT: {
-            if (ast_node_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
+            if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             ((sc_struct*)n)->id += sym_offset;
             // fallthrough
         }

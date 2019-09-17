@@ -2,7 +2,7 @@
 #define TAUC_AST_H
 
 #include "src_map.h"
-#include "ast_node_flags.h"
+#include "ast_flags.h"
 #include "symbol_table.h"
 #include "utils/c_extensions.h"
 
@@ -163,7 +163,7 @@ typedef struct ast_node_s {
     primitive_kind pt_kind;
     operator_kind op_kind;
     ANONYMOUS_UNION_END
-    ast_node_flags flags;
+    ast_flags flags;
     src_range srange;
 } ast_node;
 

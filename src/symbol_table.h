@@ -1,7 +1,7 @@
 #ifndef TAUC_SYMBOL_TABLE_H
 #define TAUC_SYMBOL_TABLE_H
 
-#include "ast_node_flags.h"
+#include "ast_flags.h"
 #include "utils/string.h"
 typedef struct symbol_s symbol;
 typedef struct stmt_s stmt;

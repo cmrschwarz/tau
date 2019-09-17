@@ -580,7 +580,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         }
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: {
-            if (ast_node_flags_get_const(n->flags)) {
+            if (ast_flags_get_const(n->flags)) {
                 // TODO (ctfe)
                 assert(false);
             }

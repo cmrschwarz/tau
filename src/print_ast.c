@@ -129,7 +129,7 @@ void print_compound_decl_list(
     for (ureg i = 0; i < elem_count; i++) {
         if ((**el).kind == SYM_VAR) {
             sym_var* v = (sym_var*)*el;
-            if (ast_node_flags_get_const(v->sym.node.flags)) p("const ");
+            if (ast_flags_get_const(v->sym.node.flags)) p("const ");
             pu(v->sym.name);
             if (v->type != NULL) {
                 p(": ");
@@ -198,7 +198,7 @@ void print_import_group(
     if (print_mdg_node_until(g->parent.mdgn, block_parent)) p("::");
     symbol** c;
     symbol** cend;
-    if (ast_node_flags_get_resolved(g->sym.node.flags)) {
+    if (ast_flags_get_resolved(g->sym.node.flags)) {
         c = (symbol**)(g->children.symtab + 1);
         cend = c + g->children.symtab->decl_count;
         while (c != cend && !*c) c++; // skip initial blanks
@@ -259,9 +259,9 @@ void print_import_group(
         pc(')');
     }
 }
-void print_ast_node_modifiers(ast_node_flags flags)
+void print_ast_node_modifiers(ast_flags flags)
 {
-    access_modifier am = ast_node_flags_get_access_mod(flags);
+    access_modifier am = ast_flags_get_access_mod(flags);
     switch (am) {
         case AM_PRIVATE: p(token_strings[TK_KW_PRIVATE]); break;
         case AM_PROTECTED: p(token_strings[TK_KW_PROTECTED]); break;
@@ -269,15 +269,15 @@ void print_ast_node_modifiers(ast_node_flags flags)
         default: break;
     };
     if (am) pc(' ');
-    if (ast_node_flags_get_virtual(flags)) {
+    if (ast_flags_get_virtual(flags)) {
         p(token_strings[TK_KW_VIRTUAL]);
         pc(' ');
     }
-    if (ast_node_flags_get_const(flags)) {
+    if (ast_flags_get_const(flags)) {
         p(token_strings[TK_KW_CONST]);
         pc(' ');
     }
-    if (ast_node_flags_get_sealed(flags)) {
+    if (ast_flags_get_sealed(flags)) {
         p(token_strings[TK_KW_SEALED]);
         pc(' ');
     }
@@ -289,7 +289,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case SYM_IMPORT_MODULE: {
             p("import ");
             sym_import_module* im = (sym_import_module*)n;
-            if (ast_node_flags_get_relative_import(n->flags)) {
+            if (ast_flags_get_relative_import(n->flags)) {
                 p("self::");
                 print_mdg_node_until(im->target, cmdg);
             }
@@ -299,7 +299,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_IMPORT_GROUP: {
             p("import ");
-            if (ast_node_flags_get_relative_import(n->flags)) {
+            if (ast_flags_get_relative_import(n->flags)) {
                 p("self::");
                 print_import_group((sym_import_group*)n, cmdg, indent);
             }
@@ -311,7 +311,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case STMT_COMPOUND_ASSIGN: {
             stmt_compound_assignment* ca = (stmt_compound_assignment*)n;
             pc('(');
-            bool colon = ast_node_flags_get_compound_decl(ca->node.flags);
+            bool colon = ast_flags_get_compound_decl(ca->node.flags);
             if (colon) {
                 print_compound_decl_list(
                     ca->elements, ca->elem_count, cmdg, indent);
@@ -430,7 +430,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case EXPR_IDENTIFIER: {
             expr_identifier* i = (expr_identifier*)n;
-            if (ast_node_flags_get_resolved(n->flags)) {
+            if (ast_flags_get_resolved(n->flags)) {
                 print_ast_elem_name((ast_elem*)i->value.sym);
             }
             else {
@@ -628,7 +628,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             expr_scope_access* esa = (expr_scope_access*)n;
             print_ast_node(esa->lhs, cmdg, indent);
             p(n->kind == EXPR_MEMBER_ACCESS ? "." : "::");
-            if (!ast_node_flags_get_resolved(n->flags)) {
+            if (!ast_flags_get_resolved(n->flags)) {
                 pu(esa->target.name);
             }
             else {
