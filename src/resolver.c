@@ -517,6 +517,10 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
 {
     // immediately return true e.g. for primitives
     if (a == b) return true;
+    if (a->kind == TYPE_POINTER && b->kind == TYPE_POINTER) {
+        return ctypes_unifiable(
+            ((type_pointer*)a)->base, ((type_pointer*)b)->base);
+    }
     return false; // TODO
     /*
     switch (a->kind) {
@@ -679,10 +683,11 @@ resolve_error choose_unary_operator_overload(
     }
     else {
         if (ou->node.op_kind == OP_ADDRESS_OF) {
-            re = create_pointer_to(r, child_value, &child_type);
+            re = create_pointer_to(r, child_type, &child_type);
             if (re) return re;
             ou->op = child_type;
-            RETURN_RESOLVED(value, ctype, child_type, TYPE_ELEM);
+            assert(!value);
+            RETURN_RESOLVED(value, ctype, NULL, child_type);
         }
         else if (child_type->kind != PRIMITIVE) {
             assert(false); // TODO
