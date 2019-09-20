@@ -51,10 +51,8 @@ static const unsigned char op_precedence[] = {
     [OP_NOT] = 14,
     [OP_BITWISE_NOT] = 14,
     [OP_DEREF] = 14,
-    [OP_POINTER_OF] = 14,
-    [OP_REF_OF] = 14,
-    [OP_RREF_OF] = 14,
-    [OP_CLOSURE_BY_VALUE] = 14,
+    [OP_ADDRESS_OF] = 14,
+    [OP_ESCAPE_SCOPE] = 14,
     [OP_CONST] = 14,
     [OP_PP] = 14,
 
@@ -212,9 +210,9 @@ static inline operator_kind token_to_prefix_unary_op(token* t)
         case TK_TILDE: return OP_BITWISE_NOT;
         case TK_EXCLAMATION_MARK: return OP_NOT;
         case TK_STAR: return OP_DEREF;
-        case TK_AND: return OP_REF_OF;
-        case TK_PERCENT: return OP_POINTER_OF;
-        case TK_CARET: return OP_CLOSURE_BY_VALUE;
+        case TK_AND: return OP_ADDRESS_OF;
+        case TK_PERCENT: return OP_DEREF;
+        case TK_CARET: return OP_ESCAPE_SCOPE;
         case TK_DOLLAR: return OP_RREF_OF;
         case TK_DOUBLE_PLUS: return OP_PRE_INCREMENT;
         case TK_DOUBLE_MINUS: return OP_PRE_DECREMENT;

@@ -167,7 +167,9 @@ void LLVMBackend::addPrimitives()
                     return;
                 }
             } break;
+            case PT_VOID_PTR: t = _builder.getVoidTy()->getPointerTo(); break;
             case PT_VOID: t = _builder.getVoidTy(); break;
+            case PT_TYPE:
             case PT_UNREACHABLE: t = NULL; break;
             default: assert(false); return;
         }
@@ -338,8 +340,14 @@ llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align)
                 *align = _data_layout->getStructLayout((llvm::StructType*)*tp)
                              ->getAlignment();
             }
-            break;
-        }
+        } break;
+        case TYPE_POINTER: {
+            if (align) *align = PRIMITIVES[PT_VOID_PTR].alignment;
+            if (!t) return LLE_OK;
+            llvm_error lle = lookupCType(((type_pointer*)e)->base, t, NULL);
+            if (lle) return lle;
+            *t = (**t).getPointerTo();
+        } break;
         default: {
             assert(false); // TODO
             if (t) *t = NULL; // to silcence -Wmaybe-uninitialized :(

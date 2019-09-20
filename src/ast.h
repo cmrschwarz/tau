@@ -8,6 +8,7 @@
 
 #define VOID_ELEM ((ast_elem*)&PRIMITIVES[PT_VOID])
 #define UNREACHABLE_ELEM ((ast_elem*)&PRIMITIVES[PT_UNREACHABLE])
+#define TYPE_ELEM ((ast_elem*)&PRIMITIVES[PT_TYPE])
 
 typedef struct mdg_node_s mdg_node;
 
@@ -72,9 +73,9 @@ typedef enum PACK_ENUM ast_node_kind_e {
     EXPR_LAST_EXPR_ID = EXPR_OP_BINARY,
 
     PRIMITIVE,
+    TYPE_POINTER,
     TYPE_ARRAY,
     TYPE_TUPLE,
-    TYPE_MODIFIERS,
     ELEM_MDG_NODE,
 
 } ast_node_kind;
@@ -126,10 +127,9 @@ typedef enum PACK_ENUM operator_kind_e {
     OP_PP, // only used for precedence, has it's own expr_pp node
     OP_CONST,
     OP_DEREF,
-    OP_POINTER_OF,
-    OP_REF_OF,
+    OP_ADDRESS_OF,
     OP_RREF_OF,
-    OP_CLOSURE_BY_VALUE,
+    OP_ESCAPE_SCOPE,
 
     OP_NOT,
     OP_BITWISE_NOT,
@@ -149,6 +149,8 @@ typedef enum PACK_ENUM primitive_kind_e {
     PT_FLOAT,
     PT_STRING,
     PT_BINARY_STRING,
+    PT_TYPE,
+    PT_VOID_PTR,
     PRIMITIVE_COUNT,
 } primitive_kind;
 
@@ -501,24 +503,19 @@ typedef enum ast_type_mod_s {
 #define ATM_BYTES (sizeof(ast_elem*) - sizeof(ast_node_kind))
 #define ATM_MAX_COUNT (ATM_BYTES * ATM_PER_BYTE)
 
-typedef struct ast_type_node_s {
+typedef struct type_pointer_s {
     ast_node_kind kind;
-    u8 mods[ATM_BYTES];
-} ast_type_node;
-
-typedef struct type_modifiers_s {
-    ast_type_node node;
     ast_elem* base;
-} type_modifiers;
+} type_pointer;
 
 typedef struct type_array_s {
-    ast_type_node node;
+    ast_node_kind kind;
     ast_elem* ctype_members;
     ureg size;
 } type_array;
 
 typedef struct type_tuple_s {
-    ast_type_node node;
+    ast_node_kind kind;
     ast_elem** ctypes_of_members;
     ureg size;
 } type_tuple;
@@ -530,10 +527,6 @@ typedef struct primitive_s {
 } primitive;
 
 extern primitive PRIMITIVES[];
-
-int ast_type_node_get_mod_count(ast_type_node atn);
-ast_type_mod ast_type_node_get_mod_n(ast_type_node atn, int n);
-void ast_type_node_set_mod_n(ast_type_node atn, ast_type_mod mod, int n);
 
 src_range ast_node_get_src_range(ast_node* s);
 bool ast_elem_is_open_scope(ast_elem* s);

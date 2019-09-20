@@ -644,22 +644,55 @@ resolve_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
     assert(false); // TODO
     return RE_OK;
 }
-resolve_error choose_unary_operator_overload(
-    resolver* r, expr_op_unary* ou, symbol_table* st, ast_elem** ctype)
+resolve_error
+create_pointer_to(resolver* r, ast_elem* child_type, ast_elem** tgt)
 {
-    ast_elem* child_type;
-    resolve_error re = resolve_ast_node(r, ou->child, st, NULL, &child_type);
+    type_pointer* tp =
+        (type_pointer*)pool_alloc(&r->tc->permmem, sizeof(type_pointer));
+    if (!tp) return RE_FATAL;
+    tp->base = child_type;
+    tp->kind = TYPE_POINTER;
+    *tgt = (ast_elem*)tp;
+    return RE_OK;
+}
+resolve_error choose_unary_operator_overload(
+    resolver* r, expr_op_unary* ou, symbol_table* st, ast_elem** value,
+    ast_elem** ctype)
+{
+    ast_elem *child_type, *child_value;
+    resolve_error re =
+        resolve_ast_node(r, ou->child, st, &child_value, &child_type);
     if (re) return re;
-    if (child_type->kind == PRIMITIVE) {
-        ou->op = child_type;
-        if (ctype) *ctype = child_type;
-        return RE_OK;
+
+    if (child_type == TYPE_ELEM) {
+        if (ou->node.op_kind == OP_DEREF) {
+            re = create_pointer_to(r, child_value, &child_type);
+            if (re) return re;
+            ou->op = child_type;
+            RETURN_RESOLVED(value, ctype, child_type, TYPE_ELEM);
+        }
+        else {
+            assert(false);
+            // TODO: error
+            return RE_FATAL;
+        }
     }
-    assert(false); // TODO
-    return RE_FATAL;
+    else {
+        if (ou->node.op_kind == OP_ADDRESS_OF) {
+            re = create_pointer_to(r, child_value, &child_type);
+            if (re) return re;
+            ou->op = child_type;
+            RETURN_RESOLVED(value, ctype, child_type, TYPE_ELEM);
+        }
+        else if (child_type->kind != PRIMITIVE) {
+            assert(false); // TODO
+            return RE_FATAL;
+        }
+    }
 }
 resolve_error choose_binary_operator_overload(
-    resolver* r, expr_op_binary* ob, symbol_table* st, ast_elem** ctype)
+    resolver* r, expr_op_binary* ob, symbol_table* st, ast_elem** value,
+    ast_elem** ctype)
 {
     ast_elem *lhs_ctype, *rhs_ctype;
     resolve_error re = resolve_ast_node(r, ob->lhs, st, NULL, &lhs_ctype);
@@ -899,8 +932,7 @@ static inline resolve_error resolve_ast_node_raw(
     resolve_error re;
     switch (n->kind) {
         case PRIMITIVE:
-            assert(!ctype);
-            RETURN_RESOLVED(value, ctype, &PRIMITIVES[n->pt_kind], NULL);
+            RETURN_RESOLVED(value, ctype, &PRIMITIVES[n->pt_kind], TYPE_ELEM);
         case EXPR_LITERAL:
             RETURN_RESOLVED(value, ctype, n, &PRIMITIVES[n->pt_kind]);
 
@@ -940,7 +972,7 @@ static inline resolve_error resolve_ast_node_raw(
                 }
                 return RE_OK;
             }
-            re = choose_unary_operator_overload(r, ou, st, ctype);
+            re = choose_unary_operator_overload(r, ou, st, value, ctype);
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
             return RE_OK;
@@ -961,7 +993,7 @@ static inline resolve_error resolve_ast_node_raw(
                 }
                 return RE_OK;
             }
-            re = choose_binary_operator_overload(r, ob, st, ctype);
+            re = choose_binary_operator_overload(r, ob, st, value, ctype);
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
             return RE_OK;

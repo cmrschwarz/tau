@@ -19,7 +19,8 @@ primitive PRIMITIVES[] = {
     mk_prim(PT_FLOAT, "float"),
     mk_prim(PT_STRING, "string"),
     mk_prim(PT_BINARY_STRING, "bstring"),
-
+    mk_prim(PT_VOID_PTR, "*void"),
+    mk_prim(PT_TYPE, "type"),
 };
 
 src_file* open_scope_get_file(open_scope* s)
@@ -127,7 +128,7 @@ void ast_node_get_bounds(ast_node* n, ureg* start, ureg* end)
         }
     }
 }
-
+/*
 int ast_type_node_get_mod_count(ast_type_node atn)
 {
     int b = 0;
@@ -152,7 +153,7 @@ void ast_type_node_set_mod_n(ast_type_node atn, ast_type_mod mod, int n)
     int offs = (n % ATM_PER_BYTE) * ATM_BITS;
     atn.mods[b] = (atn.mods[b] & (ATM_MASK << offs)) | (mod << offs);
 }
-
+*/
 char* op_to_str(operator_kind t)
 {
     switch (t) {
@@ -189,10 +190,8 @@ char* op_to_str(operator_kind t)
         case OP_BITWISE_NOT_ASSIGN: return "~=";
 
         case OP_DEREF: return "*";
-        case OP_POINTER_OF: return "%";
-        case OP_REF_OF: return "&";
-        case OP_RREF_OF: return "$";
-        case OP_CLOSURE_BY_VALUE: return "^";
+        case OP_ADDRESS_OF: return "&";
+        case OP_ESCAPE_SCOPE: return "^";
         case OP_NOT: return "!";
         case OP_BITWISE_NOT: return "~";
         case OP_UNARY_PLUS: return "+";

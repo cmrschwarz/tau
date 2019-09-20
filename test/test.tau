@@ -21,6 +21,7 @@ func foo(i: int)-> int {
 }
 
 public func main() -> int{
+    x: *int;
     i := 1;
     loop @foo{
         printf("foo: %i%c", foo(i), 10);
