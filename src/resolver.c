@@ -686,12 +686,21 @@ resolve_error choose_unary_operator_overload(
             re = create_pointer_to(r, child_type, &child_type);
             if (re) return re;
             ou->op = child_type;
-            assert(!value);
-            RETURN_RESOLVED(value, ctype, NULL, child_type);
+            RETURN_RESOLVED(value, ctype, ou, child_type);
+        }
+        else if (ou->node.op_kind == OP_DEREF) {
+            assert(child_type->kind == TYPE_POINTER); // TODO: error
+            type_pointer* tp = (type_pointer*)child_type;
+            ou->op = tp->base;
+            RETURN_RESOLVED(value, ctype, ou, tp->base);
+            return RE_FATAL;
         }
         else if (child_type->kind != PRIMITIVE) {
             assert(false); // TODO
-            return RE_FATAL;
+        }
+        else {
+            ou->op = child_type;
+            RETURN_RESOLVED(value, ctype, ou, child_type);
         }
     }
 }

@@ -90,6 +90,7 @@ int thread_context_do_job(thread_context* tc, job* j)
         resolve_error re;
         TIME(re = resolver_resolve(
                  &tc->r, start, end, &startid, &endid, &private_sym_count););
+        if (re) tauc_error_occured(tc->t, re);
         if (re == RE_FATAL) r = ERR;
         // don't bother creating objs if we had any error somewhere
         // since we can't create the final exe anyways

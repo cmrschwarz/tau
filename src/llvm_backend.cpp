@@ -453,6 +453,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case EXPR_OP_BINARY:
             return genBinaryOp((expr_op_binary*)n, vl, vl_loaded);
         case EXPR_OP_UNARY: return genUnaryOp((expr_op_unary*)n, vl, vl_loaded);
+        case EXPR_PARENTHESES:
+            return genAstNode(((expr_parentheses*)n)->child, vl, vl_loaded);
         case EXPR_LITERAL: {
             expr_literal* l = (expr_literal*)n;
             switch (n->pt_kind) {
@@ -794,25 +796,45 @@ llvm_error LLVMBackend::genUnaryOp(
     if (u->op->kind == SC_FUNC) {
         assert(false); // TODO
     }
+    llvm_error lle;
     llvm::Value* child;
-    llvm::Value* child_loaded;
-    llvm::Value* res;
     switch (u->node.op_kind) {
         case OP_POST_INCREMENT: {
-            llvm_error lle = genAstNode(u->child, &child, &child_loaded);
+
+            llvm::Value* child_loaded;
+            lle = genAstNode(u->child, &child, &child_loaded);
             if (lle) return lle;
-            res = child_loaded;
+            if (vl) *vl = child;
+            if (vl_loaded) *vl_loaded = child_loaded;
             llvm::Value* add = _builder.CreateNSWAdd(
                 child_loaded,
                 llvm::ConstantInt::get(_primitive_types[PT_INT], 1));
-            _builder.CreateAlignedStore(
-                add, child, child->getPointerAlignment(*_data_layout));
-        } break;
+            if (!add) return LLE_FATAL;
+            if (!_builder.CreateAlignedStore(
+                    add, child, child->getPointerAlignment(*_data_layout)))
+                return LLE_FATAL;
+            return LLE_OK;
+        }
+        case OP_ADDRESS_OF: {
+            lle = genAstNode(u->child, &child, NULL);
+            if (vl) *vl = child;
+            if (vl_loaded) *vl_loaded = child;
+            return LLE_OK;
+        }
+        case OP_DEREF: {
+            llvm_error lle = genAstNode(u->child, NULL, &child);
+            if (lle) return lle;
+            auto load = _builder.CreateAlignedLoad(
+                child, child->getPointerAlignment(*_data_layout));
+            if (!load) return LLE_FATAL;
+            if (vl) *vl = child;
+            if (vl_loaded) *vl_loaded = load;
+            return LLE_OK;
+        }
         default: assert(false); return LLE_FATAL;
     }
     assert(!vl);
-    if (vl_loaded) *vl_loaded = res;
-    return LLE_OK;
+    return LLE_FATAL;
 }
 llvm_error LLVMBackend::genBinaryOp(
     expr_op_binary* b, llvm::Value** vl, llvm::Value** vl_loaded)

@@ -201,6 +201,9 @@ static void free_astn_symtabs(ast_node* n)
         case EXPR_OP_UNARY: {
             free_astn_symtabs(((expr_op_unary*)n)->child);
         } break;
+        case EXPR_PARENTHESES: {
+            free_astn_symtabs(((expr_op_unary*)n)->child);
+        } break;
         case SYM_VAR_INITIALIZED: {
             free_astn_symtabs(((sym_var_initialized*)n)->initial_value);
         } // fallthrough

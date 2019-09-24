@@ -21,12 +21,12 @@ func foo(i: int)-> int {
 }
 
 public func main() -> int{
-    x: *int = &0;
     i := 1;
+    ip := &i;
     loop @foo{
-        printf("foo: %i%c", foo(i), 10);
-        i++;
-        if(i == 9)break @foo;
+        printf("foo: %i%c", foo(*ip), 10);
+        (*ip)++;
+        if(*ip == 9)break @foo;
     }
     return 0;
 }
