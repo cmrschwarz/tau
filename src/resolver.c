@@ -648,14 +648,15 @@ resolve_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
     assert(false); // TODO
     return RE_OK;
 }
-resolve_error
-create_pointer_to(resolver* r, ast_elem* child_type, ast_elem** tgt)
+resolve_error create_pointer_to(
+    resolver* r, ast_elem* child_type, bool rvalue, ast_elem** tgt)
 {
     type_pointer* tp =
         (type_pointer*)pool_alloc(&r->tc->permmem, sizeof(type_pointer));
     if (!tp) return RE_FATAL;
     tp->base = child_type;
     tp->kind = TYPE_POINTER;
+    tp->rvalue = rvalue;
     *tgt = (ast_elem*)tp;
     return RE_OK;
 }
@@ -670,7 +671,7 @@ resolve_error choose_unary_operator_overload(
 
     if (child_type == TYPE_ELEM) {
         if (ou->node.op_kind == OP_DEREF) {
-            re = create_pointer_to(r, child_value, &child_type);
+            re = create_pointer_to(r, child_value, false, &child_type);
             if (re) return re;
             ou->op = child_type;
             RETURN_RESOLVED(value, ctype, child_type, TYPE_ELEM);
@@ -683,7 +684,11 @@ resolve_error choose_unary_operator_overload(
     }
     else {
         if (ou->node.op_kind == OP_ADDRESS_OF) {
-            re = create_pointer_to(r, child_type, &child_type);
+            if (child_type->kind == TYPE_POINTER) {
+                // TODO: error
+                assert(((type_pointer*)child_type)->rvalue == false);
+            }
+            re = create_pointer_to(r, child_type, true, &child_type);
             if (re) return re;
             ou->op = child_type;
             RETURN_RESOLVED(value, ctype, ou, child_type);
@@ -899,7 +904,8 @@ resolve_error resolve_expr_member_accesss(
     access_modifier* access, ast_elem** value, ast_elem** ctype)
 {
     ast_elem* lhs_type;
-    resolve_ast_node(r, ema->lhs, st, NULL, &lhs_type);
+    resolve_error re = resolve_ast_node(r, ema->lhs, st, NULL, &lhs_type);
+    if (re) return re;
     if (lhs_type->kind != SC_STRUCT) { // TODO: pointers
         // TODO: errror
         assert(false);
@@ -1030,18 +1036,17 @@ static inline resolve_error resolve_ast_node_raw(
                     get_resolved_symbol_ctype(esa->target.sym));
             }
             access_modifier access = AM_UNSPECIFIED;
-            return resolve_expr_scope_access(r, esa, st, &access, NULL, ctype);
+            return resolve_expr_scope_access(r, esa, st, &access, value, ctype);
         }
         case SC_STRUCT:
         case SC_STRUCT_GENERIC:
         case SC_TRAIT:
         case SC_TRAIT_GENERIC: {
-            if (ctype) *ctype = (ast_elem*)n;
-            if (resolved) return RE_OK;
+            if (resolved) RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
             re = resolve_body(r, &((scope*)n)->body);
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
-            return RE_OK;
+            RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
         }
 
         case SC_FUNC:

@@ -800,7 +800,6 @@ llvm_error LLVMBackend::genUnaryOp(
     llvm::Value* child;
     switch (u->node.op_kind) {
         case OP_POST_INCREMENT: {
-
             llvm::Value* child_loaded;
             lle = genAstNode(u->child, &child, &child_loaded);
             if (lle) return lle;

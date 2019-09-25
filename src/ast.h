@@ -505,6 +505,7 @@ typedef enum ast_type_mod_s {
 
 typedef struct type_pointer_s {
     ast_node_kind kind;
+    bool rvalue;
     ast_elem* base;
 } type_pointer;
 
