@@ -196,7 +196,7 @@ void print_import_group(
     sym_import_group* g, mdg_node* block_parents_parent, ureg indent)
 {
     // TODO: improve this mess
-    if (print_mdg_node_until(g->parent.mdgn, block_parents_parent)) p("::");
+    if (print_mdg_node_until(g->parent_mdgn, block_parents_parent)) p("::");
     symbol** c;
     symbol** cend;
     if (ast_flags_get_resolved(g->sym.node.flags)) {
@@ -220,11 +220,11 @@ void print_import_group(
         if (!syms) print_indent(indent + 1);
         if ((**c).node.kind == SYM_IMPORT_GROUP) {
             print_import_group(
-                (sym_import_group*)*c, g->parent.mdgn->parent, indent + 1);
+                (sym_import_group*)*c, g->parent_mdgn->parent, indent + 1);
         }
         else if ((**c).node.kind == SYM_IMPORT_MODULE) {
             print_mdg_node_until(
-                ((sym_import_module*)*c)->target, g->parent.mdgn->parent);
+                ((sym_import_module*)*c)->target, g->parent_mdgn->parent);
         }
         else if ((**c).node.kind == SYM_IMPORT_SYMBOL) {
             // TODO: remove if aboce by fixing unnamed group containing parent

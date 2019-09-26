@@ -237,13 +237,10 @@ typedef struct sym_import_module_s {
 
 typedef struct sym_import_group_s {
     symbol sym; // name is NULL for an unnamed import group
+    mdg_node* parent_mdgn;
     union {
-        mdg_node* mdgn;
-        symbol_table* symtab;
-    } parent;
-    union {
-        symbol_table* symtab;
-        symbol* symbols;
+        symbol_table* symtab; // used for named groups
+        symbol* symbols; // used for unnamed groups
     } children;
 } sym_import_group;
 

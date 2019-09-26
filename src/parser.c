@@ -2788,7 +2788,7 @@ parse_error parse_import_with_parent(
         ig = alloc_perm(p, sizeof(sym_import_group));
         if (!ig) return PE_FATAL;
         ast_node_init_with_flags((ast_node*)ig, SYM_IMPORT_GROUP, flags);
-        ig->parent.mdgn = parent;
+        ig->parent_mdgn = parent;
         ig->sym.name = name;
         *tgt = (symbol*)ig;
         tgt = &ig->children.symbols;

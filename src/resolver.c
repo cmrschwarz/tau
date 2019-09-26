@@ -73,6 +73,7 @@ static resolve_error report_redeclaration_error(
 static resolve_error
 add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
 {
+    sym->declaring_st = st;
     symbol_table* tgtst =
         (sst && ast_flags_get_access_mod(sym->node.flags) != AM_DEFAULT) ? sst
                                                                          : st;
@@ -87,6 +88,7 @@ resolve_error add_sym_import_module_decl(
     thread_context* tc, src_file* f, symbol_table* st, sym_import_module* im,
     mdg_node* stop, mdg_node* start, sym_import_parent** tgt_parent)
 {
+    im->sym.declaring_st = st;
     symbol** tgt;
     symbol* next;
     symbol* children;
@@ -204,6 +206,7 @@ resolve_error add_import_group_decls(
         }
         else if (s->node.kind == SYM_IMPORT_SYMBOL) {
             symbol** cf = symbol_table_insert(st, s);
+            (**cf).declaring_st = st;
             if (cf) {
                 if (!f) f = ast_node_get_file((ast_node*)ig, st);
                 return report_redeclaration_error_raw(tc, s, f, *cf, f);
@@ -315,6 +318,7 @@ static resolve_error add_ast_node_decls(
         }
         case SYM_IMPORT_GROUP: {
             sym_import_group* ig = (sym_import_group*)n;
+            ig->sym.declaring_st = st;
             if (ig->sym.name) {
                 return add_symbol(r, st, sst, (symbol*)ig);
             }
@@ -827,7 +831,7 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
         if (*s->name != '\0') {
             symbol** res = symbol_table_insert(pst, s);
             // we checked for collisions during insert into the linked list
-            if (!res) assert(!res);
+            assert(!res);
         }
         else {
             symbol_table_insert_using(
@@ -1077,7 +1081,8 @@ static inline resolve_error resolve_ast_node_raw(
             }
             symbol_table* sym_st;
             symbol** s = symbol_table_lookup_with_decl(
-                st, AM_PROTECTED, is->target.name, &sym_st);
+                is->sym.declaring_st, AM_PROTECTED, is->target.name, &sym_st);
+            is->sym.declaring_st = st; // change the
             if (!s) return report_unknown_symbol(r, n, st);
             is->target.sym = *s;
             re = resolve_ast_node(r, (ast_node*)*s, sym_st, value, ctype);
