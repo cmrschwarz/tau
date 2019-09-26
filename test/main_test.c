@@ -19,22 +19,27 @@ static void print_dash_padded(char* msg, bool err)
     }
     fputc('\n', err ? stderr : stdout);
 }
-#define TEST(test_name) print_result(&test_name, STRINGIFY(test_name))
 
-static int print_result(int (*testfn)(), char* msg)
-{
-    int res;
-    TIME(res = testfn(); if (res) {
-        fputs(msg, stderr);
-        fputs(" FAILED\n", stderr);
-    } else {
-        tput(msg);
-        tput(" passed ");
-    });
-    tflush();
-    return res;
-}
+#define TEST_IMPL(res, test_name, test_call)                                   \
+    do {                                                                       \
+        char* msg = STRINGIFY(test_name);                                      \
+        int r;                                                                 \
+        TIME(r = test_call; if (r) {                                           \
+            tput(msg);                                                         \
+            tput(" FAILED");                                                   \
+        } else {                                                               \
+            tput(msg);                                                         \
+            tput(" passed ");                                                  \
+        };);                                                                   \
+        res |= r;                                                              \
+        tflush();                                                              \
+    } while (false)
+
 // MDG TESTS
+#define TEST(rest, test_name) TEST_IMPL(rest, test_name, test_name())
+#define TEST_WITH_ARGS(rest, test_name, ...)                                   \
+    TEST_IMPL(rest, test_name, test_name(__VA_ARGS__))
+
 int mdg_test()
 {
     /*
@@ -187,10 +192,9 @@ int list_builder_test()
     // TODO
     return OK;
 }
-int release_test()
+int release_test(int argc, char** argv)
 {
-    static char* cli_args[2] = {"", "test/test.tau"};
-    return tauc_run(2, cli_args);
+    return tauc_run(argc, argv);
 }
 int llvmtest_main();
 #include <utils/debug_utils.h>
@@ -201,12 +205,12 @@ int main_test(int argc, char** argv)
     int res = OK;
 
     // res |= TEST(llvmtest_main);
-    res |= TEST(stack_test);
-    res |= TEST(list_builder_test);
-    res |= TEST(file_map_test);
-    res |= TEST(job_queue_test);
+    TEST(res, stack_test);
+    TEST(res, list_builder_test);
+    TEST(res, file_map_test);
+    TEST(res, job_queue_test);
     // res |= TEST(mdg_test);
-    res |= TEST(release_test);
+    TEST_WITH_ARGS(res, release_test, argc, argv);
 
     if (res) {
         print_dash_padded("FAILED", false);

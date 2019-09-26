@@ -86,7 +86,6 @@ int tauc_fin(tauc* t)
 int tauc_run(int argc, char** argv)
 {
     tauc t;
-    if (argc < 2) return OK;
     int r = file_map_init(&t.filemap);
     if (r) return r;
     r = master_error_log_init(&t.mel, &t.filemap);
@@ -94,21 +93,28 @@ int tauc_run(int argc, char** argv)
         file_map_fin(&t.filemap);
         return r;
     }
-    r = tauc_init(&t);
-    if (!r) {
-        thread_context_preorder_job(&t.main_thread_context);
-        for (int i = 1; i < argc; i++) {
-            src_file* f = file_map_get_file_from_path(
-                &t.filemap, string_from_cstr(argv[i]));
-            if (!f) {
-                tauc_error_occured(&t, ERR);
-                r = ERR;
-                break;
+    if (argc >= 2) {
+        r = tauc_init(&t);
+        if (!r) {
+            thread_context_preorder_job(&t.main_thread_context);
+            for (int i = 1; i < argc; i++) {
+                src_file* f = file_map_get_file_from_path(
+                    &t.filemap, string_from_cstr(argv[i]));
+                if (!f) {
+                    tauc_error_occured(&t, ERR);
+                    r = ERR;
+                    break;
+                }
+                src_file_require(
+                    f, &t, NULL, SRC_RANGE_INVALID, t.mdg.root_node);
             }
-            src_file_require(f, &t, NULL, SRC_RANGE_INVALID, t.mdg.root_node);
+            if (!r) thread_context_run(&t.main_thread_context);
+            r = tauc_fin(&t);
         }
-        if (!r) thread_context_run(&t.main_thread_context);
-        r = tauc_fin(&t);
+    }
+    else {
+        master_error_log_report(&t.mel, "no arguments provided");
+        r = ERR;
     }
     master_error_log_unwind(&t.mel);
     master_error_log_fin(&t.mel);
