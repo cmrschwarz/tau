@@ -41,8 +41,5 @@ void resolver_fin(resolver* r);
 int resolver_resolve(
     resolver* r, mdg_node** start, mdg_node** end, ureg* startid, ureg* endid,
     ureg* prviate_sym_count);
-resolve_error add_import_group_decls(
-    thread_context* tc, mdg_node* curr_mdg_node, src_file* f,
-    sym_import_group* ig, symbol_table* st);
 ast_elem* get_resolved_ast_node_ctype(ast_node* n);
 #endif

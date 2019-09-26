@@ -216,6 +216,9 @@ typedef struct stmt_using_s {
 struct mdg_node_s;
 typedef struct sym_import_symbol_s {
     symbol sym;
+    // PERF: this member is kinda uneccessary since the group already knows,
+    // but this connection gets lost during the insertion into tht target st
+    symbol_table* target_st;
     union {
         char* name;
         symbol* sym;
@@ -239,7 +242,9 @@ typedef struct sym_import_group_s {
     symbol sym; // name is NULL for an unnamed import group
     mdg_node* parent_mdgn;
     union {
-        symbol_table* symtab; // used for named groups
+        // used for named groups
+        // the actual symbols are stored in the first element of the symtab
+        symbol_table* symtab;
         symbol* symbols; // used for unnamed groups
     } children;
 } sym_import_group;

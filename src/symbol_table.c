@@ -109,7 +109,6 @@ symbol** symbol_table_find_insert_position(symbol_table* st, char* name)
 }
 symbol** symbol_table_insert(symbol_table* st, symbol* s)
 {
-    s->declaring_st = st;
     ureg hash = fnv_hash_str(FNV_START_HASH, s->name) % st->decl_count;
     symbol** tgt = ptradd(st, sizeof(symbol_table) + hash * sizeof(symbol*));
     while (*tgt) {

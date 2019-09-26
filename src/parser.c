@@ -2817,8 +2817,8 @@ parse_error parse_import_with_parent(
             if (symbol_table_init(&st, ndecl_cnt, 0, false, (ast_elem*)ig)) {
                 return RE_FATAL;
             }
-            resolve_error re = add_import_group_decls(
-                p->lx.tc, p->current_module, p->lx.file, ig, st);
+            assert(ndecl_cnt); // otherwise we error'd already
+            *(symbol**)(st + 1) = ig->children.symbols;
             ig->children.symtab = st;
             if (re) return PE_ERROR;
         }
