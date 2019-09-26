@@ -210,6 +210,12 @@ static void free_astn_symtabs(ast_node* n)
         case SYM_VAR: {
             free_astn_symtabs(((sym_var*)n)->type);
         } break;
+        case STMT_USING: {
+            free_astn_symtabs(((stmt_using*)n)->target);
+        } break;
+        case SYM_NAMED_USING: {
+            free_astn_symtabs(((sym_named_using*)n)->target);
+        } break;
         case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
             for (ureg i = 0; i < c->arg_count; i++) {
