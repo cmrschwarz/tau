@@ -73,11 +73,9 @@ static resolve_error report_redeclaration_error(
 static resolve_error
 add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
 {
-    sym->declaring_st = st;
     symbol_table* tgtst =
-        (sst && ast_flags_get_access_mod(sym->node.flags) != AM_UNSPECIFIED)
-            ? sst
-            : st;
+        (sst && ast_flags_get_access_mod(sym->node.flags) != AM_DEFAULT) ? sst
+                                                                         : st;
     symbol** conflict;
     conflict = symbol_table_insert(tgtst, sym);
     if (conflict) {
@@ -266,9 +264,8 @@ static resolve_error add_ast_node_decls(
                 fn->id = r->private_sym_count++;
             }
             symbol_table* tgtst =
-                (sst && ast_flags_get_access_mod(n->flags) != AM_UNSPECIFIED)
-                    ? sst
-                    : st;
+                (sst && ast_flags_get_access_mod(n->flags) != AM_DEFAULT) ? sst
+                                                                          : st;
             symbol** conflict;
             symbol* sym = (symbol*)n;
             sym->declaring_st = st;
@@ -588,8 +585,8 @@ resolve_error resolve_func_call(
 
     while (lt) {
         symbol_table* fn_st;
-        symbol** s = symbol_table_lookup_with_decl(
-            lt, AM_UNSPECIFIED, func_name, &fn_st);
+        symbol** s =
+            symbol_table_lookup_with_decl(lt, AM_DEFAULT, func_name, &fn_st);
         if (!s) {
             // we use args_st here because thats the scope that the call is in
             re = report_unknown_symbol(r, c->lhs, args_st);
@@ -637,7 +634,7 @@ resolve_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
         ast_elem* esa_lhs;
         symbol_table* lhs_st;
         // TODO: fix access modifier restrictions
-        access_modifier am = AM_UNSPECIFIED;
+        access_modifier am = AM_DEFAULT;
         resolve_error re = resolve_ast_node(r, esa->lhs, st, &esa_lhs, NULL);
         if (re) return re;
         assert(ast_elem_is_symbol(esa_lhs));
@@ -730,7 +727,7 @@ resolve_error choose_binary_operator_overload(
         bool applicable;
         symbol_table* op_st;
         symbol** s = symbol_table_lookup_with_decl(
-            lt, AM_UNSPECIFIED, op_to_str(ob->node.op_kind), &op_st);
+            lt, AM_DEFAULT, op_to_str(ob->node.op_kind), &op_st);
         if (!s) return report_unknown_symbol(r, (ast_node*)ob, lt);
         if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
             sym_func_overloaded* sfo = (sym_func_overloaded*)s;
@@ -897,7 +894,7 @@ resolve_error resolve_expr_scope_access(
 }
 access_modifier check_member_access(symbol_table* st, scope* tgt)
 {
-    return AM_UNSPECIFIED; // TODO
+    return AM_DEFAULT; // TODO
 }
 resolve_error resolve_expr_member_accesss(
     resolver* r, expr_member_access* ema, symbol_table* st,
@@ -965,7 +962,7 @@ static inline resolve_error resolve_ast_node_raw(
             }
             symbol_table* sym_st;
             symbol** s = symbol_table_lookup_with_decl(
-                st, AM_UNSPECIFIED, e->value.str, &sym_st);
+                st, AM_DEFAULT, e->value.str, &sym_st);
             if (!s) return report_unknown_symbol(r, n, st);
             re = resolve_ast_node(r, (ast_node*)*s, sym_st, value, ctype);
             if (re) return re;
@@ -1025,7 +1022,7 @@ static inline resolve_error resolve_ast_node_raw(
                     value, ctype, n,
                     get_resolved_symbol_ctype(ema->target.sym));
             }
-            access_modifier am = AM_UNSPECIFIED;
+            access_modifier am = AM_DEFAULT;
             return resolve_expr_member_accesss(r, ema, st, &am, value, ctype);
         }
         case EXPR_SCOPE_ACCESS: {
@@ -1035,7 +1032,7 @@ static inline resolve_error resolve_ast_node_raw(
                     value, ctype, n,
                     get_resolved_symbol_ctype(esa->target.sym));
             }
-            access_modifier access = AM_UNSPECIFIED;
+            access_modifier access = AM_DEFAULT;
             return resolve_expr_scope_access(r, esa, st, &access, value, ctype);
         }
         case SC_STRUCT:
@@ -1057,21 +1054,19 @@ static inline resolve_error resolve_ast_node_raw(
             return resolve_func(r, (sc_func*)n, st);
         }
         case SYM_IMPORT_PARENT: {
-            // TODO: fix the ctype
-            assert(!value && !ctype);
-            if (resolved) return PE_OK;
-            return resolve_import_parent(r, (sym_import_parent*)n, st);
+            if (!resolved) {
+                re = resolve_import_parent(r, (sym_import_parent*)n, st);
+                if (re) return re;
+            }
+            RETURN_RESOLVED(value, ctype, n, NULL);
         }
         case SYM_IMPORT_GROUP: {
-            assert(!value && !ctype);
-            if (!resolved) ast_flags_set_resolved(&n->flags);
-            return RE_OK;
-        }
-        case SYM_IMPORT_MODULE: {
-            assert(!ctype);
             if (!resolved) ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, n, NULL);
-            return RE_OK;
+        }
+        case SYM_IMPORT_MODULE: {
+            if (!resolved) ast_flags_set_resolved(&n->flags);
+            RETURN_RESOLVED(value, ctype, n, NULL);
         }
         case SYM_IMPORT_SYMBOL: {
             sym_import_symbol* is = (sym_import_symbol*)n;
@@ -1088,9 +1083,7 @@ static inline resolve_error resolve_ast_node_raw(
             re = resolve_ast_node(r, (ast_node*)*s, sym_st, value, ctype);
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
-            RETURN_RESOLVED(
-                value, ctype, is->target.sym,
-                get_resolved_symbol_ctype(is->target.sym));
+            return RE_OK;
         }
         case STMT_USING:
         case SYM_NAMED_USING:

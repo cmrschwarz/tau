@@ -7,15 +7,12 @@ typedef u16 ast_flags;
 
 // !symbol_table's data layout depends on this enums order
 typedef enum PACK_ENUM access_modifier_e {
-    AM_UNSPECIFIED = 0,
-    // identical to unspecified inside structs
-    AM_PACKAGE_PRIVATE = 0,
-    // identical to unspecified inside modules
-    AM_SCOPE_LOCAL = 0,
-    AM_PRIVATE = 1,
-    AM_PROTECTED = 2,
-    AM_PUBLIC = 3,
-    AM_ENUM_ELEMENT_COUNT = 4,
+    AM_DEFAULT = 0, // osc
+    AM_INTERNAL = 1, // module
+    AM_PRIVATE = 2, // current scope (module / struct)
+    AM_PROTECTED = 3, // current scope + scopes with using ...;
+    AM_PUBLIC = 4, // everybody
+    AM_ENUM_ELEMENT_COUNT = 5,
 } access_modifier;
 
 #define ASTF_RESOLVING_OFFSET 0
@@ -25,14 +22,14 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_SEALED_OFFSET 4
 #define ASTF_CONST_OFFSET 5
 #define ASTF_ACCESS_MODIFIER_OFFSET 6
-#define ASTF_ACCESS_MODIFIER_MASK (3 << ASTF_ACCESS_MODIFIER_OFFSET)
-#define ASTF_PARSE_ERROR_OFFSET 8
-#define ASTF_REDECLARATION_OFFSET 9
-#define ASTF_COMPUND_DECL_OFFSET 10
+#define ASTF_ACCESS_MODIFIER_MASK (7 << ASTF_ACCESS_MODIFIER_OFFSET)
+#define ASTF_PARSE_ERROR_OFFSET 9
+#define ASTF_REDECLARATION_OFFSET 10
+#define ASTF_COMPUND_DECL_OFFSET 11
 // never needed simultaneous with compund decl, so we share the bit
-#define ASTF_RELATIVE_IMPORT_OFFSET 10
-#define ASTF_DEFINED_IN_PP_OFFSET 11
-#define ASTF_USED_IN_PP_OFFSET 12
+#define ASTF_RELATIVE_IMPORT_OFFSET 12
+#define ASTF_DEFINED_IN_PP_OFFSET 13
+#define ASTF_USED_IN_PP_OFFSET 14
 
 typedef enum ast_flags_values_e {
     // this stays set even once resolved
@@ -42,7 +39,7 @@ typedef enum ast_flags_values_e {
     ASTF_VIRTUAL = 1 << ASTF_VIRTUAL_OFFSET,
     ASTF_SEALED = 1 << ASTF_SEALED_OFFSET,
     ASTF_CONST = 1 << ASTF_CONST_OFFSET,
-    ASTF_ACCESS_MODIFIER = ASTF_ACCESS_MODIFIER_MASK, // ! two bits
+    ASTF_ACCESS_MODIFIER = ASTF_ACCESS_MODIFIER_MASK, // ! multiple bits
     ASTF_ERROR = 1 << ASTF_PARSE_ERROR_OFFSET,
     ASTF_COMPUND_DECL = 1 << ASTF_PARSE_ERROR_OFFSET,
     ASTF_RELATIVE_IMPORT = 1 << ASTF_RELATIVE_IMPORT_OFFSET,
