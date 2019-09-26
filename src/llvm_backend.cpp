@@ -118,9 +118,16 @@ LLVMBackend::LLVMBackend(thread_context* tc)
 
 LLVMBackend::~LLVMBackend()
 {
-    for (ureg i = 0; i != _global_value_store.size(); i++) {
-        auto val = (llvm::Value*)_global_value_store[i];
-        if (val) val->deleteValue();
+    ureg f = 0;
+    std::sort(_globals_not_to_free.begin(), _globals_not_to_free.end());
+    _globals_not_to_free.push_back(_global_value_store.size());
+    for (ureg i : _globals_not_to_free) {
+        while (f != i) {
+            auto val = (llvm::Value*)_global_value_store[f];
+            if (val) val->deleteValue();
+            f++;
+        }
+        f++;
     }
     delete _data_layout;
     delete _target_machine;
@@ -232,6 +239,7 @@ llvm_error LLVMBackend::createLLVMModule(
             ((llvm::GlobalVariable*)val)->removeFromParent();
         }
         else {
+            assert(llvm::isa<llvm::Function>(*val));
             ((llvm::Function*)val)->removeFromParent();
         }
     }
@@ -307,12 +315,15 @@ llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align)
             if (align) *align = PRIMITIVES[kind].alignment;
         } break;
         case SC_STRUCT: {
-            llvm::Type** tp = lookupTypeRaw(((sc_struct*)e)->id);
+            sc_struct* st = (sc_struct*)e;
+            llvm::Type** tp = lookupTypeRaw(st->id);
             if (*tp) {
                 if (t) *t = *tp;
             }
             else {
-                sc_struct* st = (sc_struct*)e;
+                if (isGlobalID(st->id) && isIDInModule(st->id)) {
+                    _globals_not_to_free.push_back(st->id);
+                }
                 // PERF: we could steal the array of elements for our types here
                 // this might be too big because of nested structs etc. but it's
                 // definitely big enough
@@ -921,7 +932,9 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
         if (!func_sig) return LLE_FATAL;
     }
     auto func_name_mangled = name_mangle(fn);
-    if (!*fn->scp.body.elements || !isIDInModule(fn->id)) {
+    // TODO: ugly hack,  use a proper extern function ast node
+    bool extern_func = (fn->scp.body.srange == SRC_RANGE_INVALID);
+    if (extern_func || !isIDInModule(fn->id)) {
         auto func = (llvm::Function*)llvm::Function::Create(
             func_sig, llvm::GlobalVariable::ExternalLinkage,
             _data_layout->getProgramAddressSpace(), func_name_mangled);

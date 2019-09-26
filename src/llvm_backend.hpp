@@ -75,6 +75,7 @@ struct LLVMBackend {
     std::vector<bool> _global_value_init_flags;
     std::vector<void*> _local_value_store;
     std::vector<ureg> _reset_after_emit;
+    std::vector<ureg> _globals_not_to_free;
     // we have to avoid pointer invalidation on resize, therefore deque
     std::deque<ControlFlowContext> _control_flow_ctx;
     llvm::Type* _primitive_types[PRIMITIVE_COUNT];
