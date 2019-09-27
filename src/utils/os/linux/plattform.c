@@ -40,9 +40,11 @@ ureg plattform_get_cache_line_size()
 }
 ureg plattform_get_virt_core_count()
 {
-    // DEBUG:
-    // return 1;
     if (!_virt_core_count) _virt_core_count = sysconf(_SC_NPROCESSORS_ONLN);
     return _virt_core_count;
+}
+void platttform_override_virt_core_count(ureg count)
+{
+    _virt_core_count = count;
 }
 #endif

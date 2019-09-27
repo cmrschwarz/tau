@@ -20,6 +20,7 @@
 ureg plattform_get_page_size();
 ureg plattform_get_cache_line_size();
 ureg plattform_get_virt_core_count();
+void platttform_override_virt_core_count(ureg count);
 
 #if CMAKE_NO_DEBUG
 #define DEBUG 0

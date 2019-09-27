@@ -977,6 +977,7 @@ char* error_log_cat_strings(error_log* e, ureg count, const char** strs)
     for (ureg i = 0; i < count; i++) {
         len += strlen(strs[i]);
     }
+    // we align this to avoid misaligned error logs
     char* str =
         (char*)error_log_alloc(e, ceil_to_mult_of_pow_two(len + 1, REG_BYTES));
     if (!str) return NULL;

@@ -6,6 +6,7 @@
 #include "symbol_table.h"
 #include "assert.h"
 #include "utils/debug_utils.h"
+#include <stdlib.h>
 
 static inline int tauc_partial_fin(tauc* t, int r, int i)
 {
@@ -82,7 +83,54 @@ int tauc_fin(tauc* t)
     tauc_partial_fin(t, 0, -2);
     return atomic_sreg_load_flat(&t->error_code);
 }
-
+int handle_cmd_args(
+    tauc* t, error_log* el, int argc, char** argv, bool* files_found)
+{
+    int r = 0;
+    for (int i = 1; i < argc; i++) {
+        char* arg = argv[i];
+        assert(arg);
+        if (arg[0] != '-') {
+            *files_found = true;
+            src_file* f = file_map_get_file_from_path(
+                &t->filemap, string_from_cstr(argv[i]));
+            if (!f) {
+                tauc_error_occured(t, ERR);
+                return ERR;
+            }
+            r = src_file_require(
+                f, t, NULL, SRC_RANGE_INVALID, t->mdg.root_node);
+            if (r) return r;
+            continue;
+        }
+        if (!strcmp(arg, "-t")) {
+            if (i == argc - 1) {
+                master_error_log_report(
+                    &t->mel, "-T requires a number to follow");
+                return ERR;
+            }
+            char* end = argv[i + 1] + strlen(argv[i + 1]);
+            char* num_end;
+            long num = strtol(argv[i + 1], &num_end, 10);
+            if (num > U16_MAX || num < 0 || num == 0 || num_end != end) {
+                char* msg = error_log_cat_strings_3(
+                    el, "invalid argument pair \"-t ", argv[i + 1], "\"");
+                master_error_log_report(&t->mel, msg);
+                return ERR;
+            }
+            platttform_override_virt_core_count(num);
+            i++;
+        }
+        else {
+            // TODO: rework this to avoid the alloc, its kinda stupid
+            char* msg = error_log_cat_strings_3(
+                el, "unknown command line option \"", arg, "\"");
+            master_error_log_report(&t->mel, msg);
+            return ERR;
+        }
+    }
+    return OK;
+}
 int tauc_run(int argc, char** argv)
 {
     tauc t;
@@ -93,28 +141,22 @@ int tauc_run(int argc, char** argv)
         file_map_fin(&t.filemap);
         return r;
     }
-    if (argc >= 2) {
-        r = tauc_init(&t);
+    bool files_found = false;
+    r = tauc_init(&t);
+    if (!r) {
+        thread_context_preorder_job(&t.main_thread_context);
+        r = handle_cmd_args(
+            &t, t.main_thread_context.err_log, argc, argv, &files_found);
         if (!r) {
-            thread_context_preorder_job(&t.main_thread_context);
-            for (int i = 1; i < argc; i++) {
-                src_file* f = file_map_get_file_from_path(
-                    &t.filemap, string_from_cstr(argv[i]));
-                if (!f) {
-                    tauc_error_occured(&t, ERR);
-                    r = ERR;
-                    break;
-                }
-                src_file_require(
-                    f, &t, NULL, SRC_RANGE_INVALID, t.mdg.root_node);
+            if (files_found) {
+                thread_context_run(&t.main_thread_context);
             }
-            if (!r) thread_context_run(&t.main_thread_context);
-            r = tauc_fin(&t);
+            else {
+                master_error_log_report(&t.mel, "no input files");
+                r = ERR;
+            }
         }
-    }
-    else {
-        master_error_log_report(&t.mel, "no arguments provided");
-        r = ERR;
+        r |= tauc_fin(&t);
     }
     master_error_log_unwind(&t.mel);
     master_error_log_fin(&t.mel);

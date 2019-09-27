@@ -88,6 +88,7 @@ typedef struct master_error_log_s {
 
 // MAIN THREAD ONLY
 int master_error_log_init(master_error_log* mel, file_map* filemap);
+void* master_error_log_alloc(master_error_log* mel, ureg size);
 void master_error_log_report(master_error_log* mel, char* critical_error);
 void master_error_log_unwind(master_error_log* mel);
 void master_error_log_fin(master_error_log* mel);
