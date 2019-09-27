@@ -7,6 +7,10 @@
 #include "utils/zero.h"
 #include "utils/debug_utils.h"
 
+static resolve_error add_body_decls(
+    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ast_body* b,
+    bool public_st);
+
 resolve_error
 resolve_param(resolver* r, sym_param* p, symbol_table* st, ast_elem** ctype);
 resolve_error resolve_body(resolver* r, ast_body* b);
@@ -17,8 +21,6 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st);
 resolve_error resolve_expr_body(
     resolver* r, ast_node* expr, ast_body* b, symbol_table* parent_st,
     ast_elem** value, ast_elem** ctype);
-static resolve_error add_simple_body_decls(
-    resolver* r, symbol_table* parent_st, ast_body* b, bool public_st);
 resolve_error resolve_expr_scope_access(
     resolver* r, expr_scope_access* esa, symbol_table* st,
     access_modifier* access, ast_elem** value, ast_elem** ctype);
@@ -252,7 +254,7 @@ static resolve_error add_ast_node_decls(
             if (re) return re;
             public_st =
                 public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED;
-            return add_simple_body_decls(r, st, &((scope*)n)->body, public_st);
+            return add_body_decls(r, st, NULL, &((scope*)n)->body, public_st);
         }
 
         case SC_FUNC: {
@@ -385,7 +387,7 @@ static resolve_error add_ast_node_decls(
                 r, st, sst, ((expr_break*)n)->value, public_st);
 
         case EXPR_BLOCK:
-            return add_simple_body_decls(r, st, &((expr_block*)n)->body, false);
+            return add_body_decls(r, st, NULL, &((expr_block*)n)->body, false);
 
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
@@ -397,11 +399,11 @@ static resolve_error add_ast_node_decls(
         }
 
         case EXPR_LOOP:
-            return add_simple_body_decls(r, st, &((expr_loop*)n)->body, false);
+            return add_body_decls(r, st, NULL, &((expr_loop*)n)->body, false);
 
         case EXPR_MACRO: {
             expr_macro* em = (expr_macro*)n;
-            re = add_simple_body_decls(r, st, &em->body, false);
+            re = add_body_decls(r, st, NULL, &em->body, false);
             if (re) return re;
             return add_ast_node_decls(r, st, sst, (ast_node*)em->next, false);
         }
@@ -489,11 +491,6 @@ static resolve_error add_body_decls(
         if (re) return re;
     }
     return RE_OK;
-}
-static resolve_error add_simple_body_decls(
-    resolver* r, symbol_table* parent_st, ast_body* b, bool public_st)
-{
-    return add_body_decls(r, parent_st, NULL, b, public_st);
 }
 static inline void print_debug_info(resolver* r)
 {
@@ -1278,7 +1275,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (ctype) *ctype = NULL;
             if (resolved) return RE_OK;
             expr_macro* em = (expr_macro*)n;
-            re = add_simple_body_decls(r, st, &em->body, false);
+            re = add_body_decls(r, st, NULL, &em->body, false);
             if (re) return re;
             return resolve_ast_node(r, (ast_node*)em->next, st, NULL, NULL);
         }
@@ -1532,8 +1529,9 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
         (**i).symtab->parent = GLOBAL_SYMTAB;
     }
     if (!contains_root) atomic_ureg_inc(&r->tc->t->linking_holdups);
+    return RE_OK;
 }
-resolve_error resolver_add_non_pp_decls(resolver* r)
+resolve_error resolver_setup_pass(resolver* r)
 {
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         aseglist_iterator asi;
@@ -1545,10 +1543,11 @@ resolve_error resolver_add_non_pp_decls(resolver* r)
             if (re) return re;
         }
     }
+    return RE_OK;
 }
 resolve_error resolver_run(resolver* r)
 {
-    for (mdg_node** i = r->mdgs_begin; i != r->mdgs_begin; i++) {
+    for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         r->curr_mdg = *i;
         aseglist_iterator asi;
         aseglist_iterator_begin(&asi, &(**i).open_scopes);
@@ -1559,6 +1558,7 @@ resolve_error resolver_run(resolver* r)
             if (re) return re;
         }
     }
+    return RE_OK;
 }
 resolve_error resolver_cleanup(resolver* r, ureg startid)
 {
@@ -1569,8 +1569,8 @@ resolve_error resolver_cleanup(resolver* r, ureg startid)
         for (open_scope* osc = aseglist_iterator_next(&it); osc;
              osc = aseglist_iterator_next(&it)) {
             adjust_body_ids(startid, &osc->scp.body);
-            res |= mdg_node_resolved(*n, r->tc);
         }
+        res |= mdg_node_resolved(*n, r->tc);
     }
     if (res) return RE_FATAL;
     return RE_OK;
@@ -1579,7 +1579,6 @@ resolve_error resolver_resolve(
     resolver* r, mdg_node** start, mdg_node** end, ureg* startid, ureg* endid,
     ureg* private_sym_count)
 {
-
     r->public_sym_count = 0;
     r->private_sym_count = UREGH_MAX;
     r->mdgs_begin = start;
@@ -1588,7 +1587,7 @@ resolve_error resolver_resolve(
     print_debug_info(r);
     re = resolver_init_mdg_symtabs_and_handle_root(r);
     if (re) return re;
-    re = resolver_add_non_pp_decls(r);
+    re = resolver_setup_pass(r);
     if (re) return re;
     re = resolver_run(r);
     if (re) return re;
