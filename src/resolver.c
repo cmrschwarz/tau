@@ -714,6 +714,18 @@ resolve_error choose_unary_operator_overload(
         }
     }
 }
+bool is_lvalue(ast_node* expr)
+{
+    if (expr->kind == EXPR_PARENTHESES) {
+        return is_lvalue(((expr_parentheses*)expr)->child);
+    }
+    if (expr->kind == EXPR_IDENTIFIER) return true;
+    if (expr->kind == EXPR_OP_UNARY) {
+        expr_op_unary* ou = (expr_op_unary*)expr;
+        return (ou->node.op_kind == OP_DEREF);
+    }
+    return false;
+}
 resolve_error choose_binary_operator_overload(
     resolver* r, expr_op_binary* ob, symbol_table* st, ast_elem** value,
     ast_elem** ctype)
@@ -724,6 +736,9 @@ resolve_error choose_binary_operator_overload(
     re = resolve_ast_node(r, ob->rhs, st, NULL, &rhs_ctype);
     if (re) return re;
     if (lhs_ctype->kind == PRIMITIVE && rhs_ctype->kind == PRIMITIVE) {
+        if (ob->node.op_kind == OP_ASSIGN) {
+            assert(is_lvalue(ob->lhs)); // TODO: error
+        }
         // TODO: proper inbuild operator resolution
         // maybe create a cat_prim_kind and switch over cat'ed lhs and rhs
         ob->op = lhs_ctype;
@@ -1262,6 +1277,7 @@ static inline resolve_error resolve_ast_node_raw(
             else {
                 ei->ctype = ctype_if;
             }
+            ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, ei, ei->ctype);
         }
 
