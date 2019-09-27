@@ -495,24 +495,12 @@ static resolve_error add_simple_body_decls(
 {
     return add_body_decls(r, parent_st, NULL, b, public_st);
 }
-static inline resolve_error mark_mdg_nodes_resolved(resolver* r)
-{
-    for (mdg_node** i = r->start; i != r->end; i++) {
-        resolve_error re = mdg_node_resolved(*i, r->tc);
-        if (re) {
-            return re;
-        }
-    }
-    return RE_OK;
-}
 static inline void print_debug_info(resolver* r)
 {
     tprintf("resolving {");
-    mdg_node** i = r->start;
-    i = r->start;
-    while (i + 1 != r->end) {
+    mdg_node** i = r->mdgs_begin;
+    for (; i + 1 != r->mdgs_end; i++) {
         tprintf("%s, ", (**i).name);
-        i++;
     }
     tprintf("%s} ", (**i).name);
 }
@@ -1528,30 +1516,10 @@ void adjust_body_ids(ureg sym_offset, ast_body* b)
         adjust_node_ids(sym_offset, *i);
     }
 }
-void adjust_ids(ureg sym_offset, mdg_node** start, mdg_node** end)
+resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
 {
-    while (start != end) {
-        aseglist_iterator it;
-        aseglist_iterator_begin(&it, &(**start).open_scopes);
-        for (open_scope* osc = aseglist_iterator_next(&it); osc;
-             osc = aseglist_iterator_next(&it)) {
-            adjust_body_ids(sym_offset, &osc->scp.body);
-        }
-        start++;
-    }
-}
-resolve_error resolver_resolve(
-    resolver* r, mdg_node** start, mdg_node** end, ureg* startid, ureg* endid,
-    ureg* private_sym_count)
-{
-    r->public_sym_count = 0;
-    r->private_sym_count = UREGH_MAX;
-    r->start = start;
-    r->end = end;
-    resolve_error re;
-    print_debug_info(r);
     bool contains_root = false;
-    for (mdg_node** i = start; i != end; i++) {
+    for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         if (*i == r->tc->t->mdg.root_node) {
             if (tauc_request_finalize(r->tc->t)) return RE_FATAL;
             contains_root = true;
@@ -1564,52 +1532,102 @@ resolve_error resolver_resolve(
         (**i).symtab->parent = GLOBAL_SYMTAB;
     }
     if (!contains_root) atomic_ureg_inc(&r->tc->t->linking_holdups);
-    for (mdg_node** i = start; i != end; i++) {
+}
+resolve_error resolver_add_non_pp_decls(resolver* r)
+{
+    for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         aseglist_iterator asi;
         aseglist_iterator_begin(&asi, &(**i).open_scopes);
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
-            re = add_body_decls(
+            resolve_error re = add_body_decls(
                 r, (**i).symtab, (**i).symtab, &osc->scp.body, true);
             if (re) return re;
         }
     }
-    for (mdg_node** i = start; i != end; i++) {
+}
+resolve_error resolver_run(resolver* r)
+{
+    for (mdg_node** i = r->mdgs_begin; i != r->mdgs_begin; i++) {
         r->curr_mdg = *i;
         aseglist_iterator asi;
         aseglist_iterator_begin(&asi, &(**i).open_scopes);
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
             r->curr_osc = osc;
-            re = resolve_body(r, &osc->scp.body);
+            resolve_error re = resolve_body(r, &osc->scp.body);
             if (re) return re;
         }
     }
+}
+resolve_error resolver_cleanup(resolver* r, ureg startid)
+{
+    int res = 0;
+    for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
+        aseglist_iterator it;
+        aseglist_iterator_begin(&it, &(**n).open_scopes);
+        for (open_scope* osc = aseglist_iterator_next(&it); osc;
+             osc = aseglist_iterator_next(&it)) {
+            adjust_body_ids(startid, &osc->scp.body);
+            res |= mdg_node_resolved(*n, r->tc);
+        }
+    }
+    if (res) return RE_FATAL;
+    return RE_OK;
+}
+resolve_error resolver_resolve(
+    resolver* r, mdg_node** start, mdg_node** end, ureg* startid, ureg* endid,
+    ureg* private_sym_count)
+{
 
+    r->public_sym_count = 0;
+    r->private_sym_count = UREGH_MAX;
+    r->mdgs_begin = start;
+    r->mdgs_end = end;
+    resolve_error re;
+    print_debug_info(r);
+    re = resolver_init_mdg_symtabs_and_handle_root(r);
+    if (re) return re;
+    re = resolver_add_non_pp_decls(r);
+    if (re) return re;
+    re = resolver_run(r);
     if (re) return re;
     *startid = atomic_ureg_add(&r->tc->t->node_ids, r->public_sym_count);
     *endid = *startid + r->public_sym_count;
     *private_sym_count = r->private_sym_count - UREGH_MAX;
-    adjust_ids(*startid, start, end);
-    return mark_mdg_nodes_resolved(r);
+    return resolver_cleanup(r, *startid);
+}
+int resolver_partial_fin(resolver* r, int i, int res)
+{
+    switch (i) {
+        case -1:
+        case 4: sbuffer_fin(&r->resolve_stacks);
+        case 3: sbuffer_fin(&r->pp_resolve_nodes);
+        case 2: sbuffer_fin(&r->call_types);
+        case 1: stack_fin(&r->error_stack);
+        case 0: break;
+    }
+    return res;
 }
 void resolver_fin(resolver* r)
 {
-    sbuffer_fin(&r->call_types);
-    stack_fin(&r->error_stack);
+    resolver_partial_fin(r, -1, 0);
 }
 int resolver_init(resolver* r, thread_context* tc)
 {
     r->tc = tc;
+    int e = stack_init(&r->error_stack, &r->tc->tempmem);
+    if (e) return resolver_partial_fin(r, 0, e);
+    e = sbuffer_init(&r->call_types, sizeof(ast_node*) * 32);
+    if (e) resolver_partial_fin(r, 1, e);
+    e = sbuffer_init(&r->pp_resolve_nodes, sizeof(pp_resolve_node) * 32);
+    if (e) resolver_partial_fin(r, 2, e);
+    e = sbuffer_init(&r->resolve_stacks, sizeof(resolve_stack) * 2);
+    if (e) resolver_partial_fin(r, 3, e);
     r->allow_type_loops = false;
     r->curr_symbol_decl = NULL;
     r->type_loop_start = NULL;
     r->curr_expr_block_owner = NULL;
-    if (stack_init(&r->error_stack, &r->tc->tempmem)) return ERR;
-    if (sbuffer_init(&r->call_types, sizeof(ast_node*) * 32)) {
-        stack_fin(&r->error_stack);
-        return ERR;
-    }
     return OK;
 }
 ast_elem* get_resolved_ast_node_ctype(ast_node* n)
