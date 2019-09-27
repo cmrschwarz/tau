@@ -19,6 +19,12 @@ typedef enum resolve_error {
 } resolve_error;
 
 typedef struct thread_context_s thread_context;
+
+typedef struct resolving_node {
+    ast_elem* node;
+
+} resolving_node;
+
 typedef struct resolver_s {
     stack error_stack;
     sbuffer call_types;

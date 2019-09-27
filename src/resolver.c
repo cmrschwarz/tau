@@ -347,8 +347,7 @@ static resolve_error add_ast_node_decls(
                 r, st, im, stop, im->target, NULL);
         }
         case STMT_USING: {
-            re = 
-            symbol_table_insert_using(st, ast_flags_get_access_mod(n), n, ((stmt_using*)n)->target;
+            assert(false);
             return RE_OK;
         }
         case STMT_COMPOUND_ASSIGN:
