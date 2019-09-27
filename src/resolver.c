@@ -610,7 +610,7 @@ resolve_error resolve_func_call(
         }
         lt = lt->parent;
     }
-    sbuffer_remove_last(&r->call_types, c->arg_count * sizeof(ast_elem*));
+    sbuffer_remove_back(&r->call_types, c->arg_count * sizeof(ast_elem*));
     return re;
 }
 resolve_error
@@ -691,6 +691,7 @@ resolve_error choose_unary_operator_overload(
         }
         else if (child_type->kind != PRIMITIVE) {
             assert(false); // TODO
+            return RE_FATAL;
         }
         else {
             ou->op = child_type;
@@ -834,7 +835,8 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
         if (*s->name != '\0') {
             symbol** res = symbol_table_insert(pst, s);
             // we checked for collisions during insert into the linked list
-            assert(!res);
+            // the check is to prevent unused var warnings in release builds
+            if (!res) assert(!res);
         }
         else {
             symbol_table_insert_using(
@@ -1579,6 +1581,7 @@ resolve_error resolver_resolve(
     resolver* r, mdg_node** start, mdg_node** end, ureg* startid, ureg* endid,
     ureg* private_sym_count)
 {
+    r->retracing_type_loop = false;
     r->public_sym_count = 0;
     r->private_sym_count = UREGH_MAX;
     r->mdgs_begin = start;

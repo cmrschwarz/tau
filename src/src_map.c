@@ -37,7 +37,7 @@ int src_map_init(source_map* m, thread_context* tc)
     return 0;
 }
 
-int src_map_fin(source_map* m)
+void src_map_fin(source_map* m)
 {
     line_store* ls = m->last_line_store;
     while (ls) {
@@ -45,7 +45,6 @@ int src_map_fin(source_map* m)
         tfree(ls);
         ls = prev;
     }
-    return 0;
 }
 
 int src_map_add_line(source_map* m, ureg line_start)

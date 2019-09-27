@@ -193,6 +193,7 @@ int lx_init(lexer* tk, thread_context* tc)
     tk->file_buffer_end = ptradd(tk->file_buffer_start, size);
     tk->token_buffer_end = tk->token_buffer + LX_TOKEN_BUFFER_SIZE;
     tk->loaded_tokens_start = tk->token_buffer; // head is set on open_file
+    tk->status = LX_STATUS_OK;
     return 0;
 }
 void lx_fin(lexer* tk)

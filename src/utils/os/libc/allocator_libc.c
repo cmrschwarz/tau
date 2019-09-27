@@ -45,7 +45,7 @@ void talloc_fin()
 void* tmalloc(ureg size)
 {
     void* r = malloc(size);
-    //  printf("alloc %zx\n", r);
+    // printf("alloc %zx\n", r);
     // fflush(stdout);
     count_alloc();
     return r;

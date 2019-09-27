@@ -113,12 +113,12 @@ void sbuffer_remove(sbuffer* sb, sbuffer_iterator* sbi, ureg size)
     }
 }
 // PERF: maybe hand roll these two
-void sbuffer_remove_first(sbuffer* sb, ureg size)
+void sbuffer_remove_front(sbuffer* sb, ureg size)
 {
     sbuffer_iterator sbi = sbuffer_iterator_begin(sb);
     sbuffer_remove(sb, &sbi, size);
 }
-void sbuffer_remove_last(sbuffer* sb, ureg size)
+void sbuffer_remove_back(sbuffer* sb, ureg size)
 {
     sbuffer_iterator sbi = sbuffer_iterator_begin_at_end(sb);
     sbuffer_iterator_previous(&sbi, size);

@@ -134,7 +134,7 @@ int thread_context_do_job(thread_context* tc, job* j)
         if (!r) {
             ureg lh = atomic_ureg_dec(&tc->t->linking_holdups);
             if (lh == 1) {
-                TIME(r = tauc_link(tc->t););
+                r = tauc_link(tc->t);
             }
         }
         tauc_error_occured(tc->t, r);
