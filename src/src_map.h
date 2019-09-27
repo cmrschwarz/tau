@@ -45,7 +45,7 @@ typedef struct src_pos_s {
 
 int src_map_init(source_map* m, thread_context* tc);
 int src_map_fin(source_map* m);
-int src_map_add_line(source_map* m, thread_context* tc, ureg line_start);
+int src_map_add_line(source_map* m, ureg line_start);
 // this can't fail without programmer's error as the storage is already
 // allocated
 src_pos src_map_get_pos(source_map* m, ureg pos);

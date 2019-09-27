@@ -305,7 +305,7 @@ static token* lx_load(lexer* tk)
             case '\n': {
                 curr = lx_peek_char(tk);
                 tok->start++;
-                src_map_add_line(&tk->file->src_map, tk->tc, tok->start);
+                src_map_add_line(&tk->file->src_map, tok->start);
                 continue;
             }
             case ':': {
@@ -454,8 +454,7 @@ static token* lx_load(lexer* tk)
                         tok->start++;
                     } while (curr != '\n' && curr != '\0');
                     if (curr == '\n') {
-                        src_map_add_line(
-                            &tk->file->src_map, tk->tc, tok->start);
+                        src_map_add_line(&tk->file->src_map, tok->start);
                         curr = lx_peek_char(tk);
                         continue;
                     }
@@ -483,7 +482,7 @@ static token* lx_load(lexer* tk)
                         switch (curr) {
                             case '\n': {
                                 src_map_add_line(
-                                    &tk->file->src_map, tk->tc, tok->start);
+                                    &tk->file->src_map, tok->start);
                             } break;
                             case '\t': break;
                             case '*': {
@@ -610,7 +609,7 @@ static token* lx_load(lexer* tk)
                     }
                     if (curr == '\n') {
                         src_map_add_line(
-                            &tk->file->src_map, tk->tc,
+                            &tk->file->src_map,
                             tok->start +
                                 ptrdiff(tk->file_buffer_pos, str_start));
                     }
@@ -641,7 +640,7 @@ static token* lx_load(lexer* tk)
                     }
                     if (curr == '\n') {
                         src_map_add_line(
-                            &tk->file->src_map, tk->tc,
+                            &tk->file->src_map,
                             tok->start +
                                 ptrdiff(tk->file_buffer_pos, str_start));
                     }

@@ -16,13 +16,13 @@ static const ureg SRC_RANGE_MAX_START = (((ureg)1) << SRC_RANGE_START_BITS) - 1;
 static const ureg SRC_RANGE_NEW_MAP_BIT = ((ureg)1) << (REG_BITS - 2);
 static const ureg SRC_RANGE_EXTERN_BIT = ((ureg)1) << (REG_BITS - 1);
 
-static inline int
-append_line_store(source_map* m, thread_context* tc, ureg size)
+static inline int append_line_store(source_map* m, ureg size, ureg first_line)
 {
-    line_store* s = (line_store*)pool_alloc(&tc->permmem, size);
+    line_store* s = (line_store*)tmalloc(size);
     if (!s) return -1;
     s->end = ptradd(s, size);
     s->prev = m->last_line_store;
+    s->first_line = first_line;
     m->last_line_store = s;
     m->last_line = ptradd(s, sizeof(line_store));
     return 0;
@@ -30,9 +30,8 @@ append_line_store(source_map* m, thread_context* tc, ureg size)
 int src_map_init(source_map* m, thread_context* tc)
 {
     m->last_line_store = NULL;
-    int r = append_line_store(m, tc, LINE_STORE_MIN_SIZE);
+    int r = append_line_store(m, LINE_STORE_MIN_SIZE, 0);
     if (r) return r;
-    m->last_line_store->first_line = 0;
     *m->last_line = 0;
     m->last_line++;
     return 0;
@@ -40,18 +39,24 @@ int src_map_init(source_map* m, thread_context* tc)
 
 int src_map_fin(source_map* m)
 {
-    // nothing to do here for now
+    line_store* ls = m->last_line_store;
+    while (ls) {
+        line_store* prev = ls->prev;
+        tfree(ls);
+        ls = prev;
+    }
     return 0;
 }
 
-int src_map_add_line(source_map* m, thread_context* tc, ureg line_start)
+int src_map_add_line(source_map* m, ureg line_start)
 {
-    if (m->last_line >= m->last_line_store->end) {
+    if (m->last_line == m->last_line_store->end) {
         ureg last_size = ptrdiff(m->last_line_store->end, m->last_line_store);
         ureg prev_fst_line = m->last_line_store->first_line;
-        if (append_line_store(m, tc, last_size * 2)) return -1;
-        m->last_line_store->first_line =
-            prev_fst_line + (last_size - sizeof(line_store)) / sizeof(ureg);
+        int r = append_line_store(
+            m, last_size * 2,
+            prev_fst_line + (last_size - sizeof(line_store)) / sizeof(ureg));
+        if (r) return -1;
     }
     *m->last_line = line_start;
     m->last_line++;
