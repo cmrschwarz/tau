@@ -334,18 +334,16 @@ void print_msg(master_error_log* mel, const char* msg, ureg msg_len)
 }
 void printCriticalThreadError(master_error_log* mel, const char* msg)
 {
-    pectc(
-        mel, ANSICOLOR_RED ANSICOLOR_BOLD,
-        "critical error in worker thread: ", ANSICOLOR_CLEAR);
+    pect(
+        mel, ANSICOLOR_RED ANSICOLOR_BOLD, "critical error in worker thread: ");
     pe(msg);
-    pe("\n");
+    pect(mel, ANSICOLOR_CLEAR, "\n");
 }
 void printCriticalError(master_error_log* mel, const char* msg)
 {
-    pectc(
-        mel, ANSICOLOR_RED ANSICOLOR_BOLD, "critical error: ", ANSICOLOR_CLEAR);
+    pect(mel, ANSICOLOR_RED ANSICOLOR_BOLD, "critical error: ");
     pe(msg);
-    pe("\n");
+    pect(mel, ANSICOLOR_CLEAR, "\n");
 }
 void printFileIOError(master_error_log* mel, src_file* f)
 {
@@ -727,10 +725,12 @@ int report_error(master_error_log* mel, error* e)
         default: break;
     }
     if (e->warn) {
-        pect(mel, ANSICOLOR_YELLOW, "warning: ");
+        pe("warning: ");
+        pec(mel, ANSICOLOR_YELLOW);
     }
     else {
-        pect(mel, ANSICOLOR_RED, "error: ");
+        pe("error: ");
+        pec(mel, ANSICOLOR_RED);
     }
     pe(e->message);
     pect(mel, ANSICOLOR_CLEAR, "\n");
