@@ -229,9 +229,7 @@ int tauc_link(tauc* t)
     // tauc_request_end();
     // thread_context_run(&t->main_thread_context);
     while (true) {
-        mod_count += (sbuffer_get_capacity(&tc->modules) -
-                      sbuffer_get_curr_segment_free_space(&tc->modules)) /
-                     sizeof(llvm_module*);
+        mod_count += sbuffer_get_used_size(&tc->modules) / sizeof(llvm_module*);
         worker_thread* wt = (worker_thread*)aseglist_iterator_next(&it);
         if (!wt) break;
         tc = &wt->tc;
@@ -241,10 +239,10 @@ int tauc_link(tauc* t)
     aseglist_iterator_begin(&it, &t->worker_threads);
     tc = &t->main_thread_context;
     while (true) {
-        sbi mit;
-        sbi_begin(&mit, &tc->modules);
-        for (llvm_module** m = sbi_next(&mit, sizeof(llvm_module*)); m;
-             m = sbi_next(&mit, sizeof(llvm_module*))) {
+        sbuffer_iterator mit = sbuffer_iterator_begin(&tc->modules);
+        for (llvm_module** m =
+                 sbuffer_iterator_next(&mit, sizeof(llvm_module*));
+             m; m = sbuffer_iterator_next(&mit, sizeof(llvm_module*))) {
             *i = *m;
             i++;
         }

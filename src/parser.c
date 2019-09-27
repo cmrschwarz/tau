@@ -301,9 +301,8 @@ static inline parse_error parser_error_3a(
 }
 static inline body_parse_data* get_bpd(parser* p)
 {
-    sbi i;
-    sbi_begin_at_end(&i, &p->body_stack);
-    return sbi_previous(&i, sizeof(body_parse_data));
+    return (body_parse_data*)sbuffer_back(
+        &p->body_stack, sizeof(body_parse_data));
 }
 static inline void
 init_bpd(body_parse_data* bpd, ast_node* node, ast_body* body)
@@ -327,9 +326,9 @@ static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
 }
 static inline int push_bpd_pp(parser* p, ast_node* n)
 {
-    sbi i;
-    sbi_begin_at_end(&i, &p->body_stack);
-    body_parse_data* prev = sbi_previous(&i, sizeof(body_parse_data));
+    sbuffer_iterator i = sbuffer_iterator_begin_at_end(&p->body_stack);
+    body_parse_data* prev =
+        sbuffer_iterator_previous(&i, sizeof(body_parse_data));
     body_parse_data* bpd =
         sbuffer_append(&p->body_stack, sizeof(body_parse_data));
     if (bpd == NULL) return ERR;
@@ -340,17 +339,17 @@ static inline int pop_bpd_pp(parser* p, parse_error pe)
 {
     body_parse_data bpd_popped;
     body_parse_data* bpd;
-    sbi it;
-    sbi_begin_at_end(&it, &p->body_stack);
-    bpd_popped = *(body_parse_data*)sbi_previous(&it, sizeof(body_parse_data));
+    sbuffer_iterator it = sbuffer_iterator_begin_at_end(&p->body_stack);
+    bpd_popped = *(body_parse_data*)sbuffer_iterator_previous(
+        &it, sizeof(body_parse_data));
     sbuffer_remove(&p->body_stack, &it, sizeof(body_parse_data));
-    bpd = sbi_previous(&it, sizeof(body_parse_data));
+    bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
     // since we are a pp node there must at least be the base node
     assert(bpd->body == bpd_popped.body);
     ureg pp_level = 0;
     do {
         pp_level++;
-        bpd = sbi_previous(&it, sizeof(body_parse_data));
+        bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
     } while (bpd && bpd->body == bpd_popped.body);
     for (ureg i = 0; i < pp_level; i++) {
         if (!bpd || bpd->node != NULL) {
@@ -360,7 +359,7 @@ static inline int pop_bpd_pp(parser* p, parse_error pe)
             init_bpd(bpd, NULL, bpd_popped.body);
             break;
         }
-        bpd = sbi_previous(&it, sizeof(body_parse_data));
+        bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
     }
     bpd->decl_count += bpd_popped.decl_count;
     bpd->usings_count += bpd_popped.usings_count;
@@ -370,10 +369,9 @@ static inline int pop_bpd_pp(parser* p, parse_error pe)
 }
 static inline int pop_bpd(parser* p, parse_error pe)
 {
-    sbi i;
-    sbi_begin_at_end(&i, &p->body_stack);
-    body_parse_data bpd =
-        *(body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
+    sbuffer_iterator i = sbuffer_iterator_begin_at_end(&p->body_stack);
+    body_parse_data bpd = *(body_parse_data*)sbuffer_iterator_previous(
+        &i, sizeof(body_parse_data));
     assert(bpd.node); // make sure it's not a pp node
     if (bpd.shared_decl_count > 0 || bpd.shared_usings_count > 0) {
         assert(ast_elem_is_open_scope((ast_elem*)bpd.node));
@@ -386,8 +384,8 @@ static inline int pop_bpd(parser* p, parse_error pe)
     symbol_table** st = &bd->symtab;
     while (true) {
         sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
-        body_parse_data* bpd2 =
-            (body_parse_data*)sbi_previous(&i, sizeof(body_parse_data));
+        body_parse_data* bpd2 = (body_parse_data*)sbuffer_iterator_previous(
+            &i, sizeof(body_parse_data));
         bool has_pp = (bpd2 && bpd2->node == NULL);
         if (!pe) {
             if (symbol_table_init(
@@ -1146,9 +1144,9 @@ parse_error get_breaking_target(
     // TODO: break targets might be hidden due to macros
     token* t;
     PEEK(p, t);
-    sbi it;
-    sbi_begin_at_end(&it, &p->body_stack);
-    body_parse_data* bpd = sbi_previous(&it, sizeof(body_parse_data));
+    sbuffer_iterator it = sbuffer_iterator_begin_at_end(&p->body_stack);
+    body_parse_data* bpd =
+        sbuffer_iterator_previous(&it, sizeof(body_parse_data));
     if (t->kind == TK_AT) {
         token* t2;
         PEEK_SND(p, t2);
@@ -1166,7 +1164,7 @@ parse_error get_breaking_target(
                     *target = bpd->node;
                     break;
                 }
-                bpd = sbi_previous(&it, sizeof(body_parse_data));
+                bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
             }
         }
         else if (is_kw_valid_label(t->kind)) {
@@ -1184,7 +1182,7 @@ parse_error get_breaking_target(
                     *target = bpd->node;
                     break;
                 }
-                bpd = sbi_previous(&it, sizeof(body_parse_data));
+                bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
             }
         }
         else {
@@ -1220,7 +1218,7 @@ parse_error get_breaking_target(
                     break;
                 }
             }
-            bpd = sbi_previous(&it, sizeof(body_parse_data));
+            bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
         }
     }
     return PE_OK;
@@ -1274,11 +1272,12 @@ parse_error parse_return(parser* p, ast_node** tgt)
     }
     if (r->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     *tgt = (ast_node*)r;
-    sbi it;
+    sbuffer_iterator it = sbuffer_iterator_begin_at_end(&p->body_stack);
     r->target = NULL;
-    sbi_begin_at_end(&it, &p->body_stack);
-    for (body_parse_data* bpd = sbi_previous(&it, sizeof(body_parse_data));
-         bpd != NULL; bpd = sbi_previous(&it, sizeof(body_parse_data))) {
+    for (body_parse_data* bpd =
+             sbuffer_iterator_previous(&it, sizeof(body_parse_data));
+         bpd != NULL;
+         bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data))) {
         if (bpd->node && (bpd->node->kind == SC_FUNC ||
                           bpd->node->kind == SC_FUNC_GENERIC)) {
             r->target = bpd->node;

@@ -610,7 +610,7 @@ resolve_error resolve_func_call(
         }
         lt = lt->parent;
     }
-    sbuffer_remove_at_end(&r->call_types, c->arg_count * sizeof(ast_elem*));
+    sbuffer_remove_last(&r->call_types, c->arg_count * sizeof(ast_elem*));
     return re;
 }
 resolve_error

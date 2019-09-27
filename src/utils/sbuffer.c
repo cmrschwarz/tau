@@ -1,262 +1,177 @@
 #include "sbuffer.h"
 #include "allocator.h"
 #include "math_utils.h"
+#include <assert.h>
 #include <memory.h>
-
-static inline sbuffer_segment* sbuffer_segment_create(sbuffer* sb, ureg size)
+static inline sbuffer_segment* sbuffer_segment_create(ureg size)
 {
     sbuffer_segment* seg = (sbuffer_segment*)tmalloc(size);
     if (!seg) return NULL;
-    seg->end = (u8*)ptradd(seg, size);
-    seg->start = (u8*)(seg + 1);
-    seg->head = seg->start;
+    seg->tail = (void*)(seg + 1);
+    seg->end = ptradd(seg, size);
     return seg;
+}
+static inline sbuffer_segment* sbuffer_segment_append_after_tail(sbuffer* sb)
+{
+    sb->biggest_seg_size *= 2;
+    sbuffer_segment* s = sbuffer_segment_create(sb->biggest_seg_size);
+    if (!s) return NULL;
+    s->prev = sb->tail_seg;
+    s->next = NULL;
+    sb->tail_seg->next = s;
+    sb->tail_seg = s;
+    return s;
 }
 int sbuffer_init(sbuffer* sb, ureg initial_capacity)
 {
-    sb->first = sbuffer_segment_create(
-        sb, ceil_to_pow2(initial_capacity + sizeof(sbuffer_segment)));
-    if (!sb->first) return -1;
-    sb->last = sb->first;
-    sb->first->next = NULL;
-    sb->first->prev = NULL;
+    sb->biggest_seg_size =
+        ceil_to_pow2(initial_capacity + sizeof(sbuffer_segment));
+    sbuffer_segment* s = sbuffer_segment_create(sb->biggest_seg_size);
+    if (!s) return -1;
+    s->next = NULL;
+    s->prev = NULL;
+    sb->first_seg = s;
+    sb->tail_seg = s;
     return 0;
 }
 void sbuffer_fin(sbuffer* sb)
 {
-    sbuffer_segment* d;
-    do {
-        d = sb->last;
-        sb->last = d->prev;
-        tfree(d);
-    } while (sb->last != NULL);
+    sbuffer_segment* s = sb->first_seg;
+    while (s) {
+        sbuffer_segment* next = s->next;
+        tfree(s);
+        s = next;
+    }
 }
-ureg sbuffer_get_capacity(sbuffer* sb)
+ureg sbuffer_get_used_size(sbuffer* sb)
 {
-    ureg first_size = ptrdiff(sb->first->end, sb->first);
-    ureg last_size = ptrdiff(sb->last->end, sb->last);
-    ureg size = 2 * last_size - first_size;
-    ureg seg_count = ulog2(last_size) - ulog2(first_size) + 1;
-    return size - sizeof(sbuffer_segment) * seg_count;
+    ureg res = 0;
+    for (sbuffer_segment* s = sb->first_seg; s != NULL; s = s->next) {
+        res += ptrdiff(s->tail, s + 1);
+    }
+    return res;
 }
-ureg sbuffer_get_curr_segment_free_space(sbuffer* sb)
+void* sbuffer_front(sbuffer* sb, ureg size)
 {
-    return ptrdiff(sb->last->end, sb->last->head);
+    assert(ptrdiff(sb->first_seg->tail, sb->first_seg + 1) >= size);
+    return (void*)(sb->first_seg + 1);
 }
-int sbuffer_segment_append(sbuffer* sb, ureg size)
+void* sbuffer_back(sbuffer* sb, ureg size)
 {
-    sbuffer_segment* sn = sbuffer_segment_create(sb, size);
-    if (!sn) return -1;
-    sn->next = NULL;
-    sn->prev = sb->last;
-    sb->last->next = sn;
-    sb->last = sn;
-    return 0;
+    assert(ptrdiff(sb->tail_seg->tail, sb->tail_seg + 1) >= size);
+    return ptrsub(sb->tail_seg->tail, size);
 }
-
+void* sbuffer_prepend(sbuffer* sb, ureg size)
+{
+    // PERF: optimize!
+    sbuffer_iterator sbi = sbuffer_iterator_begin(sb);
+    return sbuffer_insert(sb, &sbi, size);
+}
 void* sbuffer_append(sbuffer* sb, ureg size)
 {
-    if (sb->last->head + size <= sb->last->end) {
-        void* ret_val = sb->last->head;
-        sb->last->head += size;
-        return ret_val;
+    while (true) {
+        void* tail = sb->tail_seg->tail;
+        if (ptrdiff(sb->tail_seg->end, tail) >= size) {
+            sb->tail_seg->tail = ptradd(tail, size);
+            return tail;
+        }
+        if (sb->tail_seg->next) {
+            sb->tail_seg = sb->tail_seg->next;
+            continue;
+        }
+        if (!sbuffer_segment_append_after_tail(sb)) return NULL;
     }
-    if (sbuffer_segment_append(sb, ptrdiff(sb->last->end, sb->last) * 2)) {
-        return NULL;
-    }
-    sb->last->head += size;
-    return sb->last->start;
 }
-void sbuffer_remove(sbuffer* sb, sbi* sbi, ureg size)
+void sbuffer_remove(sbuffer* sb, sbuffer_iterator* sbi, ureg size)
 {
-    sbuffer_segment* cs = sbi->seg;
-    ureg used_before = ptrdiff(sbi->pos, cs->start);
-    ureg used_after = ptrdiff(cs->head, sbi->pos) - size;
-    if (used_before == 0 && used_after == 0) {
-        cs->start = (u8*)(cs + 1);
-        cs->head = cs->start;
-        sbi->pos = cs->start;
+    void* tail_old = sbi->seg->tail;
+    sbi->seg->tail = ptrsub(sbi->seg->tail, size);
+    if (sbi->seg->tail != ptradd(sbi->seg, sizeof(sbuffer_segment))) {
+        memmove(sbi->pos, ptradd(sbi->pos, size), ptrdiff(tail_old, sbi->pos));
+        return;
     }
-    else if (used_before < used_after) {
-        memmove(cs->start, ptradd(cs->start, size), used_before);
-        cs->start = ptradd(cs->start, size);
+    if (sbi->seg == sb->tail_seg) {
+        if (sb->tail_seg->prev) sb->tail_seg = sb->tail_seg->prev;
+        sbi->seg = sb->tail_seg;
+        sbi->pos = sb->tail_seg->tail;
     }
     else {
-        memmove(ptradd(sbi->pos, size), sbi->pos, used_after);
-        cs->head = ptrsub(cs->head, size);
-    }
-}
-void sbuffer_remove_at_end(sbuffer* sb, ureg size)
-{
-    sbi it;
-    sbi_begin_at_end(&it, sb);
-    sbi_previous(&it, size);
-    sbuffer_remove(sb, &it, size);
-}
-void* sbuffer_insert(sbuffer* sb, sbi* sbi, ureg size)
-{
-    sbuffer_segment* cs = sbi->seg;
-    ureg free_space_after = ptrdiff(cs->end, cs->head);
-    ureg used_space_after = ptrdiff(cs->head, sbi->pos);
-    if (free_space_after >= size) {
-        // enough space at the end of the segment
-        memmove(sbi->pos + size, sbi->pos, used_space_after);
-        cs->head += size;
-        return sbi->pos;
-    }
-    ureg free_space_before =
-        ptrdiff(cs->start, (u8*)cs + sizeof(sbuffer_segment));
-    ureg used_space_before = ptrdiff(sbi->pos, cs->start);
-    if (free_space_before >= size) {
-        // enough space at the beginning of the segment
-        memmove(cs->start - size, cs->start, used_space_before);
-        cs->start -= size;
-        sbi->pos -= size;
-        return sbi->pos;
-    }
-    if (free_space_before + free_space_after >= size) {
-        memmove(cs->start - free_space_before, cs->start, used_space_before);
-        cs->start -= free_space_before;
-        memmove(
-            cs->start + used_space_before + size, sbi->pos, used_space_after);
-        sbi->pos = cs->start + used_space_before;
-        cs->head = sbi->pos + size + used_space_after;
-        return sbi->pos;
-    }
-    if (cs->prev != NULL && used_space_before + free_space_before >= size) {
-        ureg prev_free_space_after = ptrdiff(cs->prev->end, cs->prev->head);
-        if (prev_free_space_after >= used_space_before) {
-            memcpy(cs->prev->head, cs->start, used_space_before);
-            cs->prev->head += used_space_before;
-            sbi->pos -= size;
-            cs->start = sbi->pos;
-            return sbi->pos;
-        }
-        ureg prev_free_space_before =
-            ptrdiff(cs->prev->start, (u8*)(cs->prev) + sizeof(sbuffer_segment));
-        if (prev_free_space_after + prev_free_space_before >=
-            used_space_before) {
-            ureg mov_delta = used_space_before - prev_free_space_after;
-            memmove(
-                cs->prev->start - mov_delta, cs->prev->start,
-                ptrdiff(cs->prev->head, cs->prev->start));
-            cs->prev->start -= mov_delta;
-            cs->prev->head -= mov_delta;
-            memcpy(cs->prev->head, cs->start, used_space_before);
-            cs->prev->head += used_space_before;
-            sbi->pos -= size;
-            cs->start = sbi->pos;
-            return sbi->pos;
-        }
-    }
-
-    if (cs->next != NULL && used_space_after + free_space_after >= size) {
-        ureg next_free_space_before =
-            ptrdiff(cs->next->start, (u8*)cs->next + sizeof(sbuffer_segment));
-        if (next_free_space_before >= used_space_after) {
-            cs->next->start -= used_space_after;
-            memcpy(cs->next->start, sbi->pos, used_space_after);
-            cs->head = sbi->pos + size;
-            return sbi->pos;
-        }
-        ureg next_free_space_after = cs->next->end - cs->next->head;
-        if (next_free_space_before + next_free_space_after >=
-            used_space_after) {
-            ureg mov_delta = used_space_after - next_free_space_before;
-            memmove(
-                cs->next->start + mov_delta, cs->next->start,
-                ptrdiff(cs->next->head, cs->next->start));
-            cs->next->start += mov_delta;
-            cs->next->head += mov_delta;
-            memcpy(
-                cs->next->start - used_space_after, sbi->pos, used_space_after);
-            cs->next->start -= used_space_after;
-            cs->head = sbi->pos + size;
-            return sbi->pos;
-        }
-    }
-    ureg seg_size = ptrdiff(cs->end, cs);
-    if (used_space_before >= used_space_after) {
-        bool move_ins_too = false;
-        if (used_space_after + free_space_after < size) {
-            move_ins_too = true;
-            used_space_after += size;
-        }
-        if (seg_size < used_space_after) {
-            seg_size = ((used_space_after / seg_size) + 1) * seg_size;
-        }
-        sbuffer_segment* s;
-        if (cs->next == NULL) {
-            if (sbuffer_segment_append(sb, seg_size)) return NULL;
-            s = sb->last;
+        sbuffer_segment* s = sbi->seg;
+        sbi->seg = s->next; // s->next must exist since s is before tail_seg
+        sbi->pos = ptradd(s->next, sizeof(sbuffer_segment));
+        if (s->prev) {
+            s->prev->next = s->next;
         }
         else {
-            s = sbuffer_segment_create(sb, seg_size);
-            s->next = cs->next;
-            s->prev = cs;
-            s->next->prev = s;
-            cs->next = s;
+            sb->first_seg = s->next;
         }
-        if (move_ins_too) {
-            used_space_after -= size;
-            memcpy(s->start + size, sbi->pos, used_space_after);
-            cs->head = sbi->pos;
-            sbi->pos = s->start;
-            sbi->seg = s;
-            return sbi->pos;
-        }
-        memcpy(s->start, sbi->pos, used_space_after);
-        s->head += used_space_after;
-        cs->head = sbi->pos + size;
+        s->next->prev = s->prev; // again, s->next must exist
+        s->prev = sb->tail_seg;
+        s->next = sb->tail_seg->next;
+        sb->tail_seg->next = s;
+        if (s->next) s->next->prev = s;
+    }
+}
+// PERF: maybe hand roll these two
+void sbuffer_remove_first(sbuffer* sb, ureg size)
+{
+    sbuffer_iterator sbi = sbuffer_iterator_begin(sb);
+    sbuffer_remove(sb, &sbi, size);
+}
+void sbuffer_remove_last(sbuffer* sb, ureg size)
+{
+    sbuffer_iterator sbi = sbuffer_iterator_begin_at_end(sb);
+    sbuffer_iterator_previous(&sbi, size);
+    sbuffer_remove(sb, &sbi, size);
+}
+
+void* sbuffer_insert(sbuffer* sb, sbuffer_iterator* sbi, ureg size)
+{
+    if (ptrdiff(sbi->seg->end, sbi->seg->tail) >= size) {
+        memmove(
+            sbi->pos, ptradd(sbi->pos, size),
+            ptrdiff(sbi->seg->tail, sbi->pos));
         return sbi->pos;
     }
-    bool move_ins_too = false;
-    if (used_space_before + free_space_before < size) {
-        move_ins_too = true;
-        used_space_before += size;
+    // TODO: this could be done a lot smarter
+    // possible optimizations include leaving the insert in the current seg,
+    // and checking prev and following blocks for available space
+    ureg after_size = ptrdiff(sbi->pos, sbi->seg->tail);
+    ureg needed_size = after_size + size;
+    sbuffer_segment* s = sb->tail_seg->next;
+    while (s) {
+        if (ptrdiff(s->end, s + sizeof(sbuffer_segment)) >= needed_size) {
+            s->prev->next = s->next; // s->prev exists since it's after sbi->seg
+            if (s->next) {
+                s->next->prev = s->prev;
+            }
+            break;
+        }
+        s = s->next;
     }
-    if (seg_size < used_space_before) {
-        seg_size = ((used_space_before / seg_size) + 1) * seg_size;
+    if (!s) {
+        sb->biggest_seg_size *= 2;
+        if (sb->biggest_seg_size < needed_size) {
+            sb->biggest_seg_size = ceil_to_pow2(needed_size);
+        }
+        s = sbuffer_segment_create(sb->biggest_seg_size);
     }
-    sbuffer_segment* s;
-    if (cs->prev == NULL) {
-        s = sbuffer_segment_create(sb, seg_size);
-        if (!s) return NULL;
-        sb->first = s;
-        s->next = cs;
-        cs->prev = s;
-        s->prev = NULL;
-    }
-    else {
-        s = sbuffer_segment_create(sb, seg_size);
-        if (!s) return NULL;
-        s->next = cs;
-        s->prev = cs->prev;
-        cs->prev->next = s;
-        cs->prev = s;
-    }
-    if (move_ins_too) {
-        s->head += used_space_before;
-        used_space_before -= size;
-        memcpy(s->start, cs->start, used_space_before);
-        cs->start = sbi->pos;
-        sbi->pos = s->start + used_space_before;
-        sbi->seg = s;
-        return sbi->pos;
-    }
-    memcpy(s->start, cs->start, used_space_before);
-    s->head += used_space_before;
-    sbi->pos -= size;
-    cs->start = sbi->pos;
+    s->prev = sbi->seg;
+    s->next = sbi->seg->next;
+    if (s->next) s->next->prev = s;
+    sbi->seg->next = s;
+    memcpy(ptradd(s, sizeof(sbuffer_segment) + size), sbi->pos, after_size);
+    sbi->seg = s;
+    sbi->pos = ptradd(s, sizeof(sbuffer_segment));
     return sbi->pos;
 }
 
 void sbuffer_clear(sbuffer* sb)
 {
-    sbuffer_segment* s = sb->first;
+    sbuffer_segment* s = sb->first_seg;
     do {
-        s->start = ptradd(s, sizeof(sbuffer_segment));
-        s->head = s->start;
+        s->tail = ptradd(s, sizeof(sbuffer_segment));
         s = s->next;
     } while (s);
+    sb->tail_seg = sb->first_seg;
 }
