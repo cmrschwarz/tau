@@ -164,13 +164,13 @@ int tauc_add_worker_thread(tauc* t)
     return OK;
 }
 
-int tauc_add_job(tauc* t, job* j)
+int tauc_add_job(tauc* t, job* j, bool prevent_thread_spawn)
 {
     ureg waiters, jobs;
     int r = job_queue_push(&t->jobqueue, j, &waiters, &jobs);
     assert(r != JQ_DONE);
     if (r) return r;
-    if (jobs > waiters) {
+    if (jobs > waiters && !prevent_thread_spawn) {
         ureg max_tc = plattform_get_virt_core_count();
         ureg tc = atomic_ureg_load(&t->thread_count);
         if (tc < max_tc) {
@@ -194,7 +194,7 @@ int tauc_request_parse(
     j.concrete.parse.file = f;
     j.concrete.parse.requiring_file = requiring_file;
     j.concrete.parse.requiring_srange = requiring_srange;
-    return tauc_add_job(t, &j);
+    return tauc_add_job(t, &j, false);
 }
 int tauc_request_resolve_multiple(tauc* t, mdg_node** start, mdg_node** end)
 {
@@ -203,7 +203,7 @@ int tauc_request_resolve_multiple(tauc* t, mdg_node** start, mdg_node** end)
     j.concrete.resolve.single_store = NULL;
     j.concrete.resolve.start = start;
     j.concrete.resolve.end = end;
-    return tauc_add_job(t, &j);
+    return tauc_add_job(t, &j, false);
 }
 int tauc_request_resolve_single(tauc* t, mdg_node* node)
 {
@@ -211,13 +211,13 @@ int tauc_request_resolve_single(tauc* t, mdg_node* node)
     j.kind = JOB_RESOLVE;
     // we can't use start and end here since jobs are copied by value
     j.concrete.resolve.single_store = node;
-    return tauc_add_job(t, &j);
+    return tauc_add_job(t, &j, false);
 }
 int tauc_request_finalize(tauc* t)
 {
     job j;
     j.kind = JOB_FINALIZE;
-    return tauc_add_job(t, &j);
+    return tauc_add_job(t, &j, true);
 }
 int tauc_link(tauc* t)
 {
