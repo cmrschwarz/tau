@@ -83,6 +83,14 @@ int tauc_fin(tauc* t)
     tauc_partial_fin(t, 0, -2);
     return atomic_sreg_load_flat(&t->error_code);
 }
+int complain_trailing_args(tauc* t, error_log* el, char* arg)
+{
+    char* msg = error_log_cat_strings_3(
+        el, "command line option \"", arg,
+        "\" must be specified before input files");
+    master_error_log_report(&t->mel, msg);
+    return ERR;
+}
 int handle_cmd_args(
     tauc* t, error_log* el, int argc, char** argv, bool* files_found)
 {
@@ -104,6 +112,7 @@ int handle_cmd_args(
             continue;
         }
         if (!strcmp(arg, "-t")) {
+            if (*files_found) return complain_trailing_args(t, el, arg);
             if (i == argc - 1) {
                 master_error_log_report(
                     &t->mel, "-T requires a number to follow");
