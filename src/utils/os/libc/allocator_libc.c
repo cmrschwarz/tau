@@ -10,16 +10,18 @@
 #include <stdio.h>
 static atomic_sreg allocations;
 #endif
-static inline void count_alloc()
+static inline void count_alloc(void* v)
 {
 #if DEBUG
     atomic_sreg_inc(&allocations);
+    // printf("alloc: %zx\n", v);
 #endif
 }
-static inline void count_free()
+static inline void count_free(void* v)
 {
 #if DEBUG
     atomic_sreg_dec(&allocations);
+    // printf("free: %zx\n", v);
 #endif
 }
 int talloc_init()
@@ -45,9 +47,7 @@ void talloc_fin()
 void* tmalloc(ureg size)
 {
     void* r = malloc(size);
-    // printf("alloc %zx\n", r);
-    // fflush(stdout);
-    count_alloc();
+    count_alloc(r);
     return r;
 }
 
@@ -65,9 +65,7 @@ void* trealloc(void* old, ureg used_size, ureg new_size)
 
 void tfree(void* mem)
 {
-    count_free();
-    // printf("free %zx\n", mem);
-    // fflush(stdout);
+    count_free(mem);
     free(mem);
 }
 

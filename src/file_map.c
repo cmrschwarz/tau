@@ -217,10 +217,10 @@ int file_map_init(file_map* fm)
         pool_fin(&fm->file_mem_pool);
         return ERR;
     }
+
+    const ureg START_CAPACITY = 16;
+    const ureg START_SIZE = START_CAPACITY * sizeof(file_map_head**);
     // we alloc zero initialized so all values are NULL pointers
-    const ureg START_SIZE = plattform_get_page_size();
-    const ureg START_CAPACITY =
-        plattform_get_page_size() / sizeof(file_map_head**);
     fm->table_start = (file_map_head**)tmallocz(START_SIZE);
     if (!fm->table_start) {
         mutex_fin(&fm->lock);
@@ -241,13 +241,16 @@ int file_map_init(file_map* fm)
 void file_map_fin(file_map* fm)
 {
     for (file_map_head** i = fm->table_start; i != fm->table_end; i++) {
-        if (*i) {
-            if ((**i).is_directory) {
-                src_dir_fin((src_dir*)*i);
+        file_map_head* h = *i;
+        while (h) {
+            file_map_head* next = h->next;
+            if (h->is_directory) {
+                src_dir_fin((src_dir*)h);
             }
             else {
-                src_file_fin((src_file*)*i);
+                src_file_fin((src_file*)h);
             }
+            h = next;
         }
     }
     tfree(fm->table_start);
@@ -275,7 +278,7 @@ static inline int file_map_grow(file_map* fm)
 
     file_map_head** fmnew = tmallocz(size_new);
     if (!fmnew) return ERR;
-    file_map_head** old = fm->table_start;
+    file_map_head** old_start = fm->table_start;
     file_map_head** old_end = fm->table_end;
     fm->table_start = fmnew;
     fm->table_end = fmnew + capacity_new;
@@ -283,16 +286,16 @@ static inline int file_map_grow(file_map* fm)
     fm->hash_mask = (fm->size_bits << 1) & 1;
     fm->elem_count = 0;
     fm->grow_on_elem_count *= 2;
-    while (old != old_end) {
-        file_map_head* next = *old;
+
+    for (file_map_head** i = old_start; i != old_end; i++) {
+        file_map_head* next = *i;
         while (next) {
             *file_map_get_head_unlocked(fm, next->parent, next->name) = next;
             next = next->next;
         }
-        old++;
     }
     // PERF: we could give this memory region to the pools
-    tfree(old);
+    tfree(old_start);
     return OK;
 }
 static inline src_file*
