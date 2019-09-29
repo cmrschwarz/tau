@@ -54,8 +54,9 @@ int tauc_init(tauc* t)
     if (r) return tauc_partial_fin(t, r, 8);
     r = mdg_init(&t->mdg);
     if (r) return tauc_partial_fin(t, r, 9);
-    t->emit_asm = true;
+    t->emit_asm = false;
     t->emit_ll = false;
+    t->explicit_exe = false;
     t->emit_exe = true;
     return OK;
 }
@@ -133,7 +134,17 @@ int handle_cmd_args(
             platttform_override_virt_core_count(num);
             i++;
         }
-        if (!strcmp(arg, "-S")) {
+        else if (!strcmp(arg, "-S")) {
+            t->emit_asm = true;
+            if (!t->explicit_exe) t->emit_exe = false;
+        }
+        else if (!strcmp(arg, "-L")) {
+            t->emit_ll = true;
+            if (!t->explicit_exe) t->emit_exe = false;
+        }
+        else if (!strcmp(arg, "-E")) {
+            t->emit_exe = true;
+            t->explicit_exe = true;
         }
         else {
             // TODO: rework this to avoid the alloc, its kinda stupid

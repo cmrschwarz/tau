@@ -1010,8 +1010,9 @@ LLVMBackend::emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm)
     std::error_code ec;
     auto file_type = emit_asm ? llvm::TargetMachine::CGFT_AssemblyFile
                               : llvm::TargetMachine::CGFT_ObjectFile;
-    llvm::raw_fd_ostream file_stream{_mod_handle->module_obj, ec,
-                                     llvm::sys::fs::F_None};
+    llvm::raw_fd_ostream file_stream{emit_asm ? _mod_handle->module_str + ".asm"
+                                              : _mod_handle->module_obj,
+                                     ec, llvm::sys::fs::F_None};
     llvm::legacy::PassManager CodeGenPasses;
     CodeGenPasses.add(llvm::createTargetTransformInfoWrapperPass(
         _target_machine->getTargetIRAnalysis()));

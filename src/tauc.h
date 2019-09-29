@@ -25,6 +25,7 @@ typedef struct tauc_s {
     bool emit_ll;
     bool emit_asm;
     bool emit_exe;
+    bool explicit_exe;
 } tauc;
 
 // THREADSAFE
