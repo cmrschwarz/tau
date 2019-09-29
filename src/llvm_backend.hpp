@@ -133,7 +133,9 @@ struct LLVMBackend {
     genUnaryOp(expr_op_unary* u, llvm::Value** vl, llvm::Value** vl_loaded);
 
   private:
-    llvm_error emitModuleObj();
+    llvm_error emitModule();
+    llvm_error
+    emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm);
     llvm_error emitModuleIR();
 };
 

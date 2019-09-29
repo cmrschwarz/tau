@@ -225,7 +225,7 @@ llvm_error LLVMBackend::createLLVMModule(
     TIME(lle = genModules(start, end););
     tflush();
     if (lle) return lle;
-    TIME(lle = emitModuleObj(););
+    TIME(lle = emitModule(););
     tflush();
     // PERF: instead of this last minute checking
     // just have different buffers for the different reset types
@@ -1004,13 +1004,36 @@ llvm_error LLVMBackend::emitModuleIR()
     ir_stream.flush();
     return LLE_OK;
 }
-llvm_error LLVMBackend::emitModuleObj()
+llvm_error
+LLVMBackend::emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm)
+{
+    std::error_code ec;
+    auto file_type = emit_asm ? llvm::TargetMachine::CGFT_AssemblyFile
+                              : llvm::TargetMachine::CGFT_ObjectFile;
+    llvm::raw_fd_ostream file_stream{_mod_handle->module_obj, ec,
+                                     llvm::sys::fs::F_None};
+    llvm::legacy::PassManager CodeGenPasses;
+    CodeGenPasses.add(llvm::createTargetTransformInfoWrapperPass(
+        _target_machine->getTargetIRAnalysis()));
+
+    CodeGenPasses.add(new llvm::TargetLibraryInfoWrapperPass(*tlii));
+
+    if (_target_machine->addPassesToEmitFile(
+            CodeGenPasses, file_stream, nullptr, file_type)) {
+        llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
+        return LLE_FATAL;
+    }
+    CodeGenPasses.run(*_module);
+    file_stream.flush();
+    return LLE_OK;
+}
+llvm_error LLVMBackend::emitModule()
 {
     tprintf("emmitting %s ", _mod_handle->module_str.c_str());
+
     llvm::Triple TargetTriple(_module->getTargetTriple());
     std::unique_ptr<llvm::TargetLibraryInfoImpl> TLII(
         new llvm::TargetLibraryInfoImpl(TargetTriple));
-
     llvm::legacy::PassManager PerModulePasses;
     PerModulePasses.add(llvm::createTargetTransformInfoWrapperPass(
         _target_machine->getTargetIRAnalysis()));
@@ -1048,54 +1071,16 @@ llvm_error LLVMBackend::emitModuleObj()
     pmb.populateFunctionPassManager(PerFunctionPasses);
     pmb.populateModulePassManager(PerModulePasses);
 
-    llvm::legacy::PassManager CodeGenPasses;
-    CodeGenPasses.add(llvm::createTargetTransformInfoWrapperPass(
-        _target_machine->getTargetIRAnalysis()));
-
-    CodeGenPasses.add(new llvm::TargetLibraryInfoWrapperPass(*TLII));
-
-    std::error_code EC;
-    llvm::raw_fd_ostream* exe_file_stream = NULL;
-    llvm::raw_fd_ostream* asm_file_stream = NULL;
-    if (_tc->t->emit_exe) {
-        auto file_type = llvm::TargetMachine::CGFT_ObjectFile;
-        exe_file_stream = new llvm::raw_fd_ostream{_mod_handle->module_obj, EC,
-                                                   llvm::sys::fs::F_None};
-        if (_target_machine->addPassesToEmitFile(
-                CodeGenPasses, *exe_file_stream, nullptr, file_type)) {
-            llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
-            return LLE_FATAL;
-        }
-    }
-    if (_tc->t->emit_asm) {
-        auto file_type = llvm::TargetMachine::CGFT_AssemblyFile;
-        asm_file_stream = new llvm::raw_fd_ostream{
-            _mod_handle->module_str + ".asm", EC, llvm::sys::fs::F_None};
-        if (_target_machine->addPassesToEmitFile(
-                CodeGenPasses, *asm_file_stream, nullptr, file_type)) {
-            llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
-            return LLE_FATAL;
-        }
-    }
     PerFunctionPasses.doInitialization();
     for (llvm::Function& F : *_module)
         if (!F.isDeclaration()) PerFunctionPasses.run(F);
     PerFunctionPasses.doFinalization();
 
     PerModulePasses.run(*_module);
-
-    CodeGenPasses.run(*_module);
-    if (exe_file_stream) {
-        exe_file_stream->flush();
-        // delete exe_file_stream;
-    }
-    if (asm_file_stream) {
-        asm_file_stream->flush();
-        // delete asm_file_stream;
-    }
-    if (_tc->t->emit_ll) {
-        emitModuleIR();
-    }
+    llvm_error lle = LLE_OK;
+    if (_tc->t->emit_asm) lle = emitModuleToFile(TLII.get(), true);
+    if (!lle && _tc->t->emit_exe) emitModuleToFile(TLII.get(), false);
+    if (!lle && _tc->t->emit_ll) emitModuleIR();
     return LLE_OK;
 }
 llvm_error
