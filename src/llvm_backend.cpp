@@ -200,10 +200,11 @@ llvm_error LLVMBackend::createLLVMModule(
             m->module_str += "&";
         }
     }
-    m->name = m->module_str + ".obj";
+    m->module_obj = m->module_str + ".obj";
     tput("} ");
 
     *module = m;
+    _mod_handle = m;
     // init id space
     _mod_startid = startid;
     _mod_endid = endid;
@@ -216,7 +217,7 @@ llvm_error LLVMBackend::createLLVMModule(
     _local_value_store.assign(_private_sym_count, NULL);
     _reset_after_emit.clear();
     // create actual module
-    _module = new (std::nothrow) llvm::Module(m->name, _context);
+    _module = new (std::nothrow) llvm::Module(m->module_str, _context);
     if (!_module) return LLE_OK;
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
     _module->setDataLayout(*_data_layout);
@@ -224,7 +225,7 @@ llvm_error LLVMBackend::createLLVMModule(
     TIME(lle = genModules(start, end););
     tflush();
     if (lle) return lle;
-    TIME(lle = emitModuleObj(m->name););
+    TIME(lle = emitModuleObj(););
     tflush();
     // PERF: instead of this last minute checking
     // just have different buffers for the different reset types
@@ -994,20 +995,18 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
     _control_flow_ctx.pop_back();
     return lle;
 }
-llvm_error LLVMBackend::emitModuleIR(const std::string& ll_name)
+llvm_error LLVMBackend::emitModuleIR()
 {
     std::error_code EC;
-    llvm::raw_fd_ostream ir_stream{ll_name, EC, llvm::sys::fs::F_None};
+    llvm::raw_fd_ostream ir_stream{_mod_handle->module_str + ".ll", EC,
+                                   llvm::sys::fs::F_None};
     _module->print(ir_stream, nullptr, true, true);
     ir_stream.flush();
     return LLE_OK;
 }
-llvm_error LLVMBackend::emitModuleObj(const std::string& obj_name)
+llvm_error LLVMBackend::emitModuleObj()
 {
-    tprintf("emmitting %s ", (char*)obj_name.c_str());
-    if (true) {
-        emitModuleIR(obj_name.substr(0, obj_name.size() - 3) + "ll");
-    }
+    tprintf("emmitting %s ", _mod_handle->module_str.c_str());
     llvm::Triple TargetTriple(_module->getTargetTriple());
     std::unique_ptr<llvm::TargetLibraryInfoImpl> TLII(
         new llvm::TargetLibraryInfoImpl(TargetTriple));
@@ -1055,14 +1054,28 @@ llvm_error LLVMBackend::emitModuleObj(const std::string& obj_name)
 
     CodeGenPasses.add(new llvm::TargetLibraryInfoWrapperPass(*TLII));
 
-    auto file_type = llvm::TargetMachine::CGFT_ObjectFile;
-    // file_type = llvm::TargetMachine::CGFT_AssemblyFile;
     std::error_code EC;
-    llvm::raw_fd_ostream file_stream{obj_name, EC, llvm::sys::fs::F_None};
-    if (_target_machine->addPassesToEmitFile(
-            CodeGenPasses, file_stream, nullptr, file_type)) {
-        llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
-        return LLE_FATAL;
+    llvm::raw_fd_ostream* exe_file_stream = NULL;
+    llvm::raw_fd_ostream* asm_file_stream = NULL;
+    if (_tc->t->emit_exe) {
+        auto file_type = llvm::TargetMachine::CGFT_ObjectFile;
+        exe_file_stream = new llvm::raw_fd_ostream{_mod_handle->module_obj, EC,
+                                                   llvm::sys::fs::F_None};
+        if (_target_machine->addPassesToEmitFile(
+                CodeGenPasses, *exe_file_stream, nullptr, file_type)) {
+            llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
+            return LLE_FATAL;
+        }
+    }
+    if (_tc->t->emit_asm) {
+        auto file_type = llvm::TargetMachine::CGFT_AssemblyFile;
+        asm_file_stream = new llvm::raw_fd_ostream{
+            _mod_handle->module_str + ".asm", EC, llvm::sys::fs::F_None};
+        if (_target_machine->addPassesToEmitFile(
+                CodeGenPasses, *asm_file_stream, nullptr, file_type)) {
+            llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
+            return LLE_FATAL;
+        }
     }
     PerFunctionPasses.doInitialization();
     for (llvm::Function& F : *_module)
@@ -1072,7 +1085,17 @@ llvm_error LLVMBackend::emitModuleObj(const std::string& obj_name)
     PerModulePasses.run(*_module);
 
     CodeGenPasses.run(*_module);
-    file_stream.flush();
+    if (exe_file_stream) {
+        exe_file_stream->flush();
+        // delete exe_file_stream;
+    }
+    if (asm_file_stream) {
+        asm_file_stream->flush();
+        // delete asm_file_stream;
+    }
+    if (_tc->t->emit_ll) {
+        emitModuleIR();
+    }
     return LLE_OK;
 }
 llvm_error
@@ -1089,10 +1112,10 @@ linkLLVMModules(LLVMModule** start, LLVMModule** end, char* output_path)
     args.push_back("/lib/x86_64-linux-gnu/libc.so.6");
     args.push_back("/usr/lib/x86_64-linux-gnu/libc_nonshared.a");
     for (LLVMModule** i = start; i != end; i++) {
-        args.push_back((**i).name.c_str());
+        args.push_back((**i).module_obj.c_str());
     }
     args.push_back("-o");
-    args.push_back("a.out");
+    args.push_back(output_path);
     llvm::ArrayRef<const char*> arr_ref(&args[0], args.size());
     lld::elf::link(arr_ref, false);
     return LLE_OK;
@@ -1101,7 +1124,7 @@ linkLLVMModules(LLVMModule** start, LLVMModule** end, char* output_path)
 llvm_error removeObjs(LLVMModule** start, LLVMModule** end)
 {
     for (LLVMModule** i = start; i != end; i++) {
-        unlink((**i).name.c_str());
+        unlink((**i).module_obj.c_str());
     }
     return LLE_OK;
 }

@@ -49,8 +49,8 @@ extern "C" {
 #include <unistd.h>
 
 struct LLVMModule {
-    std::string name;
     std::string module_str;
+    std::string module_obj;
 };
 
 struct ControlFlowContext {
@@ -87,6 +87,7 @@ struct LLVMBackend {
     ureg _mod_startid;
     ureg _mod_endid;
     ureg _private_sym_count;
+    LLVMModule* _mod_handle;
 
   public:
     LLVMBackend(thread_context* tc);
@@ -132,9 +133,8 @@ struct LLVMBackend {
     genUnaryOp(expr_op_unary* u, llvm::Value** vl, llvm::Value** vl_loaded);
 
   private:
-    llvm_error emitModuleObj(const std::string& obj_name);
-    llvm_error emitModuleIR(const std::string& ll_name);
-    llvm_error emitModuleASM(const std::string& asm_name);
+    llvm_error emitModuleObj();
+    llvm_error emitModuleIR();
 };
 
 llvm_error

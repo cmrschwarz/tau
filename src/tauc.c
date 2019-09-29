@@ -54,6 +54,9 @@ int tauc_init(tauc* t)
     if (r) return tauc_partial_fin(t, r, 8);
     r = mdg_init(&t->mdg);
     if (r) return tauc_partial_fin(t, r, 9);
+    t->emit_asm = true;
+    t->emit_ll = false;
+    t->emit_exe = true;
     return OK;
 }
 int tauc_fin(tauc* t)
@@ -111,7 +114,7 @@ int handle_cmd_args(
             if (r) return r;
             continue;
         }
-        if (!strcmp(arg, "-t")) {
+        if (!strcmp(arg, "-T")) {
             if (*files_found) return complain_trailing_args(t, el, arg);
             if (i == argc - 1) {
                 master_error_log_report(
@@ -129,6 +132,8 @@ int handle_cmd_args(
             }
             platttform_override_virt_core_count(num);
             i++;
+        }
+        if (!strcmp(arg, "-S")) {
         }
         else {
             // TODO: rework this to avoid the alloc, its kinda stupid
@@ -302,8 +307,11 @@ int tauc_link(tauc* t)
         tc = &wt->tc;
     }
     assert(i - mods == mod_count);
-    int r = llvm_link_modules(mods, i, "hello_tau");
-    r |= llvm_delete_objs(mods, i);
+    int r = 0;
+    if (t->emit_exe) {
+        r = llvm_link_modules(mods, i, "a.out");
+        r |= llvm_delete_objs(mods, i);
+    }
     for (llvm_module** m = mods; m != i; m++) {
         llvm_free_module(*m);
     }

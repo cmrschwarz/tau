@@ -6,3 +6,4 @@
 *.obj
 *.ll
 *.out
+*.asm

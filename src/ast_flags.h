@@ -28,7 +28,7 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_COMPUND_DECL_OFFSET 11
 // never needed simultaneous with compund decl, so we share the bit
 #define ASTF_RELATIVE_IMPORT_OFFSET 12
-#define ASTF_DEFINED_IN_PP_OFFSET 13
+#define ASTF_OVERLOADED_IN_PP_OFFSET 13
 #define ASTF_USED_IN_PP_OFFSET 14
 
 typedef enum ast_flags_values_e {
@@ -43,7 +43,7 @@ typedef enum ast_flags_values_e {
     ASTF_ERROR = 1 << ASTF_PARSE_ERROR_OFFSET,
     ASTF_COMPUND_DECL = 1 << ASTF_PARSE_ERROR_OFFSET,
     ASTF_RELATIVE_IMPORT = 1 << ASTF_RELATIVE_IMPORT_OFFSET,
-    ASTF_DEFINED_IN_PP = 1 << ASTF_DEFINED_IN_PP_OFFSET,
+    ASTF_OVERLOADED_IN_PP = 1 << ASTF_OVERLOADED_IN_PP_OFFSET,
     ASTF_USED_IN_PP = 1 << ASTF_USED_IN_PP_OFFSET,
 } ast_flags_values;
 
@@ -83,8 +83,8 @@ void ast_flags_set_resolving(ast_flags* f);
 void ast_flags_clear_resolving(ast_flags* f);
 bool ast_flags_get_resolving(ast_flags f);
 
-void ast_flags_set_defined_in_pp(ast_flags* f);
-bool ast_flags_get_defined_in_pp(ast_flags f);
+void ast_flags_set_overloaded_in_pp(ast_flags* f);
+bool ast_flags_get_overloaded_in_pp(ast_flags f);
 
 void ast_flags_set_used_in_pp(ast_flags* f);
 bool ast_flags_get_used_in_pp(ast_flags f);

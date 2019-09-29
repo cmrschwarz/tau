@@ -126,13 +126,13 @@ bool ast_flags_get_resolving(ast_flags f)
     return bitmask_get_bit(f, ASTF_RESOLVING_OFFSET);
 }
 
-void ast_flags_set_defined_in_pp(ast_flags* f)
+void ast_flags_set_overloaded_in_pp(ast_flags* f)
 {
-    bitmask_set_bit(f, ASTF_DEFINED_IN_PP_OFFSET);
+    bitmask_set_bit(f, ASTF_OVERLOADED_IN_PP_OFFSET);
 }
-bool ast_flags_get_defined_in_pp(ast_flags f)
+bool ast_flags_get_overloaded_in_pp(ast_flags f)
 {
-    return bitmask_get_bit(f, ASTF_DEFINED_IN_PP_OFFSET);
+    return bitmask_get_bit(f, ASTF_OVERLOADED_IN_PP_OFFSET);
 }
 void ast_flags_set_used_in_pp(ast_flags* f)
 {

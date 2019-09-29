@@ -21,6 +21,10 @@ typedef struct tauc_s {
     job_queue jobqueue;
     atomic_sreg error_code;
     atomic_ureg node_ids; // stores the max used id
+
+    bool emit_ll;
+    bool emit_asm;
+    bool emit_exe;
 } tauc;
 
 // THREADSAFE
