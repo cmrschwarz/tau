@@ -176,7 +176,7 @@ static void free_astn_symtabs(ast_node* n)
         case EXPR_LOOP: free_body_symtabs(n, &((expr_loop*)n)->body); break;
 
         case EXPR_MACRO_CALL: {
-            sc_macro* emc = (expr_macro_call*)n;
+            expr_macro_call* emc = (expr_macro_call*)n;
             free_body_symtabs(n, &emc->body);
         } break;
 
@@ -259,7 +259,7 @@ void mdg_node_fin(mdg_node* n)
         while (true) {
             open_scope* osc = aseglist_iterator_next(&it);
             if (!osc) break;
-            free_body_symtabs((ast_node*)osc, &osc->scp.body);
+            free_body_symtabs((ast_node*)osc, &osc->sc.body);
         }
     }
     if (n->stage >= MS_RESOLVING) {
@@ -476,11 +476,11 @@ void mdg_node_find_import(
     while (true) {
         open_scope* osc = aseglist_iterator_next(&it);
         if (!osc) break;
-        if (scope_find_import(&osc->scp, import, tgt_group, tgt_sym)) {
+        if (scope_find_import(&osc->sc, import, tgt_group, tgt_sym)) {
             *file = open_scope_get_file(osc);
             return;
         }
-        osc = (open_scope*)osc->scp.sym.next;
+        osc = (open_scope*)osc->sc.sym.next;
     }
     panic("failed to find the source location of a missing import!");
 }
@@ -866,13 +866,13 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
             open_scope* i = aseglist_iterator_next(&it);
             first_target = i;
             while (i) {
-                if (i->scp.sym.node.kind == OSC_MODULE ||
-                    i->scp.sym.node.kind == OSC_MODULE_GENERIC) {
+                if (i->sc.sym.node.kind == OSC_MODULE ||
+                    i->sc.sym.node.kind == OSC_MODULE_GENERIC) {
                     if (mod != NULL) {
                         src_range_large srl;
-                        src_range_unpack(i->scp.sym.node.srange, &srl);
+                        src_range_unpack(i->sc.sym.node.srange, &srl);
                         src_range_large srl_mod;
-                        src_range_unpack(mod->scp.sym.node.srange, &srl_mod);
+                        src_range_unpack(mod->sc.sym.node.srange, &srl_mod);
                         // since aseglist iterates backwards we reverse, so
                         // if
                         // it's in the same file the redeclaration is always
@@ -891,7 +891,7 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
             }
             if (mod == NULL && first_target != NULL) {
                 src_range_large srl;
-                src_range_unpack(first_target->scp.sym.node.srange, &srl);
+                src_range_unpack(first_target->sc.sym.node.srange, &srl);
                 // THINK: maybe report extend count here or report all
                 error_log_report_annotated(
                     tc->err_log, ES_RESOLVER, false,

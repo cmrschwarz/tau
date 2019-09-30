@@ -66,7 +66,7 @@ void print_open_scope_body(open_scope* osc, mdg_node* cmdg, ureg indent)
     p("{\n");
     indent++;
     print_requires(osc->requires, indent);
-    print_body_elements(&osc->scp.body, cmdg, indent);
+    print_body_elements(&osc->sc.body, cmdg, indent);
     indent--;
     print_indent(indent);
     p("}");
@@ -331,7 +331,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             sc_func* f = (sc_func*)n;
             print_ast_node_modifiers(n->flags);
             p("func ");
-            pu(f->scp.sym.name);
+            pu(f->sc.sym.name);
             p("(");
             print_sym_params(f->params, f->param_count, cmdg, indent);
             pc(')');
@@ -340,12 +340,12 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
                 print_ast_node(f->return_type, cmdg, indent + 1);
                 pc(' ');
             }
-            print_body_braced(&f->scp.body, cmdg, indent);
+            print_body_braced(&f->sc.body, cmdg, indent);
         } break;
         case SC_FUNC_GENERIC: {
             sc_func_generic* f = (sc_func_generic*)n;
             p("func ");
-            pu(f->scp.sym.name);
+            pu(f->sc.sym.name);
             p("[");
             print_sym_params(
                 f->generic_params, f->generic_param_count, cmdg, indent);
@@ -358,52 +358,52 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
                 print_ast_node(f->return_type, cmdg, indent + 1);
                 pc(' ');
             }
-            print_body_braced(&f->scp.body, cmdg, indent);
+            print_body_braced(&f->sc.body, cmdg, indent);
         } break;
         case SC_STRUCT: {
             sc_struct* s = (sc_struct*)n;
             p("struct ");
-            pinn(s->scp.sym.name);
-            print_body_braced(&s->scp.body, cmdg, indent);
+            pinn(s->sc.sym.name);
+            print_body_braced(&s->sc.body, cmdg, indent);
         } break;
         case SC_STRUCT_GENERIC: {
             sc_struct_generic* s = (sc_struct_generic*)n;
             p("struct ");
-            pinn(s->scp.sym.name);
+            pinn(s->sc.sym.name);
             p("[");
             print_sym_params(
                 s->generic_params, s->generic_param_count, cmdg, indent);
             pc(']');
-            print_body_braced(&s->scp.body, cmdg, indent);
+            print_body_braced(&s->sc.body, cmdg, indent);
         } break;
         case SC_TRAIT: {
             sc_trait* t = (sc_trait*)n;
             p("trait ");
-            pinn(t->scp.sym.name);
-            print_body_braced(&t->scp.body, cmdg, indent);
+            pinn(t->sc.sym.name);
+            print_body_braced(&t->sc.body, cmdg, indent);
         } break;
         case SC_TRAIT_GENERIC: {
             sc_trait_generic* t = (sc_trait_generic*)n;
             p("trait ");
-            pinn(t->scp.sym.name);
+            pinn(t->sc.sym.name);
             p("[");
             print_sym_params(
                 t->generic_params, t->generic_param_count, cmdg, indent);
             pc(']');
-            print_body_braced(&t->scp.body, cmdg, indent);
+            print_body_braced(&t->sc.body, cmdg, indent);
         } break;
         case OSC_MODULE:
         case OSC_EXTEND: {
             osc_module* m = (osc_module*)n;
             p(n->kind == OSC_EXTEND ? "extend " : "module ");
-            pinn(m->oscope.scp.sym.name);
+            pinn(m->oscope.sc.sym.name);
             print_open_scope_body(&m->oscope, cmdg, indent);
         } break;
         case OSC_MODULE_GENERIC:
         case OSC_EXTEND_GENERIC: {
             osc_module_generic* m = (osc_module_generic*)n;
             p(n->kind == OSC_EXTEND ? "extend " : "module ");
-            pinn(m->oscope.scp.sym.name);
+            pinn(m->oscope.sc.sym.name);
             p("[");
             print_sym_params(
                 m->generic_params, m->generic_param_count, cmdg, indent);
@@ -657,7 +657,7 @@ void print_mdg_node(mdg_node* mdg, ureg indent)
     aseglist_iterator_begin(&it, &mdg->open_scopes);
     for (open_scope* osc = aseglist_iterator_next(&it); osc != NULL;
          osc = aseglist_iterator_next(&it)) {
-        print_body_elements(&osc->scp.body, mdg, indent + 1);
+        print_body_elements(&osc->sc.body, mdg, indent + 1);
     }
     print_indent(indent);
     p("}");

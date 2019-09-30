@@ -24,8 +24,8 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SC_TRAIT,
     SC_TRAIT_GENERIC,
     SC_FUNC,
-    SC_FUNC_GENERIC,
     SC_MACRO,
+    SC_FUNC_GENERIC,
     SC_LAST_SC_ID = SC_FUNC_GENERIC,
 
     SYM_VAR,
@@ -201,7 +201,7 @@ typedef struct scope_s {
 
 // TODO: rename this to module frame?
 typedef struct open_scope_s {
-    scope scp;
+    scope sc;
     file_require* requires;
 } open_scope;
 
@@ -289,13 +289,28 @@ typedef struct expr_loop_s {
     void* control_flow_ctx;
 } expr_loop;
 
+typedef struct sym_param_s {
+    symbol sym;
+    ast_node* type;
+    ast_elem* ctype;
+    ast_node* default_value;
+} sym_param;
+
+typedef struct chained_macro_s {
+    ast_node node;
+    char* name;
+    ureg param_count;
+    sym_param* params;
+    struct chained_macro_s* next;
+} chained_macro;
+
 typedef struct sc_macro_s {
     scope sc;
     ureg param_count;
-    ast_node** params;
-    char* name;
+    sym_param* params;
     ast_body body;
-    struct expr_macro_s* next;
+    ast_elem* return_ctype;
+    struct sc_macro_s* next;
 } sc_macro;
 
 typedef struct expr_macro_call_s {
@@ -325,13 +340,6 @@ typedef struct expr_match_s {
     ast_body body;
 } expr_match;
 
-typedef struct sym_param_s {
-    symbol sym;
-    ast_node* type;
-    ast_elem* ctype;
-    ast_node* default_value;
-} sym_param;
-
 typedef struct osc_module_s {
     open_scope oscope;
 } osc_module;
@@ -345,7 +353,7 @@ typedef struct osc_module_generic_s {
 typedef osc_module_generic osc_extend_generic;
 
 typedef struct sc_func_s {
-    scope scp;
+    scope sc;
     sym_param* params;
     ureg param_count;
     ast_node* return_type;
@@ -355,11 +363,11 @@ typedef struct sc_func_s {
 
 typedef struct sym_func_overloaded_s {
     symbol sym;
-    sc_func* funcs;
+    scope* overloads;
 } sym_func_overloaded;
 
 typedef struct sc_func_generic_s {
-    scope scp;
+    scope sc;
     sym_param* generic_params;
     ureg generic_param_count;
     sym_param* params;
@@ -369,22 +377,22 @@ typedef struct sc_func_generic_s {
 } sc_func_generic;
 
 typedef struct sc_struct_s {
-    scope scp;
+    scope sc;
     ureg id;
 } sc_struct;
 
 typedef struct sc_struct_generic_s {
-    scope scp;
+    scope sc;
     sym_param* generic_params;
     ureg generic_param_count;
 } sc_struct_generic;
 
 typedef struct sc_trait_s {
-    scope scp;
+    scope sc;
 } sc_trait;
 
 typedef struct sc_trait_generic_s {
-    scope scp;
+    scope sc;
     sym_param* generic_params;
     ureg generic_param_count;
 } sc_trait_generic;
@@ -445,7 +453,7 @@ typedef struct expr_call_s {
     ast_node* lhs;
     ast_node** args;
     ureg arg_count;
-    sc_func* target; // TODO: could also be macro
+    scope* target; // either macro of func
 } expr_call;
 
 typedef struct expr_access_s {

@@ -1879,7 +1879,7 @@ parse_error handle_semicolon_after_statement(parser* p, ast_node* s)
 static inline parse_error parse_delimited_open_scope(
     parser* p, open_scope* osc, token_kind delimiter_1, token_kind delimiter_2)
 {
-    if (push_bpd(p, (ast_node*)osc, &osc->scp.body)) return PE_FATAL;
+    if (push_bpd(p, (ast_node*)osc, &osc->sc.body)) return PE_FATAL;
 
     void* requires_list_start = list_builder_start_blocklist(&p->lx.tc->listb);
     void** element_list_start = list_builder_start(&p->lx.tc->listb2);
@@ -1915,20 +1915,20 @@ static inline parse_error parse_delimited_open_scope(
             break;
         }
     }
-    osc->scp.body.elements = (ast_node**)list_builder_pop_list_zt(
+    osc->sc.body.elements = (ast_node**)list_builder_pop_list_zt(
         &p->lx.tc->listb2, element_list_start, &p->lx.tc->permmem);
     osc->requires = (file_require*)list_builder_pop_block_list_zt(
         &p->lx.tc->listb, requires_list_start, &p->lx.tc->permmem);
     if (pop_bpd(p, pe)) return PE_FATAL;
-    if (!osc->scp.body.elements) return PE_FATAL;
+    if (!osc->sc.body.elements) return PE_FATAL;
     if (!osc->requires) return PE_FATAL;
     if (pe) return pe;
     src_range_large srl;
     srl.start = start;
     srl.end = t->end;
     srl.file = p->lx.file;
-    osc->scp.sym.node.srange = src_range_large_pack(p->lx.tc, &srl);
-    if (osc->scp.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
+    osc->sc.sym.node.srange = src_range_large_pack(p->lx.tc, &srl);
+    if (osc->sc.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     return PE_OK;
 }
 parse_error parse_eof_delimited_open_scope(parser* p, open_scope* osc)
@@ -1963,7 +1963,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
         return PE_LX_ERROR;
     }
     p->current_module = p->lx.tc->t->mdg.root_node;
-    j->file->root.oscope.scp.sym.name = p->lx.tc->t->mdg.root_node->name;
+    j->file->root.oscope.sc.sym.name = p->lx.tc->t->mdg.root_node->name;
     ast_node_init((ast_node*)&j->file->root, OSC_EXTEND);
     parse_error pe = parse_eof_delimited_open_scope(p, &j->file->root.oscope);
     lx_close_file(&p->lx);
@@ -1973,8 +1973,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     }
     if (pe) {
         free_body_symtabs(
-            (ast_node*)&j->file->root.oscope.scp,
-            &j->file->root.oscope.scp.body);
+            (ast_node*)&j->file->root.oscope.sc, &j->file->root.oscope.sc.body);
     }
     return pe;
 }
@@ -2243,10 +2242,10 @@ parse_error parse_func_decl(
     }
     PEEK(p, t);
     if (fnp && t->kind == TK_SEMICOLON) {
-        fnp->scp.body.elements = (ast_node**)NULL_PTR_PTR;
-        fnp->scp.body.srange = SRC_RANGE_INVALID;
-        fnp->scp.body.symtab = NULL;
-        if (push_bpd(p, (ast_node*)fnp, &fnp->scp.body)) return PE_FATAL;
+        fnp->sc.body.elements = (ast_node**)NULL_PTR_PTR;
+        fnp->sc.body.srange = SRC_RANGE_INVALID;
+        fnp->sc.body.symtab = NULL;
+        if (push_bpd(p, (ast_node*)fnp, &fnp->sc.body)) return PE_FATAL;
         curr_scope_add_decls(p, AM_DEFAULT, fnp->param_count);
         if (pop_bpd(p, PE_OK)) return PE_FATAL;
         return PE_OK;
@@ -2254,6 +2253,59 @@ parse_error parse_func_decl(
     return parse_scope_body(
         p, (scope*)f,
         fng ? fng->generic_param_count + fng->param_count : fnp->param_count);
+}
+parse_error parse_macro_decl(
+    parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** n)
+{
+    lx_void(&p->lx);
+    token* t;
+    parse_error pe;
+    PEEK(p, t);
+    if (t->kind != TK_IDENTIFIER) {
+        parser_error_2a(
+            p, "invalid macro declaration syntax", t->start, t->end,
+            "expected macro identifier", start, t->end,
+            "in this macro declaration");
+        return PE_ERROR;
+    }
+    ureg decl_end = t->end;
+    char* name = alloc_string_perm(p, t->str);
+    if (!name) return PE_FATAL;
+    lx_void(&p->lx);
+    sc_macro* m = alloc_perm(p, sizeof(sc_macro));
+    if (!m) return PE_FATAL;
+    m->sc.sym.name = name;
+    ast_node_init_with_flags((ast_node*)m, SC_MACRO, flags);
+    pe = sym_fill_srange(p, (symbol*)m, start, decl_end);
+    if (pe) return pe;
+    PEEK(p, t);
+    if (t->kind != TK_PAREN_OPEN) {
+        parser_error_2a(
+            p, "invalid macro declaration syntax", t->start, t->end,
+            "expected '(' to start parameter list", start, decl_end,
+            "in this macro declaration");
+        return PE_ERROR;
+    }
+    lx_void(&p->lx);
+    pe = parse_param_list(
+        p, (symbol*)m, &m->params, &m->param_count, false, start, decl_end,
+        "in this macro declaration");
+    if (pe) return pe;
+    *n = (ast_node*)m;
+    curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
+    PEEK(p, t);
+    if (t->kind == TK_SEMICOLON) {
+        m->sc.body.elements = (ast_node**)NULL_PTR_PTR;
+        m->sc.body.srange = SRC_RANGE_INVALID;
+        m->sc.body.symtab = NULL;
+        if (push_bpd(p, (ast_node*)m, &m->sc.body)) return PE_FATAL;
+        curr_scope_add_decls(p, AM_DEFAULT, m->param_count);
+        if (pop_bpd(p, PE_OK)) return PE_FATAL;
+        return PE_OK;
+    }
+    // TODO: add multi macros
+    m->next = NULL;
+    return parse_scope_body(p, (scope*)m, m->param_count);
 }
 parse_error parse_struct_decl(
     parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** n)
@@ -2310,7 +2362,7 @@ parse_error check_if_first_stmt(
     return PE_OK;
     // TODO: use extend bool to be more precise than "scope" in the err msg
     scope* curr_scope = (scope*)get_bpd(p)->node;
-    if (curr_scope != &p->lx.file->root.oscope.scp) {
+    if (curr_scope != &p->lx.file->root.oscope.sc) {
         parser_error_1a_pc(
             p, "block free scope statement not allowed here", start, end,
             "this statement type is only allowed at file scope");
@@ -2384,10 +2436,10 @@ parse_error parse_module_frame_decl(
         kind = mod_gen ? OSC_MODULE_GENERIC : OSC_MODULE;
     }
     ast_node_init_with_flags((ast_node*)md, kind, flags);
-    md->scp.sym.node.srange =
+    md->sc.sym.node.srange =
         src_range_pack(p->lx.tc, start, decl_end, p->lx.file);
-    if (md->scp.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
-    md->scp.sym.name = mdgn->name;
+    if (md->sc.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
+    md->sc.sym.name = mdgn->name;
     PEEK(p, t);
     mdg_node* parent = p->current_module;
     p->current_module = mdgn;
@@ -3020,6 +3072,8 @@ parse_error parse_statement(parser* p, ast_node** tgt)
         switch (t->kind) {
             case TK_KW_FUNC:
                 return parse_func_decl(p, flags, start, flags_end, tgt);
+            case TK_KW_MACRO:
+                return parse_macro_decl(p, flags, start, flags_end, tgt);
             case TK_KW_STRUCT:
                 return parse_struct_decl(p, flags, start, flags_end, tgt);
             case TK_KW_TRAIT:

@@ -1,4 +1,10 @@
 //require "test2.tau";
+
+macro bar()
+{
+
+}
+
 public func printf(x: string, y: int, c: int);
 
 func foo(i: int)-> int {
@@ -19,7 +25,6 @@ func foo(i: int)-> int {
         };
     };
 }
-
 public func main() -> int{
     mymac(){
     }

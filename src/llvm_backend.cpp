@@ -255,7 +255,7 @@ llvm_error LLVMBackend::genModules(mdg_node** start, mdg_node** end)
         aseglist_iterator_begin(&it, &(**n).open_scopes);
         for (open_scope* osc = (open_scope*)aseglist_iterator_next(&it); osc;
              osc = (open_scope*)aseglist_iterator_next(&it)) {
-            for (ast_node** n = osc->scp.body.elements; *n; n++) {
+            for (ast_node** n = osc->sc.body.elements; *n; n++) {
                 llvm_error lle = genAstNode(*n, NULL, NULL);
                 if (lle) return lle;
             }
@@ -330,9 +330,9 @@ llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align)
                 // definitely big enough
                 auto members = (llvm::Type**)pool_alloc(
                     &_tc->permmem,
-                    sizeof(llvm::Type*) * st->scp.body.symtab->decl_count);
+                    sizeof(llvm::Type*) * st->sc.body.symtab->decl_count);
                 ureg memcnt = 0;
-                for (ast_node** i = st->scp.body.elements; *i; i++) {
+                for (ast_node** i = st->sc.body.elements; *i; i++) {
                     // TODO: usings
                     if ((**i).kind == SYM_VAR ||
                         (**i).kind == SYM_VAR_INITIALIZED) {
@@ -617,6 +617,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         }
         case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
+            assert(c->target->sym.node.kind == SC_FUNC); // prevent macros
             llvm::Value** args = (llvm::Value**)pool_alloc(
                 &_tc->permmem, sizeof(llvm::Value*) * c->arg_count);
             if (!args) return LLE_FATAL;
@@ -627,7 +628,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             llvm::ArrayRef<llvm::Value*> args_arr_ref(
                 args, args + c->arg_count);
             llvm::Function* callee;
-            lle = genFunction(c->target, &callee);
+            lle = genFunction((sc_func*)c->target, &callee);
             if (lle) return lle;
             auto call = _builder.CreateCall(callee, args_arr_ref);
             if (!call) return LLE_FATAL;
@@ -722,7 +723,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             lle = lookupCType((ast_elem*)st, NULL, &align);
             if (lle) return lle;
             ureg idx = 0;
-            for (ast_node** i = st->scp.body.elements;; i++) {
+            for (ast_node** i = st->sc.body.elements;; i++) {
                 assert(*i);
                 if (*i == (ast_node*)ema->target.sym) break;
                 if ((**i).kind == SYM_VAR || (**i).kind == SYM_VAR_INITIALIZED)
@@ -890,16 +891,16 @@ llvm_error LLVMBackend::genBinaryOp(
 }
 char* name_mangle(sc_func* fn)
 {
-    symbol_table* st = fn->scp.body.symtab;
+    symbol_table* st = fn->sc.body.symtab;
     while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
     mdg_node* n = (mdg_node*)st->owning_node;
-    if (n->parent == NULL) return fn->scp.sym.name;
+    if (n->parent == NULL) return fn->sc.sym.name;
     ureg mnl = strlen(n->name);
-    ureg fnl = strlen(fn->scp.sym.name);
+    ureg fnl = strlen(fn->sc.sym.name);
     char* res = (char*)malloc(mnl + fnl + 3); // TODO: manage mem properly
     memcpy(res, n->name, mnl);
     memcpy(res + mnl, "::", 2);
-    memcpy(res + mnl + 2, fn->scp.sym.name, fnl);
+    memcpy(res + mnl + 2, fn->sc.sym.name, fnl);
     *(res + mnl + fnl + 2) = '\0';
     return res;
 }
@@ -934,7 +935,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
     }
     auto func_name_mangled = name_mangle(fn);
     // TODO: ugly hack,  use a proper extern function ast node
-    bool extern_func = (fn->scp.body.srange == SRC_RANGE_INVALID);
+    bool extern_func = (fn->sc.body.srange == SRC_RANGE_INVALID);
     if (extern_func || !isIDInModule(fn->id)) {
         auto func = (llvm::Function*)llvm::Function::Create(
             func_sig, llvm::GlobalVariable::ExternalLinkage,
@@ -977,7 +978,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
     _curr_fn = func;
     _curr_fn_ast_node = fn;
     _builder.SetInsertPoint(func_block);
-    lle = genAstBody(&fn->scp.body, false);
+    lle = genAstBody(&fn->sc.body, false);
     if (ctx.following_block) {
         if (_builder.GetInsertBlock() != ctx.following_block) {
             // _builder.CreateBr(ctx.following_block);

@@ -275,15 +275,18 @@ static resolve_error add_ast_node_decls(
                 public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED;
             return add_body_decls(r, st, NULL, &((scope*)n)->body, public_st);
         }
-
+        case SC_MACRO:
         case SC_FUNC: {
-            sc_func* fn = (sc_func*)n;
-            if (public_st &&
-                ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
-                fn->id = r->public_sym_count++;
-            }
-            else {
-                fn->id = r->private_sym_count++;
+            sc_macro* m = (n->kind == SC_MACRO) ? (sc_macro*)n : NULL;
+            sc_func* fn = (n->kind == SC_FUNC) ? (sc_func*)n : NULL;
+            if (fn) {
+                if (public_st &&
+                    ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
+                    fn->id = r->public_sym_count++;
+                }
+                else {
+                    fn->id = r->private_sym_count++;
+                }
             }
             symbol_table* tgtst =
                 (sst && ast_flags_get_access_mod(n->flags) != AM_DEFAULT) ? sst
@@ -304,15 +307,15 @@ static resolve_error add_ast_node_decls(
                     sfo->sym.next = (**conflict).next;
                     sfo->sym.name = (**conflict).name;
                     sfo->sym.declaring_st = tgtst;
-                    sfo->funcs = (sc_func*)*conflict;
+                    sfo->overloads = (scope*)*conflict;
                     (**conflict).next = sym;
                     sym->next = NULL;
                     *conflict = (symbol*)sfo;
                 }
                 else if ((**conflict).node.kind == SYM_FUNC_OVERLOADED) {
                     sfo = (sym_func_overloaded*)conflict;
-                    sym->next = (symbol*)sfo->funcs;
-                    sfo->funcs = (sc_func*)n;
+                    sym->next = (symbol*)sfo->overloads;
+                    sfo->overloads = (scope*)n;
                 }
                 else {
                     return report_redeclaration_error(r, sym, *conflict, tgtst);
@@ -320,15 +323,16 @@ static resolve_error add_ast_node_decls(
             }
             // we only do the parameters here because the declaration and use
             // func body vars is strongly ordered
-            ast_body* b = &fn->scp.body;
+            ast_body* b = &((scope*)n)->body;
+            ureg param_coount = fn ? fn->param_count : m->param_count;
+            sym_param* params = fn ? fn->params : m->params;
             if (b->symtab == NULL) {
                 b->symtab = st;
             }
             else {
                 b->symtab->parent = st;
-                for (ureg i = 0; i < fn->param_count; i++) {
-                    re =
-                        add_symbol(r, b->symtab, NULL, (symbol*)&fn->params[i]);
+                for (ureg i = 0; i < param_coount; i++) {
+                    re = add_symbol(r, b->symtab, NULL, (symbol*)&params[i]);
                     if (re) return re;
                 }
             }
@@ -552,15 +556,20 @@ resolve_error operator_func_applicable(
     *applicable = true;
     return RE_OK;
 }
-resolve_error func_applicable(
+resolve_error overload_applicable(
     resolver* r, symbol_table* fn_st, ast_elem** call_arg_types, ureg arg_count,
-    sc_func* func, bool* applicable, ast_elem** ctype)
+    scope* overload, bool* applicable, ast_elem** ctype)
 {
+    sc_macro* m =
+        (overload->sym.node.kind == SC_MACRO) ? (sc_macro*)overload : NULL;
+    sc_func* fn = !m ? (sc_func*)overload : NULL;
+    ureg param_count = m ? m->param_count : fn->param_count;
+    sym_param* params = m ? m->params : fn->params;
     // works cause varags are not in the lang yet
-    if (func->param_count != arg_count) return false;
+    if (param_count != arg_count) return false;
     for (ureg i = 0; i < arg_count; i++) {
         ast_elem* ctype;
-        resolve_error re = resolve_param(r, &func->params[i], fn_st, &ctype);
+        resolve_error re = resolve_param(r, &params[i], fn_st, &ctype);
         if (re) return re;
         if (!ctypes_unifiable(ctype, call_arg_types[i])) {
             *applicable = false;
@@ -568,7 +577,14 @@ resolve_error func_applicable(
         }
     }
     *applicable = true;
-    return resolve_ast_node(r, func->return_type, fn_st, ctype, NULL);
+    if (fn) {
+        return resolve_ast_node(r, fn->return_type, fn_st, ctype, NULL);
+    }
+    else {
+        // TODO: allow non void macros
+        *ctype = VOID_ELEM;
+        return RE_OK;
+    }
 }
 resolve_error resolve_func_call(
     resolver* r, char* func_name, expr_call* c, symbol_table* func_st,
@@ -595,22 +611,22 @@ resolve_error resolve_func_call(
         bool applicable;
         if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
             sym_func_overloaded* sfo = (sym_func_overloaded*)s;
-            sc_func* f = sfo->funcs;
-            while (f) {
-                re = func_applicable(
-                    r, fn_st, call_arg_types, c->arg_count, f, &applicable,
+            scope* o = sfo->overloads;
+            while (o) {
+                re = overload_applicable(
+                    r, fn_st, call_arg_types, c->arg_count, o, &applicable,
                     ctype);
-                if (applicable) c->target = f;
+                if (applicable) c->target = o;
                 if (re || applicable) break;
-                f = (sc_func*)f->scp.sym.next;
+                o = (scope*)o->sym.next;
             }
             if (re || applicable) break;
         }
         else if ((**s).node.kind == SC_FUNC) {
-            re = func_applicable(
-                r, fn_st, call_arg_types, c->arg_count, (sc_func*)(*s),
+            re = overload_applicable(
+                r, fn_st, call_arg_types, c->arg_count, (scope*)(*s),
                 &applicable, ctype);
-            if (applicable) c->target = (sc_func*)(*s);
+            if (applicable) c->target = (scope*)(*s);
             if (re || applicable) break;
         }
         else {
@@ -747,13 +763,15 @@ resolve_error choose_binary_operator_overload(
         if (!s) return report_unknown_symbol(r, (ast_node*)ob, lt);
         if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
             sym_func_overloaded* sfo = (sym_func_overloaded*)s;
-            sc_func* f = sfo->funcs;
+            assert(sfo->overloads->sym.node.kind == SC_FUNC); // prevent macros
+            sc_func* f = (sc_func*)sfo->overloads;
+
             while (f) {
                 re = operator_func_applicable(
                     r, op_st, lhs_ctype, rhs_ctype, f, &applicable, ctype);
                 if (re) return re;
                 if (applicable) return RE_OK;
-                f = (sc_func*)f->scp.sym.next;
+                f = (sc_func*)f->sc.sym.next;
             }
         }
         else if ((**s).node.kind == SC_FUNC) {
@@ -989,8 +1007,14 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
-            if (resolved)
-                RETURN_RESOLVED(value, ctype, c, c->target->return_ctype);
+            if (resolved) {
+                if (c->target->sym.node.kind == SC_MACRO) {
+                    // todo: non void macros
+                    RETURN_RESOLVED(value, ctype, VOID_ELEM, TYPE_ELEM);
+                }
+                RETURN_RESOLVED(
+                    value, ctype, c, ((sc_func*)c->target)->return_ctype);
+            }
             return resolve_call(r, c, st, ctype);
         }
         case EXPR_CONTINUE:
@@ -1443,7 +1467,7 @@ resolve_error resolve_expr_body(
 // TODO: make sure we return!
 resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
 {
-    ast_body* b = &fn->scp.body;
+    ast_body* b = &fn->sc.body;
     symbol_table* st = b->symtab;
     resolve_error re;
     for (ureg i = 0; i < fn->param_count; i++) {
@@ -1466,7 +1490,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
         n++;
     }
     if (stmt_ctype_ptr && fn->return_ctype != VOID_ELEM) {
-        ureg brace_end = src_range_get_end(fn->scp.body.srange);
+        ureg brace_end = src_range_get_end(fn->sc.body.srange);
         src_file* f = ast_node_get_file((ast_node*)fn, parent_st);
         error_log_report_annotated_thrice(
             r->tc->err_log, ES_RESOLVER, false,
@@ -1475,11 +1499,11 @@ resolve_error resolve_func(resolver* r, sc_func* fn, symbol_table* parent_st)
             src_range_get_start(fn->return_type->srange),
             src_range_get_end(fn->return_type->srange),
             "function returns non void type", f,
-            src_range_get_start(fn->scp.sym.node.srange),
-            src_range_get_end(fn->scp.sym.node.srange), NULL);
+            src_range_get_start(fn->sc.sym.node.srange),
+            src_range_get_end(fn->sc.sym.node.srange), NULL);
         return RE_TYPE_MISSMATCH;
     }
-    ast_flags_set_resolved(&fn->scp.sym.node.flags);
+    ast_flags_set_resolved(&fn->sc.sym.node.flags);
     return RE_OK;
 }
 resolve_error resolve_body(resolver* r, ast_body* b)
@@ -1546,7 +1570,7 @@ resolve_error resolver_setup_pass(resolver* r)
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
             resolve_error re = add_body_decls(
-                r, (**i).symtab, (**i).symtab, &osc->scp.body, true);
+                r, (**i).symtab, (**i).symtab, &osc->sc.body, true);
             if (re) return re;
         }
     }
@@ -1560,7 +1584,7 @@ resolve_error resolver_cleanup(resolver* r, ureg startid)
         aseglist_iterator_begin(&it, &(**n).open_scopes);
         for (open_scope* osc = aseglist_iterator_next(&it); osc;
              osc = aseglist_iterator_next(&it)) {
-            adjust_body_ids(startid, &osc->scp.body);
+            adjust_body_ids(startid, &osc->sc.body);
         }
         res |= mdg_node_resolved(*n, r->tc);
     }
@@ -1601,7 +1625,7 @@ resolve_error resolver_run(resolver* r)
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
             r->curr_osc = osc;
-            re = resolve_body(r, &osc->scp.body);
+            re = resolve_body(r, &osc->sc.body);
             if (re) return re;
         }
     }

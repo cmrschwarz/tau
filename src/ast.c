@@ -25,7 +25,7 @@ primitive PRIMITIVES[] = {
 
 src_file* open_scope_get_file(open_scope* s)
 {
-    return src_range_get_file(s->scp.sym.node.srange);
+    return src_range_get_file(s->sc.sym.node.srange);
 }
 src_file* ast_node_get_file(ast_node* n, symbol_table* st)
 {
