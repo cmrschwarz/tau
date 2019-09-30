@@ -14,20 +14,13 @@ typedef enum resolve_error {
     RE_SYMBOL_REDECLARATION,
     RE_UNKNOWN_SYMBOL,
     RE_TYPE_LOOP,
-    RE_REQUIRES_BODY_TYPE,
     RE_OVERLOADED,
+
+    RE_REQUIRES_BODY_TYPE,
+    RE_SYMBOL_NOT_FOUND_YET,
 } resolve_error;
 
 typedef struct thread_context_s thread_context;
-
-typedef struct resolve_node_s {
-    ast_node* node; // either expr_pp or stmt_using
-    symbol_table* declaring_st;
-} resolve_node_s;
-
-typedef struct resolve_stack_s {
-    sbuffer resolve_nodes;
-} resolve_stack;
 
 typedef struct pp_resolve_node_s {
     ast_node* node; // either expr_pp or stmt_using
@@ -42,16 +35,13 @@ typedef struct resolver_s {
     mdg_node** mdgs_end;
     ureg public_sym_count;
     ureg private_sym_count;
-    // REWORK ATTEMPT
     sbuffer pp_resolve_nodes;
-    sbuffer resolve_stacks;
-    resolve_stack* curr_resolve_stack;
-    // TODO: rework
     open_scope* curr_osc;
     mdg_node* curr_mdg;
     symbol* curr_symbol_decl;
     ast_node* curr_expr_block_owner;
     ast_node* type_loop_start;
+    bool pp_mode;
     bool allow_type_loops;
     bool retracing_type_loop;
 

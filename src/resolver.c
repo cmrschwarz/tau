@@ -233,6 +233,25 @@ static resolve_error add_ast_node_decls(
     if (n == NULL) return RE_OK;
     resolve_error re;
     switch (n->kind) {
+        case STMT_USING: {
+            pp_resolve_node* pprn =
+                sbuffer_append(&r->pp_resolve_nodes, sizeof(pp_resolve_node));
+            if (!pprn) return RE_FATAL;
+            pprn->declaring_st = st;
+            pprn->node = n;
+            return add_ast_node_decls(
+                r, st, sst, ((stmt_using*)n)->target, public_st);
+        }
+        case EXPR_PP: {
+            pp_resolve_node* pprn =
+                sbuffer_append(&r->pp_resolve_nodes, sizeof(pp_resolve_node));
+            if (!pprn) return RE_FATAL;
+            pprn->declaring_st = st;
+            pprn->node = n;
+            symbol_table* sstpp = sst ? sst->pp_symtab : NULL;
+            return add_ast_node_decls(
+                r, st->pp_symtab, sstpp, ((expr_pp*)n)->pp_expr, false);
+        }
         case EXPR_LITERAL:
         case EXPR_IDENTIFIER: return RE_OK;
         case OSC_MODULE:
@@ -348,10 +367,6 @@ static resolve_error add_ast_node_decls(
             return add_sym_import_module_decl(
                 r, st, im, stop, im->target, NULL);
         }
-        case STMT_USING: {
-            assert(false);
-            return RE_OK;
-        }
         case STMT_COMPOUND_ASSIGN:
             // TODO
             assert(false);
@@ -401,17 +416,10 @@ static resolve_error add_ast_node_decls(
         case EXPR_LOOP:
             return add_body_decls(r, st, NULL, &((expr_loop*)n)->body, false);
 
-        case EXPR_MACRO: {
-            expr_macro* em = (expr_macro*)n;
-            re = add_body_decls(r, st, NULL, &em->body, false);
-            if (re) return re;
-            return add_ast_node_decls(r, st, sst, (ast_node*)em->next, false);
-        }
-
-        case EXPR_PP: {
-            symbol_table* sstpp = sst ? sst->pp_symtab : NULL;
-            return add_ast_node_decls(
-                r, st->pp_symtab, sstpp, ((expr_pp*)n)->pp_expr, false);
+        case EXPR_MACRO_CALL: {
+            expr_macro_call* emc = (expr_macro_call*)n;
+            re = add_body_decls(r, st, NULL, &emc->body, false);
+            return re;
         }
         case EXPR_MATCH: {
             expr_match* em = (expr_match*)n;
@@ -1272,14 +1280,11 @@ static inline resolve_error resolve_ast_node_raw(
             if (resolved) RETURN_RESOLVED(value, ctype, n, l->ctype);
             return resolve_expr_body(r, n, &l->body, st, value, ctype);
         }
-        case EXPR_MACRO: {
+        case EXPR_MACRO_CALL: {
             // TODO ctype
+            assert(false);
             if (ctype) *ctype = NULL;
             if (resolved) return RE_OK;
-            expr_macro* em = (expr_macro*)n;
-            re = add_body_decls(r, st, NULL, &em->body, false);
-            if (re) return re;
-            return resolve_ast_node(r, (ast_node*)em->next, st, NULL, NULL);
         }
 
         case EXPR_PP: {
@@ -1547,21 +1552,6 @@ resolve_error resolver_setup_pass(resolver* r)
     }
     return RE_OK;
 }
-resolve_error resolver_run(resolver* r)
-{
-    for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
-        r->curr_mdg = *i;
-        aseglist_iterator asi;
-        aseglist_iterator_begin(&asi, &(**i).open_scopes);
-        for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
-             osc = aseglist_iterator_next(&asi)) {
-            r->curr_osc = osc;
-            resolve_error re = resolve_body(r, &osc->scp.body);
-            if (re) return re;
-        }
-    }
-    return RE_OK;
-}
 resolve_error resolver_cleanup(resolver* r, ureg startid)
 {
     int res = 0;
@@ -1575,6 +1565,46 @@ resolve_error resolver_cleanup(resolver* r, ureg startid)
         res |= mdg_node_resolved(*n, r->tc);
     }
     if (res) return RE_FATAL;
+    return RE_OK;
+}
+resolve_error resolver_run(resolver* r)
+{
+    resolve_error re;
+    r->pp_mode = true;
+    sbuffer_iterator sbi;
+    sbi = sbuffer_iterator_begin(&r->pp_resolve_nodes);
+    bool progress = false;
+    do {
+        for (pp_resolve_node* rn =
+                 sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node));
+             rn != NULL;
+             rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node))) {
+            re = resolve_ast_node(r, rn->node, rn->declaring_st, NULL, NULL);
+            if (re == RE_SYMBOL_NOT_FOUND_YET) continue;
+            if (re) return re;
+            progress = true;
+            sbuffer_remove(&r->pp_resolve_nodes, &sbi, sizeof(pp_resolve_node));
+        }
+    } while (progress);
+    r->pp_mode = false;
+    for (pp_resolve_node* rn =
+             sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node));
+         rn != NULL;
+         rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node))) {
+        re = resolve_ast_node(r, rn->node, rn->declaring_st, NULL, NULL);
+        if (re) return re;
+    }
+    for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
+        r->curr_mdg = *i;
+        aseglist_iterator asi;
+        aseglist_iterator_begin(&asi, &(**i).open_scopes);
+        for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
+             osc = aseglist_iterator_next(&asi)) {
+            r->curr_osc = osc;
+            re = resolve_body(r, &osc->scp.body);
+            if (re) return re;
+        }
+    }
     return RE_OK;
 }
 resolve_error resolver_resolve(
@@ -1603,7 +1633,6 @@ int resolver_partial_fin(resolver* r, int i, int res)
 {
     switch (i) {
         case -1:
-        case 4: sbuffer_fin(&r->resolve_stacks);
         case 3: sbuffer_fin(&r->pp_resolve_nodes);
         case 2: sbuffer_fin(&r->call_types);
         case 1: stack_fin(&r->error_stack);
@@ -1624,8 +1653,6 @@ int resolver_init(resolver* r, thread_context* tc)
     if (e) resolver_partial_fin(r, 1, e);
     e = sbuffer_init(&r->pp_resolve_nodes, sizeof(pp_resolve_node) * 32);
     if (e) resolver_partial_fin(r, 2, e);
-    e = sbuffer_init(&r->resolve_stacks, sizeof(resolve_stack) * 2);
-    if (e) resolver_partial_fin(r, 3, e);
     r->allow_type_loops = false;
     r->curr_symbol_decl = NULL;
     r->type_loop_start = NULL;
