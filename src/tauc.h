@@ -25,6 +25,8 @@ typedef struct tauc_s {
     bool emit_ll;
     bool emit_asm;
     bool emit_exe;
+    bool emit_ast;
+    bool needs_emit_stage;
     bool explicit_exe;
 } tauc;
 

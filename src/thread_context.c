@@ -95,7 +95,7 @@ int thread_context_do_job(thread_context* tc, job* j)
         // don't bother creating objs if we had any error somewhere
         // since we can't create the final exe anyways
         // (this needs to change this later once we can reuse objs)
-        if (!re && tauc_success_so_far(tc->t)) {
+        if (!re && tauc_success_so_far(tc->t) && tc->t->needs_emit_stage) {
             llvm_module* mod;
             llvm_error lle = llvm_backend_emit_module(
                 tc->llvmb, start, end, startid, endid, private_sym_count, &mod);
@@ -128,8 +128,10 @@ int thread_context_do_job(thread_context* tc, job* j)
     if (j->kind == JOB_FINALIZE) {
         job_queue_stop(&tc->t->jobqueue);
         // DEBUG:
-        // print_mdg_node(tc->t->mdg.root_node, 0);
-        // puts("");
+        if (tc->t->emit_ast) {
+            print_mdg_node(tc->t->mdg.root_node, 0);
+            puts("");
+        }
         int r = mdg_final_sanity_check(&tc->t->mdg, tc);
         if (!r) {
             ureg lh = atomic_ureg_dec(&tc->t->linking_holdups);

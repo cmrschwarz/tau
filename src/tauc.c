@@ -57,6 +57,7 @@ int tauc_init(tauc* t)
     t->emit_asm = false;
     t->emit_ll = false;
     t->explicit_exe = false;
+    t->emit_ast = false;
     t->emit_exe = true;
     return OK;
 }
@@ -134,6 +135,10 @@ int handle_cmd_args(
             platttform_override_virt_core_count(num);
             i++;
         }
+        else if (!strcmp(arg, "-A")) {
+            t->emit_ast = true;
+            if (!t->explicit_exe) t->emit_exe = false;
+        }
         else if (!strcmp(arg, "-S")) {
             t->emit_asm = true;
             if (!t->explicit_exe) t->emit_exe = false;
@@ -154,6 +159,7 @@ int handle_cmd_args(
             return ERR;
         }
     }
+    t->needs_emit_stage = (t->emit_exe || t->emit_asm || t->emit_ll);
     return OK;
 }
 int tauc_run(int argc, char** argv)
