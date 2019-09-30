@@ -25,6 +25,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SC_TRAIT_GENERIC,
     SC_FUNC,
     SC_FUNC_GENERIC,
+    SC_MACRO,
     SC_LAST_SC_ID = SC_FUNC_GENERIC,
 
     SYM_VAR,
@@ -65,6 +66,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     EXPR_TYPE_ARRAY,
     EXPR_TYPE_SLICE,
     EXPR_CALL,
+    EXPR_MACRO_CALL,
     EXPR_ACCESS,
     EXPR_PARENTHESES,
     EXPR_SCOPE_ACCESS,
@@ -287,13 +289,24 @@ typedef struct expr_loop_s {
     void* control_flow_ctx;
 } expr_loop;
 
-typedef struct expr_macro_s {
-    ast_node node;
-    ast_node** args;
+typedef struct sc_macro_s {
+    scope sc;
+    ureg param_count;
+    ast_node** params;
     char* name;
     ast_body body;
     struct expr_macro_s* next;
-} expr_macro;
+} sc_macro;
+
+typedef struct expr_macro_call_s {
+    ast_node node;
+    char* name;
+    ast_node* lhs;
+    ureg arg_count;
+    ast_node** args;
+    ast_body body;
+    sc_macro* tgt;
+} expr_macro_call;
 
 typedef struct expr_pp_s {
     ast_node node;

@@ -175,10 +175,9 @@ static void free_astn_symtabs(ast_node* n)
 
         case EXPR_LOOP: free_body_symtabs(n, &((expr_loop*)n)->body); break;
 
-        case EXPR_MACRO: {
-            expr_macro* em = (expr_macro*)n;
-            free_body_symtabs(n, &em->body);
-            free_astn_symtabs((ast_node*)em->next);
+        case EXPR_MACRO_CALL: {
+            sc_macro* emc = (expr_macro_call*)n;
+            free_body_symtabs(n, &emc->body);
         } break;
 
         case EXPR_PP: free_astn_symtabs(((expr_pp*)n)->pp_expr); break;

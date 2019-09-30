@@ -17,6 +17,7 @@ typedef enum PACK_ENUM token_kind_e {
 
     TK_KW_MODULE,
     TK_MIN_KW_INDEX = TK_KW_MODULE,
+    TK_KW_MACRO,
     TK_KW_IMPORT,
     TK_KW_INCLUDE,
     TK_KW_EXTEND,

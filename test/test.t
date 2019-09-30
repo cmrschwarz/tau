@@ -21,6 +21,8 @@ func foo(i: int)-> int {
 }
 
 public func main() -> int{
+    mymac(){
+    }
     i := 1;
     ip := &i;
     loop @foo{

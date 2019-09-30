@@ -174,7 +174,7 @@ char* get_expr_name(ast_node* n)
 {
     switch (n->kind) {
         case EXPR_BLOCK: return ((expr_block*)n)->name;
-        case EXPR_MACRO: return ((expr_macro*)n)->name;
+        case EXPR_MACRO: return ((expr_macro_call*)n)->name;
         case EXPR_MATCH: return ((expr_match*)n)->name;
         case EXPR_LOOP: return ((expr_loop*)n)->name;
         default: assert(false); return NULL;

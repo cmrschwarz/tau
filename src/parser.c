@@ -187,10 +187,12 @@ bool ast_node_may_drop_semicolon(ast_node* e)
         case SC_STRUCT:
         case SC_STRUCT_GENERIC:
         case SC_TRAIT:
-        case SC_TRAIT_GENERIC: return true;
+        case SC_TRAIT_GENERIC:
+        case SC_MACRO: return true;
         case EXPR_WHILE:
         case EXPR_LOOP:
         case EXPR_MATCH:
+        case EXPR_MACRO_CALL:
         case EXPR_BLOCK: return true;
         case EXPR_IF: {
             expr_if* i = (expr_if*)e;
@@ -1604,27 +1606,55 @@ static inline parse_error parse_call(parser* p, ast_node** ex, ast_node* lhs)
     token* t = lx_aquire(&p->lx);
     ureg t_start = t->start;
     lx_void(&p->lx);
-    expr_call* call = alloc_perm(p, sizeof(expr_call));
-    if (!call) return PE_FATAL;
+    ureg arg_count;
+    ast_node** args;
     parse_error pe = parse_expr_node_list(
-        p, NULL, &call->args, &call->arg_count, "call", TK_PAREN_CLOSE);
+        p, NULL, &args, &arg_count, "call", TK_PAREN_CLOSE);
     // EMSG: suboptimal e.g. for case {,,}
     if (pe == PE_ERROR) {
         PEEK(p, t);
         parser_error_2a(
-            p, "unclosed function call", t->start, t->end,
+            p, "unclosed call expression", t->start, t->end,
             "reached end of expression due to unexpected token", t_start,
             t_start + 1, "didn't find a matching parenthesis for this");
         return PE_ERROR;
     }
     if (pe != PE_OK) return pe;
     PEEK(p, t);
-    if (ast_node_fill_srange(p, &call->node, t_start, t->end)) return PE_FATAL;
+    ureg paren_end = t->end;
     lx_void(&p->lx);
-    ast_node_init_with_op((ast_node*)call, EXPR_CALL, OP_CALL);
-    call->lhs = lhs;
-    *ex = (ast_node*)call;
-    return PE_OK;
+    PEEK(p, t);
+    if (t->kind == TK_BRACE_OPEN || t->kind == TK_AT) {
+        expr_macro_call* emc = alloc_perm(p, sizeof(expr_macro_call));
+        if (!emc) return PE_FATAL;
+        emc->arg_count = arg_count;
+        emc->args = args;
+        ast_node_init((ast_node*)emc, EXPR_MACRO_CALL);
+        emc->lhs = lhs;
+        pe = parse_braced_namable_body(
+            p, (ast_node*)emc, &emc->body, &emc->name);
+        if (pe) return pe;
+        if (ast_node_fill_srange(
+                p, &emc->node, src_range_get_start(lhs->srange),
+                src_range_get_end(emc->body.srange))) {
+            return PE_FATAL;
+        }
+        *ex = (ast_node*)emc;
+        return PE_OK;
+    }
+    else {
+        expr_call* call = alloc_perm(p, sizeof(expr_call));
+        if (!call) return PE_FATAL;
+        call->arg_count = arg_count;
+        call->args = args;
+        if (ast_node_fill_srange(p, &call->node, t_start, paren_end))
+            return PE_FATAL;
+        // TODO: do we really need the OP_CALL here?
+        ast_node_init_with_op((ast_node*)call, EXPR_CALL, OP_CALL);
+        call->lhs = lhs;
+        *ex = (ast_node*)call;
+        return PE_OK;
+    }
 }
 static inline parse_error parse_access(parser* p, ast_node** ex, ast_node* lhs)
 {
