@@ -21,8 +21,8 @@ static inline symbol_table_with_usings* get_stwu(symbol_table* st)
         st, offsetof(symbol_table_with_usings, table));
 }
 int symbol_table_init(
-    symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
-    ast_elem* owning_node)
+    symbol_table** tgt, symbol_table* postp_symtab, ureg decl_count,
+    ureg using_count, bool force_unique, ast_elem* owning_node)
 {
     assert(*tgt == NULL);
     // we don't worry about ceiling the size to a power of two since
@@ -56,6 +56,7 @@ int symbol_table_init(
     }
     memset(ptradd(st, sizeof(symbol_table)), 0, decl_count * sizeof(symbol*));
     st->pp_symtab = NULL;
+    st->postp_symtab = postp_symtab;
     st->decl_count = decl_count;
     st->owning_node = owning_node;
     st->parent = NULL;
@@ -124,20 +125,25 @@ symbol** symbol_table_lookup_limited_with_decl(
     symbol_table** decl_st)
 {
     ureg hash = fnv_hash_str(FNV_START_HASH, s);
+
     do {
-        // PERF: get rid of this check somehow
-        if (st->decl_count != 0) {
-            ureg idx = hash % st->decl_count;
-            symbol** tgt = (symbol**)ptradd(
-                st, sizeof(symbol_table) + idx * sizeof(symbol*));
-            while (*tgt) {
-                if (strcmp((**tgt).name, s) == 0) {
-                    *decl_st = (**tgt).declaring_st;
-                    return tgt;
+        symbol_table* curr_st = st;
+        do {
+            // PERF: get rid of this check somehow
+            if (curr_st->decl_count != 0) {
+                ureg idx = hash % curr_st->decl_count;
+                symbol** tgt = (symbol**)ptradd(
+                    curr_st, sizeof(symbol_table) + idx * sizeof(symbol*));
+                while (*tgt) {
+                    if (strcmp((**tgt).name, s) == 0) {
+                        *decl_st = (**tgt).declaring_st;
+                        return tgt;
+                    }
+                    tgt = (symbol**)&(**tgt).next;
                 }
-                tgt = (symbol**)&(**tgt).next;
             }
-        }
+            curr_st = curr_st->postp_symtab;
+        } while (curr_st);
         if (st->usings_start) {
             symbol_table** i = st->usings_start;
             symbol_table** end =
@@ -174,6 +180,7 @@ symbol_table_lookup(symbol_table* st, access_modifier am, const char* s)
 
 src_file* symbol_table_get_file(symbol_table* st)
 {
+    while (st->postp_symtab != NULL) st = st->postp_symtab;
     assert(st->owning_node->kind != ELEM_MDG_NODE);
     src_file* f = src_range_get_file(((ast_node*)st->owning_node)->srange);
     if (f) return f;
@@ -183,7 +190,8 @@ src_file* symbol_table_get_file(symbol_table* st)
 
 int init_global_symtab()
 {
-    if (symbol_table_init(&GLOBAL_SYMTAB, PRIMITIVE_COUNT + 1, 0, true, NULL))
+    if (symbol_table_init(
+            &GLOBAL_SYMTAB, NULL, PRIMITIVE_COUNT + 1, 0, true, NULL))
         return ERR;
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {
         if (symbol_table_insert(GLOBAL_SYMTAB, (symbol*)&PRIMITIVES[i])) {

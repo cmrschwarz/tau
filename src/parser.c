@@ -388,6 +388,7 @@ static inline int pop_bpd(parser* p, parse_error pe)
     }
     ast_body* bd = bpd.body;
     symbol_table** st = &bd->symtab;
+    symbol_table* postp_st = NULL;
     while (true) {
         sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
         body_parse_data* bpd2 = (body_parse_data*)sbuffer_iterator_previous(
@@ -395,7 +396,7 @@ static inline int pop_bpd(parser* p, parse_error pe)
         bool has_pp = (bpd2 && bpd2->node == NULL);
         if (!pe) {
             if (symbol_table_init(
-                    st, bpd.decl_count, bpd.usings_count, has_pp,
+                    st, postp_st, bpd.decl_count, bpd.usings_count, has_pp,
                     (ast_elem*)bpd.node)) {
                 return ERR;
             }
@@ -403,7 +404,10 @@ static inline int pop_bpd(parser* p, parse_error pe)
         else {
             *st = NULL;
         }
-        if (*st) st = &(**st).pp_symtab;
+        if (*st) {
+            postp_st = *st;
+            st = &(**st).pp_symtab;
+        }
         if (!has_pp) break;
         bpd = *bpd2;
         // we don't support shared pp decls for now :(
@@ -2899,7 +2903,8 @@ parse_error parse_import_with_parent(
         }
         if (name) {
             symbol_table* st;
-            if (symbol_table_init(&st, ndecl_cnt, 0, false, (ast_elem*)ig)) {
+            if (symbol_table_init(
+                    &st, NULL, ndecl_cnt, 0, false, (ast_elem*)ig)) {
                 return RE_FATAL;
             }
             assert(ndecl_cnt); // otherwise we error'd already

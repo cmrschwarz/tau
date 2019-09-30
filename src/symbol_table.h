@@ -11,11 +11,12 @@ typedef struct ast_node_s ast_node;
 typedef struct src_file_s src_file;
 
 typedef struct symbol_table_s {
-    symbol_table* pp_symtab;
-    ast_elem* owning_node;
-    symbol_table* parent;
-    symbol_table** usings_start;
     ureg decl_count;
+    symbol_table** usings_start;
+    symbol_table* parent;
+    ast_elem* owning_node;
+    symbol_table* pp_symtab;
+    symbol_table* postp_symtab;
 } symbol_table;
 
 typedef struct symbol_table_with_usings {
@@ -24,8 +25,8 @@ typedef struct symbol_table_with_usings {
 } symbol_table_with_usings;
 
 int symbol_table_init(
-    symbol_table** st, ureg decl_count, ureg using_count, bool force_unique,
-    ast_elem* owning_node);
+    symbol_table** tgt, symbol_table* postp_symtab, ureg decl_count,
+    ureg using_count, bool force_unique, ast_elem* owning_node);
 void symbol_table_fin(symbol_table* st);
 
 void symbol_table_insert_using(

@@ -226,6 +226,28 @@ resolve_error add_import_group_decls(
     }
     return RE_OK;
 }
+static inline void
+set_parent_symtabs(symbol_table** tgt, symbol_table* parent_st)
+{
+    if (*tgt == NULL) {
+        *tgt = parent_st;
+    }
+    else if (parent_st == NULL) {
+        (*tgt)->parent = NULL;
+    }
+    else {
+        symbol_table* curr = *tgt;
+        symbol_table* curr_parent = parent_st;
+        while (true) {
+            curr->parent = curr_parent;
+            curr = curr->pp_symtab;
+            if (!curr) break;
+            if (curr_parent->pp_symtab) {
+                curr_parent = curr_parent->pp_symtab;
+            }
+        }
+    }
+}
 static resolve_error add_ast_node_decls(
     resolver* r, symbol_table* st, symbol_table* sst, ast_node* n,
     bool public_st)
@@ -248,9 +270,11 @@ static resolve_error add_ast_node_decls(
             if (!pprn) return RE_FATAL;
             pprn->declaring_st = st;
             pprn->node = n;
-            symbol_table* sstpp = sst ? sst->pp_symtab : NULL;
+            st = st->pp_symtab ? st->pp_symtab : st;
+            symbol_table* sstpp =
+                sst ? (sst->pp_symtab ? sst->pp_symtab : sst) : NULL;
             return add_ast_node_decls(
-                r, st->pp_symtab, sstpp, ((expr_pp*)n)->pp_expr, false);
+                r, st, sstpp, ((expr_pp*)n)->pp_expr, false);
         }
         case EXPR_LITERAL:
         case EXPR_IDENTIFIER: return RE_OK;
@@ -324,19 +348,15 @@ static resolve_error add_ast_node_decls(
             // we only do the parameters here because the declaration and use
             // func body vars is strongly ordered
             ast_body* b = &((scope*)n)->body;
-            ureg param_coount = fn ? fn->param_count : m->param_count;
+            ureg param_count = fn ? fn->param_count : m->param_count;
             sym_param* params = fn ? fn->params : m->params;
-            if (b->symtab == NULL) {
-                b->symtab = st;
-            }
-            else {
-                b->symtab->parent = st;
-                for (ureg i = 0; i < param_coount; i++) {
+            if (b->symtab) {
+                for (ureg i = 0; i < param_count; i++) {
                     re = add_symbol(r, b->symtab, NULL, (symbol*)&params[i]);
                     if (re) return re;
                 }
             }
-
+            set_parent_symtabs(&b->symtab, st);
             return RE_OK;
         }
         case SYM_IMPORT_GROUP: {
@@ -491,12 +511,7 @@ static resolve_error add_body_decls(
     resolver* r, symbol_table* parent_st, symbol_table* shared_st, ast_body* b,
     bool public_st)
 {
-    if (b->symtab == NULL) {
-        b->symtab = parent_st;
-    }
-    else {
-        b->symtab->parent = parent_st;
-    }
+    set_parent_symtabs(&b->symtab, parent_st);
     for (ast_node** n = b->elements; *n; n++) {
         resolve_error re =
             add_ast_node_decls(r, b->symtab, shared_st, *n, public_st);
@@ -875,7 +890,8 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
     } while (s);
     assert(children_count > 0);
     symbol_table* pst;
-    if (symbol_table_init(&pst, children_count, use, true, (ast_elem*)ip)) {
+    if (symbol_table_init(
+            &pst, NULL, children_count, use, true, (ast_elem*)ip)) {
         return RE_FATAL;
     }
     symbol* next = ip->children.symbols;
@@ -1345,8 +1361,11 @@ static inline resolve_error resolve_ast_node_raw(
             return resolve_macro_call(r, (expr_macro_call*)n, st, value, ctype);
         }
         case EXPR_PP: {
-            // TODO
-            assert(false);
+            st = st->pp_symtab ? st->pp_symtab : st;
+            re = resolve_ast_node_raw(
+                r, ((expr_pp*)n)->pp_expr, st, value, ctype);
+            if (re) return re;
+            ast_flags_set_resolved(&n->flags);
             return RE_OK;
         }
         case EXPR_MATCH: {
@@ -1585,12 +1604,14 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
             if (tauc_request_finalize(r->tc->t)) return RE_FATAL;
             contains_root = true;
         }
+        // TODO: init pp symtabs
         int r = symbol_table_init(
-            &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
+            &(**i).symtab, NULL, atomic_ureg_load(&(**i).decl_count),
             atomic_ureg_load(&(**i).using_count), true, (ast_elem*)*i);
         if (r) return RE_FATAL;
+
         if (!(**i).symtab) return RE_FATAL;
-        (**i).symtab->parent = GLOBAL_SYMTAB;
+        set_parent_symtabs(&(**i).symtab->parent, GLOBAL_SYMTAB);
     }
     if (!contains_root) atomic_ureg_inc(&r->tc->t->linking_holdups);
     return RE_OK;
