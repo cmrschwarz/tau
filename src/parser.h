@@ -22,7 +22,8 @@ typedef struct parser_s {
     sbuffer body_stack; // sounds kinda morbid :)
 } parser;
 
-// pp scopes sit below the rt scope, node and body are repeated
+// pp scopes sit below the rt scope, the node ist the pp node, the body is
+// repeated
 typedef struct body_parse_data_s {
     ast_node* node;
     ast_body* body;

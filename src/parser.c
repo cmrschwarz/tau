@@ -201,6 +201,9 @@ bool ast_node_may_drop_semicolon(ast_node* e)
             }
             return (i->if_body->kind == EXPR_BLOCK);
         }
+        case EXPR_PP: {
+            return ast_node_may_drop_semicolon(((expr_pp*)e)->pp_expr);
+        }
         default: return false;
     }
 }
@@ -331,6 +334,7 @@ static inline int push_bpd_pp(parser* p, ast_node* n)
     sbuffer_iterator i = sbuffer_iterator_begin_at_end(&p->body_stack);
     body_parse_data* prev =
         sbuffer_iterator_previous(&i, sizeof(body_parse_data));
+    assert(prev);
     body_parse_data* bpd =
         sbuffer_append(&p->body_stack, sizeof(body_parse_data));
     if (bpd == NULL) return ERR;

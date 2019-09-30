@@ -1346,7 +1346,7 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_PP: {
             // TODO
-            if (ctype) *ctype = NULL;
+            assert(false);
             return RE_OK;
         }
         case EXPR_MATCH: {
@@ -1630,8 +1630,9 @@ resolve_error resolver_run(resolver* r)
     r->pp_mode = true;
     sbuffer_iterator sbi;
     sbi = sbuffer_iterator_begin(&r->pp_resolve_nodes);
-    bool progress = false;
+    bool progress;
     do {
+        progress = false;
         for (pp_resolve_node* rn =
                  sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node));
              rn != NULL;

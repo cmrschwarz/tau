@@ -202,7 +202,10 @@ void symtab_it_begin(symtab_it* stit, symbol_table* st)
     stit->pos = (symbol**)(st + 1);
     stit->subpos = *stit->pos;
     stit->end = stit->pos + st->decl_count;
-    if (stit->pos == stit->end) stit->subpos = NULL;
+    if (stit->pos == stit->end) {
+        stit->pos--;
+        stit->subpos = NULL;
+    }
 }
 symtab_it symtab_it_make(symbol_table* st)
 {

@@ -129,8 +129,9 @@ void* sbuffer_insert(sbuffer* sb, sbuffer_iterator* sbi, ureg size)
 {
     if (ptrdiff(sbi->seg->end, sbi->seg->tail) >= size) {
         memmove(
-            sbi->pos, ptradd(sbi->pos, size),
+            ptradd(sbi->pos, size), sbi->pos,
             ptrdiff(sbi->seg->tail, sbi->pos));
+        sbi->seg->tail = ptradd(sbi->seg->tail, size);
         return sbi->pos;
     }
     // TODO: this could be done a lot smarter
@@ -161,6 +162,7 @@ void* sbuffer_insert(sbuffer* sb, sbuffer_iterator* sbi, ureg size)
     if (s->next) s->next->prev = s;
     sbi->seg->next = s;
     memcpy(ptradd(s, sizeof(sbuffer_segment) + size), sbi->pos, after_size);
+    s->tail = ptradd(s, sizeof(sbuffer_segment) + needed_size);
     sbi->seg = s;
     sbi->pos = ptradd(s, sizeof(sbuffer_segment));
     return sbi->pos;

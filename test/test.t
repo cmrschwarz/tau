@@ -1,13 +1,6 @@
 //require "test2.tau";
 
-macro bar()
-{
-
-}
-
-public func printf(x: string, y: int, c: int);
-
-func foo(i: int)-> int {
+#func foo(i: int)-> int {
     if(i < 5){
         return if(i < 3){
            break if(i == 1) 1 else 2;
@@ -25,10 +18,12 @@ func foo(i: int)-> int {
         };
     };
 }
+
+public func printf(x: string, y: int, c: int);
+
+
 public func main() -> int{
-    mymac(){
-    }
-    i := 1;
+    i := #foo();
     ip := &i;
     loop @foo{
         printf("foo: %i%c", foo(*ip), 10);
