@@ -586,6 +586,19 @@ resolve_error overload_applicable(
         return RE_OK;
     }
 }
+static inline resolve_error resolve_macro_call(
+    resolver* r, expr_macro_call* emc, symbol_table* st, ast_elem** value,
+    ast_elem** ctype)
+{
+    assert(false); // TODO
+}
+static inline resolve_error resolve_no_block_macro_call(
+    resolver* r, expr_call* nbmc, sc_macro* m, symbol_table* st,
+    symbol_table* args_st, ast_elem** ctype)
+{
+    assert(false); // TODO
+}
+// we need a seperate func_st for cases like foo::bar()
 resolve_error resolve_func_call(
     resolver* r, char* func_name, expr_call* c, symbol_table* func_st,
     symbol_table* args_st, ast_elem** ctype)
@@ -598,7 +611,7 @@ resolve_error resolve_func_call(
         if (re) return re;
     }
     symbol_table* lt = func_st;
-
+    scope* tgt;
     while (lt) {
         symbol_table* fn_st;
         symbol** s =
@@ -609,6 +622,7 @@ resolve_error resolve_func_call(
             break;
         }
         bool applicable;
+
         if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
             sym_func_overloaded* sfo = (sym_func_overloaded*)s;
             scope* o = sfo->overloads;
@@ -616,7 +630,7 @@ resolve_error resolve_func_call(
                 re = overload_applicable(
                     r, fn_st, call_arg_types, c->arg_count, o, &applicable,
                     ctype);
-                if (applicable) c->target = o;
+                if (applicable) tgt = o;
                 if (re || applicable) break;
                 o = (scope*)o->sym.next;
             }
@@ -626,7 +640,7 @@ resolve_error resolve_func_call(
             re = overload_applicable(
                 r, fn_st, call_arg_types, c->arg_count, (scope*)(*s),
                 &applicable, ctype);
-            if (applicable) c->target = (scope*)(*s);
+            if (applicable) tgt = (scope*)(*s);
             if (re || applicable) break;
         }
         else {
@@ -635,6 +649,16 @@ resolve_error resolve_func_call(
         lt = lt->parent;
     }
     sbuffer_remove_back(&r->call_types, c->arg_count * sizeof(ast_elem*));
+    if (!re) {
+        if (tgt->sym.node.kind == SC_MACRO) {
+            c->node.kind = EXPR_NO_BLOCK_MACRO_CALL;
+            return resolve_no_block_macro_call(
+                r, c, (sc_macro*)tgt, func_st, args_st, ctype);
+        }
+        else {
+            c->target.fn = (sc_func*)tgt;
+        }
+    }
     return re;
 }
 resolve_error
@@ -983,11 +1007,16 @@ static inline resolve_error resolve_ast_node_raw(
     }
     resolve_error re;
     switch (n->kind) {
-        case PRIMITIVE:
+        case SC_MACRO: {
+            if (!resolved) ast_flags_set_resolved(&n->flags);
+            RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
+        }
+        case PRIMITIVE: {
             RETURN_RESOLVED(value, ctype, &PRIMITIVES[n->pt_kind], TYPE_ELEM);
-        case EXPR_LITERAL:
+        }
+        case EXPR_LITERAL: {
             RETURN_RESOLVED(value, ctype, n, &PRIMITIVES[n->pt_kind]);
-
+        }
         case EXPR_IDENTIFIER: {
             expr_identifier* e = (expr_identifier*)n;
             if (resolved) {
@@ -1008,15 +1037,17 @@ static inline resolve_error resolve_ast_node_raw(
         case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
             if (resolved) {
-                if (c->target->sym.node.kind == SC_MACRO) {
-                    // todo: non void macros
-                    RETURN_RESOLVED(value, ctype, VOID_ELEM, TYPE_ELEM);
-                }
-                RETURN_RESOLVED(
-                    value, ctype, c, ((sc_func*)c->target)->return_ctype);
+                RETURN_RESOLVED(value, ctype, c, c->target.fn->return_ctype);
             }
             return resolve_call(r, c, st, ctype);
         }
+        case EXPR_NO_BLOCK_MACRO_CALL: {
+            expr_call* c = (expr_call*)n;
+            assert(resolved); // otherwise this would still be a EXPR_CALL
+            assert(!value);
+            RETURN_RESOLVED(value, ctype, NULL, c->target.macro_block->ctype);
+        }
+
         case EXPR_CONTINUE:
         case EXPR_OP_UNARY: {
             expr_op_unary* ou = (expr_op_unary*)n;
@@ -1086,7 +1117,6 @@ static inline resolve_error resolve_ast_node_raw(
             ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
         }
-
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
             // TODO: ctype should actually be some kind of func ptr
@@ -1188,7 +1218,6 @@ static inline resolve_error resolve_ast_node_raw(
             ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, vi, vi->var.ctype);
         }
-
         case EXPR_RETURN:
         case EXPR_BREAK: {
             if (resolved) RETURN_RESOLVED(value, ctype, NULL, UNREACHABLE_ELEM);
@@ -1259,9 +1288,11 @@ static inline resolve_error resolve_ast_node_raw(
                     r, (ast_node*)b, &b->body, st, value, &b->ctype);
                 if (re) return re;
             }
+            else {
+                assert(!value);
+            }
             RETURN_RESOLVED(value, ctype, value, b->ctype);
         }
-
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
             if (resolved) RETURN_RESOLVED(value, ctype, n, ei->ctype);
@@ -1306,11 +1337,13 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_MACRO_CALL: {
             // TODO ctype
-            assert(false);
-            if (ctype) *ctype = NULL;
-            if (resolved) return RE_OK;
+            if (resolved) {
+                assert(!value);
+                *ctype = ((expr_macro_call*)n)->ctype;
+                return RE_OK;
+            }
+            return resolve_macro_call(r, (expr_macro_call*)n, st, value, ctype);
         }
-
         case EXPR_PP: {
             // TODO
             if (ctype) *ctype = NULL;

@@ -66,6 +66,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     EXPR_TYPE_ARRAY,
     EXPR_TYPE_SLICE,
     EXPR_CALL,
+    EXPR_NO_BLOCK_MACRO_CALL,
     EXPR_MACRO_CALL,
     EXPR_ACCESS,
     EXPR_PARENTHESES,
@@ -320,6 +321,7 @@ typedef struct expr_macro_call_s {
     ureg arg_count;
     ast_node** args;
     ast_body body;
+    ast_elem* ctype;
     sc_macro* tgt;
 } expr_macro_call;
 
@@ -453,7 +455,10 @@ typedef struct expr_call_s {
     ast_node* lhs;
     ast_node** args;
     ureg arg_count;
-    scope* target; // either macro of func
+    union {
+        sc_func* fn;
+        expr_block* macro_block;
+    } target;
 } expr_call;
 
 typedef struct expr_access_s {

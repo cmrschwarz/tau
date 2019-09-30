@@ -617,7 +617,6 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         }
         case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
-            assert(c->target->sym.node.kind == SC_FUNC); // prevent macros
             llvm::Value** args = (llvm::Value**)pool_alloc(
                 &_tc->permmem, sizeof(llvm::Value*) * c->arg_count);
             if (!args) return LLE_FATAL;
@@ -628,7 +627,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             llvm::ArrayRef<llvm::Value*> args_arr_ref(
                 args, args + c->arg_count);
             llvm::Function* callee;
-            lle = genFunction((sc_func*)c->target, &callee);
+            lle = genFunction((sc_func*)c->target.fn, &callee);
             if (lle) return lle;
             auto call = _builder.CreateCall(callee, args_arr_ref);
             if (!call) return LLE_FATAL;
