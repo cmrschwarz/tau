@@ -204,6 +204,7 @@ typedef struct scope_s {
 typedef struct open_scope_s {
     scope sc;
     file_require* requires;
+    ureg* shared_pp_decls;
 } open_scope;
 
 typedef struct sym_named_using_s {

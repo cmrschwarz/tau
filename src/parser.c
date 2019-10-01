@@ -396,7 +396,7 @@ static inline int pop_bpd(parser* p, parse_error pe)
         bool has_pp = (bpd2 && bpd2->node == NULL);
         if (!pe) {
             if (symbol_table_init(
-                    st, postp_st, bpd.decl_count, bpd.usings_count, has_pp,
+                    st, bpd.decl_count, bpd.usings_count, has_pp,
                     (ast_elem*)bpd.node)) {
                 return ERR;
             }
@@ -405,6 +405,7 @@ static inline int pop_bpd(parser* p, parse_error pe)
             *st = NULL;
         }
         if (*st) {
+            (*st)->parent = postp_st;
             postp_st = *st;
             st = &(**st).pp_symtab;
         }
@@ -2903,8 +2904,7 @@ parse_error parse_import_with_parent(
         }
         if (name) {
             symbol_table* st;
-            if (symbol_table_init(
-                    &st, NULL, ndecl_cnt, 0, false, (ast_elem*)ig)) {
+            if (symbol_table_init(&st, ndecl_cnt, 0, false, (ast_elem*)ig)) {
                 return RE_FATAL;
             }
             assert(ndecl_cnt); // otherwise we error'd already

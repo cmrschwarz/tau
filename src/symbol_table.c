@@ -21,8 +21,8 @@ static inline symbol_table_with_usings* get_stwu(symbol_table* st)
         st, offsetof(symbol_table_with_usings, table));
 }
 int symbol_table_init(
-    symbol_table** tgt, symbol_table* postp_symtab, ureg decl_count,
-    ureg using_count, bool force_unique, ast_elem* owning_node)
+    symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
+    ast_elem* owning_node)
 {
     assert(*tgt == NULL);
     // we don't worry about ceiling the size to a power of two since
@@ -56,10 +56,8 @@ int symbol_table_init(
     }
     memset(ptradd(st, sizeof(symbol_table)), 0, decl_count * sizeof(symbol*));
     st->pp_symtab = NULL;
-    st->postp_symtab = postp_symtab;
     st->decl_count = decl_count;
     st->owning_node = owning_node;
-    st->parent = NULL;
     *tgt = st;
     return OK;
 }
@@ -120,15 +118,20 @@ symbol** symbol_table_insert(symbol_table* st, symbol* s)
     s->next = NULL;
     return NULL;
 }
-symbol** symbol_table_lookup_limited_with_decl(
-    symbol_table* st, access_modifier am, symbol_table* stop_at, const char* s,
-    symbol_table** decl_st)
+symbol** symbol_table_lookup_limited(
+    symbol_table* st, ureg ppl, access_modifier am, symbol_table* stop_at,
+    const char* s, ureg* decl_ppl)
 {
     ureg hash = fnv_hash_str(FNV_START_HASH, s);
-
     do {
         symbol_table* curr_st = st;
-        do {
+        ureg curr_ppl = 0;
+        while (curr_ppl < ppl) {
+            if (!curr_st->pp_symtab) break;
+            curr_st = curr_st->pp_symtab;
+            curr_ppl++;
+        }
+        while (true) {
             // PERF: get rid of this check somehow
             if (curr_st->decl_count != 0) {
                 ureg idx = hash % curr_st->decl_count;
@@ -136,62 +139,59 @@ symbol** symbol_table_lookup_limited_with_decl(
                     curr_st, sizeof(symbol_table) + idx * sizeof(symbol*));
                 while (*tgt) {
                     if (strcmp((**tgt).name, s) == 0) {
-                        *decl_st = (**tgt).declaring_st;
+                        if (decl_ppl) *decl_ppl = curr_ppl;
                         return tgt;
                     }
                     tgt = (symbol**)&(**tgt).next;
                 }
             }
-            curr_st = curr_st->postp_symtab;
-        } while (curr_st);
-        if (st->usings_start) {
-            symbol_table** i = st->usings_start;
-            symbol_table** end =
-                get_stwu(st)->using_ends[AM_ENUM_ELEMENT_COUNT - am];
-            // for pub usings we can look at their pub and prot symbols
-            symbol** res =
-                symbol_table_lookup_with_decl(*i, AM_PROTECTED, s, decl_st);
-            if (res) return res;
-            i++;
-            // for prot to unspecified usings we can look at their pub symbols
-            // and if they are used directly by us at ther protected symbols
-            access_modifier tgt_am =
-                (am < AM_PROTECTED) ? AM_PROTECTED : AM_PUBLIC;
-            while (i != end) {
-                res = symbol_table_lookup_with_decl(*i, tgt_am, s, decl_st);
+            if (st->usings_start) {
+                symbol_table** i = st->usings_start;
+                symbol_table** end =
+                    get_stwu(st)->using_ends[AM_ENUM_ELEMENT_COUNT - am];
+                // for pub usings we can look at their pub and prot symbols
+                symbol** res =
+                    symbol_table_lookup(*i, AM_PROTECTED, ppl, s, decl_ppl);
                 if (res) return res;
+                i++;
+                // for prot to unspecified usings we can look at their pub
+                // symbols and if they are used directly by us at ther protected
+                // symbols
+                access_modifier tgt_am =
+                    (am < AM_PROTECTED) ? AM_PROTECTED : AM_PUBLIC;
+                while (i != end) {
+                    res = symbol_table_lookup(*i, tgt_am, ppl, s, decl_ppl);
+                    if (res) return res;
+                }
             }
+            if (curr_ppl == 0) break;
+            curr_st = curr_st->parent;
+            curr_ppl--;
         }
         st = st->parent;
     } while (st != stop_at);
     return NULL;
 }
-symbol** symbol_table_lookup_with_decl(
-    symbol_table* st, access_modifier am, const char* s, symbol_table** decl_st)
+symbol** symbol_table_lookup(
+    symbol_table* st, ureg ppl, access_modifier am, const char* s,
+    ureg* decl_ppl)
 {
-    return symbol_table_lookup_limited_with_decl(st, am, NULL, s, decl_st);
+    symbol_table_lookup_limited(st, ppl, am, NULL, s, decl_ppl);
 }
-symbol**
-symbol_table_lookup(symbol_table* st, access_modifier am, const char* s)
-{
-    symbol_table* lst;
-    return symbol_table_lookup_with_decl(st, am, s, &lst);
-}
-
 src_file* symbol_table_get_file(symbol_table* st)
 {
-    while (st->postp_symtab != NULL) st = st->postp_symtab;
     assert(st->owning_node->kind != ELEM_MDG_NODE);
     src_file* f = src_range_get_file(((ast_node*)st->owning_node)->srange);
     if (f) return f;
+    // because pp tables parent the postprocessing table
+    // we naturally transition out of pp levels
     if (st->parent) return symbol_table_get_file(st->parent);
     return NULL;
 }
 
 int init_global_symtab()
 {
-    if (symbol_table_init(
-            &GLOBAL_SYMTAB, NULL, PRIMITIVE_COUNT + 1, 0, true, NULL))
+    if (symbol_table_init(&GLOBAL_SYMTAB, PRIMITIVE_COUNT + 1, 0, true, NULL))
         return ERR;
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {
         if (symbol_table_insert(GLOBAL_SYMTAB, (symbol*)&PRIMITIVES[i])) {

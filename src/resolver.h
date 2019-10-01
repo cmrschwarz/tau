@@ -25,6 +25,7 @@ typedef struct thread_context_s thread_context;
 typedef struct pp_resolve_node_s {
     ast_node* node; // either expr_pp or stmt_using
     symbol_table* declaring_st;
+    ureg ppl;
 } pp_resolve_node;
 
 typedef struct resolver_s {
@@ -44,7 +45,6 @@ typedef struct resolver_s {
     bool pp_mode;
     bool allow_type_loops;
     bool retracing_type_loop;
-
 } resolver;
 
 int resolver_init(resolver* r, thread_context* tc);

@@ -13,10 +13,9 @@ typedef struct src_file_s src_file;
 typedef struct symbol_table_s {
     ureg decl_count;
     symbol_table** usings_start;
-    symbol_table* parent;
+    symbol_table* parent; // this points to the postprocessing symtab for ppsts
     ast_elem* owning_node;
     symbol_table* pp_symtab;
-    symbol_table* postp_symtab;
 } symbol_table;
 
 typedef struct symbol_table_with_usings {
@@ -25,8 +24,8 @@ typedef struct symbol_table_with_usings {
 } symbol_table_with_usings;
 
 int symbol_table_init(
-    symbol_table** tgt, symbol_table* postp_symtab, ureg decl_count,
-    ureg using_count, bool force_unique, ast_elem* owning_node);
+    symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
+    ast_elem* owning_node);
 void symbol_table_fin(symbol_table* st);
 
 void symbol_table_insert_using(
@@ -42,15 +41,12 @@ symbol** symbol_table_insert(symbol_table* st, symbol* s);
 symbol** symbol_table_find_insert_position(symbol_table* st, char* name);
 
 // returns the symbol found or NULL if nonexistant
-symbol**
-symbol_table_lookup(symbol_table* st, access_modifier am, const char* s);
-symbol** symbol_table_lookup_with_decl(
-    symbol_table* st, access_modifier am, const char* s,
-    symbol_table** decl_st);
-symbol** symbol_table_lookup_limited_with_decl(
-    symbol_table* st, access_modifier am, symbol_table* stop_at, const char* s,
-    symbol_table** decl_st);
-
+symbol** symbol_table_lookup(
+    symbol_table* st, ureg ppl, access_modifier am, const char* s,
+    ureg* decl_ppl);
+symbol** symbol_table_lookup_limited(
+    symbol_table* st, ureg ppl, access_modifier am, symbol_table* stop_at,
+    const char* s, ureg* decl_ppl);
 // might return NULL, for example for mdg_node symbol tables
 src_file* symbol_table_get_file(symbol_table* st);
 
