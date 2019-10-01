@@ -185,6 +185,7 @@ resolve_error add_import_group_decls(
     symbol* next;
     if (!ig->sym.name) {
         next = ig->children.symbols;
+        ig->children.symtab = st;
     }
     else {
         st = ig->children.symtab;
