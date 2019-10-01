@@ -42,11 +42,19 @@ static void print_dash_padded(char* msg, bool err)
 
 int mdg_test()
 {
-    /*
-    if (tauc_init()) return ERR;
+    tauc t;
+
+    if (tauc_scaffolding_init(&t)) return ERR;
+    if (tauc_core_init(&t)) {
+        tauc_scaffolding_fin(&t);
+        return ERR;
+    }
+    ureg cc = plattform_get_virt_core_count();
+    // prevent spawning of worker threads
+    platttform_override_virt_core_count(1);
     int res = ERR;
-    module_dependency_graph* m = &TAUC.mdg;
-    thread_context* tc = &TAUC.main_thread_context;
+    module_dependency_graph* m = &t.mdg;
+    thread_context* tc = &t.main_thread_context;
     mdg_node* a =
         mdg_get_node(m, m->root_node, string_from_cstr("a"), MS_UNNEEDED);
     mdg_node* b =
@@ -81,24 +89,57 @@ int mdg_test()
     if (scc_detector_run(tc, e)) goto err;
     if (scc_detector_run(tc, a)) goto err;
     job j;
+    ureg jid = 0;
     while (true) {
-        int r = job_queue_try_pop(&TAUC.jobqueue, &j);
-        if (r == JQ_NONE) break;
+        int r = job_queue_try_pop(&t.jobqueue, &j);
+        if (r == JQ_NONE) {
+            if (jid != 3) goto err;
+            break;
+        }
         if (r != OK) goto err;
-        r = thread_context_do_job(&TAUC.main_thread_context, &j);
+        // TODO: inspect
+        switch (jid) {
+            case 0:
+            case 1:
+            case 2: {
+                if (j.kind != JOB_RESOLVE) goto err;
+                const char* mods[3][3] = {
+                    {"d", "e", "f"}, {"a", "b", "c"}, {"g", "", ""}};
+                ureg mod_counts[] = {3, 3, 1};
+                if (j.concrete.resolve.single_store) {
+                    j.concrete.resolve.start = &j.concrete.resolve.single_store;
+                    j.concrete.resolve.end = j.concrete.resolve.start + 1;
+                }
+                if (j.concrete.resolve.end !=
+                    j.concrete.resolve.start + mod_counts[jid]) {
+                    goto err;
+                }
+
+                for (int i = 0; i < mod_counts[jid]; i++) {
+                    if (strcmp(
+                            j.concrete.resolve.start[i]->name, mods[jid][i])) {
+                        goto err;
+                    }
+                }
+                r = mdg_nodes_resolved(
+                    j.concrete.resolve.start, j.concrete.resolve.end,
+                    &t.main_thread_context);
+                if (r) goto err;
+            } break;
+        }
+        jid++;
     }
-    */
-    /*
-        B > C > D > F
-         ^ v     ^ v
-          A < G > E
-              ^
-    */
-    // res = OK;
-    // err:
-    // tauc_fin();
-    // return res;
-    return OK;
+    //
+    //    B > C > D > F
+    //     ^ v     ^ v
+    //      A < G > E
+    //          ^
+    res = OK;
+err:
+    tauc_core_fin_no_run(&t);
+    tauc_scaffolding_fin(&t);
+    platttform_override_virt_core_count(cc);
+    return res;
 }
 
 // FILE MAP TESTS
@@ -204,7 +245,7 @@ int run_unit_tests(int argc, char** argv)
     TEST(res, list_builder_test);
     TEST(res, file_map_test);
     TEST(res, job_queue_test);
-    // res |= TEST(mdg_test);
+    TEST(res, mdg_test);
 
     if (res) {
         print_dash_padded("FAILED", false);

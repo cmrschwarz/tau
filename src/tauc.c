@@ -11,7 +11,7 @@
 #endif
 #include <stdlib.h>
 
-static inline int tauc_partial_fin(tauc* t, int r, int i)
+static inline int tauc_core_partial_fin(tauc* t, int r, int i)
 {
     switch (i) {
         case -1:
@@ -32,31 +32,32 @@ static inline int tauc_partial_fin(tauc* t, int r, int i)
     if (r) master_error_log_report(&t->mel, "memory allocation failed");
     return r;
 }
-int tauc_init(tauc* t)
+int tauc_core_init(tauc* t)
 {
     int r = llvm_initialize_primitive_information();
-    if (r) return tauc_partial_fin(t, r, 0); // ^ this doesn't need to be fin'd
+    // ^ this doesn't need to be fin'd
+    if (r) return tauc_core_partial_fin(t, r, 0);
     r = llvm_backend_init_globals();
-    if (r) return tauc_partial_fin(t, r, 0);
+    if (r) return tauc_core_partial_fin(t, r, 0);
     r = job_queue_init(&t->jobqueue);
-    if (r) return tauc_partial_fin(t, r, 1);
+    if (r) return tauc_core_partial_fin(t, r, 1);
     r = aseglist_init(&t->worker_threads);
-    if (r) return tauc_partial_fin(t, r, 2);
+    if (r) return tauc_core_partial_fin(t, r, 2);
     r = atomic_ureg_init(&t->thread_count, 1);
-    if (r) return tauc_partial_fin(t, r, 3);
+    if (r) return tauc_core_partial_fin(t, r, 3);
     r = atomic_ureg_init(&t->node_ids, 0);
-    if (r) return tauc_partial_fin(t, r, 4);
+    if (r) return tauc_core_partial_fin(t, r, 4);
     r = atomic_sreg_init(&t->error_code, 0);
-    if (r) return tauc_partial_fin(t, r, 5);
+    if (r) return tauc_core_partial_fin(t, r, 5);
     // 1 for release generation, one for final sanity check
     r = atomic_ureg_init(&t->linking_holdups, 2);
-    if (r) return tauc_partial_fin(t, r, 6);
+    if (r) return tauc_core_partial_fin(t, r, 6);
     r = init_root_symtab(&t->root_symtab); // needs node_ids
-    if (r) return tauc_partial_fin(t, r, 7);
+    if (r) return tauc_core_partial_fin(t, r, 7);
     r = thread_context_init(&t->main_thread_context, t);
-    if (r) return tauc_partial_fin(t, r, 8);
+    if (r) return tauc_core_partial_fin(t, r, 8);
     r = mdg_init(&t->mdg);
-    if (r) return tauc_partial_fin(t, r, 9);
+    if (r) return tauc_core_partial_fin(t, r, 9);
     t->emit_asm = false;
     t->emit_ll = false;
     t->explicit_exe = false;
@@ -64,32 +65,13 @@ int tauc_init(tauc* t)
     t->emit_exe = true;
     return OK;
 }
-int tauc_fin(tauc* t)
+void tauc_core_fin(tauc* t)
 {
-    aseglist_iterator it;
-    worker_thread* wt;
-    aseglist_iterator_begin(&it, &t->worker_threads);
-
-    // tauc_request_end();
-    // thread_context_run(&t->main_thread_context);
-    while (true) {
-        wt = aseglist_iterator_next(&it);
-        if (!wt) break;
-        if (!wt->spawn_failed) {
-            thread_join(&wt->thr);
-        }
-    }
-    mdg_fin(&t->mdg);
-    aseglist_iterator_begin(&it, &t->worker_threads);
-    while (true) {
-        wt = aseglist_iterator_next(&it);
-        if (!wt) break;
-        thread_context_fin(&wt->tc);
-        tfree(wt);
-    }
-
-    tauc_partial_fin(t, 0, -2);
-    return atomic_sreg_load_flat(&t->error_code);
+    tauc_core_partial_fin(t, 0, -2);
+}
+void tauc_core_fin_no_run(tauc* t)
+{
+    tauc_core_partial_fin(t, 0, -1);
 }
 int complain_trailing_args(tauc* t, error_log* el, char* arg)
 {
@@ -171,36 +153,74 @@ int handle_cmd_args(
     t->needs_emit_stage = (t->emit_exe || t->emit_asm || t->emit_ll);
     return OK;
 }
+int tauc_scaffolding_init(tauc* t)
+{
+    int r = file_map_init(&t->filemap);
+    if (r) return r;
+    r = master_error_log_init(&t->mel, &t->filemap);
+    if (r) {
+        file_map_fin(&t->filemap);
+        return r;
+    }
+    return OK;
+}
+void tauc_scaffolding_fin(tauc* t)
+{
+    master_error_log_fin(&t->mel);
+    file_map_fin(&t->filemap);
+}
+int tauc_run_jobs(tauc* t)
+{
+    thread_context_run(&t->main_thread_context);
+    aseglist_iterator it;
+    worker_thread* wt;
+    aseglist_iterator_begin(&it, &t->worker_threads);
+
+    while (true) {
+        wt = aseglist_iterator_next(&it);
+        if (!wt) break;
+        if (!wt->spawn_failed) {
+            thread_join(&wt->thr);
+        }
+    }
+    mdg_fin(&t->mdg);
+    aseglist_iterator_begin(&it, &t->worker_threads);
+    while (true) {
+        wt = aseglist_iterator_next(&it);
+        if (!wt) break;
+        thread_context_fin(&wt->tc);
+        tfree(wt);
+    }
+    return atomic_sreg_load_flat(&t->error_code);
+}
 int tauc_run(int argc, char** argv)
 {
     tauc t;
-    int r = file_map_init(&t.filemap);
+    int r = tauc_scaffolding_init(&t);
     if (r) return r;
-    r = master_error_log_init(&t.mel, &t.filemap);
-    if (r) {
-        file_map_fin(&t.filemap);
-        return r;
-    }
     bool files_found = false;
-    r = tauc_init(&t);
+    r = tauc_core_init(&t);
     if (!r) {
         thread_context_preorder_job(&t.main_thread_context);
         r = handle_cmd_args(
             &t, t.main_thread_context.err_log, argc, argv, &files_found);
         if (!r) {
             if (files_found) {
-                thread_context_run(&t.main_thread_context);
+                r = tauc_run_jobs(&t);
+                tauc_core_fin(&t);
             }
             else {
                 master_error_log_report(&t.mel, "no input files");
                 r = ERR;
+                tauc_core_fin_no_run(&t);
             }
         }
-        r |= tauc_fin(&t);
+        else {
+            tauc_core_fin_no_run(&t);
+        }
     }
     master_error_log_unwind(&t.mel);
-    master_error_log_fin(&t.mel);
-    file_map_fin(&t.filemap);
+    tauc_scaffolding_fin(&t);
     return r;
 }
 

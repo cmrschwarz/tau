@@ -43,4 +43,11 @@ int tauc_link(tauc* t);
 
 // MAIN THREAD ONLY
 int tauc_run(int argc, char** argv); // errors are returned by fin instead
+
+// for unit testing only, otherwise let tauc_run call these
+int tauc_scaffolding_init(tauc* t);
+int tauc_core_init(tauc* t);
+void tauc_core_fin(tauc* t);
+void tauc_core_fin_no_run(tauc* t);
+void tauc_scaffolding_fin(tauc* t);
 #endif

@@ -408,7 +408,7 @@ int scc_detector_init(scc_detector* d, pool* mem_src)
 }
 int compare_mdg_nodes(const mdg_node* fst, const mdg_node* snd)
 {
-    return snd->id - fst->id;
+    return fst->id - snd->id;
 }
 #define SORT_NAME mdg_nodes
 #define SORT_TYPE mdg_node*
