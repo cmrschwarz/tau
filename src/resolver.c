@@ -233,6 +233,9 @@ set_parent_symtabs(symbol_table** tgt, symbol_table* parent_st)
     if (*tgt == NULL) {
         *tgt = parent_st;
     }
+    else if (parent_st->parent == NULL) {
+        (*tgt)->parent = parent_st;
+    }
     else {
         // go to ppl 0
         while (parent_st->parent->owning_node == parent_st->owning_node) {
@@ -695,7 +698,7 @@ resolve_error resolve_call(
         re = get_resolved_symbol_symtab(r, (symbol*)esa_lhs, &am, &lhs_st);
         if (re) return re;
         return resolve_func_call(
-            r, c, lhs_st, ppl, esa->target.name, st, ctype);
+            r, c, st, ppl, esa->target.name, lhs_st, ctype);
     }
     assert(false); // TODO
     return RE_OK;
@@ -1617,9 +1620,8 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
             &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
             atomic_ureg_load(&(**i).using_count), true, (ast_elem*)*i);
         if (r) return RE_FATAL;
-
         if (!(**i).symtab) return RE_FATAL;
-        set_parent_symtabs(&(**i).symtab->parent, GLOBAL_SYMTAB);
+        set_parent_symtabs(&(**i).symtab, GLOBAL_SYMTAB);
     }
     if (!contains_root) atomic_ureg_inc(&r->tc->t->linking_holdups);
     return RE_OK;

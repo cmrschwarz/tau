@@ -97,7 +97,6 @@ typedef enum PACK_ENUM token_kind_e {
     TK_COMMA,
     TK_SEMICOLON,
     TK_HASH,
-    TK_DOUBLE_HASH,
     TK_DOT,
     TK_COLON,
     TK_DOUBLE_COLON,

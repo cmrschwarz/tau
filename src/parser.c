@@ -358,11 +358,14 @@ static inline int pop_bpd_pp(parser* p, parse_error pe)
     } while (bpd && bpd->body == bpd_popped.body && bpd->node != NULL);
     for (ureg i = 0; i < pp_level; i++) {
         if (!bpd || bpd->node != NULL) {
-            assert(i == pp_level - 1);
             if (bpd) sbuffer_iterator_next(&it, sizeof(body_parse_data));
-            bpd = sbuffer_insert(&p->body_stack, &it, sizeof(body_parse_data));
-            if (!bpd) return ERR;
-            init_bpd(bpd, NULL, bpd_popped.body);
+            while (i < pp_level) {
+                bpd = sbuffer_insert(
+                    &p->body_stack, &it, sizeof(body_parse_data));
+                if (!bpd) return ERR;
+                init_bpd(bpd, NULL, bpd_popped.body);
+                i++;
+            }
             break;
         }
         bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));

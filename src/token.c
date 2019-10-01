@@ -83,7 +83,6 @@ const char* token_strings[255] = {
     [TK_COMMA] = ",",
     [TK_SEMICOLON] = ";",
     [TK_HASH] = "#",
-    [TK_DOUBLE_HASH] = "##",
     [TK_DOT] = ".",
     [TK_COLON] = ":",
     [TK_DOUBLE_COLON] = ":",

@@ -286,6 +286,7 @@ static token* lx_load(lexer* tk)
             case '{': tok->kind = TK_BRACE_OPEN; return lx_return_head(tk, 1);
             case '}': tok->kind = TK_BRACE_CLOSE; return lx_return_head(tk, 1);
             case '[': tok->kind = TK_BRACKET_OPEN; return lx_return_head(tk, 1);
+            case '#': tok->kind = TK_HASH; return lx_return_head(tk, 1);
             case '@': tok->kind = TK_AT; return lx_return_head(tk, 1);
             case ']':
                 tok->kind = TK_BRACKET_CLOSE;
@@ -537,16 +538,6 @@ static token* lx_load(lexer* tk)
                     return lx_return_head(tk, 2);
                 }
                 tok->kind = TK_PERCENT;
-                return lx_return_head(tk, 1);
-            }
-            case '#': {
-                char peek = lx_peek_char(tk);
-                if (peek == '#') {
-                    lx_void_char_peek(tk);
-                    tok->kind = TK_DOUBLE_HASH;
-                    return lx_return_head(tk, 2);
-                }
-                tok->kind = TK_HASH;
                 return lx_return_head(tk, 1);
             }
             case '<': {

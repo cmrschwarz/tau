@@ -1,6 +1,6 @@
 //require "test2.tau";
 
-#func foo(i: int)-> int {
+##func foo(i: int)-> int {
     if(i < 5){
         return if(i < 3){
            break if(i == 1) 1 else 2;
@@ -23,10 +23,10 @@ public func printf(x: string, y: int, c: int);
 
 
 public func main() -> int{
-    i := #foo(1);
+    i := ##foo(1);
     ip := &i;
     loop @foo{
-        printf("foo: %i%c", #foo(*ip), 10);
+        printf("foo: %i%c", ##foo(*ip), 10);
         (*ip)++;
         if(*ip == 9)break @foo;
     }
