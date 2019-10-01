@@ -50,9 +50,8 @@ symbol** symbol_table_lookup_limited(
 // might return NULL, for example for mdg_node symbol tables
 src_file* symbol_table_get_file(symbol_table* st);
 
-extern symbol_table* GLOBAL_SYMTAB;
-int init_global_symtab();
-void fin_global_symtab();
+int init_root_symtab(symbol_table** root_st);
+void fin_root_symtab(symbol_table* root_st);
 
 typedef struct symtab_it {
     symbol** pos;

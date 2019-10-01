@@ -6,6 +6,9 @@
 #include "symbol_table.h"
 #include "assert.h"
 #include "utils/debug_utils.h"
+#if DEBUG
+#include "../test/unit_tests.h"
+#endif
 #include <stdlib.h>
 
 static inline int tauc_partial_fin(tauc* t, int r, int i)
@@ -16,7 +19,7 @@ static inline int tauc_partial_fin(tauc* t, int r, int i)
         case -2: // skip mdg because we freed that earlier when we still had all
                  // threads and their permmem
         case 9: thread_context_fin(&t->main_thread_context);
-        case 8: fin_global_symtab();
+        case 8: fin_root_symtab(t->root_symtab);
         case 7: atomic_ureg_fin(&t->linking_holdups);
         case 6: atomic_sreg_fin(&t->error_code);
         case 5: atomic_ureg_fin(&t->node_ids);
@@ -48,7 +51,7 @@ int tauc_init(tauc* t)
     // 1 for release generation, one for final sanity check
     r = atomic_ureg_init(&t->linking_holdups, 2);
     if (r) return tauc_partial_fin(t, r, 6);
-    r = init_global_symtab(); // needs node_ids
+    r = init_root_symtab(&t->root_symtab); // needs node_ids
     if (r) return tauc_partial_fin(t, r, 7);
     r = thread_context_init(&t->main_thread_context, t);
     if (r) return tauc_partial_fin(t, r, 8);
@@ -151,6 +154,12 @@ int handle_cmd_args(
             t->emit_exe = true;
             t->explicit_exe = true;
         }
+#if DEBUG
+        else if (!strcmp(arg, "-U")) {
+            r = run_unit_tests(argc, argv);
+            if (r) return r;
+        }
+#endif
         else {
             // TODO: rework this to avoid the alloc, its kinda stupid
             char* msg = error_log_cat_strings_3(

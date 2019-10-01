@@ -189,22 +189,24 @@ src_file* symbol_table_get_file(symbol_table* st)
     return NULL;
 }
 
-int init_global_symtab()
+int init_root_symtab(symbol_table** root_symtab)
 {
-    if (symbol_table_init(&GLOBAL_SYMTAB, PRIMITIVE_COUNT + 1, 0, true, NULL))
+    // to avoid an assertion (which makes sense for all other cases)
+    *root_symtab = NULL;
+    if (symbol_table_init(root_symtab, PRIMITIVE_COUNT + 1, 0, true, NULL))
         return ERR;
-    GLOBAL_SYMTAB->parent = NULL;
+    (**root_symtab).parent = NULL;
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {
-        if (symbol_table_insert(GLOBAL_SYMTAB, (symbol*)&PRIMITIVES[i])) {
-            symbol_table_fin(GLOBAL_SYMTAB);
+        if (symbol_table_insert(*root_symtab, (symbol*)&PRIMITIVES[i])) {
+            fin_root_symtab(*root_symtab);
             return ERR;
         }
     }
     return OK;
 }
-void fin_global_symtab()
+void fin_root_symtab(symbol_table* root_symtab)
 {
-    symbol_table_fin(GLOBAL_SYMTAB);
+    symbol_table_fin(root_symtab);
 }
 void symtab_it_begin(symtab_it* stit, symbol_table* st)
 {

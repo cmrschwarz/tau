@@ -192,16 +192,11 @@ int list_builder_test()
     // TODO
     return OK;
 }
-int release_test(int argc, char** argv)
-{
-    return tauc_run(argc, argv);
-}
 int llvmtest_main();
 #include <utils/debug_utils.h>
-int main_test(int argc, char** argv)
+int run_unit_tests(int argc, char** argv)
 {
     print_dash_padded("Executing Unit Tests", false);
-    talloc_init();
     int res = OK;
 
     // res |= TEST(llvmtest_main);
@@ -210,7 +205,6 @@ int main_test(int argc, char** argv)
     TEST(res, file_map_test);
     TEST(res, job_queue_test);
     // res |= TEST(mdg_test);
-    TEST_WITH_ARGS(res, release_test, argc, argv);
 
     if (res) {
         print_dash_padded("FAILED", false);
@@ -220,7 +214,5 @@ int main_test(int argc, char** argv)
     }
     putchar('\n');
     debug_utils_free_res();
-    talloc_fin();
-
-    return 0;
+    return res;
 }

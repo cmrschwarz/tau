@@ -1617,12 +1617,12 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
             contains_root = true;
         }
         // TODO: init pp symtabs
-        int r = symbol_table_init(
+        int res = symbol_table_init(
             &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
             atomic_ureg_load(&(**i).using_count), true, (ast_elem*)*i);
-        if (r) return RE_FATAL;
+        if (res) return RE_FATAL;
         if (!(**i).symtab) return RE_FATAL;
-        set_parent_symtabs(&(**i).symtab, GLOBAL_SYMTAB);
+        set_parent_symtabs(&(**i).symtab, r->tc->t->root_symtab);
     }
     if (!contains_root) atomic_ureg_inc(&r->tc->t->linking_holdups);
     return RE_OK;
