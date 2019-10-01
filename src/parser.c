@@ -222,7 +222,6 @@ static inline operator_kind token_to_prefix_unary_op(token* t)
         case TK_DOUBLE_PLUS: return OP_PRE_INCREMENT;
         case TK_DOUBLE_MINUS: return OP_PRE_DECREMENT;
         case TK_KW_CONST: return OP_CONST;
-        case TK_HASH: return OP_PP;
         default: return OP_NOOP;
     }
 }
@@ -356,10 +355,11 @@ static inline int pop_bpd_pp(parser* p, parse_error pe)
     do {
         pp_level++;
         bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
-    } while (bpd && bpd->body == bpd_popped.body);
+    } while (bpd && bpd->body == bpd_popped.body && bpd->node != NULL);
     for (ureg i = 0; i < pp_level; i++) {
         if (!bpd || bpd->node != NULL) {
             assert(i == pp_level - 1);
+            if (bpd) sbuffer_iterator_next(&it, sizeof(body_parse_data));
             bpd = sbuffer_insert(&p->body_stack, &it, sizeof(body_parse_data));
             if (!bpd) return ERR;
             init_bpd(bpd, NULL, bpd_popped.body);
@@ -410,6 +410,7 @@ static inline int pop_bpd(parser* p, parse_error pe)
             st = &(**st).pp_symtab;
         }
         if (!has_pp) break;
+        bpd2->node = bpd.node;
         bpd = *bpd2;
         // we don't support shared pp decls for now :(
         assert(bpd.shared_decl_count == 0 && bpd.shared_usings_count == 0);
@@ -2907,6 +2908,7 @@ parse_error parse_import_with_parent(
             if (symbol_table_init(&st, ndecl_cnt, 0, false, (ast_elem*)ig)) {
                 return RE_FATAL;
             }
+            st->parent = NULL;
             assert(ndecl_cnt); // otherwise we error'd already
             *(symbol**)(st + 1) = ig->children.symbols;
             ig->children.symtab = st;

@@ -8,8 +8,8 @@
 #include "utils/debug_utils.h"
 
 static resolve_error add_body_decls(
-    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ast_body* b,
-    bool public_st);
+    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
+    ast_body* b, bool public_st);
 
 resolve_error
 resolve_param(resolver* r, sym_param* p, ureg ppl, ast_elem** ctype);
@@ -229,27 +229,21 @@ resolve_error add_import_group_decls(
 static inline void
 set_parent_symtabs(symbol_table** tgt, symbol_table* parent_st)
 {
+
     if (*tgt == NULL) {
         *tgt = parent_st;
     }
-    else if (parent_st == NULL) {
-        (*tgt)->parent = NULL;
-    }
     else {
-        symbol_table* curr = *tgt;
-        symbol_table* curr_parent = parent_st;
-        while (true) {
-            curr->parent = curr_parent;
-            curr = curr->pp_symtab;
-            if (!curr) break;
-            if (curr_parent->pp_symtab) {
-                curr_parent = curr_parent->pp_symtab;
-            }
+        // go to ppl 0
+        while (parent_st->parent->owning_node == parent_st->owning_node) {
+            parent_st = parent_st->parent;
         }
+        assert((*tgt)->parent == NULL);
+        (*tgt)->parent = parent_st;
     }
 }
 static resolve_error add_ast_node_decls(
-    resolver* r, symbol_table* st, symbol_table* sst, ast_node* n,
+    resolver* r, symbol_table* st, symbol_table* sst, ureg ppl, ast_node* n,
     bool public_st)
 {
     if (n == NULL) return RE_OK;
@@ -261,8 +255,9 @@ static resolve_error add_ast_node_decls(
             if (!pprn) return RE_FATAL;
             pprn->declaring_st = st;
             pprn->node = n;
+            pprn->ppl = ppl;
             return add_ast_node_decls(
-                r, st, sst, ((stmt_using*)n)->target, public_st);
+                r, st, sst, ppl, ((stmt_using*)n)->target, public_st);
         }
         case EXPR_PP: {
             pp_resolve_node* pprn =
@@ -270,11 +265,10 @@ static resolve_error add_ast_node_decls(
             if (!pprn) return RE_FATAL;
             pprn->declaring_st = st;
             pprn->node = n;
-            st = st->pp_symtab ? st->pp_symtab : st;
-            symbol_table* sstpp =
-                sst ? (sst->pp_symtab ? sst->pp_symtab : sst) : NULL;
+            pprn->ppl = ppl;
             return add_ast_node_decls(
-                r, st, sstpp, ((expr_pp*)n)->pp_expr, false);
+                r, st ? st->pp_symtab : st, sst ? sst->pp_symtab : NULL, ppl,
+                ((expr_pp*)n)->pp_expr, false);
         }
         case EXPR_LITERAL:
         case EXPR_IDENTIFIER: return RE_OK;
@@ -297,7 +291,8 @@ static resolve_error add_ast_node_decls(
             if (re) return re;
             public_st =
                 public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED;
-            return add_body_decls(r, st, NULL, &((scope*)n)->body, public_st);
+            return add_body_decls(
+                r, st, NULL, ppl, &((scope*)n)->body, public_st);
         }
         case SC_MACRO:
         case SC_FUNC: {
@@ -398,7 +393,7 @@ static resolve_error add_ast_node_decls(
 
         case SYM_VAR_INITIALIZED: {
             re = add_ast_node_decls(
-                r, st, sst, ((sym_var_initialized*)n)->initial_value,
+                r, st, sst, ppl, ((sym_var_initialized*)n)->initial_value,
                 public_st);
             if (re) return re;
             // fallthrough
@@ -417,60 +412,63 @@ static resolve_error add_ast_node_decls(
             re = add_symbol(r, st, sst, (symbol*)n);
             if (re) return re;
             return add_ast_node_decls(
-                r, st, sst, ((sym_named_using*)n)->target, public_st);
+                r, st, sst, ppl, ((sym_named_using*)n)->target, public_st);
         }
 
         case EXPR_RETURN:
         case EXPR_BREAK:
             return add_ast_node_decls(
-                r, st, sst, ((expr_break*)n)->value, public_st);
+                r, st, sst, ppl, ((expr_break*)n)->value, public_st);
 
         case EXPR_BLOCK:
-            return add_body_decls(r, st, NULL, &((expr_block*)n)->body, false);
+            return add_body_decls(
+                r, st, NULL, ppl, &((expr_block*)n)->body, false);
 
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
-            re = add_ast_node_decls(r, st, sst, ei->condition, false);
+            re = add_ast_node_decls(r, st, sst, ppl, ei->condition, false);
             if (re) return re;
-            re = add_ast_node_decls(r, st, sst, ei->if_body, false);
+            re = add_ast_node_decls(r, st, sst, ppl, ei->if_body, false);
             if (re) return re;
-            return add_ast_node_decls(r, st, sst, ei->else_body, false);
+            return add_ast_node_decls(r, st, sst, ppl, ei->else_body, false);
         }
 
         case EXPR_LOOP:
-            return add_body_decls(r, st, NULL, &((expr_loop*)n)->body, false);
+            return add_body_decls(
+                r, st, NULL, ppl, &((expr_loop*)n)->body, false);
 
         case EXPR_MACRO_CALL: {
             expr_macro_call* emc = (expr_macro_call*)n;
-            re = add_body_decls(r, st, NULL, &emc->body, false);
+            re = add_body_decls(r, st, NULL, ppl, &emc->body, false);
             return re;
         }
         case EXPR_MATCH: {
             expr_match* em = (expr_match*)n;
-            re = add_ast_node_decls(r, st, sst, em->match_expr, false);
+            re = add_ast_node_decls(r, st, sst, ppl, em->match_expr, false);
             if (re) return re;
             for (match_arm** ma = (match_arm**)em->body.elements; *ma != NULL;
                  ma++) {
-                re = add_ast_node_decls(r, st, sst, (**ma).condition, false);
+                re = add_ast_node_decls(
+                    r, st, sst, ppl, (**ma).condition, false);
                 if (re) return re;
-                re = add_ast_node_decls(r, st, sst, (**ma).value, false);
+                re = add_ast_node_decls(r, st, sst, ppl, (**ma).value, false);
                 if (re) return re;
             }
             return RE_OK;
         }
         case EXPR_OP_BINARY: {
             re = add_ast_node_decls(
-                r, st, sst, ((expr_op_binary*)n)->lhs, false);
+                r, st, sst, ppl, ((expr_op_binary*)n)->lhs, false);
             if (re) return re;
             return add_ast_node_decls(
-                r, st, sst, ((expr_op_binary*)n)->rhs, false);
+                r, st, sst, ppl, ((expr_op_binary*)n)->rhs, false);
         }
         case EXPR_ACCESS: {
             expr_access* a = (expr_access*)n;
-            re = add_ast_node_decls(r, st, sst, a->lhs, false);
+            re = add_ast_node_decls(r, st, sst, ppl, a->lhs, false);
             if (re) return re;
             for (ureg i = 0; i < a->arg_count; i++) {
-                re = add_ast_node_decls(r, st, sst, a->args[i], false);
+                re = add_ast_node_decls(r, st, sst, ppl, a->args[i], false);
                 if (re) return re;
             }
             // we could make this tail recursive by moving lhs down here
@@ -479,10 +477,10 @@ static resolve_error add_ast_node_decls(
         }
         case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
-            re = add_ast_node_decls(r, st, sst, c->lhs, false);
+            re = add_ast_node_decls(r, st, sst, ppl, c->lhs, false);
             if (re) return re;
             for (ureg i = 0; i < c->arg_count; i++) {
-                re = add_ast_node_decls(r, st, sst, c->args[i], false);
+                re = add_ast_node_decls(r, st, sst, ppl, c->args[i], false);
                 if (re) return re;
             }
             return RE_OK;
@@ -490,15 +488,15 @@ static resolve_error add_ast_node_decls(
         case EXPR_SCOPE_ACCESS:
         case EXPR_MEMBER_ACCESS: {
             return add_ast_node_decls(
-                r, st, sst, ((expr_scope_access*)n)->lhs, false);
+                r, st, sst, ppl, ((expr_scope_access*)n)->lhs, false);
         }
         case EXPR_PARENTHESES: {
             return add_ast_node_decls(
-                r, st, sst, ((expr_parentheses*)n)->child, false);
+                r, st, sst, ppl, ((expr_parentheses*)n)->child, false);
         }
         case EXPR_OP_UNARY: {
             return add_ast_node_decls(
-                r, st, sst, ((expr_op_unary*)n)->child, false);
+                r, st, sst, ppl, ((expr_op_unary*)n)->child, false);
         }
         default:
             assert(false); // unknown node_kind
@@ -508,13 +506,13 @@ static resolve_error add_ast_node_decls(
 }
 
 static resolve_error add_body_decls(
-    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ast_body* b,
-    bool public_st)
+    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
+    ast_body* b, bool public_st)
 {
     set_parent_symtabs(&b->symtab, parent_st);
     for (ast_node** n = b->elements; *n; n++) {
         resolve_error re =
-            add_ast_node_decls(r, b->symtab, shared_st, *n, public_st);
+            add_ast_node_decls(r, b->symtab, shared_st, ppl, *n, public_st);
         if (re) return re;
     }
     return RE_OK;
@@ -555,14 +553,13 @@ resolve_error operator_func_applicable(
         return RE_OK;
     }
     ast_elem* param_ctype;
-    resolve_error re =
-        resolve_param(r, &f->params[0], f->sc.sym.declaring_st, &param_ctype);
+    resolve_error re = resolve_param(r, &f->params[0], op_ppl, &param_ctype);
     if (re) return re;
     if (!ctypes_unifiable(lhs, param_ctype)) {
         *applicable = false;
         return RE_OK;
     }
-    re = resolve_param(r, &f->params[0], f->sc.sym.declaring_st, &param_ctype);
+    re = resolve_param(r, &f->params[0], op_ppl, &param_ctype);
     if (re) return re;
     if (!ctypes_unifiable(rhs, param_ctype)) {
         *applicable = false;
@@ -585,8 +582,7 @@ resolve_error overload_applicable(
     if (param_count != arg_count) return false;
     for (ureg i = 0; i < arg_count; i++) {
         ast_elem* ctype;
-        resolve_error re =
-            resolve_param(r, &params[i], overload->sym.declaring_st, &ctype);
+        resolve_error re = resolve_param(r, &params[i], ppl, &ctype);
         if (re) return re;
         if (!ctypes_unifiable(ctype, call_arg_types[i])) {
             *applicable = false;
@@ -633,7 +629,7 @@ resolve_error resolve_func_call(
     while (lt) {
         ureg fn_ppl;
         symbol** s =
-            symbol_table_lookup(lt, AM_DEFAULT, ppl, func_name, &fn_ppl);
+            symbol_table_lookup(lt, ppl, AM_DEFAULT, func_name, &fn_ppl);
         if (!s) {
             // we use args_st here because thats the scope that the call is in
             re = report_unknown_symbol(r, c->lhs, st);
@@ -802,7 +798,7 @@ resolve_error choose_binary_operator_overload(
         bool applicable;
         ureg op_ppl;
         symbol** s = symbol_table_lookup(
-            lt, AM_DEFAULT, ppl, op_to_str(ob->node.op_kind), &op_ppl);
+            lt, ppl, AM_DEFAULT, op_to_str(ob->node.op_kind), &op_ppl);
         if (!s) return report_unknown_symbol(r, (ast_node*)ob, lt);
         if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
             sym_func_overloaded* sfo = (sym_func_overloaded*)s;
@@ -896,6 +892,7 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
     if (symbol_table_init(&pst, children_count, use, true, (ast_elem*)ip)) {
         return RE_FATAL;
     }
+    pst->parent = NULL;
     symbol* next = ip->children.symbols;
     do {
         s = next;
@@ -1148,7 +1145,7 @@ static inline resolve_error resolve_ast_node_raw(
             // TODO: ctype should actually be some kind of func ptr
             if (ctype) *ctype = (ast_elem*)n;
             if (resolved) return RE_OK;
-            return resolve_func(r, (sc_func*)n, st);
+            return resolve_func(r, (sc_func*)n, ppl);
         }
         case SYM_IMPORT_PARENT: {
             if (!resolved) {
@@ -1373,9 +1370,8 @@ static inline resolve_error resolve_ast_node_raw(
             return resolve_macro_call(r, (expr_macro_call*)n, st, value, ctype);
         }
         case EXPR_PP: {
-            st = st->pp_symtab ? st->pp_symtab : st;
             re = resolve_ast_node_raw(
-                r, ((expr_pp*)n)->pp_expr, st, ppl, value, ctype);
+                r, ((expr_pp*)n)->pp_expr, st, ppl + 1, value, ctype);
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
             return RE_OK;
@@ -1544,7 +1540,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl)
     ast_elem* stmt_ctype;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
     while (*n) {
-        re = add_ast_node_decls(r, st, NULL, *n, false);
+        re = add_ast_node_decls(r, st, NULL, ppl, *n, false);
         if (re) return re;
         re = resolve_ast_node(r, *n, st, ppl, NULL, stmt_ctype_ptr);
         if (re) return re;
@@ -1636,7 +1632,7 @@ resolve_error resolver_setup_pass(resolver* r)
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
             resolve_error re = add_body_decls(
-                r, (**i).symtab, (**i).symtab, &osc->sc.body, true);
+                r, (**i).symtab, (**i).symtab, 0, &osc->sc.body, true);
             if (re) return re;
         }
     }

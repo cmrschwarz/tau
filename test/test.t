@@ -23,10 +23,10 @@ public func printf(x: string, y: int, c: int);
 
 
 public func main() -> int{
-    i := #foo();
+    i := #foo(1);
     ip := &i;
     loop @foo{
-        printf("foo: %i%c", foo(*ip), 10);
+        printf("foo: %i%c", #foo(*ip), 10);
         (*ip)++;
         if(*ip == 9)break @foo;
     }

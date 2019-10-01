@@ -176,7 +176,7 @@ symbol** symbol_table_lookup(
     symbol_table* st, ureg ppl, access_modifier am, const char* s,
     ureg* decl_ppl)
 {
-    symbol_table_lookup_limited(st, ppl, am, NULL, s, decl_ppl);
+    return symbol_table_lookup_limited(st, ppl, am, NULL, s, decl_ppl);
 }
 src_file* symbol_table_get_file(symbol_table* st)
 {
@@ -193,6 +193,7 @@ int init_global_symtab()
 {
     if (symbol_table_init(&GLOBAL_SYMTAB, PRIMITIVE_COUNT + 1, 0, true, NULL))
         return ERR;
+    GLOBAL_SYMTAB->parent = NULL;
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {
         if (symbol_table_insert(GLOBAL_SYMTAB, (symbol*)&PRIMITIVES[i])) {
             symbol_table_fin(GLOBAL_SYMTAB);
