@@ -5,8 +5,12 @@ extern "C" {
 #include "utils/pool.h"
 #include "tauc.h"
 #include <utils/debug_utils.h>
+
+static ureg globals_refcount = 0;
 int llvm_backend_init_globals()
 {
+    globals_refcount++;
+    if (globals_refcount != 1) return OK;
     // InitializeAllTargetInfos();
     LLVMInitializeNativeTarget();
     // InitializeAllTargetMCs();
@@ -17,10 +21,12 @@ int llvm_backend_init_globals()
                           /*"--debug-pass=Structure"*/};
 
     llvm::cl::ParseCommandLineOptions(sizeof(args) / sizeof(char*), args);
-    return 0;
+    return OK;
 }
 void llvm_backend_fin_globals()
 {
+    globals_refcount--;
+    if (globals_refcount != 0) return;
     llvm::llvm_shutdown();
 }
 

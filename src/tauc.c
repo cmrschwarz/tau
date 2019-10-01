@@ -85,6 +85,9 @@ int handle_cmd_args(
     tauc* t, error_log* el, int argc, char** argv, bool* files_found)
 {
     int r = 0;
+#if DEBUG
+    bool tests_run = false;
+#endif
     for (int i = 1; i < argc; i++) {
         char* arg = argv[i];
         assert(arg);
@@ -139,6 +142,7 @@ int handle_cmd_args(
 #if DEBUG
         else if (!strcmp(arg, "-U")) {
             r = run_unit_tests(argc, argv);
+            tests_run = true;
             if (r) return r;
         }
 #endif
@@ -151,6 +155,12 @@ int handle_cmd_args(
         }
     }
     t->needs_emit_stage = (t->emit_exe || t->emit_asm || t->emit_ll);
+    if (!*files_found) {
+#if DEBUG
+        if (!tests_run)
+#endif
+            master_error_log_report(&t->mel, "no input files");
+    }
     return OK;
 }
 int tauc_scaffolding_init(tauc* t)
@@ -210,7 +220,6 @@ int tauc_run(int argc, char** argv)
                 tauc_core_fin(&t);
             }
             else {
-                master_error_log_report(&t.mel, "no input files");
                 r = ERR;
                 tauc_core_fin_no_run(&t);
             }
