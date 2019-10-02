@@ -23,13 +23,12 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_CONST_OFFSET 5
 #define ASTF_ACCESS_MODIFIER_OFFSET 6
 #define ASTF_ACCESS_MODIFIER_MASK (7 << ASTF_ACCESS_MODIFIER_OFFSET)
-#define ASTF_PARSE_ERROR_OFFSET 9
-#define ASTF_REDECLARATION_OFFSET 10
-#define ASTF_COMPUND_DECL_OFFSET 11
-// never needed simultaneous with compund decl, so we share the bit
-#define ASTF_RELATIVE_IMPORT_OFFSET 12
-#define ASTF_OVERLOADED_IN_PP_OFFSET 13
-#define ASTF_USED_IN_PP_OFFSET 14
+#define ASTF_ERROR_OFFSET 0
+#define ASTF_RELATIVE_IMPORT_OFFSET 10
+// never needed simultaneous with relative import, so we share the bit
+#define ASTF_COMPUND_DECL_OFFSET 10
+#define ASTF_OVERLOADED_IN_PP_OFFSET 11
+#define ASTF_USED_IN_PP_OFFSET 12
 
 typedef enum ast_flags_values_e {
     // this stays set even once resolved
@@ -40,9 +39,9 @@ typedef enum ast_flags_values_e {
     ASTF_SEALED = 1 << ASTF_SEALED_OFFSET,
     ASTF_CONST = 1 << ASTF_CONST_OFFSET,
     ASTF_ACCESS_MODIFIER = ASTF_ACCESS_MODIFIER_MASK, // ! multiple bits
-    ASTF_ERROR = 1 << ASTF_PARSE_ERROR_OFFSET,
-    ASTF_COMPUND_DECL = 1 << ASTF_PARSE_ERROR_OFFSET,
+    ASTF_ERROR = 1 << ASTF_ERROR_OFFSET,
     ASTF_RELATIVE_IMPORT = 1 << ASTF_RELATIVE_IMPORT_OFFSET,
+    ASTF_COMPUND_DECL = 1 << ASTF_COMPUND_DECL_OFFSET,
     ASTF_OVERLOADED_IN_PP = 1 << ASTF_OVERLOADED_IN_PP_OFFSET,
     ASTF_USED_IN_PP = 1 << ASTF_USED_IN_PP_OFFSET,
 } ast_flags_values;
@@ -70,14 +69,6 @@ bool ast_flags_get_relative_import(ast_flags f);
 
 void ast_flags_set_resolved(ast_flags* f);
 bool ast_flags_get_resolved(ast_flags f);
-
-// these just use the reverse resolving/resolved flags, since all nodes to emit
-// were previously resolved
-void ast_flags_set_id_adjusted(ast_flags* f);
-bool ast_flags_get_id_adjusted(ast_flags f);
-
-void ast_flags_set_emitted(ast_flags* f);
-bool ast_flags_get_emitted(ast_flags f);
 
 void ast_flags_set_resolving(ast_flags* f);
 void ast_flags_clear_resolving(ast_flags* f);

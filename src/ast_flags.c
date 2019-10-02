@@ -87,21 +87,14 @@ bool ast_flags_get_relative_import(ast_flags f)
 {
     return bitmask_get_bit(f, ASTF_RELATIVE_IMPORT_OFFSET);
 }
-void err_flags_set_parse_error(ast_flags* f)
+
+void ast_flags_set_error(ast_flags* f)
 {
-    bitmask_set_bit(f, ASTF_PARSE_ERROR_OFFSET);
+    bitmask_set_bit(f, ASTF_ERROR_OFFSET);
 }
-bool err_flags_get_parse_error(ast_flags f)
+bool ast_flags_get_error(ast_flags f)
 {
-    return bitmask_get_bit(f, ASTF_PARSE_ERROR_OFFSET);
-}
-void err_flags_set_redeclared(ast_flags* f)
-{
-    bitmask_set_bit(f, ASTF_REDECLARATION_OFFSET);
-}
-bool err_flags_get_redeclared(ast_flags f)
-{
-    return bitmask_get_bit(f, ASTF_REDECLARATION_OFFSET);
+    return bitmask_get_bit(f, ASTF_ERROR_OFFSET);
 }
 
 void ast_flags_set_resolved(ast_flags* f)
