@@ -5,6 +5,7 @@
 #include "ast.h"
 #include "utils/sbuffer.h"
 #include "utils/stack.h"
+#include "llvm_backend_api.h"
 typedef enum resolve_error {
     RE_FATAL = -1,
     RE_OK = 0,
@@ -45,12 +46,12 @@ typedef struct resolver_s {
     bool pp_mode;
     bool allow_type_loops;
     bool retracing_type_loop;
+    llvm_backend* backend;
 } resolver;
 
 int resolver_init(resolver* r, thread_context* tc);
 void resolver_fin(resolver* r);
-int resolver_resolve(
-    resolver* r, mdg_node** start, mdg_node** end, ureg* startid, ureg* endid,
-    ureg* prviate_sym_count);
+int resolver_resolve_and_emit(
+    resolver* r, mdg_node** start, mdg_node** end, llvm_module** module);
 ast_elem* get_resolved_ast_node_ctype(ast_node* n);
 #endif

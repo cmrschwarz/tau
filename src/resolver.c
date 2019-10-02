@@ -1673,6 +1673,13 @@ resolve_error resolver_run(resolver* r)
                 r, rn->node, rn->declaring_st, rn->ppl, NULL, NULL);
             if (re == RE_SYMBOL_NOT_FOUND_YET) continue;
             if (re) return re;
+            if (rn->node->kind == EXPR_PP) {
+                ast_elem* ctype =
+                    get_resolved_ast_node_ctype(((expr_pp*)rn->node)->pp_expr);
+                if (ctype != VOID_ELEM && ctype != UNREACHABLE_ELEM) {
+                    // TODO: execute
+                }
+            }
             progress = true;
             sbuffer_remove(&r->pp_resolve_nodes, &sbi, sizeof(pp_resolve_node));
         }
@@ -1687,6 +1694,8 @@ resolve_error resolver_run(resolver* r)
             r, rn->node, rn->declaring_st, rn->ppl, NULL, NULL);
         if (re) return re;
     }
+
+    // preprocessor is done, resolve the reset in peace
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         r->curr_mdg = *i;
         aseglist_iterator asi;
@@ -1700,9 +1709,8 @@ resolve_error resolver_run(resolver* r)
     }
     return RE_OK;
 }
-resolve_error resolver_resolve(
-    resolver* r, mdg_node** start, mdg_node** end, ureg* startid, ureg* endid,
-    ureg* private_sym_count)
+int resolver_resolve_and_emit(
+    resolver* r, mdg_node** start, mdg_node** end, llvm_module** module)
 {
     r->retracing_type_loop = false;
     r->public_sym_count = 0;
@@ -1717,15 +1725,27 @@ resolve_error resolver_resolve(
     if (re) return re;
     re = resolver_run(r);
     if (re) return re;
-    *startid = atomic_ureg_add(&r->tc->t->node_ids, r->public_sym_count);
-    *endid = *startid + r->public_sym_count;
-    *private_sym_count = r->private_sym_count - UREGH_MAX;
-    return resolver_cleanup(r, *startid);
+    ureg startid = atomic_ureg_add(&r->tc->t->node_ids, r->public_sym_count);
+    ureg endid = startid + r->public_sym_count;
+    ureg private_sym_count = r->private_sym_count - UREGH_MAX;
+    re = resolver_cleanup(r, startid);
+    if (re) return re;
+    if (tauc_success_so_far(r->tc->t) && r->tc->t->needs_emit_stage) {
+        llvm_error lle = llvm_backend_emit_module(
+            r->backend, start, end, startid, endid, private_sym_count, module);
+        if (lle == LLE_FATAL) return RE_FATAL;
+        if (lle) return RE_ERROR;
+    }
+    else {
+        *module = NULL;
+    }
+    return OK;
 }
 int resolver_partial_fin(resolver* r, int i, int res)
 {
     switch (i) {
         case -1:
+        case 4: llvm_backend_delete(r->backend);
         case 3: sbuffer_fin(&r->pp_resolve_nodes);
         case 2: sbuffer_fin(&r->call_types);
         case 1: stack_fin(&r->error_stack);
@@ -1735,7 +1755,7 @@ int resolver_partial_fin(resolver* r, int i, int res)
 }
 void resolver_fin(resolver* r)
 {
-    resolver_partial_fin(r, -1, 0);
+    resolver_partial_fin(r, -1, OK);
 }
 int resolver_init(resolver* r, thread_context* tc)
 {
@@ -1743,9 +1763,11 @@ int resolver_init(resolver* r, thread_context* tc)
     int e = stack_init(&r->error_stack, &r->tc->tempmem);
     if (e) return resolver_partial_fin(r, 0, e);
     e = sbuffer_init(&r->call_types, sizeof(ast_node*) * 32);
-    if (e) resolver_partial_fin(r, 1, e);
+    if (e) return resolver_partial_fin(r, 1, e);
     e = sbuffer_init(&r->pp_resolve_nodes, sizeof(pp_resolve_node) * 32);
-    if (e) resolver_partial_fin(r, 2, e);
+    if (e) return resolver_partial_fin(r, 2, e);
+    r->backend = llvm_backend_new(r->tc);
+    if (!r->backend) return resolver_partial_fin(r, 3, ERR);
     r->allow_type_loops = false;
     r->curr_symbol_decl = NULL;
     r->type_loop_start = NULL;

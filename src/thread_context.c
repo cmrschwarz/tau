@@ -9,7 +9,6 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
 {
     switch (i) {
         case -1:
-        case 10: llvm_backend_delete(tc->llvmb);
         case 9: list_builder_fin(&tc->listb2);
         case 8: list_builder_fin(&tc->listb);
         case 7: stack_fin(&tc->tempstack);
@@ -57,8 +56,6 @@ int thread_context_init(thread_context* tc, tauc* t)
     if (r) return thread_context_partial_fin(tc, r, 7);
     r = list_builder_init(&tc->listb2, &tc->tempmem, 64);
     if (r) return thread_context_partial_fin(tc, r, 8);
-    tc->llvmb = llvm_backend_new(tc);
-    if (!tc->llvmb) return thread_context_partial_fin(tc, -1, 9);
     tc->has_preordered = false;
     return OK;
 }
@@ -85,40 +82,31 @@ int thread_context_do_job(thread_context* tc, job* j)
             start = j->concrete.resolve.start;
             end = j->concrete.resolve.end;
         }
-        ureg startid, endid, private_sym_count;
-
         resolve_error re;
-        TIME(re = resolver_resolve(
-                 &tc->r, start, end, &startid, &endid, &private_sym_count););
+        llvm_module* mod;
+        TIME(re = resolver_resolve_and_emit(&tc->r, start, end, &mod););
         if (re) tauc_error_occured(tc->t, re);
         if (re == RE_FATAL) r = ERR;
         // don't bother creating objs if we had any error somewhere
         // since we can't create the final exe anyways
         // (this needs to change this later once we can reuse objs)
-        if (!re && tauc_success_so_far(tc->t) && tc->t->needs_emit_stage) {
-            llvm_module* mod;
-            llvm_error lle = llvm_backend_emit_module(
-                tc->llvmb, start, end, startid, endid, private_sym_count, &mod);
-            if (lle) tauc_error_occured(tc->t, lle);
-            if (lle == LLE_FATAL) r = ERR;
-            if (!lle) {
-                llvm_module** tgt =
-                    sbuffer_append(&tc->modules, sizeof(llvm_module*));
-                if (tgt) {
-                    *tgt = mod;
-                    ureg lh = atomic_ureg_dec(&tc->t->linking_holdups);
-                    if (lh == 1) can_link = true;
+        if (!re && mod) {
+            llvm_module** tgt =
+                sbuffer_append(&tc->modules, sizeof(llvm_module*));
+            if (tgt) {
+                *tgt = mod;
+                ureg lh = atomic_ureg_dec(&tc->t->linking_holdups);
+                if (lh == 1) can_link = true;
+            }
+            else {
+                error_log_report_allocation_failiure(tc->err_log);
+                r = ERR;
+                if (llvm_delete_objs(&mod, &mod + 1)) {
+                    // TODO: think about how to handle this
+                    assert(false);
+                    return ERR;
                 }
-                else {
-                    error_log_report_allocation_failiure(tc->err_log);
-                    r = ERR;
-                    if (llvm_delete_objs(&mod, &mod + 1)) {
-                        // TODO: think about how to handle this
-                        assert(false);
-                        return ERR;
-                    }
-                    llvm_free_module(mod);
-                }
+                llvm_free_module(mod);
             }
         }
         if (!j->concrete.resolve.single_store) tfree(j->concrete.resolve.start);

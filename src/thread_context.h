@@ -7,7 +7,6 @@
 #include "resolver.h"
 #include "utils/pool.h"
 #include "utils/stack.h"
-#include "llvm_backend_api.h"
 typedef struct tauc_s tauc;
 typedef struct thread_context_s {
     tauc* t;
@@ -20,7 +19,6 @@ typedef struct thread_context_s {
     resolver r;
     scc_detector sccd;
     stack tempstack;
-    llvm_backend* llvmb;
     sbuffer modules;
     bool has_preordered;
 } thread_context;
