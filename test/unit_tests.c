@@ -244,7 +244,7 @@ int run_unit_tests(int argc, char** argv)
     print_dash_padded("Executing Unit Tests", false);
     int res = OK;
 
-    // res |= TEST(llvmtest_main);
+    TEST(res, llvmtest_main);
     TEST(res, stack_test);
     TEST(res, list_builder_test);
     TEST(res, file_map_test);
@@ -257,7 +257,6 @@ int run_unit_tests(int argc, char** argv)
     else {
         print_dash_padded("PASSED", false);
     }
-    putchar('\n');
     debug_utils_free_res();
     return res;
 }

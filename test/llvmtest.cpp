@@ -12,7 +12,10 @@
 // LLVM projects work and to demonstrate some of the LLVM APIs.
 //
 //===----------------------------------------------------------------------===//
-
+extern "C" {
+#include "../src/utils/error.h"
+#include "../src/utils/debug_utils.h"
+}
 #include <llvm/Bitcode/BitcodeWriter.h>
 #include <llvm/IR/BasicBlock.h>
 #include <llvm/IR/Constants.h>
@@ -31,17 +34,34 @@
 #include <llvm/Target/CodeGenCWrappers.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/IR/LegacyPassManager.h>
+#include <llvm/Object/ObjectFile.h>
+#include <llvm/Support/SmallVectorMemoryBuffer.h>
 #include <lld/Common/Driver.h>
 #include <llvm/IR/Type.h>
 #include <llvm/MC/MCRegisterInfo.h>
 #include <llvm/IR/IRBuilder.h>
+#include <llvm/ExecutionEngine/Orc/LLJIT.h>
+#include "llvm/ExecutionEngine/Orc/LLJIT.h"
+#include "llvm/ExecutionEngine/Orc/CompileOnDemandLayer.h"
+#include "llvm/ExecutionEngine/Orc/CompileUtils.h"
+#include "llvm/ExecutionEngine/Orc/ExecutionUtils.h"
+#include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
+#include "llvm/ExecutionEngine/Orc/IRTransformLayer.h"
+#include "llvm/ExecutionEngine/Orc/JITTargetMachineBuilder.h"
+#include "llvm/ExecutionEngine/Orc/ObjectTransformLayer.h"
+#include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/ExecutionEngine/Orc/OrcError.h"
+#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "llvm/ExecutionEngine/Orc/Core.h"
+#include "llvm/IR/Mangler.h"
 #include <unistd.h>
 
 using namespace llvm;
 Module* createTestModule(LLVMContext& ctx)
 {
     llvm::IRBuilder<> builder(ctx);
-    llvm::Module* mod = new llvm::Module("hello world", ctx);
+    llvm::Module* mod = new llvm::Module("test_module", ctx);
 
     llvm::FunctionType* main_func_type =
         llvm::FunctionType::get(builder.getInt32Ty(), false);
@@ -49,22 +69,23 @@ Module* createTestModule(LLVMContext& ctx)
         main_func_type, llvm::Function::ExternalLinkage, "main", mod);
     llvm::BasicBlock* main_block = llvm::BasicBlock::Create(ctx, "", main_func);
     builder.SetInsertPoint(main_block);
+    /*
+        auto printf_args =
+            *new llvm::ArrayRef<Type*>{builder.getInt8Ty()->getPointerTo()};
 
-    auto printf_args =
-        *new llvm::ArrayRef<Type*>{builder.getInt8Ty()->getPointerTo()};
+        llvm::FunctionType* printf_type =
+            llvm::FunctionType::get(builder.getInt32Ty(), printf_args, true);
 
-    llvm::FunctionType* printf_type =
-        llvm::FunctionType::get(builder.getInt32Ty(), printf_args, true);
-
-    llvm::Constant* printf_func =
-        mod->getOrInsertFunction("printf", printf_type);
-
-    Value* add_lhs = ConstantInt::get(Type::getInt32Ty(ctx), 7);
-    Value* add_rhs = ConstantInt::get(Type::getInt32Ty(ctx), 10);
-    Value* add = builder.CreateAdd(add_lhs, add_rhs);
-    auto args = *new llvm::ArrayRef<Value*>{
+        llvm::Constant* printf_func =
+            mod->getOrInsertFunction("printf", printf_type);
+            auto args = *new llvm::ArrayRef<Value*>{
         builder.CreateGlobalStringPtr("7 + 10 = %i.\n"), add};
     builder.CreateCall(printf_func, args);
+    */
+    Value* add_lhs = ConstantInt::get(Type::getInt32Ty(ctx), 10);
+    Value* add_rhs = ConstantInt::get(Type::getInt32Ty(ctx), 7);
+    Value* add = builder.CreateAdd(add_lhs, add_rhs);
+
     builder.CreateRet(add);
 
     return mod;
@@ -74,13 +95,8 @@ raw_fd_ostream* createFileStream(const char* filename)
     std::error_code EC;
     return new raw_fd_ostream(filename, EC, sys::fs::F_None);
 }
-int createObjectFileFromModule(Module* mod, raw_fd_ostream* file_stream)
+int createTM(llvm::TargetMachine** tm)
 {
-    // InitializeAllTargetInfos();
-    LLVMInitializeNativeTarget();
-    // InitializeAllTargetMCs();
-    InitializeNativeTargetAsmParser();
-    InitializeNativeTargetAsmPrinter();
     auto target_triple = LLVMGetDefaultTargetTriple();
     std::string err;
     auto target = TargetRegistry::lookupTarget(target_triple, err);
@@ -89,23 +105,28 @@ int createObjectFileFromModule(Module* mod, raw_fd_ostream* file_stream)
         return 1;
     }
     TargetOptions opt;
-    auto tm = target->createTargetMachine(
+    *tm = target->createTargetMachine(
         target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
         Optional<Reloc::Model>());
-
+    return OK;
+}
+int createObjectFileFromModule(Module* mod, llvm::raw_pwrite_stream* ostream)
+{
+    llvm::TargetMachine* tm;
+    if (createTM(&tm)) return ERR;
     mod->setDataLayout(tm->createDataLayout());
     // Output the bitcode file to std   out
     legacy::PassManager pass;
     auto FileType = TargetMachine::CGFT_ObjectFile;
-
-    if (tm->addPassesToEmitFile(pass, *file_stream, nullptr, FileType)) {
+    if (tm->addPassesToEmitFile(pass, *ostream, nullptr, FileType)) {
         errs() << "TheTargetMachine can't emit a file of this type\n";
         return 1;
     }
     pass.run(*mod);
-    file_stream->flush();
+    ostream->flush();
     return 0;
 }
+
 int link_obj_to_executable(const char* obj_path, const char* exe_path)
 {
     const char* args[] = {"", // argv[0] -> programm location, ignored
@@ -127,25 +148,70 @@ int delete_file(const char* filepath)
 {
     return unlink(filepath);
 }
+
+int runStaticCompiler()
+{
+    const char* obj = "foo.obj";
+    const char* exe = "bar.out";
+    LLVMContext ctx;
+    Module* mod = createTestModule(ctx);
+    raw_fd_ostream* stream = createFileStream(obj);
+    createObjectFileFromModule(mod, stream);
+    delete mod;
+    delete stream;
+
+    link_obj_to_executable(obj, exe);
+
+    // delete_file(obj);
+    return OK;
+}
+std::string mangle(StringRef UnmangledName, const llvm::DataLayout& dl)
+{
+    std::string MangledName;
+    {
+        raw_string_ostream MangledNameStream(MangledName);
+        Mangler::getNameWithPrefix(MangledNameStream, UnmangledName, dl);
+    }
+    return MangledName;
+}
+int runJitCompiler()
+{
+    // Setup
+    llvm::orc::ExecutionSession exec_sess{};
+    llvm::orc::JITDylib& main_dylib = exec_sess.getMainJITDylib();
+    llvm::orc::RTDyldObjectLinkingLayer obj_link_layer{
+        exec_sess, []() { return llvm::make_unique<SectionMemoryManager>(); }};
+
+    // create IR Module
+    LLVMContext ctx;
+    std::unique_ptr<llvm::Module> mod{createTestModule(ctx)};
+
+    // output IR module to a memory buffer file
+    llvm::SmallVector<char, 0> obj_sv;
+    llvm::raw_svector_ostream obj_sv_stream{obj_sv};
+    createObjectFileFromModule(mod.get(), &obj_sv_stream);
+    std::unique_ptr<llvm::MemoryBuffer> obj_svmb{
+        new llvm::SmallVectorMemoryBuffer{std::move(obj_sv)}};
+
+    // link that mem buffer file
+    obj_link_layer.add(main_dylib, std::move(obj_svmb));
+
+    // lookup
+    auto mainfn = exec_sess.lookup(
+        llvm::orc::JITDylibSearchList({{&main_dylib, true}}),
+        exec_sess.intern(mangle("main", mod->getDataLayout())));
+    auto mainptr = (int (*)())mainfn->getAddress();
+
+    // call
+    printf("orc jit says: %i\n", mainptr());
+    return OK;
+}
+
 extern "C" {
 int llvmtest_main()
 {
-    const char* obj = "./temp/foo.obj";
-    const char* exe = "./temp/bar.out";
-    {
-        LLVMContext ctx;
-        Module* mod = createTestModule(ctx);
-        raw_fd_ostream* stream = createFileStream(obj);
-        createObjectFileFromModule(mod, stream);
-        delete mod;
-        delete stream;
-
-        link_obj_to_executable(obj, exe);
-        // llvm_shutdown();
-    }
-    delete_file(obj);
-
-    system(exe);
+    // runStaticCompiler();
+    runJitCompiler();
     return 0;
 }
 }

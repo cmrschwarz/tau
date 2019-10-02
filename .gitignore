@@ -1,8 +1,10 @@
 /bin
+/precompile_llvm
 /.vscode
 /build
 /temp
 /deps/llvm-project-prebuild/**
+/deps/llvm-project-prebuild_8_0_0/**
 *.obj
 *.ll
 *.out

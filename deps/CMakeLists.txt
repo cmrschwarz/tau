@@ -147,6 +147,8 @@ else()
         analysis
         asmprinter
         asmparser
+        ExecutionEngine
+        OrcJIT
         "option"
     )
     set(TAU_LLVM_MAIN_LIBS ${LLVM_LIBS})

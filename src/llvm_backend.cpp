@@ -13,7 +13,7 @@ int llvm_backend_init_globals()
     if (globals_refcount != 1) return OK;
     // InitializeAllTargetInfos();
     LLVMInitializeNativeTarget();
-    // InitializeAllTargetMCs();
+    llvm::InitializeAllTargetMCs();
     llvm::InitializeNativeTargetAsmParser();
     llvm::InitializeNativeTargetAsmPrinter();
     const char* args[] = {"tauc",
@@ -1055,7 +1055,7 @@ llvm_error LLVMBackend::emitModule()
     // pmb.VerifyInput = true;
     // pmb.VerifyOutput = true;
     pmb.DisableTailCalls = true;
-    pmb.DisableUnitAtATime = true;
+    // pmb.DisableUnitAtATime = true;
     pmb.DisableUnrollLoops = true;
     pmb.SLPVectorize = false;
     pmb.LoopVectorize = false;
