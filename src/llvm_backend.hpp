@@ -132,10 +132,12 @@ struct LLVMBackend {
     llvm::Function** lookupFunctionRaw(ureg id);
     llvm::Type** lookupTypeRaw(ureg id);
     llvm_error lookupCType(ast_elem* e, llvm::Type** t, ureg* align);
+    llvm_error getFollowingBlock(llvm::BasicBlock** following_block);
 
   private:
     llvm_error genModules(mdg_node** start, mdg_node** end);
-    llvm_error genAstBody(ast_body* n, bool continues_after);
+    llvm_error
+    genAstBody(ast_body* n, bool continues_after, bool* end_reachable = NULL);
     llvm_error genIfBranch(ast_node* branch);
     llvm_error genScopeValue(ast_elem* ctype, ControlFlowContext& ctx);
 

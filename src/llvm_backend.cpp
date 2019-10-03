@@ -269,14 +269,21 @@ llvm_error LLVMBackend::genModules(mdg_node** start, mdg_node** end)
     }
     return LLE_OK;
 }
-llvm_error LLVMBackend::genAstBody(ast_body* b, bool continues_afterwards)
+llvm_error LLVMBackend::genAstBody(
+    ast_body* b, bool continues_afterwards, bool* end_reachable)
 {
     ControlFlowContext& ctx = _control_flow_ctx.back();
     ctx.continues_afterwards = true;
+    if (end_reachable) *end_reachable = true;
     for (ast_node** n = b->elements; *n; n++) {
-        if (!*(n + 1)) ctx.continues_afterwards = continues_afterwards;
+        bool last = (!*(n + 1));
+        if (last) ctx.continues_afterwards = continues_afterwards;
         llvm_error lle = genAstNode(*n, NULL, NULL);
         if (lle) return lle;
+        if (last && end_reachable) {
+            ast_elem* ctype = get_resolved_ast_node_ctype(*n);
+            *end_reachable = (ctype != UNREACHABLE_ELEM);
+        }
     }
     return LLE_OK;
 }
@@ -407,6 +414,33 @@ bool LLVMBackend::isLocalID(ureg id)
 bool LLVMBackend::isGlobalID(ureg id)
 {
     return !isLocalID(id);
+}
+llvm_error LLVMBackend::getFollowingBlock(llvm::BasicBlock** following_block)
+{
+    ControlFlowContext* ctx = &_control_flow_ctx.back();
+    llvm::BasicBlock* fb;
+    if (ctx->continues_afterwards) {
+        fb = llvm::BasicBlock::Create(
+            _context, "", _curr_fn, ctx->following_block);
+    }
+    else if (ctx->following_block) {
+        fb = ctx->following_block;
+    }
+    else {
+        fb = llvm::BasicBlock::Create(_context, "", _curr_fn);
+        auto curr_ib = _builder.GetInsertBlock();
+        auto curr_ip = _builder.GetInsertPoint();
+        _builder.SetInsertPoint(
+            ctx->first_block, ctx->first_block->getInstList().begin());
+        genScopeValue(_curr_fn_ast_node->return_ctype, *ctx);
+        _builder.SetInsertPoint(curr_ib, curr_ip);
+        for (auto& c : _control_flow_ctx) {
+            if (c.following_block == NULL) c.following_block = fb;
+        }
+        ctx->following_block = fb;
+    }
+    *following_block = fb;
+    return LLE_OK;
 }
 llvm_error LLVMBackend::genIfBranch(ast_node* branch)
 {
@@ -592,17 +626,11 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         }
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)n;
-            ControlFlowContext* ctx = &_control_flow_ctx.back();
             llvm::BasicBlock* following_block;
-            if (ctx->continues_afterwards) {
-                following_block = llvm::BasicBlock::Create(
-                    _context, "", _curr_fn, ctx->following_block);
-            }
-            else {
-                following_block = ctx->following_block;
-            }
+            lle = getFollowingBlock(&following_block);
+            if (lle) return lle;
             _control_flow_ctx.emplace_back();
-            ctx = &_control_flow_ctx.back();
+            ControlFlowContext* ctx = &_control_flow_ctx.back();
             l->control_flow_ctx = ctx;
             ctx->following_block = following_block;
             lle = genScopeValue(l->ctype, *ctx);
@@ -696,12 +724,13 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     var_val = all;
                     _builder.Insert(all);
                     if (n->kind == SYM_VAR_INITIALIZED) {
-                        llvm::Value* v;
+                        llvm::Value* init_val;
                         lle = genAstNode(
-                            ((sym_var_initialized*)n)->initial_value, NULL, &v);
+                            ((sym_var_initialized*)n)->initial_value, NULL,
+                            &init_val);
                         if (lle) return lle;
                         if (!_builder.CreateAlignedStore(
-                                var_val, v, align, false))
+                                init_val, var_val, align, false))
                             return LLE_FATAL;
                     }
                 }
@@ -752,18 +781,11 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             llvm::Value* cond;
             lle = genAstNode(i->condition, NULL, &cond);
             if (lle) return lle;
-
-            ControlFlowContext* ctx = &_control_flow_ctx.back();
             llvm::BasicBlock* following_block;
-            if (ctx->continues_afterwards) {
-                following_block = llvm::BasicBlock::Create(
-                    _context, "", _curr_fn, ctx->following_block);
-            }
-            else {
-                following_block = ctx->following_block;
-            }
+            lle = getFollowingBlock(&following_block);
+            if (lle) return lle;
             _control_flow_ctx.emplace_back();
-            ctx = &_control_flow_ctx.back();
+            ControlFlowContext* ctx = &_control_flow_ctx.back();
             lle = genScopeValue(i->ctype, *ctx);
             if (lle) return lle;
             ctx->following_block = following_block;
@@ -985,7 +1007,8 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
     _curr_fn = func;
     _curr_fn_ast_node = fn;
     _builder.SetInsertPoint(func_block);
-    lle = genAstBody(&fn->sc.body, false);
+    bool end_reachable = true;
+    lle = genAstBody(&fn->sc.body, false, &end_reachable);
     if (ctx.following_block) {
         if (_builder.GetInsertBlock() != ctx.following_block) {
             // _builder.CreateBr(ctx.following_block);
@@ -999,6 +1022,10 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
             if (!load) return LLE_FATAL;
             _builder.CreateRet(load);
         }
+    }
+    else if (end_reachable) {
+        assert(!ctx.value);
+        _builder.CreateRetVoid();
     }
     _control_flow_ctx.pop_back();
     return lle;
@@ -1087,9 +1114,9 @@ llvm_error LLVMBackend::emitModule()
 
     PerModulePasses.run(*_module);
     llvm_error lle = LLE_OK;
+    if (!lle && _tc->t->emit_ll) emitModuleIR();
     if (_tc->t->emit_asm) lle = emitModuleToFile(TLII.get(), true);
     if (!lle && _tc->t->emit_exe) emitModuleToFile(TLII.get(), false);
-    if (!lle && _tc->t->emit_ll) emitModuleIR();
     return LLE_OK;
 }
 llvm_error

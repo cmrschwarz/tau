@@ -180,6 +180,8 @@ symbol** symbol_table_lookup(
 }
 src_file* symbol_table_get_file(symbol_table* st)
 {
+    // TODO: this can happen if neither the func nor the osc have a single
+    // symbol
     assert(st->owning_node->kind != ELEM_MDG_NODE);
     src_file* f = src_range_get_file(((ast_node*)st->owning_node)->srange);
     if (f) return f;

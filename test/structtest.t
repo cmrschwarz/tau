@@ -1,13 +1,8 @@
-
-public func printf(fmt: string, y: int, c: int);
-struct foo{
-    lorem : int;
-    ipsum: int;
-}
+require "print.t";
 
 
-public func main(){
-    f: foo;
-    f.ipsum = 17;
-    printf("ipsum: %i%c", f.ipsum,10);
+
+public func main()->int{
+    return if(1 == 1) 1 else 2;
+ 
 }

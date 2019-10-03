@@ -689,6 +689,7 @@ resolve_error resolve_func_call(
         }
         else {
             c->target.fn = (sc_func*)tgt;
+            ast_flags_set_resolved(&c->node.flags);
         }
     }
     return re;
@@ -1377,8 +1378,13 @@ static inline resolve_error resolve_ast_node_raw(
 
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)n;
-            if (resolved) RETURN_RESOLVED(value, ctype, n, l->ctype);
-            return resolve_expr_body(r, n, &l->body, ppl, value, ctype);
+            if (resolved) {
+                assert(!value);
+                RETURN_RESOLVED(value, ctype, NULL, l->ctype);
+            }
+            re = resolve_expr_body(r, n, &l->body, ppl, value, &l->ctype);
+            if (re) return re;
+            RETURN_RESOLVED(value, ctype, value, l->ctype);
         }
         case EXPR_MACRO_CALL: {
             // TODO ctype
