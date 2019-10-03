@@ -657,7 +657,7 @@ resolve_error resolve_func_call(
         bool applicable;
 
         if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
-            sym_func_overloaded* sfo = (sym_func_overloaded*)s;
+            sym_func_overloaded* sfo = (sym_func_overloaded*)*s;
             scope* o = sfo->overloads;
             while (o) {
                 re = overload_applicable(

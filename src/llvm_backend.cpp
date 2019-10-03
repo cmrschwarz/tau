@@ -918,21 +918,27 @@ llvm_error LLVMBackend::genBinaryOp(
     assert(!vl);
     return LLE_OK;
 }
-char* name_mangle(sc_func* fn)
+// TODO: do this properly
+std::string name_mangle(sc_func* fn, const llvm::DataLayout& dl)
 {
+    std::string name = fn->sc.sym.name;
     symbol_table* st = fn->sc.body.symtab;
     while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
     mdg_node* n = (mdg_node*)st->owning_node;
-    if (n->parent == NULL) return fn->sc.sym.name;
-    ureg mnl = strlen(n->name);
-    ureg fnl = strlen(fn->sc.sym.name);
-    char* res = (char*)malloc(mnl + fnl + 3); // TODO: manage mem properly
-    memcpy(res, n->name, mnl);
-    memcpy(res + mnl, "::", 2);
-    memcpy(res + mnl + 2, fn->sc.sym.name, fnl);
-    *(res + mnl + fnl + 2) = '\0';
-    return res;
+    while (n->parent != NULL) {
+        name = n->name + ("::" + name);
+    }
+    if (name != "main") {
+        name = name + "_" + std::to_string(fn->param_count);
+    }
+    std::string MangledName;
+    {
+        llvm::raw_string_ostream MangledNameStream(MangledName);
+        llvm::Mangler::getNameWithPrefix(MangledNameStream, name, dl);
+    }
+    return MangledName;
 }
+
 llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
 {
     llvm::Function** res = lookupFunctionRaw(fn->id);
@@ -962,9 +968,10 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
         func_sig = llvm::FunctionType::get(ret_type, false);
         if (!func_sig) return LLE_FATAL;
     }
-    auto func_name_mangled = name_mangle(fn);
     // TODO: ugly hack,  use a proper extern function ast node
     bool extern_func = (fn->sc.body.srange == SRC_RANGE_INVALID);
+    auto func_name_mangled = extern_func ? std::string(fn->sc.sym.name)
+                                         : name_mangle(fn, *_data_layout);
     if (extern_func || !isIDInModule(fn->id)) {
         auto func = (llvm::Function*)llvm::Function::Create(
             func_sig, llvm::GlobalVariable::ExternalLinkage,
