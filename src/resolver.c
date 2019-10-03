@@ -1579,25 +1579,32 @@ resolve_error resolve_body(resolver* r, ast_body* b, ureg ppl)
     }
     return RE_OK;
 }
-void adjust_node_ids(ureg sym_offset, ast_node* n)
+static void adjust_node_ids(ureg sym_offset, ast_node* n);
+static inline void adjust_body_ids(ureg sym_offset, ast_body* b)
 {
+    for (ast_node** i = b->elements; *i; i++) {
+        adjust_node_ids(sym_offset, *i);
+    }
+}
+static void adjust_node_ids(ureg sym_offset, ast_node* n)
+{
+    // we don't need to recurse into expressions because the contained symbols
+    // can never be public
     switch (n->kind) {
         case SC_FUNC: {
             if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             sc_func* fn = (sc_func*)n;
             fn->id += sym_offset;
-            return;
-        }
+        } break;
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: {
             if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             ((sym_var*)n)->var_id += sym_offset;
-            return;
-        }
+        } break;
         case SC_STRUCT: {
             if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             ((sc_struct*)n)->id += sym_offset;
-            // fallthrough
+            adjust_body_ids(sym_offset, &((sc_struct*)n)->sc.body);
         }
         default: return;
     }

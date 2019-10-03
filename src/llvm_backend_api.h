@@ -4,6 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#include "ast.h"
 #include "utils/types.h"
 typedef void llvm_backend;
 typedef void llvm_module;
@@ -22,6 +23,15 @@ void llvm_backend_fin_globals();
 llvm_backend* llvm_backend_new(thread_context* tc);
 
 void llvm_backend_delete(llvm_backend* llvmb);
+
+llvm_error llvm_backend_init_module(
+    llvm_backend* llvmb, mdg_node** start, mdg_node** end, llvm_module** mod);
+
+llvm_error llvm_backend_run_pp(
+    llvm_backend* llvmb, llvm_module* mod, ureg private_sym_count,
+    expr_pp* pp_expr);
+
+void llvm_backend_remap_local_id(llvm_backend* llvmb, ureg old_id, ureg new_id);
 
 llvm_error llvm_backend_emit_module(
     llvm_backend* llvmb, mdg_node** start, mdg_node** end, ureg startid,
