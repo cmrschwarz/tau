@@ -246,6 +246,16 @@ set_parent_symtabs(symbol_table** tgt, symbol_table* parent_st)
         (*tgt)->parent = parent_st;
     }
 }
+static inline ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st)
+{
+    if (public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
+        r->public_sym_count++;
+    }
+    else {
+        r->private_sym_count++;
+    }
+    return r->id_space++;
+}
 static resolve_error add_ast_node_decls(
     resolver* r, symbol_table* st, symbol_table* sst, ureg ppl, ast_node* n,
     bool public_st)
@@ -292,13 +302,7 @@ static resolve_error add_ast_node_decls(
             re = add_body_decls(
                 r, st, NULL, ppl, &str->sc.body, members_public_st);
             if (re) return re;
-            if (public_st &&
-                ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
-                str->id = r->public_sym_count++;
-            }
-            else {
-                str->id = r->private_sym_count++;
-            }
+            str->id = ast_node_claim_id(r, n, public_st);
             return RE_OK;
         }
         case SC_MACRO:
@@ -306,13 +310,7 @@ static resolve_error add_ast_node_decls(
             sc_macro* m = (n->kind == SC_MACRO) ? (sc_macro*)n : NULL;
             sc_func* fn = (n->kind == SC_FUNC) ? (sc_func*)n : NULL;
             if (fn) {
-                if (public_st &&
-                    ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
-                    fn->id = r->public_sym_count++;
-                }
-                else {
-                    fn->id = r->private_sym_count++;
-                }
+                fn->id = ast_node_claim_id(r, n, public_st);
             }
             symbol_table* tgtst =
                 (sst && ast_flags_get_access_mod(n->flags) != AM_DEFAULT) ? sst
@@ -417,13 +415,7 @@ static resolve_error add_ast_node_decls(
                     ((sc_struct*)v->sym.declaring_st->owning_node)->id++;
             }
             else {
-                if (public_st &&
-                    ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
-                    v->var_id = r->public_sym_count++;
-                }
-                else {
-                    v->var_id = r->private_sym_count++;
-                }
+                v->var_id = ast_node_claim_id(r, n, public_st);
             }
             return RE_OK;
         }
@@ -1601,14 +1593,21 @@ resolve_error resolve_body(resolver* r, ast_body* b, ureg ppl)
     }
     return RE_OK;
 }
-static void adjust_node_ids(ureg sym_offset, ast_node* n);
-static inline void adjust_body_ids(ureg sym_offset, ast_body* b)
+static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n);
+static inline void adjust_body_ids(resolver* r, ureg* id_space, ast_body* b)
 {
     for (ast_node** i = b->elements; *i; i++) {
-        adjust_node_ids(sym_offset, *i);
+        adjust_node_ids(r, id_space, *i);
     }
 }
-static void adjust_node_ids(ureg sym_offset, ast_node* n)
+static inline void update_id(resolver* r, ureg* tgt, ureg* id_space)
+{
+    ureg old = *tgt;
+    *tgt = *id_space;
+    *id_space = *id_space + 1;
+    llvm_backend_remap_local_id(r->backend, old, *tgt);
+}
+static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
 {
     // we don't need to recurse into expressions because the contained symbols
     // can never be public
@@ -1616,17 +1615,17 @@ static void adjust_node_ids(ureg sym_offset, ast_node* n)
         case SC_FUNC: {
             if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             sc_func* fn = (sc_func*)n;
-            fn->id += sym_offset;
+            update_id(r, &fn->id, id_space);
         } break;
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: {
             if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
-            ((sym_var*)n)->var_id += sym_offset;
+            update_id(r, &((sym_var*)n)->var_id, id_space);
         } break;
         case SC_STRUCT: {
             if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
-            ((sc_struct*)n)->id += sym_offset;
-            adjust_body_ids(sym_offset, &((sc_struct*)n)->sc.body);
+            update_id(r, &((sc_struct*)n)->id, id_space);
+            adjust_body_ids(r, id_space, &((sc_struct*)n)->sc.body);
         }
         default: return;
     }
@@ -1666,13 +1665,16 @@ resolve_error resolver_setup_pass(resolver* r)
 }
 resolve_error resolver_cleanup(resolver* r, ureg startid)
 {
+    llvm_backend_reserve_symbols(
+        r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
+        startid + r->public_sym_count);
     int res = 0;
     for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
         aseglist_iterator it;
         aseglist_iterator_begin(&it, &(**n).open_scopes);
         for (open_scope* osc = aseglist_iterator_next(&it); osc;
              osc = aseglist_iterator_next(&it)) {
-            adjust_body_ids(startid, &osc->sc.body);
+            adjust_body_ids(r, &startid, &osc->sc.body);
         }
         res |= mdg_node_resolved(*n, r->tc);
     }
@@ -1737,7 +1739,8 @@ int resolver_resolve(
 {
     r->retracing_type_loop = false;
     r->public_sym_count = 0;
-    r->private_sym_count = UREGH_MAX;
+    r->private_sym_count = 0;
+    r->id_space = PRIV_SYMBOL_OFFSET;
     r->mdgs_begin = start;
     r->mdgs_end = end;
     resolve_error re;
@@ -1753,15 +1756,12 @@ int resolver_resolve(
     if (re) return re;
     return RE_OK;
 }
-int resolver_emit(
-    resolver* r, mdg_node** start, mdg_node** end, ureg startid,
-    llvm_module** module)
+int resolver_emit(resolver* r, ureg startid, llvm_module** module)
 {
     if (tauc_success_so_far(r->tc->t) && r->tc->t->needs_emit_stage) {
         ureg endid = startid + r->public_sym_count;
-        ureg private_sym_count = r->private_sym_count - UREGH_MAX;
         llvm_error lle = llvm_backend_emit_module(
-            r->backend, start, end, startid, endid, private_sym_count, module);
+            r->backend, startid, endid, r->private_sym_count);
         if (lle == LLE_FATAL) return RE_FATAL;
         if (lle) return RE_ERROR;
     }
@@ -1775,9 +1775,11 @@ int resolver_resolve_and_emit(
 {
     ureg startid;
     int res;
+    res = llvm_backend_init_module(r->backend, start, end, module);
+    if (res) return ERR;
     TIME(res = resolver_resolve(r, start, end, &startid););
     if (res) return res;
-    return resolver_emit(r, start, end, startid, module);
+    return resolver_emit(r, startid, module);
 }
 int resolver_partial_fin(resolver* r, int i, int res)
 {

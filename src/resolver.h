@@ -37,6 +37,7 @@ typedef struct resolver_s {
     mdg_node** mdgs_end;
     ureg public_sym_count;
     ureg private_sym_count;
+    ureg id_space;
     sbuffer pp_resolve_nodes;
     open_scope* curr_osc;
     mdg_node* curr_mdg;

@@ -23,6 +23,24 @@ int llvm_backend_init_globals()
     llvm::cl::ParseCommandLineOptions(sizeof(args) / sizeof(char*), args);
     return OK;
 }
+int llvm_initialize_primitive_information()
+{
+    // TODO: properly figure out the plattform information
+    const ureg reg_size = 8;
+    PRIMITIVES[PT_UINT].size = reg_size;
+    PRIMITIVES[PT_INT].size = reg_size;
+    PRIMITIVES[PT_FLOAT].size = reg_size;
+
+    PRIMITIVES[PT_STRING].size = reg_size;
+    PRIMITIVES[PT_BINARY_STRING].size = reg_size;
+    PRIMITIVES[PT_VOID].size = 0;
+
+    for (ureg i = 0; i < PRIMITIVE_COUNT; i++) {
+        PRIMITIVES[i].alignment = PRIMITIVES[i].size;
+    }
+    PRIMITIVES[PT_VOID].alignment = 1;
+    return OK;
+}
 void llvm_backend_fin_globals()
 {
     globals_refcount--;
@@ -43,14 +61,33 @@ void llvm_backend_delete(llvm_backend* llvmb)
 {
     LLVMBackend::Finalize((LLVMBackend*)llvmb);
 }
+llvm_error llvm_backend_init_module(
+    llvm_backend* llvmb, mdg_node** start, mdg_node** end, llvm_module** mod)
+{
+    return ((LLVMBackend*)llvmb)->initModule(start, end, (LLVMModule**)mod);
+}
 
-llvm_error llvm_backend_emit_module(
-    llvm_backend* llvmb, mdg_node** start, mdg_node** end, ureg startid,
-    ureg endid, ureg private_sym_count, llvm_module** mod)
+llvm_error llvm_backend_run_pp(
+    llvm_backend* llvmb, ureg private_sym_count, expr_pp* pp_expr)
+{
+    return ((LLVMBackend*)llvmb)->runPP(private_sym_count, pp_expr);
+}
+
+llvm_error llvm_backend_reserve_symbols(
+    llvm_backend* llvmb, ureg private_sym_count, ureg public_sym_count)
 {
     return ((LLVMBackend*)llvmb)
-        ->createLLVMModule(
-            start, end, startid, endid, private_sym_count, (LLVMModule**)mod);
+        ->reserveSymbols(private_sym_count, public_sym_count);
+}
+void llvm_backend_remap_local_id(llvm_backend* llvmb, ureg old_id, ureg new_id)
+{
+    ((LLVMBackend*)llvmb)->remapLocalID(old_id, new_id);
+}
+
+llvm_error llvm_backend_emit_module(
+    llvm_backend* llvmb, ureg startid, ureg endid, ureg priv_sym_count)
+{
+    return ((LLVMBackend*)llvmb)->emit(startid, endid, priv_sym_count);
 }
 
 int llvm_delete_objs(llvm_module** start, llvm_module** end)
@@ -79,26 +116,7 @@ int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
     if (lle) return ERR;
     return OK;
 }
-int llvm_initialize_primitive_information()
-{
-    // TODO: properly figure out the plattform information
-    const ureg reg_size = 8;
-    PRIMITIVES[PT_UINT].size = reg_size;
-    PRIMITIVES[PT_INT].size = reg_size;
-    PRIMITIVES[PT_FLOAT].size = reg_size;
-
-    PRIMITIVES[PT_STRING].size = reg_size;
-    PRIMITIVES[PT_BINARY_STRING].size = reg_size;
-    PRIMITIVES[PT_VOID].size = 0;
-
-    for (ureg i = 0; i < PRIMITIVE_COUNT; i++) {
-        PRIMITIVES[i].alignment = PRIMITIVES[i].size;
-    }
-    PRIMITIVES[PT_VOID].alignment = 1;
-    return OK;
 }
-}
-
 // CPP
 
 LLVMBackend::LLVMBackend(thread_context* tc)
@@ -121,7 +139,6 @@ LLVMBackend::LLVMBackend(thread_context* tc)
         llvm::Optional<llvm::Reloc::Model>(), CM, OptLevel);
     _data_layout = new llvm::DataLayout(_target_machine->createDataLayout());
 }
-
 LLVMBackend::~LLVMBackend()
 {
     ureg f = 0;
@@ -189,12 +206,20 @@ void LLVMBackend::addPrimitives()
         _primitive_types[i] = t;
     }
 }
-
-llvm_error LLVMBackend::createLLVMModule(
-    mdg_node** start, mdg_node** end, ureg startid, ureg endid,
-    ureg private_sym_count, LLVMModule** module)
+llvm_error LLVMBackend::reserveSymbols(ureg priv_sym_count, ureg pub_sym_count)
 {
-    // create our LLVMModule wrapper thingy for linking
+    if (_local_value_store.size() < priv_sym_count) {
+        _local_value_store.resize(priv_sym_count, NULL);
+    }
+    if (_global_value_store.size() < pub_sym_count) {
+        _global_value_store.resize(pub_sym_count, NULL);
+        _global_value_init_flags.assign(pub_sym_count, false);
+    }
+    return LLE_OK;
+}
+llvm_error
+LLVMBackend::initModule(mdg_node** start, mdg_node** end, LLVMModule** module)
+{
     LLVMModule* m = new LLVMModule();
     if (!m) return LLE_FATAL;
     tprintf("generating {");
@@ -208,27 +233,28 @@ llvm_error LLVMBackend::createLLVMModule(
     }
     m->module_obj = m->module_str + ".obj";
     tput("} ");
-
     *module = m;
     _mod_handle = m;
+    _mods_start = start;
+    _mods_end = end;
+    return LLE_OK;
+}
+llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
+{
     // init id space
     _mod_startid = startid;
     _mod_endid = endid;
-    if (_global_value_store.size() <= endid) {
-        _global_value_store.resize(endid + 1, NULL);
-        _global_value_init_flags.assign(endid + 1, false);
-    }
     _private_sym_count = private_sym_count;
-    // i really hope this doesn't realloc
-    _local_value_store.assign(_private_sym_count, NULL);
-    _reset_after_emit.clear();
+    if (reserveSymbols(private_sym_count, endid)) return LLE_FATAL;
+
     // create actual module
-    _module = new (std::nothrow) llvm::Module(m->module_str, _context);
+    _module =
+        new (std::nothrow) llvm::Module(_mod_handle->module_str, _context);
     if (!_module) return LLE_OK;
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
     _module->setDataLayout(*_data_layout);
     llvm_error lle;
-    TIME(lle = genModules(start, end););
+    TIME(lle = genModules(););
     tflush();
     if (lle) return lle;
     TIME(lle = emitModule(););
@@ -251,12 +277,31 @@ llvm_error LLVMBackend::createLLVMModule(
         }
     }
     delete _module;
+    _local_value_store.assign(_private_sym_count, NULL);
+    _reset_after_emit.clear();
     return lle;
 }
-
-llvm_error LLVMBackend::genModules(mdg_node** start, mdg_node** end)
+void LLVMBackend::remapLocalID(ureg old_id, ureg new_id)
 {
-    for (mdg_node** n = start; n != end; n++) {
+    assert(isLocalID(old_id));
+    if (isLocalID(new_id)) {
+        _local_value_store[new_id - PRIV_SYMBOL_OFFSET] =
+            _local_value_store[old_id - PRIV_SYMBOL_OFFSET];
+    }
+    else {
+        _global_value_store[new_id] =
+            _local_value_store[old_id - PRIV_SYMBOL_OFFSET];
+    }
+    _local_value_store[old_id - PRIV_SYMBOL_OFFSET] = NULL;
+}
+llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
+{
+    assert(false); // TODO
+    return LLE_OK;
+}
+llvm_error LLVMBackend::genModules()
+{
+    for (mdg_node** n = _mods_start; n != _mods_end; n++) {
         aseglist_iterator it;
         aseglist_iterator_begin(&it, &(**n).open_scopes);
         for (open_scope* osc = (open_scope*)aseglist_iterator_next(&it); osc;
@@ -290,7 +335,7 @@ llvm_error LLVMBackend::genAstBody(
 void** LLVMBackend::lookupAstElem(ureg id)
 {
     if (isLocalID(id)) {
-        return &_local_value_store[id - UREGH_MAX];
+        return &_local_value_store[id - PRIV_SYMBOL_OFFSET];
     }
     return &_global_value_store[id];
 }
@@ -409,7 +454,7 @@ bool LLVMBackend::isGlobalIDInModule(ureg id)
 }
 bool LLVMBackend::isLocalID(ureg id)
 {
-    return id >= UREGH_MAX;
+    return id >= PRIV_SYMBOL_OFFSET;
 }
 bool LLVMBackend::isGlobalID(ureg id)
 {
@@ -927,6 +972,7 @@ std::string name_mangle(sc_func* fn, const llvm::DataLayout& dl)
     mdg_node* n = (mdg_node*)st->owning_node;
     while (n->parent != NULL) {
         name = n->name + ("::" + name);
+        n = n->parent;
     }
     if (name != "main") {
         name = name + "_" + std::to_string(fn->param_count);
@@ -1072,7 +1118,7 @@ LLVMBackend::emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm)
 }
 llvm_error LLVMBackend::emitModule()
 {
-    tprintf("emmitting %s ", _mod_handle->module_str.c_str());
+    tprintf("emmitting {%s} ", _mod_handle->module_str.c_str());
 
     llvm::Triple TargetTriple(_module->getTargetTriple());
     std::unique_ptr<llvm::TargetLibraryInfoImpl> TLII(

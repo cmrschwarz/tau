@@ -101,6 +101,8 @@ struct LLVMBackend {
     sc_func* _curr_fn_ast_node;
     ureg _mod_startid;
     ureg _mod_endid;
+    mdg_node** _mods_start;
+    mdg_node** _mods_end;
     ureg _private_sym_count;
     LLVMModule* _mod_handle;
 
@@ -112,9 +114,12 @@ struct LLVMBackend {
     llvm_error setup();
 
   public:
-    llvm_error createLLVMModule(
-        mdg_node** start, mdg_node** end, ureg startid, ureg endid,
-        ureg private_sym_count, LLVMModule** module);
+    llvm_error
+    initModule(mdg_node** start, mdg_node** end, LLVMModule** module);
+    void remapLocalID(ureg old_id, ureg new_id);
+    llvm_error runPP(ureg private_sym_count, expr_pp* pp);
+    llvm_error reserveSymbols(ureg priv_sym_limit, ureg pub_sym_limit);
+    llvm_error emit(ureg startid, ureg endid, ureg priv_sym_count);
 
   private:
     void addPrimitives();
@@ -135,7 +140,7 @@ struct LLVMBackend {
     llvm_error getFollowingBlock(llvm::BasicBlock** following_block);
 
   private:
-    llvm_error genModules(mdg_node** start, mdg_node** end);
+    llvm_error genModules();
     llvm_error
     genAstBody(ast_body* n, bool continues_after, bool* end_reachable = NULL);
     llvm_error genIfBranch(ast_node* branch);
