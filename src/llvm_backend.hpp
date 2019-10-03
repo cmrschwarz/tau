@@ -51,6 +51,7 @@ extern "C" {
 #include <llvm/Passes/PassBuilder.h>
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/TargetParser.h>
+#include <llvm/Support/SmallVectorMemoryBuffer.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
@@ -61,7 +62,15 @@ extern "C" {
 #include <llvm/Transforms/IPO/PassManagerBuilder.h>
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
+#include <llvm/ADT/STLExtras.h>
 #include <unistd.h>
+
+struct PPRunner {
+    llvm::orc::ExecutionSession exec_session;
+    llvm::orc::RTDyldObjectLinkingLayer obj_link_layer;
+    PPRunner();
+    ~PPRunner();
+};
 
 struct LLVMModule {
     std::string module_str;
@@ -117,6 +126,7 @@ struct LLVMBackend {
     llvm_error
     initModule(mdg_node** start, mdg_node** end, LLVMModule** module);
     void remapLocalID(ureg old_id, ureg new_id);
+    llvm_error genPPFunc(const char* func_name, expr_pp* expr);
     llvm_error runPP(ureg private_sym_count, expr_pp* pp);
     llvm_error reserveSymbols(ureg priv_sym_limit, ureg pub_sym_limit);
     llvm_error emit(ureg startid, ureg endid, ureg priv_sym_count);
@@ -155,9 +165,13 @@ struct LLVMBackend {
     genUnaryOp(expr_op_unary* u, llvm::Value** vl, llvm::Value** vl_loaded);
 
   private:
-    llvm_error emitModule();
+    llvm_error emitModule(bool pp_mode);
+    llvm_error emitModuleToStream(
+        llvm::TargetLibraryInfoImpl* tlii, llvm::raw_pwrite_stream* stream,
+        bool emit_asm);
     llvm_error
     emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm);
+    llvm_error emitModuleToPP(llvm::TargetLibraryInfoImpl* tlii);
     llvm_error emitModuleIR();
 };
 

@@ -1,6 +1,6 @@
 require "print.t";
-
+ #1+2;
 public func main() -> int{
-    puts("Hello World!");
+   
     return 0;
 }

@@ -1,5 +1,7 @@
 #include "llvm_backend.hpp"
 #include <memory>
+
+static PPRunner* PP_RUNNER;
 extern "C" {
 #include "thread_context.h"
 #include "utils/pool.h"
@@ -21,7 +23,20 @@ int llvm_backend_init_globals()
                           /*"--debug-pass=Structure"*/};
 
     llvm::cl::ParseCommandLineOptions(sizeof(args) / sizeof(char*), args);
+    PP_RUNNER = new (std::nothrow) PPRunner();
+    if (!PP_RUNNER) {
+        llvm::llvm_shutdown();
+        globals_refcount--;
+        return ERR;
+    }
     return OK;
+}
+void llvm_backend_fin_globals()
+{
+    globals_refcount--;
+    if (globals_refcount != 0) return;
+    llvm::llvm_shutdown();
+    delete PP_RUNNER;
 }
 int llvm_initialize_primitive_information()
 {
@@ -40,12 +55,6 @@ int llvm_initialize_primitive_information()
     }
     PRIMITIVES[PT_VOID].alignment = 1;
     return OK;
-}
-void llvm_backend_fin_globals()
-{
-    globals_refcount--;
-    if (globals_refcount != 0) return;
-    llvm::llvm_shutdown();
 }
 
 llvm_backend* llvm_backend_new(thread_context* tc)
@@ -118,7 +127,15 @@ int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
 }
 }
 // CPP
-
+PPRunner::PPRunner()
+    : exec_session(), obj_link_layer(exec_session, []() {
+          return llvm::make_unique<llvm::SectionMemoryManager>();
+      })
+{
+}
+PPRunner::~PPRunner()
+{
+}
 LLVMBackend::LLVMBackend(thread_context* tc)
     : _tc(tc), _context(), _builder(_context),
       _global_value_store(atomic_ureg_load(&tc->t->node_ids), NULL)
@@ -257,7 +274,7 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     TIME(lle = genModules(););
     tflush();
     if (lle) return lle;
-    TIME(lle = emitModule(););
+    TIME(lle = emitModule(false););
     tflush();
     // PERF: instead of this last minute checking
     // just have different buffers for the different reset types
@@ -294,10 +311,82 @@ void LLVMBackend::remapLocalID(ureg old_id, ureg new_id)
     }
     _local_value_store[old_id - PRIV_SYMBOL_OFFSET] = NULL;
 }
+llvm_error LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr)
+{
+    llvm::FunctionType* func_sig;
+    llvm::Type* ret_type;
+    ast_elem* ret_ctype = get_resolved_ast_node_ctype(expr->pp_expr);
+    llvm_error lle = lookupCType(ret_ctype, &ret_type, NULL);
+    if (lle) return lle;
+
+    func_sig = llvm::FunctionType::get(ret_type, false);
+    if (!func_sig) return LLE_FATAL;
+
+    llvm::Function* func = llvm::Function::Create(
+        func_sig, llvm::Function::ExternalLinkage, func_name, _module);
+    if (!func) return LLE_FATAL;
+    llvm::BasicBlock* func_block = llvm::BasicBlock::Create(_context, "", func);
+    if (!func_block) return LLE_FATAL;
+    assert(_control_flow_ctx.size() == 0);
+    _control_flow_ctx.emplace_back();
+    ControlFlowContext& ctx = _control_flow_ctx.back();
+    _builder.SetInsertPoint(func_block);
+    ctx.first_block = func_block;
+    ctx.following_block = NULL;
+    _curr_fn = func;
+    // only used in genScopeValue and thats never called here
+    _curr_fn_ast_node = NULL;
+    _builder.SetInsertPoint(func_block);
+    llvm::Value* val;
+    lle = genAstNode(expr->pp_expr, NULL, &val);
+    assert(!ctx.following_block && !ctx.value);
+    _builder.CreateRet(val);
+    _control_flow_ctx.pop_back();
+    return lle;
+}
 llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
 {
-    assert(false); // TODO
-    return LLE_OK;
+    // init id space
+    _mod_startid = 0;
+    _mod_endid = 0;
+    _private_sym_count = private_sym_count;
+    if (reserveSymbols(private_sym_count, 0)) return LLE_FATAL;
+
+    // create actual module
+    _module =
+        new (std::nothrow) llvm::Module(_mod_handle->module_str, _context);
+    if (!_module) return LLE_OK;
+    _module->setTargetTriple(_target_machine->getTargetTriple().str());
+    _module->setDataLayout(*_data_layout);
+    std::string func_name = "__pp_" + std::to_string((ureg)pp);
+    llvm_error lle = genPPFunc(func_name.c_str(), pp);
+    if (lle) return lle;
+
+    // emit
+    lle = emitModule(true);
+    if (lle) return lle;
+
+    auto mainfn = PP_RUNNER->exec_session.lookup(
+        llvm::orc::JITDylibSearchList(
+            {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
+        PP_RUNNER->exec_session.intern(func_name));
+    auto mainptr = (long int (*)())mainfn->getAddress();
+
+    printf("pp says: %i\n", mainptr());
+
+    for (ureg id : _reset_after_emit) {
+        auto val = (llvm::Value*)_local_value_store[id];
+        if (llvm::isa<llvm::GlobalVariable>(*val)) {
+            ((llvm::GlobalVariable*)val)->removeFromParent();
+        }
+        else {
+            assert(llvm::isa<llvm::Function>(*val));
+            ((llvm::Function*)val)->removeFromParent();
+        }
+    }
+    delete _module;
+    _reset_after_emit.clear();
+    return lle;
 }
 llvm_error LLVMBackend::genModules()
 {
@@ -545,6 +634,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     // TODO: proper error handling
     llvm_error lle;
     switch (n->kind) {
+        case EXPR_PP: return LLE_OK;
         case OSC_MODULE:
         case OSC_EXTEND:
             assert(!vl);
@@ -1092,34 +1182,59 @@ llvm_error LLVMBackend::emitModuleIR()
     ir_stream.flush();
     return LLE_OK;
 }
-llvm_error
-LLVMBackend::emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm)
+llvm_error LLVMBackend::emitModuleToStream(
+    llvm::TargetLibraryInfoImpl* tlii, llvm::raw_pwrite_stream* stream,
+    bool emit_asm)
 {
     std::error_code ec;
-    auto file_type = emit_asm ? llvm::TargetMachine::CGFT_AssemblyFile
-                              : llvm::TargetMachine::CGFT_ObjectFile;
-    llvm::raw_fd_ostream file_stream{emit_asm ? _mod_handle->module_str + ".asm"
-                                              : _mod_handle->module_obj,
-                                     ec, llvm::sys::fs::F_None};
+    auto file_type = llvm::TargetMachine::CGFT_ObjectFile;
+    if (emit_asm) file_type = llvm::TargetMachine::CGFT_AssemblyFile;
     llvm::legacy::PassManager CodeGenPasses;
+
     CodeGenPasses.add(llvm::createTargetTransformInfoWrapperPass(
         _target_machine->getTargetIRAnalysis()));
 
     CodeGenPasses.add(new llvm::TargetLibraryInfoWrapperPass(*tlii));
 
     if (_target_machine->addPassesToEmitFile(
-            CodeGenPasses, file_stream, nullptr, file_type)) {
+            CodeGenPasses, *stream, nullptr, file_type)) {
         llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
         return LLE_FATAL;
     }
     CodeGenPasses.run(*_module);
-    file_stream.flush();
+    stream->flush();
     return LLE_OK;
 }
-llvm_error LLVMBackend::emitModule()
+llvm_error
+LLVMBackend::emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm)
 {
-    tprintf("emmitting {%s} ", _mod_handle->module_str.c_str());
+    std::error_code ec;
+    llvm::raw_fd_ostream file_stream{emit_asm ? _mod_handle->module_str + ".asm"
+                                              : _mod_handle->module_obj,
+                                     ec, llvm::sys::fs::F_None};
+    return emitModuleToStream(tlii, &file_stream, emit_asm);
+}
+llvm_error LLVMBackend::emitModuleToPP(llvm::TargetLibraryInfoImpl* tlii)
+{
+    // output IR module to a memory buffer file
+    llvm::SmallVector<char, 0> obj_sv;
+    llvm::raw_svector_ostream obj_sv_stream{obj_sv};
+    llvm_error lle = emitModuleToStream(tlii, &obj_sv_stream, false);
+    if (lle) return lle;
+    std::unique_ptr<llvm::MemoryBuffer> obj_svmb{
+        new llvm::SmallVectorMemoryBuffer{std::move(obj_sv)}};
 
+    // link that mem buffer file
+    PP_RUNNER->obj_link_layer.add(
+        PP_RUNNER->exec_session.getMainJITDylib(), std::move(obj_svmb));
+    return LLE_OK;
+}
+
+llvm_error LLVMBackend::emitModule(bool pp_mode)
+{
+    if (!pp_mode) {
+        tprintf("emmitting {%s} ", _mod_handle->module_str.c_str());
+    }
     llvm::Triple TargetTriple(_module->getTargetTriple());
     std::unique_ptr<llvm::TargetLibraryInfoImpl> TLII(
         new llvm::TargetLibraryInfoImpl(TargetTriple));
@@ -1143,7 +1258,6 @@ llvm_error LLVMBackend::emitModule()
     pmb.LoopVectorize = false;
     pmb.RerollLoops = false;
     pmb.DisableGVNLoadPRE = true;
-    pmb.VerifyInput = true;
     pmb.MergeFunctions = false;
     pmb.PrepareForLTO = false;
     pmb.PrepareForThinLTO = false;
@@ -1167,10 +1281,16 @@ llvm_error LLVMBackend::emitModule()
 
     PerModulePasses.run(*_module);
     llvm_error lle = LLE_OK;
-    if (!lle && _tc->t->emit_ll) emitModuleIR();
-    if (_tc->t->emit_asm) lle = emitModuleToFile(TLII.get(), true);
-    if (!lle && _tc->t->emit_exe) emitModuleToFile(TLII.get(), false);
-    return LLE_OK;
+    if (!pp_mode) {
+        if (!lle && _tc->t->emit_ll) emitModuleIR();
+        if (_tc->t->emit_asm) lle = emitModuleToFile(TLII.get(), true);
+        if (!lle && _tc->t->emit_exe) emitModuleToFile(TLII.get(), false);
+    }
+    else {
+        emitModuleIR();
+        emitModuleToPP(TLII.get());
+    }
+    return lle;
 }
 llvm_error
 linkLLVMModules(LLVMModule** start, LLVMModule** end, char* output_path)

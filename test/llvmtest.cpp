@@ -181,7 +181,6 @@ int runJitCompiler()
     llvm::orc::JITDylib& main_dylib = exec_sess.getMainJITDylib();
     llvm::orc::RTDyldObjectLinkingLayer obj_link_layer{
         exec_sess, []() { return llvm::make_unique<SectionMemoryManager>(); }};
-
     // create IR Module
     LLVMContext ctx;
     std::unique_ptr<llvm::Module> mod{createTestModule(ctx)};

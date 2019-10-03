@@ -603,7 +603,9 @@ resolve_error overload_applicable(
     *applicable = true;
     if (fn) {
         return resolve_ast_node(
-            r, fn->return_type, overload->sym.declaring_st, ppl, ctype, NULL);
+            r, fn->return_type, overload->sym.declaring_st, ppl,
+            &fn->return_ctype, NULL);
+        if (ctype) *ctype = fn->return_ctype;
     }
     else {
         // TODO: allow non void macros
@@ -1699,11 +1701,10 @@ resolve_error resolver_run(resolver* r)
             if (re == RE_SYMBOL_NOT_FOUND_YET) continue;
             if (re) return re;
             if (rn->node->kind == EXPR_PP) {
-                ast_elem* ctype =
-                    get_resolved_ast_node_ctype(((expr_pp*)rn->node)->pp_expr);
-                if (ctype != VOID_ELEM && ctype != UNREACHABLE_ELEM) {
-                    // TODO: execute
-                }
+                llvm_error lle = llvm_backend_run_pp(
+                    r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
+                    (expr_pp*)rn->node);
+                if (!lle) return RE_FATAL;
             }
             progress = true;
             sbuffer_remove(&r->pp_resolve_nodes, &sbi, sizeof(pp_resolve_node));
