@@ -284,19 +284,22 @@ static resolve_error add_ast_node_decls(
         }
         case SC_STRUCT:
         case SC_TRAIT: {
+            sc_struct* str = (sc_struct*)n;
             re = add_symbol(r, st, sst, (symbol*)n);
+            bool members_public_st =
+                public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED;
+            str->id = 0; // so members can inc this and we get a member id
+            re = add_body_decls(
+                r, st, NULL, ppl, &str->sc.body, members_public_st);
+            if (re) return re;
             if (public_st &&
                 ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
-                ((sc_struct*)n)->id = r->public_sym_count++;
+                str->id = r->public_sym_count++;
             }
             else {
-                ((sc_struct*)n)->id = r->private_sym_count++;
+                str->id = r->private_sym_count++;
             }
-            if (re) return re;
-            public_st =
-                public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED;
-            return add_body_decls(
-                r, st, NULL, ppl, &((scope*)n)->body, public_st);
+            return RE_OK;
         }
         case SC_MACRO:
         case SC_FUNC: {
@@ -403,14 +406,26 @@ static resolve_error add_ast_node_decls(
             // fallthrough
         }
         case SYM_VAR: {
-            if (public_st &&
-                ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
-                ((sym_var*)n)->var_id = r->public_sym_count++;
+            re = add_symbol(r, st, sst, (symbol*)n);
+            if (re) return re;
+            sym_var* v = (sym_var*)n;
+            ast_node_kind owning_kind = v->sym.declaring_st->owning_node->kind;
+            if (!ast_flags_get_static(n->flags) &&
+                (owning_kind == SC_STRUCT || owning_kind == SC_TRAIT)) {
+                assert(owning_kind == SC_STRUCT); // TODO: generics, traits, etc
+                v->var_id =
+                    ((sc_struct*)v->sym.declaring_st->owning_node)->id++;
             }
             else {
-                ((sym_var*)n)->var_id = r->private_sym_count++;
+                if (public_st &&
+                    ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
+                    v->var_id = r->public_sym_count++;
+                }
+                else {
+                    v->var_id = r->private_sym_count++;
+                }
             }
-            return add_symbol(r, st, sst, (symbol*)n);
+            return RE_OK;
         }
         case SYM_NAMED_USING: {
             re = add_symbol(r, st, sst, (symbol*)n);
@@ -776,6 +791,7 @@ bool is_lvalue(ast_node* expr)
         expr_op_unary* ou = (expr_op_unary*)expr;
         return (ou->node.op_kind == OP_DEREF);
     }
+    if (expr->kind == EXPR_MEMBER_ACCESS) return true;
     return false;
 }
 resolve_error choose_binary_operator_overload(
@@ -1607,12 +1623,6 @@ static void adjust_node_ids(ureg sym_offset, ast_node* n)
             adjust_body_ids(sym_offset, &((sc_struct*)n)->sc.body);
         }
         default: return;
-    }
-}
-void adjust_body_ids(ureg sym_offset, ast_body* b)
-{
-    for (ast_node** i = b->elements; *i; i++) {
-        adjust_node_ids(sym_offset, *i);
     }
 }
 resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)

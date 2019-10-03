@@ -339,9 +339,13 @@ llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align)
                     sizeof(llvm::Type*) * st->sc.body.symtab->decl_count);
                 ureg memcnt = 0;
                 for (ast_node** i = st->sc.body.elements; *i; i++) {
-                    // TODO: usings
+                    // TODO: usings, static members, etc.
                     if ((**i).kind == SYM_VAR ||
                         (**i).kind == SYM_VAR_INITIALIZED) {
+                        if (ast_flags_get_static((**i).flags)) {
+                            llvm_error lle = genAstNode(*i, NULL, NULL);
+                            if (lle) return lle;
+                        }
                         lookupCType(
                             ((sym_var*)*i)->ctype, &members[memcnt], NULL);
                         memcnt++;
@@ -697,7 +701,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                             ((sym_var_initialized*)n)->initial_value, NULL, &v);
                         if (lle) return lle;
                         if (!_builder.CreateAlignedStore(
-                                v, var_val, align, false))
+                                var_val, v, align, false))
                             return LLE_FATAL;
                     }
                 }
@@ -727,14 +731,12 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             ureg align;
             lle = lookupCType((ast_elem*)st, NULL, &align);
             if (lle) return lle;
-            ureg idx = 0;
-            for (ast_node** i = st->sc.body.elements;; i++) {
-                assert(*i);
-                if (*i == (ast_node*)ema->target.sym) break;
-                if ((**i).kind == SYM_VAR || (**i).kind == SYM_VAR_INITIALIZED)
-                    idx++;
-            }
-            assert(vl);
+
+            assert(
+                ema->target.sym->node.kind == SYM_VAR ||
+                ema->target.sym->node.kind == SYM_VAR_INITIALIZED);
+            ureg idx = ((sym_var*)ema->target.sym)->var_id;
+            assert(vl || vl_loaded);
             auto gep = _builder.CreateStructGEP(v, idx);
             if (vl_loaded) {
                 *vl_loaded = _builder.CreateAlignedLoad(gep, align);

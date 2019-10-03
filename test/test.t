@@ -1,4 +1,4 @@
-//require "test2.tau";
+require "print.t";
 
 ##func foo(i: int)-> int {
     if(i < 5){
@@ -18,8 +18,6 @@
         };
     };
 }
-
-public func printf(x: string, y: int, c: int);
 
 
 public func main() -> int{
