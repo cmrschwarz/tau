@@ -1732,8 +1732,8 @@ resolve_error resolver_run(resolver* r)
     }
     return RE_OK;
 }
-int resolver_resolve_and_emit(
-    resolver* r, mdg_node** start, mdg_node** end, llvm_module** module)
+int resolver_resolve(
+    resolver* r, mdg_node** start, mdg_node** end, ureg* startid)
 {
     r->retracing_type_loop = false;
     r->public_sym_count = 0;
@@ -1748,12 +1748,18 @@ int resolver_resolve_and_emit(
     if (re) return re;
     re = resolver_run(r);
     if (re) return re;
-    ureg startid = atomic_ureg_add(&r->tc->t->node_ids, r->public_sym_count);
-    ureg endid = startid + r->public_sym_count;
-    ureg private_sym_count = r->private_sym_count - UREGH_MAX;
-    re = resolver_cleanup(r, startid);
+    *startid = atomic_ureg_add(&r->tc->t->node_ids, r->public_sym_count);
+    re = resolver_cleanup(r, *startid);
     if (re) return re;
+    return RE_OK;
+}
+int resolver_emit(
+    resolver* r, mdg_node** start, mdg_node** end, ureg startid,
+    llvm_module** module)
+{
     if (tauc_success_so_far(r->tc->t) && r->tc->t->needs_emit_stage) {
+        ureg endid = startid + r->public_sym_count;
+        ureg private_sym_count = r->private_sym_count - UREGH_MAX;
         llvm_error lle = llvm_backend_emit_module(
             r->backend, start, end, startid, endid, private_sym_count, module);
         if (lle == LLE_FATAL) return RE_FATAL;
@@ -1763,6 +1769,15 @@ int resolver_resolve_and_emit(
         *module = NULL;
     }
     return OK;
+}
+int resolver_resolve_and_emit(
+    resolver* r, mdg_node** start, mdg_node** end, llvm_module** module)
+{
+    ureg startid;
+    int res;
+    TIME(res = resolver_resolve(r, start, end, &startid););
+    if (res) return res;
+    return resolver_emit(r, start, end, startid, module);
 }
 int resolver_partial_fin(resolver* r, int i, int res)
 {
