@@ -281,8 +281,7 @@ static resolve_error add_ast_node_decls(
             pprn->node = n;
             pprn->ppl = ppl;
             return add_ast_node_decls(
-                r, st ? st->pp_symtab : st, sst ? sst->pp_symtab : NULL, ppl,
-                ((expr_pp*)n)->pp_expr, false);
+                r, st, sst, ppl, ((expr_pp*)n)->pp_expr, false);
         }
         case EXPR_LITERAL:
         case EXPR_IDENTIFIER: return RE_OK;
@@ -1688,14 +1687,14 @@ resolve_error resolver_run(resolver* r)
     resolve_error re;
     r->pp_mode = true;
     sbuffer_iterator sbi;
-    sbi = sbuffer_iterator_begin(&r->pp_resolve_nodes);
     bool progress;
     do {
         progress = false;
+        sbi = sbuffer_iterator_begin_at_end(&r->pp_resolve_nodes);
         for (pp_resolve_node* rn =
-                 sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node));
+                 sbuffer_iterator_previous(&sbi, sizeof(pp_resolve_node));
              rn != NULL;
-             rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node))) {
+             rn = sbuffer_iterator_previous(&sbi, sizeof(pp_resolve_node))) {
             re = resolve_ast_node(
                 r, rn->node, rn->declaring_st, rn->ppl, NULL, NULL);
             if (re == RE_SYMBOL_NOT_FOUND_YET) continue;
@@ -1704,7 +1703,7 @@ resolve_error resolver_run(resolver* r)
                 llvm_error lle = llvm_backend_run_pp(
                     r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
                     (expr_pp*)rn->node);
-                if (!lle) return RE_FATAL;
+                if (lle) return RE_FATAL;
             }
             progress = true;
             sbuffer_remove(&r->pp_resolve_nodes, &sbi, sizeof(pp_resolve_node));

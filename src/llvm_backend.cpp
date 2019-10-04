@@ -338,6 +338,7 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr)
     _curr_fn_ast_node = NULL;
     _builder.SetInsertPoint(func_block);
     llvm::Value* val;
+    ctx.continues_afterwards = true;
     lle = genAstNode(expr->pp_expr, NULL, &val);
     assert(!ctx.following_block && !ctx.value);
     _builder.CreateRet(val);
@@ -783,7 +784,32 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (vl_loaded) {
                 *vl_loaded =
                     _builder.CreateAlignedLoad(ctx->value, ctx->value_align);
-                if (*vl_loaded) return LLE_FATAL;
+                if (!*vl_loaded) return LLE_FATAL;
+            }
+            _control_flow_ctx.pop_back();
+            return LLE_OK;
+        }
+        case EXPR_BLOCK: {
+            expr_block* b = (expr_block*)n;
+            llvm::BasicBlock* following_block;
+            lle = getFollowingBlock(&following_block);
+            if (lle) return lle;
+            _control_flow_ctx.emplace_back();
+            ControlFlowContext* ctx = &_control_flow_ctx.back();
+            b->control_flow_ctx = ctx;
+            ctx->following_block = following_block;
+            lle = genScopeValue(b->ctype, *ctx);
+            if (lle) return lle;
+            ctx->first_block = _builder.GetInsertBlock();
+            lle = genAstBody(&b->body, true);
+            if (lle) return lle;
+            if (!_builder.CreateBr(following_block)) return LLE_FATAL;
+            _builder.SetInsertPoint(following_block);
+            if (vl) *vl = ctx->value;
+            if (vl_loaded) {
+                *vl_loaded =
+                    _builder.CreateAlignedLoad(ctx->value, ctx->value_align);
+                if (!*vl_loaded) return LLE_FATAL;
             }
             _control_flow_ctx.pop_back();
             return LLE_OK;

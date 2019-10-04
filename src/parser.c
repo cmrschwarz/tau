@@ -356,18 +356,20 @@ static inline int pop_bpd_pp(parser* p, parse_error pe)
         pp_level++;
         bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
     } while (bpd && bpd->body == bpd_popped.body && bpd->node != NULL);
-    for (ureg i = 0; i < pp_level; i++) {
+    while (true) {
         if (!bpd || bpd->node != NULL) {
             if (bpd) sbuffer_iterator_next(&it, sizeof(body_parse_data));
-            while (i < pp_level) {
+            while (pp_level > 0) {
                 bpd = sbuffer_insert(
                     &p->body_stack, &it, sizeof(body_parse_data));
                 if (!bpd) return ERR;
                 init_bpd(bpd, NULL, bpd_popped.body);
-                i++;
+                pp_level--;
             }
             break;
         }
+        pp_level--;
+        if (pp_level == 0) break;
         bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
     }
     bpd->decl_count += bpd_popped.decl_count;
