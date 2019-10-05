@@ -239,17 +239,13 @@ LLVMBackend::initModule(mdg_node** start, mdg_node** end, LLVMModule** module)
 {
     LLVMModule* m = new LLVMModule();
     if (!m) return LLE_FATAL;
-    tprintf("generating {");
     for (mdg_node** n = start; n != end; n++) {
         m->module_str += (**n).name;
-        tprintf("%s", (**n).name);
         if (n + 1 != end) {
-            tprintf(", ");
             m->module_str += "&";
         }
     }
     m->module_obj = m->module_str + ".obj";
-    tput("} ");
     *module = m;
     _mod_handle = m;
     _mods_start = start;
@@ -271,6 +267,7 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
     _module->setDataLayout(*_data_layout);
     llvm_error lle;
+    tprintf("generating {%s}", _mod_handle->module_str.c_str());
     TIME(lle = genModules(););
     tflush();
     if (lle) return lle;
@@ -315,11 +312,30 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr)
 {
     llvm::FunctionType* func_sig;
     llvm::Type* ret_type;
+    ureg size;
+    ureg align;
     ast_elem* ret_ctype = get_resolved_ast_node_ctype(expr->pp_expr);
-    llvm_error lle = lookupCType(ret_ctype, &ret_type, NULL, NULL);
-    if (lle) return lle;
+    llvm_error lle;
+    if (ret_ctype != VOID_ELEM && ret_ctype != UNREACHABLE_ELEM) {
+        lle = lookupCType(ret_ctype, &ret_type, &align, &size);
+        if (lle) return lle;
+        assert(align <= REG_BYTES); // TODO
+        if (size <= sizeof(expr->result_buffer)) {
+            expr->result = (void*)&expr->result_buffer[0];
+        }
+        else {
+            expr->result = malloc(size); // TODO: use tempmem for this
+        }
+        std::array<llvm::Type*, 1> args{ret_type};
+        func_sig =
+            llvm::FunctionType::get(_primitive_types[PT_VOID], args, false);
+    }
+    else {
+        func_sig = llvm::FunctionType::get(
+            _primitive_types[PT_VOID],
+            _primitive_types[PT_VOID]->getPointerTo(), false);
+    }
 
-    func_sig = llvm::FunctionType::get(ret_type, false);
     if (!func_sig) return LLE_FATAL;
 
     llvm::Function* func = llvm::Function::Create(
@@ -371,9 +387,8 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
         llvm::orc::JITDylibSearchList(
             {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
         PP_RUNNER->exec_session.intern(func_name));
-    auto mainptr = (long int (*)())mainfn->getAddress();
-
-    printf("pp says: %i\n", mainptr());
+    auto jit_func = (void (*)(void*))mainfn->getAddress();
+    jit_func(pp->result);
 
     for (ureg id : _reset_after_emit) {
         auto val = (llvm::Value*)_local_value_store[id];
@@ -645,7 +660,11 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     // TODO: proper error handling
     llvm_error lle;
     switch (n->kind) {
-        case EXPR_PP: return LLE_OK;
+        case EXPR_PP: {
+            if (!vl && !vl_loaded) return LLE_OK;
+            assert(false); // TODO
+            return LLE_OK;
+        }
         case OSC_MODULE:
         case OSC_EXTEND:
             assert(!vl);

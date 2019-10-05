@@ -1565,6 +1565,7 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     ureg start = t->start;
     lx_void(&p->lx);
     expr_pp* sp = alloc_perm(p, sizeof(expr_pp));
+    sp->result = NULL;
     if (!sp) return PE_FATAL;
     ast_node_init(&sp->node, EXPR_PP);
     if (push_bpd_pp(p, (ast_node*)sp)) return PE_FATAL;
