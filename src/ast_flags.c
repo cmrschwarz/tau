@@ -88,6 +88,15 @@ bool ast_flags_get_relative_import(ast_flags f)
     return bitmask_get_bit(f, ASTF_RELATIVE_IMPORT_OFFSET);
 }
 
+void ast_flags_set_pasting_pp_expr(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_PASTING_PP_EXPR_OFFSET);
+}
+bool ast_flags_get_pasting_pp_expr(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_PASTING_PP_EXPR_OFFSET);
+}
+
 void ast_flags_set_error(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_ERROR_OFFSET);

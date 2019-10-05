@@ -274,14 +274,24 @@ static resolve_error add_ast_node_decls(
                 r, st, sst, ppl, ((stmt_using*)n)->target, public_st);
         }
         case EXPR_PP: {
-            pp_resolve_node* pprn =
-                sbuffer_append(&r->pp_resolve_nodes, sizeof(pp_resolve_node));
-            if (!pprn) return RE_FATAL;
-            pprn->declaring_st = st;
-            pprn->node = n;
-            pprn->ppl = ppl;
-            return add_ast_node_decls(
+            bool cp = r->contains_paste;
+            r->contains_paste = false;
+            re = add_ast_node_decls(
                 r, st, sst, ppl, ((expr_pp*)n)->pp_expr, false);
+            if (re) return re;
+            if (r->contains_paste) {
+                ast_flags_set_pasting_pp_expr(&n->flags);
+                ppl = 0;
+            }
+            if (ppl == 0) {
+                pp_resolve_node* pprn = sbuffer_append(
+                    &r->pp_resolve_nodes, sizeof(pp_resolve_node));
+                if (!pprn) return RE_FATAL;
+                pprn->declaring_st = st;
+                pprn->node = n;
+                pprn->ppl = ppl;
+            }
+            r->contains_paste = cp;
         }
         case EXPR_LITERAL:
         case EXPR_IDENTIFIER: return RE_OK;
@@ -1389,8 +1399,12 @@ static inline resolve_error resolve_ast_node_raw(
             return resolve_macro_call(r, (expr_macro_call*)n, st, value, ctype);
         }
         case EXPR_PP: {
+            expr_pp* ppe = (expr_pp*)n;
+            if (ast_flags_get_pasting_pp_expr(n->flags)) {
+                if (ppe->result != NULL) return RE_SYMBOL_NOT_FOUND_YET;
+            }
             re = resolve_ast_node_raw(
-                r, ((expr_pp*)n)->pp_expr, st, ppl + 1, value, ctype);
+                r, ppe->pp_expr, st, ppl + 1, value, ctype);
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
             return RE_OK;
@@ -1809,6 +1823,7 @@ int resolver_init(resolver* r, thread_context* tc)
     r->backend = llvm_backend_new(r->tc);
     if (!r->backend) return resolver_partial_fin(r, 3, ERR);
     r->allow_type_loops = false;
+    r->contains_paste = false;
     r->curr_symbol_decl = NULL;
     r->type_loop_start = NULL;
     r->curr_expr_block_owner = NULL;

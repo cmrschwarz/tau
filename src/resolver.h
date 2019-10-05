@@ -47,6 +47,7 @@ typedef struct resolver_s {
     bool pp_mode;
     bool allow_type_loops;
     bool retracing_type_loop;
+    bool contains_paste;
     llvm_backend* backend;
 } resolver;
 

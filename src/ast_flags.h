@@ -27,6 +27,7 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_RELATIVE_IMPORT_OFFSET 10
 // never needed simultaneous with relative import, so we share the bit
 #define ASTF_COMPUND_DECL_OFFSET 10
+#define ASTF_PASTING_PP_EXPR_OFFSET 10
 #define ASTF_OVERLOADED_IN_PP_OFFSET 11
 #define ASTF_USED_IN_PP_OFFSET 12
 
@@ -42,6 +43,7 @@ typedef enum ast_flags_values_e {
     ASTF_ERROR = 1 << ASTF_ERROR_OFFSET,
     ASTF_RELATIVE_IMPORT = 1 << ASTF_RELATIVE_IMPORT_OFFSET,
     ASTF_COMPUND_DECL = 1 << ASTF_COMPUND_DECL_OFFSET,
+    ASTF_PASTING_PP_EXPR = 1 << ASTF_PASTING_PP_EXPR_OFFSET,
     ASTF_OVERLOADED_IN_PP = 1 << ASTF_OVERLOADED_IN_PP_OFFSET,
     ASTF_USED_IN_PP = 1 << ASTF_USED_IN_PP_OFFSET,
 } ast_flags_values;
@@ -66,6 +68,9 @@ bool ast_flags_get_compound_decl(ast_flags f);
 
 void ast_flags_set_relative_import(ast_flags* f);
 bool ast_flags_get_relative_import(ast_flags f);
+
+void ast_flags_set_pasting_pp_expr(ast_flags* f);
+bool ast_flags_get_pasting_pp_expr(ast_flags f);
 
 void ast_flags_set_resolved(ast_flags* f);
 bool ast_flags_get_resolved(ast_flags f);
