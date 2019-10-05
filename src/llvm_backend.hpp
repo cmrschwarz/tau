@@ -146,6 +146,9 @@ struct LLVMBackend {
     llvm::Value** lookupVariableRaw(ureg id);
     llvm::Function** lookupFunctionRaw(ureg id);
     llvm::Type** lookupTypeRaw(ureg id);
+    llvm_error buildConstant(ast_elem* ctype, void* data, llvm::Constant** res);
+    llvm_error
+    buildPrimitiveConstant(primitive_kind pk, void* data, llvm::Constant** res);
     llvm_error
     lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size);
     llvm_error getFollowingBlock(llvm::BasicBlock** following_block);

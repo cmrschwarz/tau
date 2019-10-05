@@ -329,6 +329,7 @@ typedef struct expr_macro_call_s {
 typedef struct expr_pp_s {
     ast_node node;
     ast_node* pp_expr;
+    ast_elem* ctype;
     void* result;
     ureg result_buffer[2];
 } expr_pp;

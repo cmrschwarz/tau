@@ -314,10 +314,9 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr)
     llvm::Type* ret_type;
     ureg size;
     ureg align;
-    ast_elem* ret_ctype = get_resolved_ast_node_ctype(expr->pp_expr);
     llvm_error lle;
-    if (ret_ctype != VOID_ELEM && ret_ctype != UNREACHABLE_ELEM) {
-        lle = lookupCType(ret_ctype, &ret_type, &align, &size);
+    if (expr->ctype != VOID_ELEM && expr->ctype != UNREACHABLE_ELEM) {
+        lle = lookupCType(expr->ctype, &ret_type, &align, &size);
         if (lle) return lle;
         assert(align <= REG_BYTES); // TODO
         if (size <= sizeof(expr->result_buffer)) {
@@ -326,7 +325,7 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr)
         else {
             expr->result = malloc(size); // TODO: use tempmem for this
         }
-        std::array<llvm::Type*, 1> args{ret_type};
+        std::array<llvm::Type*, 1> args{ret_type->getPointerTo()};
         func_sig =
             llvm::FunctionType::get(_primitive_types[PT_VOID], args, false);
     }
@@ -356,8 +355,11 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr)
     llvm::Value* val;
     ctx.continues_afterwards = true;
     lle = genAstNode(expr->pp_expr, NULL, &val);
+    if (lle) return lle;
     assert(!ctx.following_block && !ctx.value);
-    _builder.CreateRet(val);
+    llvm::Argument* a = func->arg_begin();
+    if (!_builder.CreateStore(val, a)) return LLE_FATAL;
+    _builder.CreateRetVoid();
     _control_flow_ctx.pop_back();
     return lle;
 }
@@ -389,7 +391,7 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
         PP_RUNNER->exec_session.intern(func_name));
     auto jit_func = (void (*)(void*))mainfn->getAddress();
     jit_func(pp->result);
-
+    assert(*(ureg*)pp->result);
     for (ureg id : _reset_after_emit) {
         auto val = (llvm::Value*)_local_value_store[id];
         if (llvm::isa<llvm::GlobalVariable>(*val)) {
@@ -654,6 +656,51 @@ llvm_error LLVMBackend::genScopeValue(ast_elem* ctype, ControlFlowContext& ctx)
     }
     return LLE_OK;
 }
+
+llvm_error
+LLVMBackend::buildConstant(ast_elem* ctype, void* data, llvm::Constant** res)
+{
+    switch (ctype->kind) {
+        case SC_STRUCT: {
+            assert(false);
+            return LLE_FATAL;
+        }
+        case PRIMITIVE: {
+            auto pt = (primitive*)ctype;
+            primitive_kind pk = pt->sym.node.pt_kind;
+            switch (pk) {
+                case PT_INT:
+                case PT_UINT: {
+                    auto t = (llvm::IntegerType*)
+                        _primitive_types[pt->sym.node.pt_kind];
+                    auto c =
+                        llvm::ConstantInt::get(t, *(ureg*)data, (pk == PT_INT));
+                    if (!c) return LLE_FATAL;
+                    *res = c;
+                    return LLE_OK;
+                }
+                case PT_STRING: {
+                    auto c = _builder.CreateGlobalStringPtr(*(char**)data);
+                    if (!c) return LLE_FATAL;
+                    *res = c;
+                    return LLE_OK;
+                }
+                case PT_FLOAT: {
+                    auto c = llvm::ConstantFP::get(
+                        _context,
+                        *new llvm::APFloat(
+                            llvm::APFloatBase::IEEEsingle(), *(float*)data));
+                    if (!c) return LLE_FATAL;
+                    *res = c;
+                    return LLE_OK;
+                }
+                default: assert(false);
+            }
+        }
+        default: assert(false); return LLE_FATAL;
+    }
+}
+
 llvm_error
 LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
@@ -662,8 +709,11 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     switch (n->kind) {
         case EXPR_PP: {
             if (!vl && !vl_loaded) return LLE_OK;
-            assert(false); // TODO
-            return LLE_OK;
+            auto epp = (expr_pp*)n;
+            if (!epp->result) return genAstNode(epp->pp_expr, vl, vl_loaded);
+            assert(!vl);
+            return buildConstant(
+                epp->ctype, epp->result, (llvm::Constant**)vl_loaded);
         }
         case OSC_MODULE:
         case OSC_EXTEND:
@@ -684,14 +734,14 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     auto t = (llvm::IntegerType*)_primitive_types[n->pt_kind];
                     auto c = llvm::ConstantInt::get(t, l->value.str, 10);
                     if (!c) return LLE_FATAL;
-                    if (vl) *vl = c;
+                    assert(!vl);
                     if (vl_loaded) *vl_loaded = c;
                     return LLE_OK;
                 }
                 case PT_STRING: {
                     auto c = _builder.CreateGlobalStringPtr(l->value.str);
                     if (!c) return LLE_FATAL;
-                    if (vl) *vl = c;
+                    assert(!vl);
                     if (vl_loaded) *vl_loaded = c;
                     return LLE_OK;
                 }
@@ -700,7 +750,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                         _context,
                         *new llvm::APFloat(
                             llvm::APFloatBase::IEEEsingle(), l->value.str));
-                    if (vl) *vl = c;
+                    assert(!vl);
                     if (vl_loaded) *vl_loaded = c;
                     return LLE_OK;
                 }

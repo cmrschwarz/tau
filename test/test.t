@@ -1,6 +1,7 @@
 require "print.t";
- #1+2;
- #@res{
+
+public func main() -> int{
+    x := # @res{
         x:=0;
         y:=1;
         loop{
@@ -9,6 +10,6 @@ require "print.t";
             x++;
         }
     };
-public func main() -> int{
+    printfln("pp: %i", x);
     return 0;
 }

@@ -1400,13 +1400,24 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_PP: {
             expr_pp* ppe = (expr_pp*)n;
-            if (ast_flags_get_pasting_pp_expr(n->flags)) {
+            if (resolved) {
+                assert(!value);
+                if (ctype) *ctype = ppe->ctype;
+                return RE_OK;
+            }
+            if (r->pp_mode && ast_flags_get_pasting_pp_expr(n->flags)) {
                 if (ppe->result != NULL) return RE_SYMBOL_NOT_FOUND_YET;
             }
             re = resolve_ast_node_raw(
-                r, ppe->pp_expr, st, ppl + 1, value, ctype);
+                r, ppe->pp_expr, st, ppl + 1, value, &ppe->ctype);
             if (re) return re;
+            if (ctype) *ctype = ppe->ctype;
             ast_flags_set_resolved(&n->flags);
+            if (!r->pp_mode && !ppe->result) {
+                llvm_error lle = llvm_backend_run_pp(
+                    r->backend, r->id_space - PRIV_SYMBOL_OFFSET, ppe);
+                if (lle) return lle;
+            }
             return RE_OK;
         }
         case EXPR_MATCH: {
