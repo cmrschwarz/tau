@@ -316,7 +316,7 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr)
     llvm::FunctionType* func_sig;
     llvm::Type* ret_type;
     ast_elem* ret_ctype = get_resolved_ast_node_ctype(expr->pp_expr);
-    llvm_error lle = lookupCType(ret_ctype, &ret_type, NULL);
+    llvm_error lle = lookupCType(ret_ctype, &ret_type, NULL, NULL);
     if (lle) return lle;
 
     func_sig = llvm::FunctionType::get(ret_type, false);
@@ -455,13 +455,15 @@ llvm::Type** LLVMBackend::lookupTypeRaw(ureg id)
 {
     return (llvm::Type**)lookupAstElem(id);
 }
-llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align)
+llvm_error
+LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
 {
     switch (e->kind) {
         case PRIMITIVE: {
             primitive_kind kind = ((primitive*)e)->sym.node.pt_kind;
             if (t) *t = _primitive_types[kind];
             if (align) *align = PRIMITIVES[kind].alignment;
+            if (size) *size = PRIMITIVES[kind].size;
         } break;
         case SC_STRUCT: {
             sc_struct* st = (sc_struct*)e;
@@ -489,7 +491,8 @@ llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align)
                             if (lle) return lle;
                         }
                         lookupCType(
-                            ((sym_var*)*i)->ctype, &members[memcnt], NULL);
+                            ((sym_var*)*i)->ctype, &members[memcnt], NULL,
+                            NULL);
                         memcnt++;
                     }
                 }
@@ -504,11 +507,18 @@ llvm_error LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align)
                 *align = _data_layout->getStructLayout((llvm::StructType*)*tp)
                              ->getAlignment();
             }
+            if (size) {
+                *size = _data_layout->getTypeAllocSize((llvm::StructType*)*t);
+            }
         } break;
         case TYPE_POINTER: {
+            // this is the alignment requirement of the pointer itself, not
+            // the base type
             if (align) *align = PRIMITIVES[PT_VOID_PTR].alignment;
+            if (size) *size = PRIMITIVES[PT_VOID_PTR].size;
             if (!t) return LLE_OK;
-            llvm_error lle = lookupCType(((type_pointer*)e)->base, t, NULL);
+            llvm_error lle =
+                lookupCType(((type_pointer*)e)->base, t, NULL, NULL);
             if (lle) return lle;
             *t = (**t).getPointerTo();
         } break;
@@ -616,7 +626,7 @@ llvm_error LLVMBackend::genScopeValue(ast_elem* ctype, ControlFlowContext& ctx)
 {
     if (ctype != VOID_ELEM && ctype != UNREACHABLE_ELEM) {
         llvm::Type* t;
-        llvm_error lle = lookupCType(ctype, &t, &ctx.value_align);
+        llvm_error lle = lookupCType(ctype, &t, &ctx.value_align, NULL);
         if (lle) return lle;
         auto all = new llvm::AllocaInst(t, 0, nullptr, ctx.value_align, "");
         if (!all) return LLE_FATAL;
@@ -640,7 +650,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case OSC_EXTEND:
             assert(!vl);
             return LLE_OK; // these are handled by the osc iterator
-        case SC_STRUCT: return lookupCType((ast_elem*)n, NULL, NULL);
+        case SC_STRUCT: return lookupCType((ast_elem*)n, NULL, NULL, NULL);
         case SC_FUNC: return genFunction((sc_func*)n, (llvm::Function**)vl);
         case EXPR_OP_BINARY:
             return genBinaryOp((expr_op_binary*)n, vl, vl_loaded);
@@ -843,7 +853,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             sym_var* var = (sym_var*)n;
             llvm::Type* t;
             ureg align;
-            lle = lookupCType(var->ctype, &t, &align);
+            lle = lookupCType(var->ctype, &t, &align, NULL);
             if (lle) return lle;
             llvm::Value** llvar = lookupVariableRaw(var->var_id);
             if (!*llvar) {
@@ -919,7 +929,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             auto st = (sc_struct*)ema->target.sym->declaring_st->owning_node;
             assert(((ast_node*)st)->kind == SC_STRUCT);
             ureg align;
-            lle = lookupCType((ast_elem*)st, NULL, &align);
+            lle = lookupCType((ast_elem*)st, NULL, &align, NULL);
             if (lle) return lle;
 
             assert(
@@ -1110,7 +1120,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
     }
     llvm::FunctionType* func_sig;
     llvm::Type* ret_type;
-    llvm_error lle = lookupCType(fn->return_ctype, &ret_type, NULL);
+    llvm_error lle = lookupCType(fn->return_ctype, &ret_type, NULL, NULL);
     if (lle) return lle;
 
     if (fn->param_count != 0) {
@@ -1118,7 +1128,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
             &_tc->permmem, sizeof(llvm::Type*) * fn->param_count);
         if (!params) return LLE_FATAL;
         for (ureg i = 0; i < fn->param_count; i++) {
-            lle = lookupCType(fn->params[i].ctype, &params[i], NULL);
+            lle = lookupCType(fn->params[i].ctype, &params[i], NULL, NULL);
             if (lle) return lle;
         }
         llvm::ArrayRef<llvm::Type*> params_array_ref(
