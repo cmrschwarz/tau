@@ -1,15 +1,19 @@
 require "print.t";
-
+struct foo{
+    x: int;
+    y: int;
+}
 public func main() -> int{
-    x := # @res{
-        x:=0;
-        y:=1;
+    f := # @res{
+        f: foo;
+        f.x = 0;
+        f.y = 1;
         loop{
-            if(x == 10)break @res y;
-            y = y * 2;
-            x++;
+            if(f.x == 10)break @res f;
+            f.y = f.y * 2;
+            f.x++;
         }
     };
-    printfln("pp: %i", x);
+    printfln("pp: %i", f.y);
     return 0;
 }

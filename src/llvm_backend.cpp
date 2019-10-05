@@ -662,8 +662,34 @@ LLVMBackend::buildConstant(ast_elem* ctype, void* data, llvm::Constant** res)
 {
     switch (ctype->kind) {
         case SC_STRUCT: {
-            assert(false);
-            return LLE_FATAL;
+            llvm::StructType* st;
+            lookupCType(ctype, (llvm::Type**)&st, NULL, NULL);
+            auto struct_layout = _data_layout->getStructLayout(st);
+            ureg elem_count = st->getNumElements();
+            auto elems = new std::vector<llvm::Constant*>(elem_count);
+            ast_node** st_elem = ((sc_struct*)ctype)->sc.body.elements;
+            for (ureg i = 0; i < elem_count; i++) {
+                while (true) {
+                    if ((**st_elem).kind == SYM_VAR ||
+                        (**st_elem).kind == SYM_VAR_INITIALIZED) {
+                        break;
+                    }
+                    st_elem++;
+                    assert(*st_elem);
+                }
+                auto v = (sym_var*)*st_elem;
+                assert(v->var_id == i);
+                llvm::Constant* c;
+                llvm_error lle = buildConstant(
+                    v->ctype, ptradd(data, struct_layout->getElementOffset(i)),
+                    &c);
+                if (lle) return lle;
+                (*elems)[i] = c;
+                st_elem++;
+            }
+            *res = llvm::ConstantStruct::get(st, *elems);
+            if (!*res) return LLE_FATAL;
+            return LLE_OK;
         }
         case PRIMITIVE: {
             auto pt = (primitive*)ctype;
