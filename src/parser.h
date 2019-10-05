@@ -17,6 +17,7 @@ typedef enum parse_error_e {
 } parse_error;
 
 typedef struct parser_s {
+    ureg ppl;
     lexer lx;
     mdg_node* current_module;
     sbuffer body_stack; // sounds kinda morbid :)

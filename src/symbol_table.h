@@ -16,6 +16,7 @@ typedef struct symbol_table_s {
     symbol_table* parent; // this points to the postprocessing symtab for ppsts
     ast_elem* owning_node;
     symbol_table* pp_symtab;
+    ureg ppl;
 } symbol_table;
 
 typedef struct symbol_table_with_usings {
@@ -25,7 +26,7 @@ typedef struct symbol_table_with_usings {
 
 int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
-    ast_elem* owning_node);
+    ast_elem* owning_node, ureg ppl);
 void symbol_table_fin(symbol_table* st);
 
 void symbol_table_insert_using(

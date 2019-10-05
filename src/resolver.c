@@ -277,7 +277,7 @@ static resolve_error add_ast_node_decls(
             bool cp = r->contains_paste;
             r->contains_paste = false;
             re = add_ast_node_decls(
-                r, st, sst, ppl, ((expr_pp*)n)->pp_expr, false);
+                r, st, sst, ppl + 1, ((expr_pp*)n)->pp_expr, false);
             if (re) return re;
             if (r->contains_paste) {
                 ast_flags_set_pasting_pp_expr(&n->flags);
@@ -913,7 +913,7 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
     } while (s);
     assert(children_count > 0);
     symbol_table* pst;
-    if (symbol_table_init(&pst, children_count, use, true, (ast_elem*)ip)) {
+    if (symbol_table_init(&pst, children_count, use, true, (ast_elem*)ip, 0)) {
         return RE_FATAL;
     }
     pst->parent = NULL;
@@ -1072,10 +1072,31 @@ static inline resolve_error resolve_ast_node_raw(
             symbol** s = symbol_table_lookup(
                 st, ppl, AM_DEFAULT, e->value.str, &decl_ppl);
             if (!s) return report_unknown_symbol(r, n, st);
+            ast_elem* sym;
             re = resolve_ast_node(
-                r, (ast_node*)*s, (**s).declaring_st, decl_ppl, value, ctype);
+                r, (ast_node*)*s, (**s).declaring_st, decl_ppl, &sym, ctype);
             if (re) return re;
-            e->value.sym = *s;
+            assert(ast_elem_is_symbol(sym));
+            e->value.sym = (symbol*)sym;
+            if (value) *value = sym;
+            if (decl_ppl < ppl) {
+                if (sym->kind == SYM_VAR || sym->kind == SYM_VAR_INITIALIZED) {
+                    symbol* s = (symbol*)sym;
+                    src_range_large id_sr, sym_sr;
+                    src_range_unpack(e->node.srange, &id_sr);
+                    id_sr.file = ast_node_get_file(n, st);
+                    src_range_unpack(s->node.srange, &sym_sr);
+                    sym_sr.file =
+                        ast_node_get_file((ast_node*)sym, s->declaring_st);
+                    error_log_report_annotated_twice(
+                        r->tc->err_log, ES_RESOLVER, false,
+                        "cannot use variable of lesser preprocessing level",
+                        id_sr.file, id_sr.start, id_sr.end, "usage here",
+                        sym_sr.file, sym_sr.start, sym_sr.end,
+                        "variable defined here");
+                    return RE_ERROR;
+                }
+            }
             ast_flags_set_resolved(&n->flags);
             return RE_OK;
         }
@@ -1089,8 +1110,7 @@ static inline resolve_error resolve_ast_node_raw(
         case EXPR_NO_BLOCK_MACRO_CALL: {
             expr_call* c = (expr_call*)n;
             assert(resolved); // otherwise this would still be a EXPR_CALL
-            assert(!value);
-            RETURN_RESOLVED(value, ctype, NULL, c->target.macro_block->ctype);
+            RETURN_RESOLVED(value, ctype, c, c->target.macro_block->ctype);
         }
 
         case EXPR_CONTINUE:
@@ -1339,7 +1359,7 @@ static inline resolve_error resolve_ast_node_raw(
             else {
                 assert(!value);
             }
-            RETURN_RESOLVED(value, ctype, value, b->ctype);
+            RETURN_RESOLVED(value, ctype, NULL, b->ctype);
         }
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
@@ -1392,7 +1412,7 @@ static inline resolve_error resolve_ast_node_raw(
         case EXPR_MACRO_CALL: {
             // TODO ctype
             if (resolved) {
-                assert(!value);
+                *value = (ast_elem*)n;
                 *ctype = ((expr_macro_call*)n)->ctype;
                 return RE_OK;
             }
@@ -1437,9 +1457,8 @@ static inline resolve_error resolve_ast_node_raw(
             return RE_OK;
         }
         case SYM_PARAM: {
-            assert(!value);
             sym_param* p = (sym_param*)n;
-            if (resolved) RETURN_RESOLVED(value, ctype, NULL, p->ctype);
+            if (resolved) RETURN_RESOLVED(value, ctype, p, p->ctype);
             return resolve_param(r, p, ppl, ctype);
         }
         default: assert(false); return RE_UNKNOWN_SYMBOL;
@@ -1667,7 +1686,7 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
         // TODO: init pp symtabs
         int res = symbol_table_init(
             &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
-            atomic_ureg_load(&(**i).using_count), true, (ast_elem*)*i);
+            atomic_ureg_load(&(**i).using_count), true, (ast_elem*)*i, 0);
         if (res) return RE_FATAL;
         if (!(**i).symtab) return RE_FATAL;
         set_parent_symtabs(&(**i).symtab, r->tc->t->root_symtab);

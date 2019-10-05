@@ -22,7 +22,7 @@ static inline symbol_table_with_usings* get_stwu(symbol_table* st)
 }
 int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
-    ast_elem* owning_node)
+    ast_elem* owning_node, ureg ppl)
 {
     assert(*tgt == NULL);
     // we don't worry about ceiling the size to a power of two since
@@ -58,6 +58,7 @@ int symbol_table_init(
     st->pp_symtab = NULL;
     st->decl_count = decl_count;
     st->owning_node = owning_node;
+    st->ppl = ppl;
     *tgt = st;
     return OK;
 }
@@ -125,11 +126,9 @@ symbol** symbol_table_lookup_limited(
     ureg hash = fnv_hash_str(FNV_START_HASH, s);
     do {
         symbol_table* curr_st = st;
-        ureg curr_ppl = 0;
-        while (curr_ppl < ppl) {
+        while (curr_st->ppl < ppl) {
             if (!curr_st->pp_symtab) break;
             curr_st = curr_st->pp_symtab;
-            curr_ppl++;
         }
         while (true) {
             // PERF: get rid of this check somehow
@@ -139,7 +138,7 @@ symbol** symbol_table_lookup_limited(
                     curr_st, sizeof(symbol_table) + idx * sizeof(symbol*));
                 while (*tgt) {
                     if (strcmp((**tgt).name, s) == 0) {
-                        if (decl_ppl) *decl_ppl = curr_ppl;
+                        if (decl_ppl) *decl_ppl = curr_st->ppl;
                         return tgt;
                     }
                     tgt = (symbol**)&(**tgt).next;
@@ -164,9 +163,11 @@ symbol** symbol_table_lookup_limited(
                     if (res) return res;
                 }
             }
-            if (curr_ppl == 0) break;
+            if (!curr_st->parent ||
+                curr_st->owning_node != curr_st->parent->owning_node) {
+                break;
+            }
             curr_st = curr_st->parent;
-            curr_ppl--;
         }
         st = st->parent;
     } while (st != stop_at);
@@ -195,7 +196,7 @@ int init_root_symtab(symbol_table** root_symtab)
 {
     // to avoid an assertion (which makes sense for all other cases)
     *root_symtab = NULL;
-    if (symbol_table_init(root_symtab, PRIMITIVE_COUNT + 1, 0, true, NULL))
+    if (symbol_table_init(root_symtab, PRIMITIVE_COUNT + 1, 0, true, NULL, 0))
         return ERR;
     (**root_symtab).parent = NULL;
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {

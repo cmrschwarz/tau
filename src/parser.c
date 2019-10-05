@@ -330,6 +330,7 @@ static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
 }
 static inline int push_bpd_pp(parser* p, ast_node* n)
 {
+    p->ppl++;
     sbuffer_iterator i = sbuffer_iterator_begin_at_end(&p->body_stack);
     body_parse_data* prev =
         sbuffer_iterator_previous(&i, sizeof(body_parse_data));
@@ -342,6 +343,8 @@ static inline int push_bpd_pp(parser* p, ast_node* n)
 }
 static inline int pop_bpd_pp(parser* p, parse_error pe)
 {
+    assert(p->ppl);
+    p->ppl--;
     body_parse_data bpd_popped;
     body_parse_data* bpd;
     sbuffer_iterator it = sbuffer_iterator_begin_at_end(&p->body_stack);
@@ -394,6 +397,7 @@ static inline int pop_bpd(parser* p, parse_error pe)
     ast_body* bd = bpd.body;
     symbol_table** st = &bd->symtab;
     symbol_table* postp_st = NULL;
+    ureg ppl = p->ppl;
     while (true) {
         sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
         body_parse_data* bpd2 = (body_parse_data*)sbuffer_iterator_previous(
@@ -402,7 +406,7 @@ static inline int pop_bpd(parser* p, parse_error pe)
         if (!pe) {
             if (symbol_table_init(
                     st, bpd.decl_count, bpd.usings_count, has_pp,
-                    (ast_elem*)bpd.node)) {
+                    (ast_elem*)bpd.node, ppl)) {
                 return ERR;
             }
         }
@@ -415,6 +419,7 @@ static inline int pop_bpd(parser* p, parse_error pe)
             st = &(**st).pp_symtab;
         }
         if (!has_pp) break;
+        ppl++;
         bpd2->node = bpd.node;
         bpd = *bpd2;
         // we don't support shared pp decls for now :(
@@ -1953,6 +1958,7 @@ parse_error parse_eof_delimited_open_scope(parser* p, open_scope* osc)
 }
 parse_error parser_parse_file(parser* p, job_parse* j)
 {
+    p->ppl = 0;
     int r = lx_open_file(&p->lx, j->file);
     tprintf("parsing ");
     tprintn(j->file->head.name.start, string_len(j->file->head.name));
@@ -2911,7 +2917,7 @@ parse_error parse_import_with_parent(
         }
         if (name) {
             symbol_table* st;
-            if (symbol_table_init(&st, ndecl_cnt, 0, false, (ast_elem*)ig)) {
+            if (symbol_table_init(&st, ndecl_cnt, 0, false, (ast_elem*)ig, 0)) {
                 return RE_FATAL;
             }
             st->parent = NULL;
