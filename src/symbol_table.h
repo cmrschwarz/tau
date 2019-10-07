@@ -43,11 +43,10 @@ symbol** symbol_table_find_insert_position(symbol_table* st, char* name);
 
 // returns the symbol found or NULL if nonexistant
 symbol** symbol_table_lookup(
-    symbol_table* st, ureg ppl, access_modifier am, const char* s,
-    ureg* decl_ppl);
+    symbol_table* st, ureg ppl, access_modifier am, const char* s);
 symbol** symbol_table_lookup_limited(
     symbol_table* st, ureg ppl, access_modifier am, symbol_table* stop_at,
-    const char* s, ureg* decl_ppl);
+    const char* s);
 // might return NULL, for example for mdg_node symbol tables
 src_file* symbol_table_get_file(symbol_table* st);
 

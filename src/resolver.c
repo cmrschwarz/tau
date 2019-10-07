@@ -276,6 +276,8 @@ static resolve_error add_ast_node_decls(
         case EXPR_PP: {
             bool cp = r->contains_paste;
             r->contains_paste = false;
+            if (st && st->pp_symtab) st = st->pp_symtab;
+            if (sst && sst->pp_symtab) sst = sst->pp_symtab;
             re = add_ast_node_decls(
                 r, st, sst, ppl + 1, ((expr_pp*)n)->pp_expr, false);
             if (re) return re;
@@ -649,14 +651,13 @@ resolve_error resolve_func_call(
     symbol_table* lt = func_st;
     scope* tgt;
     while (lt) {
-        ureg fn_ppl;
-        symbol** s =
-            symbol_table_lookup(lt, ppl, AM_DEFAULT, func_name, &fn_ppl);
+        symbol** s = symbol_table_lookup(lt, ppl, AM_DEFAULT, func_name);
         if (!s) {
             // we use args_st here because thats the scope that the call is in
             re = report_unknown_symbol(r, c->lhs, st);
             break;
         }
+        ureg fn_ppl = (**s).declaring_st->ppl;
         bool applicable;
 
         if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
@@ -820,10 +821,10 @@ resolve_error choose_binary_operator_overload(
     symbol_table* lt = st;
     while (lt) {
         bool applicable;
-        ureg op_ppl;
         symbol** s = symbol_table_lookup(
-            lt, ppl, AM_DEFAULT, op_to_str(ob->node.op_kind), &op_ppl);
+            lt, ppl, AM_DEFAULT, op_to_str(ob->node.op_kind));
         if (!s) return report_unknown_symbol(r, (ast_node*)ob, lt);
+        ureg op_ppl = (**s).declaring_st->ppl;
         if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
             sym_func_overloaded* sfo = (sym_func_overloaded*)s;
             assert(sfo->overloads->sym.node.kind == SC_FUNC); // prevent macros
@@ -978,12 +979,11 @@ resolve_error resolve_expr_scope_access(
     assert(lhs_val != NULL && ast_elem_is_symbol(lhs_val)); // TODO: log error
     re = get_resolved_symbol_symtab(r, (symbol*)lhs_val, access, &lhs_st);
     if (re) return re;
-    ureg rhs_ppl;
-    symbol** s =
-        symbol_table_lookup(lhs_st, ppl, *access, esa->target.name, &rhs_ppl);
+    symbol** s = symbol_table_lookup(lhs_st, ppl, *access, esa->target.name);
     if (!*s) {
         return report_unknown_symbol(r, (ast_node*)esa, st);
     }
+    ureg rhs_ppl = (**s).declaring_st->ppl;
     ast_elem* rhs_val;
 
     resolve_ast_node(
@@ -1013,17 +1013,25 @@ resolve_error resolve_expr_member_accesss(
     scope* sc = (scope*)lhs_type;
     // TODO: try to make this check more efficient
     access_modifier acc = check_member_access(st, sc);
-    ureg rhs_ppl;
     symbol** rhs = symbol_table_lookup_limited(
-        sc->body.symtab, ppl, acc, sc->body.symtab->parent, ema->target.name,
-        &rhs_ppl);
+        sc->body.symtab, ppl, acc, sc->body.symtab->parent, ema->target.name);
     if (!*rhs) return report_unknown_symbol(r, (ast_node*)ema, sc->body.symtab);
+    ureg rhs_ppl = (**rhs).declaring_st->ppl;
     ema->target.sym = *rhs;
     resolve_ast_node(
         r, (ast_node*)*rhs, (**rhs).declaring_st, rhs_ppl, value, ctype);
     ast_flags_set_resolved(&ema->node.flags);
     return RE_OK;
 }
+resolve_error check_var_ppl(resolver* r, sym_var* v, ureg ppl)
+{
+    if (v->sym.declaring_st->ppl != ppl) {
+        stack_push(&r->error_stack, v);
+        return RE_DIFFERENT_PP_LEVEL;
+    }
+    return RE_OK;
+}
+
 // the symbol table is not the one that contains the symbol, but the one
 // where it was declared and where the type name loopup should start
 static inline resolve_error resolve_ast_node_raw(
@@ -1068,35 +1076,32 @@ static inline resolve_error resolve_ast_node_raw(
                     value, ctype, e->value.sym,
                     get_resolved_symbol_ctype(e->value.sym));
             }
-            ureg decl_ppl;
-            symbol** s = symbol_table_lookup(
-                st, ppl, AM_DEFAULT, e->value.str, &decl_ppl);
+            symbol** s = symbol_table_lookup(st, ppl, AM_DEFAULT, e->value.str);
             if (!s) return report_unknown_symbol(r, n, st);
-            ast_elem* sym;
+            symbol* sym;
             re = resolve_ast_node(
-                r, (ast_node*)*s, (**s).declaring_st, decl_ppl, &sym, ctype);
-            if (re) return re;
-            assert(ast_elem_is_symbol(sym));
-            e->value.sym = (symbol*)sym;
-            if (value) *value = sym;
-            if (decl_ppl < ppl) {
-                if (sym->kind == SYM_VAR || sym->kind == SYM_VAR_INITIALIZED) {
-                    symbol* s = (symbol*)sym;
-                    src_range_large id_sr, sym_sr;
-                    src_range_unpack(e->node.srange, &id_sr);
-                    id_sr.file = ast_node_get_file(n, st);
-                    src_range_unpack(s->node.srange, &sym_sr);
-                    sym_sr.file =
-                        ast_node_get_file((ast_node*)sym, s->declaring_st);
-                    error_log_report_annotated_twice(
-                        r->tc->err_log, ES_RESOLVER, false,
-                        "cannot use variable of lesser preprocessing level",
-                        id_sr.file, id_sr.start, id_sr.end, "usage here",
-                        sym_sr.file, sym_sr.start, sym_sr.end,
-                        "variable defined here");
-                    return RE_ERROR;
-                }
+                r, (ast_node*)*s, (**s).declaring_st, ppl, (ast_elem**)&sym,
+                ctype);
+            if (re == RE_DIFFERENT_PP_LEVEL) {
+                sym = stack_pop(&r->error_stack);
+                assert(ast_elem_is_symbol((ast_elem*)sym));
+                src_range_large id_sr, sym_sr;
+                src_range_unpack(e->node.srange, &id_sr);
+                id_sr.file = ast_node_get_file(n, st);
+                src_range_unpack(sym->node.srange, &sym_sr);
+                sym_sr.file =
+                    ast_node_get_file((ast_node*)sym, sym->declaring_st);
+                error_log_report_annotated_twice(
+                    r->tc->err_log, ES_RESOLVER, false,
+                    "cannot use variable of lesser preprocessing level",
+                    id_sr.file, id_sr.start, id_sr.end, "usage here",
+                    sym_sr.file, sym_sr.start, sym_sr.end,
+                    "variable defined here");
+                return RE_ERROR;
             }
+            if (re) return re;
+            e->value.sym = (symbol*)sym;
+            if (value) *value = (ast_elem*)sym;
             ast_flags_set_resolved(&n->flags);
             return RE_OK;
         }
@@ -1213,14 +1218,14 @@ static inline resolve_error resolve_ast_node_raw(
                     value, ctype, is->target.sym,
                     get_resolved_symbol_ctype(is->target.sym));
             }
-            ureg decl_ppl;
+
             symbol** s = symbol_table_lookup(
-                is->target_st, ppl, AM_PROTECTED, is->target.name, &decl_ppl);
-            is->sym.declaring_st = st; // change the
+                is->target_st, ppl, AM_PROTECTED, is->target.name);
             if (!s) return report_unknown_symbol(r, n, st);
+            is->sym.declaring_st = st; // change the
             is->target.sym = *s;
             re = resolve_ast_node(
-                r, (ast_node*)*s, (**s).declaring_st, decl_ppl, value, ctype);
+                r, (ast_node*)*s, (**s).declaring_st, ppl, value, ctype);
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
             return RE_OK;
@@ -1234,6 +1239,8 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case SYM_VAR: {
             sym_var* v = (sym_var*)n;
+            re = check_var_ppl(r, v, ppl);
+            if (re) return re;
             if (resolved) RETURN_RESOLVED(value, ctype, v, v->ctype);
             symbol* prev_sym_decl = r->curr_symbol_decl;
             r->curr_symbol_decl = (symbol*)v;
@@ -1247,6 +1254,8 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case SYM_VAR_INITIALIZED: {
             sym_var_initialized* vi = (sym_var_initialized*)n;
+            re = check_var_ppl(r, (sym_var*)vi, ppl);
+            if (re) return re;
             if (resolved) {
                 RETURN_RESOLVED(value, ctype, vi, vi->var.ctype);
             }
@@ -1538,7 +1547,8 @@ resolve_error resolve_expr_body(
         }
         if (!re) continue;
         if (re == RE_TYPE_LOOP) {
-            if (r->type_loop_start == (ast_node*)curr_sym) {
+            if (r->type_loop_start == (ast_node*)curr_sym ||
+                r->type_loop_start == expr) {
                 ast_flags_set_resolving(&curr_sym->node.flags);
                 if (r->retracing_type_loop) {
                     stack_clear(&r->error_stack);

@@ -121,7 +121,7 @@ symbol** symbol_table_insert(symbol_table* st, symbol* s)
 }
 symbol** symbol_table_lookup_limited(
     symbol_table* st, ureg ppl, access_modifier am, symbol_table* stop_at,
-    const char* s, ureg* decl_ppl)
+    const char* s)
 {
     ureg hash = fnv_hash_str(FNV_START_HASH, s);
     do {
@@ -138,7 +138,6 @@ symbol** symbol_table_lookup_limited(
                     curr_st, sizeof(symbol_table) + idx * sizeof(symbol*));
                 while (*tgt) {
                     if (strcmp((**tgt).name, s) == 0) {
-                        if (decl_ppl) *decl_ppl = curr_st->ppl;
                         return tgt;
                     }
                     tgt = (symbol**)&(**tgt).next;
@@ -149,8 +148,7 @@ symbol** symbol_table_lookup_limited(
                 symbol_table** end =
                     get_stwu(st)->using_ends[AM_ENUM_ELEMENT_COUNT - am];
                 // for pub usings we can look at their pub and prot symbols
-                symbol** res =
-                    symbol_table_lookup(*i, AM_PROTECTED, ppl, s, decl_ppl);
+                symbol** res = symbol_table_lookup(*i, AM_PROTECTED, ppl, s);
                 if (res) return res;
                 i++;
                 // for prot to unspecified usings we can look at their pub
@@ -159,7 +157,7 @@ symbol** symbol_table_lookup_limited(
                 access_modifier tgt_am =
                     (am < AM_PROTECTED) ? AM_PROTECTED : AM_PUBLIC;
                 while (i != end) {
-                    res = symbol_table_lookup(*i, tgt_am, ppl, s, decl_ppl);
+                    res = symbol_table_lookup(*i, tgt_am, ppl, s);
                     if (res) return res;
                 }
             }
@@ -174,10 +172,9 @@ symbol** symbol_table_lookup_limited(
     return NULL;
 }
 symbol** symbol_table_lookup(
-    symbol_table* st, ureg ppl, access_modifier am, const char* s,
-    ureg* decl_ppl)
+    symbol_table* st, ureg ppl, access_modifier am, const char* s)
 {
-    return symbol_table_lookup_limited(st, ppl, am, NULL, s, decl_ppl);
+    return symbol_table_lookup_limited(st, ppl, am, NULL, s);
 }
 src_file* symbol_table_get_file(symbol_table* st)
 {
@@ -204,6 +201,7 @@ int init_root_symtab(symbol_table** root_symtab)
             fin_root_symtab(*root_symtab);
             return ERR;
         }
+        PRIMITIVES[i].sym.declaring_st = *root_symtab;
     }
     return OK;
 }
