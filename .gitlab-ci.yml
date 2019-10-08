@@ -9,6 +9,8 @@ stages:
 precompile:
     stage: precompile
     script: 
+        - git submodule init
+        - git submodule update --recursive --remote
         - ./precompile_llvm.sh
     cache:
         key: precompile

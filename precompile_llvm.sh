@@ -2,17 +2,22 @@
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd $SCRIPT_DIR
 
+#make sure llvm is up to date
+cd ./deps/llvm-project/
+git checkout release/9.x
+git pull
 #if this dir exists we already precompiled, so we exit successfully
-if [ -d "./deps/llvm-project-prebuild" ]; then
-    cd ./deps/llvm-project/
+if [ -d "../llvm-project-prebuild" ]; then
+    
     #if we have the same commit id as during the prebuild exit successfully
     if [ "$(git rev-parse HEAD)" == "$(cat ../llvm-project-prebuild/prebuild_commit_id.txt 2>/dev/null || : )" ]; then
         echo "found existing prebuild"
         exit 0
     fi
-    cd ../../
-    rm -rf ./precomile_llvm
+    rm -rf ../llvm-project-prebuild
+    rm -rf ../../precomile_llvm
 fi
+cd ../../
 mkdir precompile_llvm
 cd ./precompile_llvm
 
