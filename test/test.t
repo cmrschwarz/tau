@@ -4,10 +4,6 @@ struct foo{
     y: int;
 }
 public func main() -> int{
-    loop{
-        break 3;
-        break 7;
-    }
     f := @res{
         g: foo;
         f.x = 0;

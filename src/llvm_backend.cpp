@@ -730,6 +730,7 @@ LLVMBackend::buildConstant(ast_elem* ctype, void* data, llvm::Constant** res)
 llvm_error
 LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
+    assert(ast_flags_get_resolved(n->flags));
     // TODO: proper error handling
     llvm_error lle;
     switch (n->kind) {

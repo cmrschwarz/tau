@@ -1350,6 +1350,7 @@ parse_expr_block(parser* p, char* label, ureg start, ast_node** ex)
     if (pe) return pe;
     pe = ast_node_fill_srange(
         p, (ast_node*)b, start, src_range_get_end(b->body.srange));
+    b->ctype = NULL;
     return pe;
 }
 parse_error parse_loop(parser* p, ast_node** tgt)
@@ -1359,6 +1360,7 @@ parse_error parse_loop(parser* p, ast_node** tgt)
     lx_void(&p->lx);
     expr_loop* l = alloc_perm(p, sizeof(expr_loop));
     if (!l) return PE_FATAL;
+    l->ctype = NULL;
     if (ast_node_fill_srange(p, (ast_node*)l, start, t->end)) return PE_FATAL;
     ast_node_init((ast_node*)l, EXPR_LOOP);
     *tgt = (ast_node*)l;
@@ -1372,6 +1374,7 @@ parse_error parse_match(parser* p, ast_node** tgt)
     ureg body_start;
     lx_void(&p->lx);
     expr_match* em = alloc_perm(p, sizeof(expr_match));
+    if (!em) return PE_FATAL;
     ast_node_init((ast_node*)em, EXPR_MATCH);
     parse_error pe =
         parse_expr_in_parens(p, (ast_node*)em, start, t_end, &em->match_expr);
@@ -1546,6 +1549,7 @@ parse_error parse_if(parser* p, ast_node** tgt)
     lx_void(&p->lx);
     expr_if* i = alloc_perm(p, sizeof(expr_if));
     if (!i) return PE_FATAL;
+    i->ctype = NULL;
     parse_error pe =
         parse_expr_in_parens(p, (ast_node*)i, start, end, &i->condition);
     if (pe) return pe;

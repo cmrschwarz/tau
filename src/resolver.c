@@ -19,8 +19,7 @@ static resolve_error resolve_ast_node(
     ast_elem** ctype);
 resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl);
 resolve_error resolve_expr_body(
-    resolver* r, ast_node* expr, ast_body* b, ureg ppl, ast_elem** value,
-    ast_elem** ctype);
+    resolver* r, ast_node* expr, ast_body* b, ureg ppl, bool* end_reachable);
 resolve_error resolve_expr_scope_access(
     resolver* r, expr_scope_access* esa, symbol_table* st, ureg ppl,
     access_modifier* access, ast_elem** value, ast_elem** ctype);
@@ -454,7 +453,6 @@ static resolve_error add_ast_node_decls(
             if (re) return re;
             return add_ast_node_decls(r, st, sst, ppl, ei->else_body, false);
         }
-
         case EXPR_LOOP:
             return add_body_decls(
                 r, st, NULL, ppl, &((expr_loop*)n)->body, false);
@@ -1064,9 +1062,11 @@ static inline resolve_error resolve_ast_node_raw(
             RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
         }
         case PRIMITIVE: {
+            if (!resolved) ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, &PRIMITIVES[n->pt_kind], TYPE_ELEM);
         }
         case EXPR_LITERAL: {
+            if (!resolved) ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, n, &PRIMITIVES[n->pt_kind]);
         }
         case EXPR_IDENTIFIER: {
@@ -1289,13 +1289,13 @@ static inline resolve_error resolve_ast_node_raw(
             else {
                 re = resolve_ast_node(
                     r, vi->initial_value, st, ppl, NULL, &vi->var.ctype);
-                if (re == RE_TYPE_LOOP && r->type_loop_start == n) {
-                    if (ast_flags_get_resolved(n->flags)) {
-                        stack_clear(&r->error_stack);
-                        re = resolve_ast_node(
-                            r, vi->initial_value, st, ppl, NULL,
-                            &vi->var.ctype);
-                    }
+
+                if (re == RE_TYPE_LOOP && r->type_loop_start == n &&
+                    vi->var.ctype) {
+                    ast_flags_set_resolved(&n->flags);
+                    stack_clear(&r->error_stack);
+                    re = resolve_ast_node(
+                        r, vi->initial_value, st, ppl, NULL, &vi->var.ctype);
                 }
             }
             r->curr_symbol_decl = prev_sym_decl;
@@ -1305,7 +1305,9 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_RETURN:
         case EXPR_BREAK: {
-            if (resolved) RETURN_RESOLVED(value, ctype, NULL, UNREACHABLE_ELEM);
+            if (ctype) *ctype = UNREACHABLE_ELEM;
+            if (value) *value = UNREACHABLE_ELEM;
+            if (resolved) return RE_OK;
             expr_break* b = (expr_break*)n;
             re = resolve_ast_node(r, b->value, st, ppl, NULL, &b->value_ctype);
             if (re) return re;
@@ -1313,11 +1315,10 @@ static inline resolve_error resolve_ast_node_raw(
             ast_elem* tgt_type;
             if (n->kind == EXPR_BREAK) {
                 ast_elem** tgtt = get_break_target_ctype(b->target);
-                if (ast_flags_get_resolved(b->target->flags)) {
+                if (*tgtt) {
                     tgt_type = *tgtt;
                 }
                 else {
-                    ast_flags_set_resolved(&b->target->flags);
                     *tgtt = b->value_ctype;
                     RETURN_RESOLVED(
                         value, ctype, UNREACHABLE_ELEM, UNREACHABLE_ELEM);
@@ -1329,16 +1330,13 @@ static inline resolve_error resolve_ast_node_raw(
                 if (r->curr_expr_block_owner) {
                     ast_elem** tgtt =
                         get_break_target_ctype(r->curr_expr_block_owner);
-                    if (ast_flags_get_resolved(
-                            r->curr_expr_block_owner->flags)) {
+                    if (*tgtt) {
                         if (*tgtt != UNREACHABLE_ELEM) {
                             assert(false); // TODO: error, unreachable not
                                            // unifiable
                         }
                     }
                     else {
-                        ast_flags_set_resolved(
-                            &r->curr_expr_block_owner->flags);
                         *tgtt = UNREACHABLE_ELEM;
                     }
                 }
@@ -1365,40 +1363,69 @@ static inline resolve_error resolve_ast_node_raw(
                     src_range_get_end(b->target->srange), "target scope here");
                 return RE_TYPE_MISSMATCH;
             }
-            RETURN_RESOLVED(value, ctype, NULL, UNREACHABLE_ELEM);
+            return RE_OK;
         }
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
             if (!resolved) {
+                bool end_reachable;
                 re = resolve_expr_body(
-                    r, (ast_node*)b, &b->body, ppl, value, &b->ctype);
+                    r, (ast_node*)b, &b->body, ppl, &end_reachable);
+                if (ctype) *ctype = b->ctype;
                 if (re) return re;
+                if (end_reachable) {
+                    assert(!b->ctype); // TODO: error
+                    b->ctype = VOID_ELEM;
+                }
+                else {
+                    if (!b->ctype) b->ctype = UNREACHABLE_ELEM;
+                }
             }
             else {
                 assert(!value);
             }
+            ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, NULL, b->ctype);
         }
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
             if (resolved) RETURN_RESOLVED(value, ctype, n, ei->ctype);
             ast_elem *ctype_if, *ctype_else;
+            bool cond_type_loop = false;
+            bool if_branch_type_loop = false;
+            bool else_branch_type_loop = false;
             resolve_error re =
                 resolve_ast_node(r, ei->condition, st, ppl, NULL, NULL);
-            if (re) return re;
+            if (re == RE_TYPE_LOOP) {
+                cond_type_loop = true;
+            }
+            else {
+                if (re) return re;
+            }
             ast_node* old_expr_block_owner = r->curr_expr_block_owner;
             r->curr_expr_block_owner = NULL;
             re = resolve_ast_node(r, ei->if_body, st, ppl, NULL, &ctype_if);
-            if (!re) {
-                re = resolve_ast_node(
-                    r, ei->else_body, st, ppl, NULL, &ctype_else);
-            }
             r->curr_expr_block_owner = old_expr_block_owner;
-            if (re) return re;
-            if (ctype_if == UNREACHABLE_ELEM) {
-                ei->ctype = ctype_else;
+            if (re == RE_TYPE_LOOP) {
+                if_branch_type_loop = true;
             }
-            else if (ctype_else == UNREACHABLE_ELEM) {
+            else {
+                if (re) return re;
+            }
+            re = resolve_ast_node(r, ei->else_body, st, ppl, NULL, &ctype_else);
+            if (re == RE_TYPE_LOOP) {
+                else_branch_type_loop = true;
+                if (if_branch_type_loop || ctype_if == UNREACHABLE_ELEM) {
+                    return RE_TYPE_LOOP;
+                }
+            }
+            else {
+                if (re) return re;
+            }
+            if (if_branch_type_loop || ctype_if == UNREACHABLE_ELEM) {
+                ei->ctype = ctype_else; // TODO: this could lead to void instead
+            }
+            else if (else_branch_type_loop || ctype_else == UNREACHABLE_ELEM) {
                 ei->ctype = ctype_if;
             }
             else if (!ctypes_unifiable(ctype_if, ctype_else)) {
@@ -1413,18 +1440,27 @@ static inline resolve_error resolve_ast_node_raw(
             else {
                 ei->ctype = ctype_if;
             }
+            if (ctype) *ctype = ei->ctype;
+            if (value) *value = (ast_elem*)ei;
+            if (cond_type_loop || if_branch_type_loop ||
+                else_branch_type_loop) {
+                return RE_TYPE_LOOP;
+            }
             ast_flags_set_resolved(&n->flags);
-            RETURN_RESOLVED(value, ctype, ei, ei->ctype);
+            return RE_OK;
         }
-
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)n;
             if (resolved) {
                 assert(!value);
                 RETURN_RESOLVED(value, ctype, NULL, l->ctype);
             }
-            re = resolve_expr_body(r, n, &l->body, ppl, value, &l->ctype);
+            bool end_reachable;
+            re = resolve_expr_body(r, n, &l->body, ppl, &end_reachable);
+            if (ctype) *ctype = l->ctype;
             if (re) return re;
+            assert(end_reachable); // TODO: error: why loop then?
+            if (!l->ctype) l->ctype = UNREACHABLE_ELEM;
             RETURN_RESOLVED(value, ctype, value, l->ctype);
         }
         case EXPR_MACRO_CALL: {
@@ -1448,8 +1484,8 @@ static inline resolve_error resolve_ast_node_raw(
             }
             re = resolve_ast_node_raw(
                 r, ppe->pp_expr, st, ppl + 1, value, &ppe->ctype);
-            if (re) return re;
             if (ctype) *ctype = ppe->ctype;
+            if (re) return re;
             ast_flags_set_resolved(&n->flags);
             if (!r->pp_mode && !ppe->result) {
                 llvm_error lle = llvm_backend_run_pp(
@@ -1541,8 +1577,7 @@ static resolve_error resolve_ast_node(
     return re;
 }
 resolve_error resolve_expr_body(
-    resolver* r, ast_node* expr, ast_body* b, ureg ppl, ast_elem** value,
-    ast_elem** ctype)
+    resolver* r, ast_node* expr, ast_body* b, ureg ppl, bool* end_reachable)
 {
     symbol* curr_sym = r->curr_symbol_decl;
     r->curr_symbol_decl = NULL;
@@ -1551,62 +1586,39 @@ resolve_error resolve_expr_body(
     bool parent_allows_type_loops = r->allow_type_loops;
     if (!r->retracing_type_loop) r->allow_type_loops = true;
     resolve_error re;
-    bool second_pass = false;
     bool parenting_type_loop = false;
     ast_elem* stmt_ctype = NULL;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
     for (ast_node** n = b->elements; *n != NULL; n++) {
         re = resolve_ast_node(r, *n, b->symtab, ppl, NULL, stmt_ctype_ptr);
+        if (re && re != RE_TYPE_LOOP) break;
         if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
             stmt_ctype_ptr = NULL;
         }
         if (!re) continue;
-        if (re == RE_TYPE_LOOP) {
-            if (r->type_loop_start == expr) {
-                if (r->retracing_type_loop) {
-                    stack_clear(&r->error_stack);
-                }
-                second_pass = true;
+        assert(re == RE_TYPE_LOOP);
+        if (r->type_loop_start == expr) {
+            if (r->retracing_type_loop) {
+                stack_clear(&r->error_stack);
             }
-            else if (!r->retracing_type_loop) {
-                parenting_type_loop = true;
-            }
-            else {
-                break;
-            }
-            re = RE_OK;
-            continue;
+            parenting_type_loop = true;
         }
-        break;
+        else if (!r->retracing_type_loop) {
+            parenting_type_loop = true;
+        }
+        else {
+            break;
+        }
+        re = RE_OK;
+        continue;
     }
+    *end_reachable = (stmt_ctype_ptr != NULL);
     r->allow_type_loops = parent_allows_type_loops;
     r->curr_expr_block_owner = parent_expr_block_owner;
     r->curr_symbol_decl = curr_sym;
     if (re) return re;
     if (parenting_type_loop) {
         return RE_TYPE_LOOP;
-    }
-    if (second_pass) {
-        for (ast_node** n = b->elements; *n != NULL; n++) {
-            re = resolve_ast_node(r, *n, b->symtab, ppl, NULL, stmt_ctype_ptr);
-            // TODO: if we have a type loop error,
-            // make it originate from a(?) break statement
-            if (re) return re;
-            if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
-                stmt_ctype_ptr = NULL;
-            }
-        }
-    }
-    // means no break occured
-    if (!ast_flags_get_resolved(expr->flags)) {
-        if (stmt_ctype_ptr) { // the end is reachable -> void
-            ast_flags_set_resolved(&expr->flags);
-            RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
-        }
-        else { // -> unreachable
-            ast_flags_set_resolved(&expr->flags);
-            RETURN_RESOLVED(value, ctype, NULL, UNREACHABLE_ELEM);
-        }
     }
     return RE_OK;
 }
