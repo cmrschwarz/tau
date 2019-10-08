@@ -6,12 +6,12 @@ struct foo{
 public func main() -> int{
     f := @res{
         g: foo;
-        f.x = 0;
-        f.y = 1;
+        g.x = 0;
+        g.y = 1;
         loop{
-            if(f.x == 10)break @res g;
-            f.y = f.y * 2;
-            f.x++;
+            if(g.x == 10)break @res g;
+            g.y = g.y * 2;
+            g.x++;
         }
     };
     printfln("pp: %i", f.y);

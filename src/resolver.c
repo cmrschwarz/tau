@@ -611,10 +611,11 @@ resolve_error overload_applicable(
     }
     *applicable = true;
     if (fn) {
-        return resolve_ast_node(
+        resolve_error re = resolve_ast_node(
             r, fn->return_type, overload->sym.declaring_st, ppl,
             &fn->return_ctype, NULL);
         if (ctype) *ctype = fn->return_ctype;
+        return re;
     }
     else {
         // TODO: allow non void macros
@@ -1041,7 +1042,8 @@ static inline resolve_error resolve_ast_node_raw(
         RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
     }
     if (ast_elem_is_open_scope((ast_elem*)n)) {
-        if (ctype) *ctype = (ast_elem*)n;
+        if (value) *value = (ast_elem*)n;
+        if (ctype) *ctype = VOID_ELEM;
         return RE_OK;
     }
     // PERF: find a way to avoid checking in sub exprs
@@ -1138,6 +1140,9 @@ static inline resolve_error resolve_ast_node_raw(
             return RE_OK;
         }
         case EXPR_PARENTHESES: {
+            // we set this even on error because we jump through to get the
+            // required values anyways, so at least make it tail recursive
+            ast_flags_set_resolved(&n->flags);
             return resolve_ast_node(
                 r, ((expr_parentheses*)n)->child, st, ppl, value, ctype);
         }
@@ -1462,6 +1467,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (re) return re;
             assert(end_reachable); // TODO: error: why loop then?
             if (!l->ctype) l->ctype = UNREACHABLE_ELEM;
+            ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, value, l->ctype);
         }
         case EXPR_MACRO_CALL: {
@@ -1809,6 +1815,7 @@ resolve_error resolver_run(resolver* r)
              osc = aseglist_iterator_next(&asi)) {
             r->curr_osc = osc;
             re = resolve_body(r, &osc->sc.body, 0);
+            ast_flags_set_resolved(&osc->sc.sym.node.flags);
             if (re) return re;
         }
     }
