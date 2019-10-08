@@ -19,7 +19,8 @@ static resolve_error resolve_ast_node(
     ast_elem** ctype);
 resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl);
 resolve_error resolve_expr_body(
-    resolver* r, ast_node* expr, ast_body* b, ureg ppl, bool* end_reachable);
+    resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b, ureg ppl,
+    bool* end_reachable);
 resolve_error resolve_expr_scope_access(
     resolver* r, expr_scope_access* esa, symbol_table* st, ureg ppl,
     access_modifier* access, ast_elem** value, ast_elem** ctype);
@@ -265,6 +266,37 @@ static resolve_error add_ast_node_decls(
     if (n == NULL) return RE_OK;
     resolve_error re;
     switch (n->kind) {
+        case EXPR_LITERAL:
+        case EXPR_IDENTIFIER: return RE_OK;
+        case OSC_MODULE:
+        case OSC_EXTEND: {
+            // these guys are handled from their mdg node, not from
+            // where they appear in source
+            return RE_OK;
+        }
+        case EXPR_RETURN:
+        case EXPR_BREAK:
+        case EXPR_BLOCK:
+        case EXPR_IF:
+        case EXPR_LOOP:
+        case EXPR_MACRO_CALL:
+        case EXPR_MATCH:
+        case EXPR_OP_BINARY:
+        case EXPR_ACCESS:
+        case EXPR_CALL:
+        case EXPR_SCOPE_ACCESS:
+        case EXPR_MEMBER_ACCESS:
+        case EXPR_PARENTHESES:
+        case EXPR_OP_UNARY: {
+            // only called inside an expression context.
+            // we add the symbols individually to avoid use before define
+            return RE_OK;
+        }
+
+        case STMT_COMPOUND_ASSIGN:
+            // TODO
+            assert(false);
+            return RE_OK;
         case STMT_USING: {
             pp_resolve_node* pprn =
                 sbuffer_append(&r->pp_resolve_nodes, sizeof(pp_resolve_node));
@@ -272,10 +304,10 @@ static resolve_error add_ast_node_decls(
             pprn->declaring_st = st;
             pprn->node = n;
             pprn->ppl = ppl;
-            return add_ast_node_decls(
-                r, st, sst, ppl, ((stmt_using*)n)->target, public_st);
+            break;
         }
         case EXPR_PP: {
+            // TODO: rework this piece of crap
             bool cp = r->contains_paste;
             r->contains_paste = false;
             if (st && st->pp_symtab) st = st->pp_symtab;
@@ -296,14 +328,6 @@ static resolve_error add_ast_node_decls(
                 pprn->ppl = ppl;
             }
             r->contains_paste = cp;
-        }
-        case EXPR_LITERAL:
-        case EXPR_IDENTIFIER: return RE_OK;
-        case OSC_MODULE:
-        case OSC_EXTEND: {
-            // these guys are handled from their mdg node, not from
-            // where they appear in source
-            return RE_OK;
         }
         case SC_STRUCT:
         case SC_TRAIT: {
@@ -407,11 +431,6 @@ static resolve_error add_ast_node_decls(
             return add_sym_import_module_decl(
                 r, st, im, stop, im->target, NULL);
         }
-        case STMT_COMPOUND_ASSIGN:
-            // TODO
-            assert(false);
-            return RE_OK;
-
         case SYM_VAR_INITIALIZED: {
             re = add_ast_node_decls(
                 r, st, sst, ppl, ((sym_var_initialized*)n)->initial_value,
@@ -436,93 +455,7 @@ static resolve_error add_ast_node_decls(
             return RE_OK;
         }
         case SYM_NAMED_USING: {
-            re = add_symbol(r, st, sst, (symbol*)n);
-            if (re) return re;
-            return add_ast_node_decls(
-                r, st, sst, ppl, ((sym_named_using*)n)->target, public_st);
-        }
-
-        case EXPR_RETURN:
-        case EXPR_BREAK:
-            return add_ast_node_decls(
-                r, st, sst, ppl, ((expr_break*)n)->value, public_st);
-
-        case EXPR_BLOCK:
-            return add_body_decls(
-                r, st, NULL, ppl, &((expr_block*)n)->body, false);
-
-        case EXPR_IF: {
-            expr_if* ei = (expr_if*)n;
-            re = add_ast_node_decls(r, st, sst, ppl, ei->condition, false);
-            if (re) return re;
-            re = add_ast_node_decls(r, st, sst, ppl, ei->if_body, false);
-            if (re) return re;
-            return add_ast_node_decls(r, st, sst, ppl, ei->else_body, false);
-        }
-        case EXPR_LOOP:
-            return add_body_decls(
-                r, st, NULL, ppl, &((expr_loop*)n)->body, false);
-
-        case EXPR_MACRO_CALL: {
-            expr_macro_call* emc = (expr_macro_call*)n;
-            re = add_body_decls(r, st, NULL, ppl, &emc->body, false);
-            return re;
-        }
-        case EXPR_MATCH: {
-            expr_match* em = (expr_match*)n;
-            re = add_ast_node_decls(r, st, sst, ppl, em->match_expr, false);
-            if (re) return re;
-            for (match_arm** ma = (match_arm**)em->body.elements; *ma != NULL;
-                 ma++) {
-                re = add_ast_node_decls(
-                    r, st, sst, ppl, (**ma).condition, false);
-                if (re) return re;
-                re = add_ast_node_decls(r, st, sst, ppl, (**ma).value, false);
-                if (re) return re;
-            }
-            return RE_OK;
-        }
-        case EXPR_OP_BINARY: {
-            re = add_ast_node_decls(
-                r, st, sst, ppl, ((expr_op_binary*)n)->lhs, false);
-            if (re) return re;
-            return add_ast_node_decls(
-                r, st, sst, ppl, ((expr_op_binary*)n)->rhs, false);
-        }
-        case EXPR_ACCESS: {
-            expr_access* a = (expr_access*)n;
-            re = add_ast_node_decls(r, st, sst, ppl, a->lhs, false);
-            if (re) return re;
-            for (ureg i = 0; i < a->arg_count; i++) {
-                re = add_ast_node_decls(r, st, sst, ppl, a->args[i], false);
-                if (re) return re;
-            }
-            // we could make this tail recursive by moving lhs down here
-            // but this way we traverse as declared ->better cache usage
-            return RE_OK;
-        }
-        case EXPR_CALL: {
-            expr_call* c = (expr_call*)n;
-            re = add_ast_node_decls(r, st, sst, ppl, c->lhs, false);
-            if (re) return re;
-            for (ureg i = 0; i < c->arg_count; i++) {
-                re = add_ast_node_decls(r, st, sst, ppl, c->args[i], false);
-                if (re) return re;
-            }
-            return RE_OK;
-        }
-        case EXPR_SCOPE_ACCESS:
-        case EXPR_MEMBER_ACCESS: {
-            return add_ast_node_decls(
-                r, st, sst, ppl, ((expr_scope_access*)n)->lhs, false);
-        }
-        case EXPR_PARENTHESES: {
-            return add_ast_node_decls(
-                r, st, sst, ppl, ((expr_parentheses*)n)->child, false);
-        }
-        case EXPR_OP_UNARY: {
-            return add_ast_node_decls(
-                r, st, sst, ppl, ((expr_op_unary*)n)->child, false);
+            return add_symbol(r, st, sst, (symbol*)n);
         }
         default:
             assert(false); // unknown node_kind
@@ -1383,7 +1316,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (!resolved) {
                 bool end_reachable;
                 re = resolve_expr_body(
-                    r, (ast_node*)b, &b->body, ppl, &end_reachable);
+                    r, st, (ast_node*)b, &b->body, ppl, &end_reachable);
                 if (ctype) *ctype = b->ctype;
                 if (re) return re;
                 if (end_reachable) {
@@ -1469,7 +1402,7 @@ static inline resolve_error resolve_ast_node_raw(
                 RETURN_RESOLVED(value, ctype, NULL, l->ctype);
             }
             bool end_reachable;
-            re = resolve_expr_body(r, n, &l->body, ppl, &end_reachable);
+            re = resolve_expr_body(r, st, n, &l->body, ppl, &end_reachable);
             if (ctype) *ctype = l->ctype;
             if (re) return re;
             assert(end_reachable); // TODO: error: why loop then?
@@ -1594,7 +1527,8 @@ static resolve_error resolve_ast_node(
     return re;
 }
 resolve_error resolve_expr_body(
-    resolver* r, ast_node* expr, ast_body* b, ureg ppl, bool* end_reachable)
+    resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b, ureg ppl,
+    bool* end_reachable)
 {
     ast_node* parent_expr_block_owner = r->curr_expr_block_owner;
     r->curr_expr_block_owner = expr;
@@ -1604,7 +1538,17 @@ resolve_error resolve_expr_body(
     bool parenting_type_loop = false;
     ast_elem* stmt_ctype = NULL;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
+    ureg saved_decl_count = 0;
+    set_parent_symtabs(&b->symtab, parent_st);
+    if (b->symtab->owning_node == expr && b->symtab->decl_count) {
+        // if we already have decls this is the second pass.
+        // all local syms are already defined so we don't need to check this
+        // symtab during lookup. this way we prevent use before define
+        saved_decl_count = b->symtab->decl_count;
+        b->symtab->decl_count = 0;
+    }
     for (ast_node** n = b->elements; *n != NULL; n++) {
+        add_ast_node_decls(r, b->symtab, NULL, ppl, *n, false);
         re = resolve_ast_node(r, *n, b->symtab, ppl, NULL, stmt_ctype_ptr);
         if (re && re != RE_TYPE_LOOP) break;
         if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
@@ -1626,6 +1570,9 @@ resolve_error resolve_expr_body(
         }
         re = RE_OK;
         continue;
+    }
+    if (saved_decl_count) {
+        b->symtab->decl_count = saved_decl_count;
     }
     *end_reachable = (stmt_ctype_ptr != NULL);
     r->allow_type_loops = parent_allows_type_loops;
