@@ -9,9 +9,10 @@ struct foo{
 }
 
 
-public func main(){
+public func main() -> int{
     f: foo;
     fp := &f;
     (*fp).ipsum = 17;
     printfln("ipsum: %i", (*fp).ipsum);
+    return 0;
 }

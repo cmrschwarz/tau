@@ -20,7 +20,7 @@ func foo(i: int)-> int {
 }
 
 
-public func main(){
+public func main() -> int{
     i := foo(1);
     ip := &i;
     loop @foo{
@@ -28,4 +28,5 @@ public func main(){
         (*ip)++;
         if(*ip == 9)break @foo;
     }
+    return 0;
 }
