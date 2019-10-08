@@ -11,12 +11,13 @@ typedef struct ast_node_s ast_node;
 typedef struct src_file_s src_file;
 
 typedef struct symbol_table_s {
-    ureg decl_count;
+    ureg capacity;
     symbol_table** usings_start;
     symbol_table* parent; // this points to the postprocessing symtab for ppsts
     ast_elem* owning_node;
     symbol_table* pp_symtab;
     ureg ppl;
+    ureg decl_count;
 } symbol_table;
 
 typedef struct symbol_table_with_usings {
@@ -40,7 +41,7 @@ symbol** symbol_table_insert(symbol_table* st, symbol* s);
 // when inserting by assigning to the returned pointer, remember to set
 // the inserted symbol's next pointer to NULL!
 symbol** symbol_table_find_insert_position(symbol_table* st, char* name);
-
+void symbol_table_inc_decl_count(symbol_table* st);
 // returns the symbol found or NULL if nonexistant
 symbol** symbol_table_lookup(
     symbol_table* st, ureg ppl, access_modifier am, const char* s);

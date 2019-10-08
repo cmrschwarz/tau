@@ -74,6 +74,7 @@ add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
                                                                          : st;
     symbol** conflict;
     conflict = symbol_table_insert(tgtst, sym);
+    symbol_table_inc_decl_count(tgtst);
     if (conflict) {
         return report_redeclaration_error(r, sym, *conflict, tgtst);
     }
@@ -121,6 +122,7 @@ resolve_error add_sym_import_module_decl(
             p = NULL;
             next = NULL;
             children = NULL;
+            symbol_table_inc_decl_count(st);
         }
     }
     // PERF: this is O(n^2) over imports with the same prefix TODO: fix
@@ -204,6 +206,7 @@ resolve_error add_import_group_decls(
         }
         else if (s->node.kind == SYM_IMPORT_SYMBOL) {
             symbol** cf = symbol_table_insert(st, s);
+            symbol_table_inc_decl_count(st);
             s->declaring_st = st;
             ((sym_import_symbol*)s)->target_st = ig->parent_mdgn->symtab;
             if (cf) {
@@ -329,7 +332,10 @@ static resolve_error add_ast_node_decls(
             symbol* sym = (symbol*)n;
             sym->declaring_st = st;
             conflict = symbol_table_insert(tgtst, sym);
-            if (conflict) {
+            if (!conflict) {
+                symbol_table_inc_decl_count(tgtst);
+            }
+            else {
                 sym_func_overloaded* sfo;
                 if ((**conflict).node.kind == SC_FUNC) {
                     sfo = (sym_func_overloaded*)pool_alloc(
@@ -926,6 +932,7 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
             // we checked for collisions during insert into the linked list
             // the check is to prevent unused var warnings in release builds
             if (!res) assert(!res);
+            symbol_table_inc_decl_count(pst);
         }
         else {
             symbol_table_insert_using(

@@ -56,7 +56,8 @@ int symbol_table_init(
     }
     memset(ptradd(st, sizeof(symbol_table)), 0, decl_count * sizeof(symbol*));
     st->pp_symtab = NULL;
-    st->decl_count = decl_count;
+    st->decl_count = 0;
+    st->capacity = decl_count;
     st->owning_node = owning_node;
     st->ppl = ppl;
     *tgt = st;
@@ -99,7 +100,7 @@ void symbol_table_fin(symbol_table* st)
 }
 symbol** symbol_table_find_insert_position(symbol_table* st, char* name)
 {
-    ureg hash = fnv_hash_str(FNV_START_HASH, name) % st->decl_count;
+    ureg hash = fnv_hash_str(FNV_START_HASH, name) % st->capacity;
     symbol** tgt = ptradd(st, sizeof(symbol_table) + hash * sizeof(symbol*));
     while (*tgt) {
         if (strcmp((**tgt).name, name) == 0) return tgt;
@@ -109,7 +110,7 @@ symbol** symbol_table_find_insert_position(symbol_table* st, char* name)
 }
 symbol** symbol_table_insert(symbol_table* st, symbol* s)
 {
-    ureg hash = fnv_hash_str(FNV_START_HASH, s->name) % st->decl_count;
+    ureg hash = fnv_hash_str(FNV_START_HASH, s->name) % st->capacity;
     symbol** tgt = ptradd(st, sizeof(symbol_table) + hash * sizeof(symbol*));
     while (*tgt) {
         if (strcmp((**tgt).name, s->name) == 0) return tgt;
@@ -133,7 +134,7 @@ symbol** symbol_table_lookup_limited(
         while (true) {
             // PERF: get rid of this check somehow
             if (curr_st->decl_count != 0) {
-                ureg idx = hash % curr_st->decl_count;
+                ureg idx = hash % curr_st->capacity;
                 symbol** tgt = (symbol**)ptradd(
                     curr_st, sizeof(symbol_table) + idx * sizeof(symbol*));
                 while (*tgt) {
@@ -176,6 +177,10 @@ symbol** symbol_table_lookup(
 {
     return symbol_table_lookup_limited(st, ppl, am, NULL, s);
 }
+void symbol_table_inc_decl_count(symbol_table* st)
+{
+    st->decl_count++;
+}
 src_file* symbol_table_get_file(symbol_table* st)
 {
     // TODO: this can happen if neither the func nor the osc have a single
@@ -203,6 +208,7 @@ int init_root_symtab(symbol_table** root_symtab)
         }
         PRIMITIVES[i].sym.declaring_st = *root_symtab;
     }
+    (**root_symtab).decl_count = PRIMITIVE_COUNT;
     return OK;
 }
 void fin_root_symtab(symbol_table* root_symtab)
@@ -213,7 +219,7 @@ void symtab_it_begin(symtab_it* stit, symbol_table* st)
 {
     stit->pos = (symbol**)(st + 1);
     stit->subpos = *stit->pos;
-    stit->end = stit->pos + st->decl_count;
+    stit->end = stit->pos + st->capacity;
     if (stit->pos == stit->end) {
         stit->pos--;
         stit->subpos = NULL;

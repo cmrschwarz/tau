@@ -52,4 +52,11 @@ static inline ureg fnv_fold(ureg hash, ureg bitcount, ureg bitmask)
     return ((hash >> bitcount) ^ hash) & bitmask;
 }
 
+static inline ureg fnv_fold_bc(ureg hash, ureg bitcount)
+{
+    // xor folding as described here:
+    // www.isthe.com/chongo/tech/comp/fnv/index.html
+    return ((hash >> bitcount) ^ hash) & ((1 << bitcount) - 1);
+}
+
 #endif
