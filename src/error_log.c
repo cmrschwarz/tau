@@ -627,7 +627,7 @@ int print_src_line(
             }
             err_point* next = ep_pos + 1;
             if (next != ep_end) {
-                if (col + 2 < next->col_start + next->length_diff_start) {
+                if (col + 1 <= next->col_start + next->length_diff_start) {
                     space_before =
                         next->col_start + next->length_diff_start - col;
                     while (next != ep_end && next->col_end == next->col_start) {

@@ -1029,7 +1029,8 @@ resolve_error check_var_ppl(resolver* r, sym_var* v, ureg ppl)
     }
     return RE_OK;
 }
-static inline void report_type_loop(resolver* r, ureg ppl);
+static inline void
+report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl);
 // the symbol table is not the one that contains the symbol, but the one
 // where it was declared and where the type name loopup should start
 static inline resolve_error resolve_ast_node_raw(
@@ -1242,11 +1243,8 @@ static inline resolve_error resolve_ast_node_raw(
             re = check_var_ppl(r, v, ppl);
             if (re) return re;
             if (resolved) RETURN_RESOLVED(value, ctype, v, v->ctype);
-            symbol* prev_sym_decl = r->curr_symbol_decl;
-            r->curr_symbol_decl = (symbol*)v;
             ast_elem* type;
             re = resolve_ast_node(r, v->type, st, ppl, &type, NULL);
-            r->curr_symbol_decl = prev_sym_decl;
             if (re) return re;
             v->ctype = type;
             ast_flags_set_resolved(&n->flags);
@@ -1259,8 +1257,6 @@ static inline resolve_error resolve_ast_node_raw(
             if (resolved) {
                 RETURN_RESOLVED(value, ctype, vi, vi->var.ctype);
             }
-            symbol* prev_sym_decl = r->curr_symbol_decl;
-            r->curr_symbol_decl = (symbol*)vi;
             if (vi->var.type) {
                 re = resolve_ast_node(
                     r, vi->var.type, st, ppl, &vi->var.ctype, NULL);
@@ -1289,16 +1285,21 @@ static inline resolve_error resolve_ast_node_raw(
             else {
                 re = resolve_ast_node(
                     r, vi->initial_value, st, ppl, NULL, &vi->var.ctype);
-
-                if (re == RE_TYPE_LOOP && r->type_loop_start == n &&
-                    vi->var.ctype) {
-                    ast_flags_set_resolved(&n->flags);
-                    stack_clear(&r->error_stack);
-                    re = resolve_ast_node(
-                        r, vi->initial_value, st, ppl, NULL, &vi->var.ctype);
-                }
+                /*  if (re == RE_TYPE_LOOP && r->type_loop_start == n &&
+                     !r->retracing_type_loop) {
+                     if (vi->var.ctype) {
+                         ast_flags_set_resolved(&n->flags);
+                         stack_clear(&r->error_stack);
+                         re = resolve_ast_node(
+                             r, vi->initial_value, st, ppl, NULL,
+                             &vi->var.ctype);
+                    }
+                    else{
+                        report_type_loop(r, n, st, ppl);
+                    }
+                    }
+                }*/
             }
-            r->curr_symbol_decl = prev_sym_decl;
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, vi, vi->var.ctype);
@@ -1518,22 +1519,26 @@ static inline resolve_error resolve_ast_node_raw(
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
-static inline void report_type_loop(resolver* r, ureg ppl)
+static inline void
+report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl)
 {
-    ast_node* n = (ast_node*)stack_pop(&r->error_stack);
-    symbol_table* st = (symbol_table*)stack_pop(&r->error_stack);
-    assert(n && st);
     ureg stack_s = stack_size(&r->error_stack);
+    // we are at the peek of the type loop. unwind and report again.
+    if (stack_s == 0) return;
     if (stack_peek_nth(&r->error_stack, stack_s - 2) != n) {
         r->retracing_type_loop = true;
         stack_clear(&r->error_stack);
+        ast_flags_clear_resolving(&n->flags);
         resolve_ast_node(r, n, st, ppl, NULL, NULL);
+        stack_pop(&r->error_stack);
+        stack_pop(&r->error_stack);
+        stack_s = stack_size(&r->error_stack);
     }
     src_range_large srl;
     src_range_unpack(n->srange, &srl);
     if (!srl.file) srl.file = ast_node_get_file(n, st);
-    ureg annot_count = stack_size(&r->error_stack) / 2;
-    annot_count--; // the starting type is on the stack twice
+    ureg annot_count = stack_s / 2;
+    annot_count--; // the starting type is on the stack too
     error* e = error_log_create_error(
         r->tc->err_log, ES_RESOLVER, false, "type inference cycle", srl.file,
         srl.start, srl.end, "type definition depends on itself", annot_count);
@@ -1559,18 +1564,17 @@ static resolve_error resolve_ast_node(
 {
     resolve_error re = resolve_ast_node_raw(r, n, st, ppl, value, ctype);
     if (re == RE_TYPE_LOOP) {
-        if (!r->allow_type_loops || r->retracing_type_loop) {
-            stack_push(&r->error_stack, st);
-            stack_push(&r->error_stack, n);
-        }
-        if (r->type_loop_start == n) {
-            if (ast_flags_get_resolving(n->flags) && !r->allow_type_loops &&
-                !r->retracing_type_loop) {
-                ast_flags_clear_resolving(&n->flags);
-                report_type_loop(r, ppl);
+        if (!r->allow_type_loops) {
+            if (n == r->type_loop_start && !r->retracing_type_loop) {
+                report_type_loop(r, n, st, ppl);
             }
+            else {
+                stack_push(&r->error_stack, st);
+                stack_push(&r->error_stack, n);
+            }
+            ast_flags_clear_resolving(&n->flags);
         }
-        else {
+        else if (n != r->type_loop_start) {
             ast_flags_clear_resolving(&n->flags);
         }
     }
@@ -1579,8 +1583,6 @@ static resolve_error resolve_ast_node(
 resolve_error resolve_expr_body(
     resolver* r, ast_node* expr, ast_body* b, ureg ppl, bool* end_reachable)
 {
-    symbol* curr_sym = r->curr_symbol_decl;
-    r->curr_symbol_decl = NULL;
     ast_node* parent_expr_block_owner = r->curr_expr_block_owner;
     r->curr_expr_block_owner = expr;
     bool parent_allows_type_loops = r->allow_type_loops;
@@ -1615,7 +1617,6 @@ resolve_error resolve_expr_body(
     *end_reachable = (stmt_ctype_ptr != NULL);
     r->allow_type_loops = parent_allows_type_loops;
     r->curr_expr_block_owner = parent_expr_block_owner;
-    r->curr_symbol_decl = curr_sym;
     if (re) return re;
     if (parenting_type_loop) {
         return RE_TYPE_LOOP;
@@ -1689,8 +1690,8 @@ static inline void update_id(resolver* r, ureg* tgt, ureg* id_space)
 }
 static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
 {
-    // we don't need to recurse into expressions because the contained symbols
-    // can never be public
+    // we don't need to recurse into expressions because the contained
+    // symbols can never be public
     switch (n->kind) {
         case SC_FUNC: {
             if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
@@ -1889,7 +1890,6 @@ int resolver_init(resolver* r, thread_context* tc)
     if (!r->backend) return resolver_partial_fin(r, 3, ERR);
     r->allow_type_loops = false;
     r->contains_paste = false;
-    r->curr_symbol_decl = NULL;
     r->type_loop_start = NULL;
     r->curr_expr_block_owner = NULL;
     return OK;
