@@ -80,8 +80,8 @@ typedef struct master_error_log_s {
     ureg tab_size;
     const char* tab_spaces;
     bool err_tty;
-    sreg max_err_line_length;
-    sreg sane_err_line_length;
+    ureg max_err_line_length;
+    ureg sane_err_line_length;
     atomic_pool error_pool;
     bool alloc_failiure;
 } master_error_log;

@@ -8,6 +8,7 @@
 typedef struct src_file_s src_file;
 
 typedef enum PACK_ENUM token_kind_e {
+    TK_NONE,
     TK_NUMBER,
     TK_MIN_STR_INDEX = TK_NUMBER,
     TK_STRING, // a string enclosed by ""
@@ -104,7 +105,6 @@ typedef enum PACK_ENUM token_kind_e {
     TK_FAT_ARROW,
 
     TK_EOF,
-    TK_NONE,
 } token_kind;
 
 extern const char* token_strings[255];
@@ -118,7 +118,7 @@ typedef struct token_s {
 
 static inline bool token_has_string(token* t)
 {
-    return t->kind >= TK_MIN_STR_INDEX && t->kind <= TK_MAX_STR_INDEX;
+    return (t->kind >= TK_MIN_STR_INDEX) && (t->kind <= TK_MAX_STR_INDEX);
 }
 static inline bool token_is_keyword(token* t)
 {

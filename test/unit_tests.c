@@ -115,7 +115,7 @@ int mdg_test()
                     goto err;
                 }
 
-                for (int i = 0; i < mod_counts[jid]; i++) {
+                for (ureg i = 0; i < mod_counts[jid]; i++) {
                     if (strcmp(
                             j.concrete.resolve.start[i]->name, mods[jid][i])) {
                         goto err;

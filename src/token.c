@@ -30,7 +30,6 @@ const char* token_strings[255] = {
     [TK_KW_ELSE] = "else",
     [TK_KW_MATCH] = "match",
     [TK_KW_LET] = "let",
-    [TK_KW_CONST] = "const",
     [TK_KW_PUBLIC] = "public",
     [TK_KW_PROTECTED] = "protected",
     [TK_KW_PRIVATE] = "private",

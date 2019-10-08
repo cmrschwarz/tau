@@ -459,9 +459,10 @@ static resolve_error add_ast_node_decls(
         }
         default:
             assert(false); // unknown node_kind
-            return RE_OK;
+            return RE_FATAL;
     }
     assert(false);
+    return RE_FATAL;
 }
 
 static resolve_error add_body_decls(
@@ -1540,7 +1541,7 @@ resolve_error resolve_expr_body(
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
     ureg saved_decl_count = 0;
     set_parent_symtabs(&b->symtab, parent_st);
-    if (b->symtab->owning_node == expr && b->symtab->decl_count) {
+    if (b->symtab->owning_node == (ast_elem*)expr && b->symtab->decl_count) {
         // if we already have decls this is the second pass.
         // all local syms are already defined so we don't need to check this
         // symtab during lookup. this way we prevent use before define

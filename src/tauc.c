@@ -361,7 +361,7 @@ int tauc_link(tauc* t)
         if (!wt) break;
         tc = &wt->tc;
     }
-    assert(i - mods == mod_count);
+    assert(ptrdiff(i, mods) / sizeof(llvm_module*) == mod_count);
     int r = 0;
     if (t->emit_exe) {
         r = llvm_link_modules(mods, i, "a.out");

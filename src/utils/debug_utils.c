@@ -27,7 +27,7 @@ static void debugflush()
 void tprintf(const char* format, ...)
 {
     init_buffers();
-    ureg size = 256;
+    sreg size = 256;
     sreg len = 0;
     char* tgt = dbuffer_claim(&buff, size);
     while (true) {

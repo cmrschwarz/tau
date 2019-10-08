@@ -15,7 +15,7 @@ static inline void lx_inc_iter(lexer* tk, token** t)
         *t = tk->token_buffer;
     }
 }
-static inline void lx_inc_iter_n(lexer* tk, token** t, int n)
+static inline void lx_inc_iter_n(lexer* tk, token** t, ureg n)
 {
     ureg rem = tk->token_buffer_end - *t;
     if (rem > n) {
@@ -32,7 +32,7 @@ static inline void lx_dec_iter(lexer* tk, token** t)
         *t = tk->token_buffer_end - 1;
     }
 }
-static inline void lx_dec_iter_n(lexer* tk, token** t, int n)
+static inline void lx_dec_iter_n(lexer* tk, token** t, ureg n)
 {
     ureg rem = *t - tk->token_buffer;
     if (rem >= n) {
@@ -42,16 +42,16 @@ static inline void lx_dec_iter_n(lexer* tk, token** t, int n)
         *t = tk->token_buffer_end - (n - rem); /*% LX_TOKEN_BUFFER_SIZE*/
     }
 }
-token* lx_peek_nth(lexer* tk, int n)
+token* lx_peek_nth(lexer* tk, ureg n)
 {
     token* t = tk->loaded_tokens_start;
     if (tk->loaded_tokens_head < tk->loaded_tokens_start) {
-        int rem = tk->token_buffer_end - t;
+        ureg rem = tk->token_buffer_end - t;
         if (rem >= n) return t + n - 1;
         n -= rem;
         t = tk->token_buffer;
     }
-    int rem = tk->loaded_tokens_head - t;
+    ureg rem = tk->loaded_tokens_head - t;
     if (rem >= n) {
         return t + n - 1;
     }
@@ -82,7 +82,7 @@ void lx_void(lexer* tk)
 {
     lx_inc_iter(tk, &tk->loaded_tokens_start);
 }
-void lx_void_n(lexer* tk, int n)
+void lx_void_n(lexer* tk, ureg n)
 {
     lx_inc_iter_n(tk, &tk->loaded_tokens_start, n);
 }

@@ -609,7 +609,7 @@ int print_src_line(
                     for (ureg i = 0; i != squig_len; i++) pe("^");
                 }
                 else {
-                    for (sreg i = ep_pos->col_start + blank_space;
+                    for (ureg i = ep_pos->col_start + blank_space;
                          i != ep_pos->col_end; i++) {
                         pe("^");
                     }

@@ -49,9 +49,9 @@ token* lx_consume(lexer* tk);
 token* lx_peek(lexer* tk);
 token* lx_peek_2nd(lexer* p);
 token* lx_peek_3rd(lexer* p);
-token* lx_peek_nth(lexer* tk, int n);
+token* lx_peek_nth(lexer* tk, ureg n);
 void lx_void(lexer* tk);
-void lx_void_n(lexer* tk, int n);
+void lx_void_n(lexer* tk, ureg n);
 
 // get a token that was already peeked at
 static inline token* lx_aquire(lexer* tk)
