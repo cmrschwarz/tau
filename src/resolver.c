@@ -1031,7 +1031,7 @@ resolve_error check_var_ppl(resolver* r, sym_var* v, ureg ppl)
     }
     return RE_OK;
 }
-
+static inline void report_type_loop(resolver* r, ureg ppl);
 // the symbol table is not the one that contains the symbol, but the one
 // where it was declared and where the type name loopup should start
 static inline resolve_error resolve_ast_node_raw(
@@ -1289,6 +1289,14 @@ static inline resolve_error resolve_ast_node_raw(
             else {
                 re = resolve_ast_node(
                     r, vi->initial_value, st, ppl, NULL, &vi->var.ctype);
+                if (re == RE_TYPE_LOOP && r->type_loop_start == n) {
+                    if (ast_flags_get_resolved(n->flags)) {
+                        stack_clear(&r->error_stack);
+                        re = resolve_ast_node(
+                            r, vi->initial_value, st, ppl, NULL,
+                            &vi->var.ctype);
+                    }
+                }
             }
             r->curr_symbol_decl = prev_sym_decl;
             if (re) return re;
@@ -1311,7 +1319,8 @@ static inline resolve_error resolve_ast_node_raw(
                 else {
                     ast_flags_set_resolved(&b->target->flags);
                     *tgtt = b->value_ctype;
-                    RETURN_RESOLVED(value, ctype, NULL, UNREACHABLE_ELEM);
+                    RETURN_RESOLVED(
+                        value, ctype, UNREACHABLE_ELEM, UNREACHABLE_ELEM);
                 }
             }
             else {
@@ -1496,6 +1505,10 @@ static inline void report_type_loop(resolver* r, ureg ppl)
         n = (ast_node*)stack_pop(&r->error_stack);
         if (!n) break;
         st = (symbol_table*)stack_pop(&r->error_stack);
+        if (n->kind == EXPR_OP_BINARY || n->kind == EXPR_OP_UNARY ||
+            n->kind == EXPR_MEMBER_ACCESS) {
+            continue; // skip stuff that isn't helpful in the report
+        }
         src_range_unpack(n->srange, &srl);
         if (!srl.file) srl.file = ast_node_get_file(n, st);
         error_add_annotation(e, srl.file, srl.start, srl.end, "");
@@ -1510,18 +1523,20 @@ static resolve_error resolve_ast_node(
 {
     resolve_error re = resolve_ast_node_raw(r, n, st, ppl, value, ctype);
     if (re == RE_TYPE_LOOP) {
-        if (!r->allow_type_loops) {
+        if (!r->allow_type_loops || r->retracing_type_loop) {
             stack_push(&r->error_stack, st);
             stack_push(&r->error_stack, n);
         }
         if (r->type_loop_start == n) {
-            if (!ast_flags_get_resolving(n->flags)) {
+            if (ast_flags_get_resolving(n->flags) && !r->allow_type_loops &&
+                !r->retracing_type_loop) {
                 ast_flags_clear_resolving(&n->flags);
                 report_type_loop(r, ppl);
-                return RE_ERROR;
             }
         }
-        ast_flags_clear_resolving(&n->flags);
+        else {
+            ast_flags_clear_resolving(&n->flags);
+        }
     }
     return re;
 }
@@ -1547,9 +1562,7 @@ resolve_error resolve_expr_body(
         }
         if (!re) continue;
         if (re == RE_TYPE_LOOP) {
-            if (r->type_loop_start == (ast_node*)curr_sym ||
-                r->type_loop_start == expr) {
-                ast_flags_set_resolving(&curr_sym->node.flags);
+            if (r->type_loop_start == expr) {
                 if (r->retracing_type_loop) {
                     stack_clear(&r->error_stack);
                 }

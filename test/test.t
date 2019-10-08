@@ -4,14 +4,18 @@ struct foo{
     y: int;
 }
 public func main() -> int{
-    f := # @res{
+    loop{
+        break 3;
+        break 7;
+    }
+    f := @res{
         g: foo;
-        g.x = 0;
-        g.y = 1;
+        f.x = 0;
+        f.y = 1;
         loop{
-            if(g.x == 10)break @res g;
-            g.y = g.y * 2;
-            g.x++;
+            if(f.x == 10)break @res g;
+            f.y = f.y * 2;
+            f.x++;
         }
     };
     printfln("pp: %i", f.y);
