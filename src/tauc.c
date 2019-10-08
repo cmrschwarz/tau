@@ -157,9 +157,13 @@ int handle_cmd_args(
     t->needs_emit_stage = (t->emit_exe || t->emit_asm || t->emit_ll);
     if (!*files_found) {
 #if DEBUG
-        if (!tests_run)
+        if (!tests_run || (t->emit_asm || t->emit_ast || t->explicit_exe)) {
 #endif
             master_error_log_report(&t->mel, "no input files");
+            r |= ERR;
+#if DEBUG
+        }
+#endif
     }
     return OK;
 }
@@ -220,7 +224,6 @@ int tauc_run(int argc, char** argv)
                 tauc_core_fin(&t);
             }
             else {
-                r = ERR;
                 tauc_core_fin_no_run(&t);
             }
         }
@@ -261,11 +264,11 @@ int tauc_add_worker_thread(tauc* t)
     }
     r = thread_launch(&wt->thr, worker_thread_fn, wt);
     if (r) {
-        // all other initialization failiures are due to memory allocation,
-        // which is deemed fatal for the CALLING thread
-        // a thread spawn failiure isn't really though, so we make the error
-        // appear in the new context, and make the old one continue like we
-        // succeeded
+        // all other initialization failiures are due to memory
+        // allocation, which is deemed fatal for the CALLING thread a
+        // thread spawn failiure isn't really though, so we make the
+        // error appear in the new context, and make the old one
+        // continue like we succeeded
         thread_context_fin(&wt->tc);
         error_log_report_critical_failiure(
             wt->tc.err_log, "failed to spawn additional worker thread");

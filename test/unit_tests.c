@@ -258,5 +258,5 @@ int run_unit_tests(int argc, char** argv)
         print_dash_padded("PASSED", false);
     }
     debug_utils_free_res();
-    return res;
+    return OK;
 }
