@@ -1,11 +1,15 @@
 #!/bin/bash
+set -Eeuo pipefail
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd $SCRIPT_DIR
 
 #make sure llvm is up to date
+git submodule init
+git submodule update --recursive --remote
 cd ./deps/llvm-project/
 git checkout release/9.x
 git pull
+
 #if this dir exists we already precompiled, so we exit successfully
 if [ -d "../llvm-project-prebuild" ]; then
     
