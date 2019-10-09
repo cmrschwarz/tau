@@ -304,7 +304,7 @@ static resolve_error add_ast_node_decls(
             pprn->declaring_st = st;
             pprn->node = n;
             pprn->ppl = ppl;
-            break;
+            return RE_OK;
         }
         case EXPR_PP: {
             // TODO: rework this piece of crap
@@ -328,6 +328,7 @@ static resolve_error add_ast_node_decls(
                 pprn->ppl = ppl;
             }
             r->contains_paste = cp;
+            return RE_OK;
         }
         case SC_STRUCT:
         case SC_TRAIT: {

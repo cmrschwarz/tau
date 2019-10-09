@@ -8,7 +8,6 @@ struct foo{
     }
 }
 
-
 public func main() -> int{
     f: foo;
     fp := &f;

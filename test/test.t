@@ -4,10 +4,11 @@ struct foo{
     y: int;
 }
 public func main() -> int{
-    f := @res{
+    f := #@res{
         g: foo;
         g.x = 0;
         g.y = 1;
+        printfln("lols%i", 3);
         loop{
             if(g.x == 10)break @res g;
             g.y = g.y * 2;
