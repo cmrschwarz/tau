@@ -3,18 +3,13 @@ struct foo{
     x: int;
     y: int;
 }
+public func bar() -> int{
+   puts("foo");
+  return 5;
+}
 public func main() -> int{
-    f := #@res{
-        g: foo;
-        g.x = 0;
-        g.y = 1;
-        printfln("lols%i", 3);
-        loop{
-            if(g.x == 10)break @res g;
-            g.y = g.y * 2;
-            g.x++;
-        }
-    };
-    printfln("pp: %i", f.y);
+    f := #bar();
+    g := #bar();
+    printfln("pp: %i%c", f + g);
     return 0;
 }

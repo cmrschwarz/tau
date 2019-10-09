@@ -1,5 +1,7 @@
 #include "llvm_backend.hpp"
 #include <memory>
+#include <fstream>
+#include <iostream>
 
 static PPRunner* PP_RUNNER;
 extern "C" {
@@ -126,12 +128,40 @@ int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
     return OK;
 }
 }
+static inline void link_dll(PPRunner* pp, const char* path)
+{
+
+    auto l = llvm::orc::DynamicLibrarySearchGenerator::Load(path, '\0');
+    if (!l) {
+        llvm::errs() << l.takeError() << "\n";
+        assert(false);
+    }
+    pp->exec_session.getMainJITDylib().setGenerator(l.get());
+    /* exec_session.getMainJITDylib().define(llvm::orc::absoluteSymbols(
+        {{"puts", llvm::orc::pointerToJITTargetAddress(&puts)},
+         {"printf", llvm::orc::pointerToJITTargetAddress(&printf)}}));*/
+}
+static inline void link_lib(PPRunner* pp, const char* path)
+{
+    auto& dl = pp->exec_session.createJITDylib(path);
+    auto file{std::move(llvm::MemoryBuffer::getFile(path).get())};
+    auto err = pp->obj_link_layer.add(
+        dl, std::move(file), pp->exec_session.allocateVModule());
+    if (err) {
+        llvm::errs() << err << "\n";
+        assert(false);
+    }
+}
 // CPP
 PPRunner::PPRunner()
     : exec_session(), obj_link_layer(exec_session, []() {
           return llvm::make_unique<llvm::SectionMemoryManager>();
       })
 {
+
+    link_dll(this, "/lib64/ld-linux-x86-64.so.2");
+    link_dll(this, "/lib/x86_64-linux-gnu/libc.so.6");
+    // link_lib(this, "/usr/lib/x86_64-linux-gnu/libc_nonshared.a");
 }
 PPRunner::~PPRunner()
 {
@@ -208,8 +238,8 @@ void LLVMBackend::addPrimitives()
                     t = _builder.getDoubleTy();
                 }
                 else {
-                    // TODO: decide on supported architectures and handle this
-                    // accordingly
+                    // TODO: decide on supported architectures and handle
+                    // this accordingly
                     assert(false);
                     return;
                 }
@@ -230,7 +260,7 @@ llvm_error LLVMBackend::reserveSymbols(ureg priv_sym_count, ureg pub_sym_count)
     }
     if (_global_value_store.size() < pub_sym_count) {
         _global_value_store.resize(pub_sym_count, NULL);
-        _global_value_init_flags.assign(pub_sym_count, false);
+        _global_value_init_flags.resize(pub_sym_count, false);
     }
     return LLE_OK;
 }
@@ -252,17 +282,75 @@ LLVMBackend::initModule(mdg_node** start, mdg_node** end, LLVMModule** module)
     _mods_end = end;
     return LLE_OK;
 }
+llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
+{
+    // init id space
+    _mod_startid = 0;
+    _mod_endid = 0;
+    _private_sym_count = private_sym_count;
+    if (reserveSymbols(private_sym_count, 0)) return LLE_FATAL;
+    // create actual module
+    _module =
+        new (std::nothrow) llvm::Module(_mod_handle->module_str, _context);
+    for (llvm::Function* fn : _pp_used_fns) {
+        _module->getFunctionList().push_back(fn);
+    }
+    if (!_module) return LLE_OK;
+    _module->setTargetTriple(_target_machine->getTargetTriple().str());
+    _module->setDataLayout(*_data_layout);
+    std::string func_name = "__pp_" + std::to_string((ureg)pp);
+    _pp_mode = true;
+    llvm_error lle = genPPFunc(func_name.c_str(), pp);
+    if (lle) return lle;
+
+    // emit
+    lle = emitModule();
+    if (lle) return lle;
+
+    auto mainfn = PP_RUNNER->exec_session.lookup(
+        llvm::orc::JITDylibSearchList(
+            {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
+        PP_RUNNER->exec_session.intern(func_name));
+    if (!mainfn) {
+        llvm::errs() << mainfn.takeError() << "\n";
+        assert(false);
+    }
+
+    auto jit_func = (void (*)(void*))mainfn->getAddress();
+    jit_func(pp->result);
+    assert(*(ureg*)pp->result);
+    for (ureg id : _reset_after_emit) {
+        auto val = (llvm::Value*)_local_value_store[id - PRIV_SYMBOL_OFFSET];
+        if (llvm::isa<llvm::GlobalVariable>(*val)) {
+            ((llvm::GlobalVariable*)val)->removeFromParent();
+        }
+        else {
+            assert(false);
+        }
+    }
+    for (llvm::Function* fn : _pp_used_fns) {
+        fn->removeFromParent();
+    }
+    delete _module;
+    _reset_after_emit.clear();
+    return lle;
+}
 llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
 {
     // init id space
+    _pp_mode = false;
     _mod_startid = startid;
     _mod_endid = endid;
     _private_sym_count = private_sym_count;
     if (reserveSymbols(private_sym_count, endid)) return LLE_FATAL;
-
+    _global_value_init_flags.assign(endid, false);
     // create actual module
     _module =
         new (std::nothrow) llvm::Module(_mod_handle->module_str, _context);
+    for (llvm::Function* fn : _pp_used_fns) {
+        _module->getFunctionList().push_back(fn);
+    }
+    _pp_used_fns.clear();
     if (!_module) return LLE_OK;
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
     _module->setDataLayout(*_data_layout);
@@ -271,7 +359,8 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     TIME(lle = genModules(););
     tflush();
     if (lle) return lle;
-    TIME(lle = emitModule(false););
+    emitModuleIR();
+    TIME(lle = emitModule(););
     tflush();
     // PERF: instead of this last minute checking
     // just have different buffers for the different reset types
@@ -298,15 +387,15 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
 void LLVMBackend::remapLocalID(ureg old_id, ureg new_id)
 {
     assert(isLocalID(old_id));
+    old_id -= PRIV_SYMBOL_OFFSET;
     if (isLocalID(new_id)) {
         _local_value_store[new_id - PRIV_SYMBOL_OFFSET] =
-            _local_value_store[old_id - PRIV_SYMBOL_OFFSET];
+            _local_value_store[old_id];
     }
     else {
-        _global_value_store[new_id] =
-            _local_value_store[old_id - PRIV_SYMBOL_OFFSET];
+        _global_value_store[new_id] = _local_value_store[old_id];
     }
-    _local_value_store[old_id - PRIV_SYMBOL_OFFSET] = NULL;
+    _local_value_store[old_id] = NULL;
 }
 llvm_error LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr)
 {
@@ -363,49 +452,6 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr)
     _control_flow_ctx.pop_back();
     return lle;
 }
-llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
-{
-    // init id space
-    _mod_startid = 0;
-    _mod_endid = 0;
-    _private_sym_count = private_sym_count;
-    if (reserveSymbols(private_sym_count, 0)) return LLE_FATAL;
-
-    // create actual module
-    _module =
-        new (std::nothrow) llvm::Module(_mod_handle->module_str, _context);
-    if (!_module) return LLE_OK;
-    _module->setTargetTriple(_target_machine->getTargetTriple().str());
-    _module->setDataLayout(*_data_layout);
-    std::string func_name = "__pp_" + std::to_string((ureg)pp);
-    llvm_error lle = genPPFunc(func_name.c_str(), pp);
-    if (lle) return lle;
-
-    // emit
-    lle = emitModule(true);
-    if (lle) return lle;
-
-    auto mainfn = PP_RUNNER->exec_session.lookup(
-        llvm::orc::JITDylibSearchList(
-            {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
-        PP_RUNNER->exec_session.intern(func_name));
-    auto jit_func = (void (*)(void*))mainfn->getAddress();
-    jit_func(pp->result);
-    assert(*(ureg*)pp->result);
-    for (ureg id : _reset_after_emit) {
-        auto val = (llvm::Value*)_local_value_store[id];
-        if (llvm::isa<llvm::GlobalVariable>(*val)) {
-            ((llvm::GlobalVariable*)val)->removeFromParent();
-        }
-        else {
-            assert(llvm::isa<llvm::Function>(*val));
-            ((llvm::Function*)val)->removeFromParent();
-        }
-    }
-    delete _module;
-    _reset_after_emit.clear();
-    return lle;
-}
 llvm_error LLVMBackend::genModules()
 {
     for (mdg_node** n = _mods_start; n != _mods_end; n++) {
@@ -460,10 +506,13 @@ llvm::Value** LLVMBackend::lookupVariableRaw(ureg id)
 llvm::Function** LLVMBackend::lookupFunctionRaw(ureg id)
 {
     auto fn = (llvm::Function**)lookupAstElem(id);
-    if (isGlobalID(id) && *fn) {
-        if (!_global_value_init_flags[id]) {
-            _global_value_init_flags[id] = true;
-            _module->getFunctionList().push_back(*fn);
+    if (isGlobalID(id)) {
+        if (*fn) {
+            if (!_global_value_init_flags[id]) {
+                _global_value_init_flags[id] = true;
+                _module->getFunctionList().push_back(*fn);
+                _reset_after_emit.push_back(id);
+            }
         }
     }
     return fn;
@@ -492,9 +541,9 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
                 if (isGlobalID(st->id) && isIDInModule(st->id)) {
                     _globals_not_to_free.push_back(st->id);
                 }
-                // PERF: we could steal the array of elements for our types here
-                // this might be too big because of nested structs etc. but it's
-                // definitely big enough
+                // PERF: we could steal the array of elements for our types
+                // here this might be too big because of nested structs etc.
+                // but it's definitely big enough
                 auto members = (llvm::Type**)pool_alloc(
                     &_tc->permmem,
                     sizeof(llvm::Type*) * st->sc.body.symtab->decl_count);
@@ -940,7 +989,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             llvm::Function* callee;
             lle = genFunction((sc_func*)c->target.fn, &callee);
             if (lle) return lle;
-            auto call = _builder.CreateCall(callee, args_arr_ref);
+            auto call = _builder.CreateCall(
+                callee->getFunctionType(), callee, args_arr_ref);
             if (!call) return LLE_FATAL;
             if (vl) *vl = call;
             if (vl_loaded) *vl_loaded = call;
@@ -1255,6 +1305,9 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
             _global_value_init_flags[fn->id] = true;
             _reset_after_emit.push_back(fn->id);
         }
+        else if (_pp_mode) {
+            _pp_used_fns.push_back(func);
+        }
         if (!func) return LLE_FATAL;
         *res = func;
         if (llfn) *llfn = func;
@@ -1266,11 +1319,13 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
     }
     else {
         _global_value_init_flags[fn->id] = true;
-        _reset_after_emit.push_back(fn->id);
     }
 
     llvm::Function* func =
         llvm::Function::Create(func_sig, lt, func_name_mangled, _module);
+    if (_pp_mode) {
+        _pp_used_fns.push_back(func);
+    }
     if (!func) return LLE_FATAL;
     *res = func;
     if (llfn) *llfn = func;
@@ -1319,7 +1374,9 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
     _curr_fn = prev_fn;
     _curr_fn_ast_node = prev_fn_ast_node;
     _curr_fn_control_flow_ctx = prev_fn_cfc;
-    _builder.SetInsertPoint(prev_blk, prev_pos);
+    if (prev_blk) {
+        _builder.SetInsertPoint(prev_blk, prev_pos);
+    }
     return lle;
 }
 llvm_error LLVMBackend::emitModuleIR()
@@ -1379,9 +1436,9 @@ llvm_error LLVMBackend::emitModuleToPP(llvm::TargetLibraryInfoImpl* tlii)
     return LLE_OK;
 }
 
-llvm_error LLVMBackend::emitModule(bool pp_mode)
+llvm_error LLVMBackend::emitModule()
 {
-    if (!pp_mode) {
+    if (!_pp_mode) {
         tprintf("emmitting {%s} ", _mod_handle->module_str.c_str());
     }
     llvm::Triple TargetTriple(_module->getTargetTriple());
@@ -1430,7 +1487,7 @@ llvm_error LLVMBackend::emitModule(bool pp_mode)
 
     PerModulePasses.run(*_module);
     llvm_error lle = LLE_OK;
-    if (!pp_mode) {
+    if (!_pp_mode) {
         if (!lle && _tc->t->emit_ll) emitModuleIR();
         if (_tc->t->emit_asm) lle = emitModuleToFile(TLII.get(), true);
         if (!lle && _tc->t->emit_exe) emitModuleToFile(TLII.get(), false);

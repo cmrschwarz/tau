@@ -52,6 +52,7 @@ extern "C" {
 #include <llvm/Support/FileSystem.h>
 #include <llvm/Support/TargetParser.h>
 #include <llvm/Support/SmallVectorMemoryBuffer.h>
+#include <llvm/Support/BinaryByteStream.h>
 #include <llvm/Support/TargetRegistry.h>
 #include <llvm/Support/TargetSelect.h>
 #include <llvm/Support/raw_ostream.h>
@@ -100,6 +101,7 @@ struct LLVMBackend {
     std::vector<void*> _local_value_store;
     std::vector<ureg> _reset_after_emit;
     std::vector<ureg> _globals_not_to_free;
+    std::vector<llvm::Function*> _pp_used_fns;
     // we have to avoid pointer invalidation on resize, therefore deque
     std::deque<ControlFlowContext> _control_flow_ctx;
     llvm::Type* _primitive_types[PRIMITIVE_COUNT];
@@ -115,6 +117,7 @@ struct LLVMBackend {
     mdg_node** _mods_end;
     ureg _private_sym_count;
     LLVMModule* _mod_handle;
+    bool _pp_mode;
 
   public:
     LLVMBackend(thread_context* tc);
@@ -170,7 +173,7 @@ struct LLVMBackend {
     genUnaryOp(expr_op_unary* u, llvm::Value** vl, llvm::Value** vl_loaded);
 
   private:
-    llvm_error emitModule(bool pp_mode);
+    llvm_error emitModule();
     llvm_error emitModuleToStream(
         llvm::TargetLibraryInfoImpl* tlii, llvm::raw_pwrite_stream* stream,
         bool emit_asm);
