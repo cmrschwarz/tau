@@ -1,0 +1,2 @@
+@1  adding a stray token before a function in ./test/bigtest/baztest.t
+    causes a memory leak
