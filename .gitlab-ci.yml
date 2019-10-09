@@ -42,13 +42,6 @@ build:
 test:
     stage: test
     script:
-        #run unit tests
-        - ./build/tauc -U
-        # test other output modes with at least one run :) 
-        - ./build/tauc -L -S -E ./test/branchtest.t && ./a.out
-        - ./build/tauc ./test/bigtest/footest.t && ./a.out
-        - ./build/tauc ./test/multitest.t && ./a.out
-        - ./build/tauc ./test/structtest.t && ./a.out
-       # - valgrind --track-origins=yes --leak-check=full --error-exitcode=1 --suppressions test/valgrind_suppressions./build/tauc 
+       - ./test/run_tests.sh
     only:
         - master
