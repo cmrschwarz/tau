@@ -10,6 +10,7 @@ public func bar() -> int{
 public func main() -> int{
     f := #bar();
     g := #bar();
+    bar();
     printfln("pp: %i%c", f + g);
     return 0;
 }

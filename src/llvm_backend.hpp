@@ -85,6 +85,17 @@ struct ControlFlowContext {
     llvm::BasicBlock* following_block;
     bool continues_afterwards;
 };
+enum ValueState : char {
+    NOT_GENERATED,
+    PP_IMPL_ADDED,
+    PP_IMPL_DESTROYED,
+    PP_STUB_GENERATED,
+    PP_STUB_ADDED,
+    IMPL_ADDED,
+    IMPL_DESTROYED,
+    STUB_GENERATED,
+    STUB_ADDED,
+};
 
 struct LLVMBackend {
 
@@ -97,11 +108,11 @@ struct LLVMBackend {
     // TOOD: put primitives in different data structure so these can be
     // values
     std::vector<void*> _global_value_store;
-    std::vector<bool> _global_value_init_flags;
+    std::vector<ValueState> _global_value_state;
     std::vector<void*> _local_value_store;
+    std::vector<ValueState> _local_value_state;
     std::vector<ureg> _reset_after_emit;
     std::vector<ureg> _globals_not_to_free;
-    std::vector<llvm::Function*> _pp_used_fns;
     // we have to avoid pointer invalidation on resize, therefore deque
     std::deque<ControlFlowContext> _control_flow_ctx;
     llvm::Type* _primitive_types[PRIMITIVE_COUNT];
@@ -117,6 +128,7 @@ struct LLVMBackend {
     mdg_node** _mods_end;
     ureg _private_sym_count;
     LLVMModule* _mod_handle;
+    llvm::orc::JITDylib* _mod_dylib;
     bool _pp_mode;
 
   public:
@@ -134,6 +146,7 @@ struct LLVMBackend {
     llvm_error runPP(ureg private_sym_count, expr_pp* pp);
     llvm_error reserveSymbols(ureg priv_sym_limit, ureg pub_sym_limit);
     llvm_error emit(ureg startid, ureg endid, ureg priv_sym_count);
+    void resetAfterEmit();
 
   private:
     void addPrimitives();
@@ -143,43 +156,63 @@ struct LLVMBackend {
     bool isGlobalIDInModule(ureg id);
     static bool isLocalID(ureg id);
     static bool isGlobalID(ureg id);
+    static bool isPPSymbolGlobal(symbol* sym);
 
   private:
     ControlFlowContext* getTartetCFC(ast_node* target);
+
     void** lookupAstElem(ureg id);
-    llvm::Value** lookupVariableRaw(ureg id);
-    llvm::Function** lookupFunctionRaw(ureg id);
+
+    ValueState* lookupValueState(ureg id);
+
     llvm::Type** lookupTypeRaw(ureg id);
+
     llvm_error buildConstant(ast_elem* ctype, void* data, llvm::Constant** res);
+
     llvm_error
     buildPrimitiveConstant(primitive_kind pk, void* data, llvm::Constant** res);
+
     llvm_error
     lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size);
+
     llvm_error getFollowingBlock(llvm::BasicBlock** following_block);
 
   private:
     llvm_error genModules();
+
     llvm_error
     genAstBody(ast_body* n, bool continues_after, bool* end_reachable = NULL);
+
     llvm_error genIfBranch(ast_node* branch);
+
     llvm_error genScopeValue(ast_elem* ctype, ControlFlowContext& ctx);
 
     llvm_error
     genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded);
-    llvm_error genFunction(sc_func* fn, llvm::Function** llfn);
+
+    llvm_error genFunction(sc_func* fn, llvm::Value** llfn);
+
+    llvm_error
+    genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded);
+
     llvm_error
     genBinaryOp(expr_op_binary* b, llvm::Value** vl, llvm::Value** vl_loaded);
+
     llvm_error
     genUnaryOp(expr_op_unary* u, llvm::Value** vl, llvm::Value** vl_loaded);
 
   private:
     llvm_error emitModule();
+
     llvm_error emitModuleToStream(
         llvm::TargetLibraryInfoImpl* tlii, llvm::raw_pwrite_stream* stream,
         bool emit_asm);
+
     llvm_error
     emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm);
+
     llvm_error emitModuleToPP(llvm::TargetLibraryInfoImpl* tlii);
+
     llvm_error emitModuleIR();
 };
 

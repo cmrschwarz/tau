@@ -185,6 +185,7 @@ LLVMBackend::LLVMBackend(thread_context* tc)
         target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
         llvm::Optional<llvm::Reloc::Model>(), CM, OptLevel);
     _data_layout = new llvm::DataLayout(_target_machine->createDataLayout());
+    _mod_dylib = NULL;
 }
 LLVMBackend::~LLVMBackend()
 {
@@ -257,10 +258,11 @@ llvm_error LLVMBackend::reserveSymbols(ureg priv_sym_count, ureg pub_sym_count)
 {
     if (_local_value_store.size() < priv_sym_count) {
         _local_value_store.resize(priv_sym_count, NULL);
+        _local_value_state.resize(priv_sym_count, NOT_GENERATED);
     }
     if (_global_value_store.size() < pub_sym_count) {
         _global_value_store.resize(pub_sym_count, NULL);
-        _global_value_init_flags.resize(pub_sym_count, false);
+        _global_value_state.resize(pub_sym_count, NOT_GENERATED);
     }
     return LLE_OK;
 }
@@ -282,6 +284,59 @@ LLVMBackend::initModule(mdg_node** start, mdg_node** end, LLVMModule** module)
     _mods_end = end;
     return LLE_OK;
 }
+void LLVMBackend::resetAfterEmit()
+{
+    for (ureg id : _reset_after_emit) {
+        ureg pid = id;
+        ValueState* state;
+        llvm::Value** val;
+        if (isGlobalID(id)) {
+            state = &_global_value_state[pid];
+            val = (llvm::Value**)&_global_value_store[pid];
+        }
+        else {
+            pid -= PRIV_SYMBOL_OFFSET;
+            state = &_local_value_state[pid];
+            val = (llvm::Value**)&_local_value_store[pid];
+        }
+        if (llvm::isa<llvm::GlobalVariable>(**val)) {
+            if (*state == IMPL_ADDED) {
+                *state = IMPL_DESTROYED;
+            }
+            else if (*state == PP_IMPL_ADDED) {
+                *state = PP_IMPL_DESTROYED;
+            }
+            else if (*state == STUB_ADDED) {
+                ((llvm::GlobalVariable*)*val)->removeFromParent();
+                *state = STUB_GENERATED;
+            }
+            else {
+                assert(*state == PP_STUB_ADDED);
+                ((llvm::GlobalVariable*)*val)->removeFromParent();
+                *state = PP_STUB_GENERATED;
+            }
+        }
+        else {
+            assert(llvm::isa<llvm::Function>(*val));
+            ((llvm::Function*)*val)->removeFromParent();
+            if (*state == IMPL_ADDED) {
+                ((llvm::Function*)*val)->deleteBody();
+                *state = STUB_GENERATED;
+            }
+            else if (*state == PP_IMPL_ADDED) {
+                *state = PP_IMPL_DESTROYED;
+            }
+            else if (*state == STUB_ADDED) {
+                *state = STUB_GENERATED;
+            }
+            else {
+                assert(*state == PP_STUB_ADDED);
+                *state = PP_STUB_GENERATED;
+            }
+        }
+    }
+    _reset_after_emit.clear();
+}
 llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
 {
     // init id space
@@ -289,18 +344,16 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
     _mod_endid = 0;
     _private_sym_count = private_sym_count;
     if (reserveSymbols(private_sym_count, 0)) return LLE_FATAL;
+    // create name
+    std::string pp_name = "__pp_" + std::to_string((ureg)pp);
     // create actual module
     _module =
         new (std::nothrow) llvm::Module(_mod_handle->module_str, _context);
-    for (llvm::Function* fn : _pp_used_fns) {
-        _module->getFunctionList().push_back(fn);
-    }
     if (!_module) return LLE_OK;
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
     _module->setDataLayout(*_data_layout);
-    std::string func_name = "__pp_" + std::to_string((ureg)pp);
     _pp_mode = true;
-    llvm_error lle = genPPFunc(func_name.c_str(), pp);
+    llvm_error lle = genPPFunc(pp_name.c_str(), pp);
     if (lle) return lle;
 
     // emit
@@ -310,47 +363,31 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
     auto mainfn = PP_RUNNER->exec_session.lookup(
         llvm::orc::JITDylibSearchList(
             {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
-        PP_RUNNER->exec_session.intern(func_name));
+        PP_RUNNER->exec_session.intern(pp_name));
     if (!mainfn) {
         llvm::errs() << mainfn.takeError() << "\n";
         assert(false);
     }
 
-    auto jit_func = (void (*)(void*))mainfn->getAddress();
+    auto jit_func = (void (*)(void*))(mainfn.get()).getAddress();
     jit_func(pp->result);
     assert(*(ureg*)pp->result);
-    for (ureg id : _reset_after_emit) {
-        auto val = (llvm::Value*)_local_value_store[id - PRIV_SYMBOL_OFFSET];
-        if (llvm::isa<llvm::GlobalVariable>(*val)) {
-            ((llvm::GlobalVariable*)val)->removeFromParent();
-        }
-        else {
-            assert(false);
-        }
-    }
-    for (llvm::Function* fn : _pp_used_fns) {
-        fn->removeFromParent();
-    }
+    resetAfterEmit();
     delete _module;
-    _reset_after_emit.clear();
     return lle;
 }
 llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
 {
+    _mod_dylib = NULL;
     // init id space
     _pp_mode = false;
     _mod_startid = startid;
     _mod_endid = endid;
     _private_sym_count = private_sym_count;
     if (reserveSymbols(private_sym_count, endid)) return LLE_FATAL;
-    _global_value_init_flags.assign(endid, false);
     // create actual module
     _module =
         new (std::nothrow) llvm::Module(_mod_handle->module_str, _context);
-    for (llvm::Function* fn : _pp_used_fns) {
-        _module->getFunctionList().push_back(fn);
-    }
-    _pp_used_fns.clear();
     if (!_module) return LLE_OK;
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
     _module->setDataLayout(*_data_layout);
@@ -364,24 +401,9 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     tflush();
     // PERF: instead of this last minute checking
     // just have different buffers for the different reset types
-    for (ureg id : _reset_after_emit) {
-        if (isGlobalIDInModule(id)) {
-            // freeing the module will delete these
-            _global_value_store[id] = NULL;
-            continue;
-        }
-        auto val = (llvm::Value*)_global_value_store[id];
-        if (llvm::isa<llvm::GlobalVariable>(*val)) {
-            ((llvm::GlobalVariable*)val)->removeFromParent();
-        }
-        else {
-            assert(llvm::isa<llvm::Function>(*val));
-            ((llvm::Function*)val)->removeFromParent();
-        }
-    }
+    resetAfterEmit();
     delete _module;
     _local_value_store.assign(_private_sym_count, NULL);
-    _reset_after_emit.clear();
     return lle;
 }
 void LLVMBackend::remapLocalID(ureg old_id, ureg new_id)
@@ -492,30 +514,10 @@ void** LLVMBackend::lookupAstElem(ureg id)
     }
     return &_global_value_store[id];
 }
-llvm::Value** LLVMBackend::lookupVariableRaw(ureg id)
+ValueState* LLVMBackend::lookupValueState(ureg id)
 {
-    auto gv = (llvm::GlobalValue**)lookupAstElem(id);
-    if (isGlobalID(id) && *gv) {
-        if (!_global_value_init_flags[id]) {
-            _global_value_init_flags[id] = true;
-            _module->getGlobalList().push_back((llvm::GlobalVariable*)*gv);
-        }
-    }
-    return (llvm::Value**)gv;
-}
-llvm::Function** LLVMBackend::lookupFunctionRaw(ureg id)
-{
-    auto fn = (llvm::Function**)lookupAstElem(id);
-    if (isGlobalID(id)) {
-        if (*fn) {
-            if (!_global_value_init_flags[id]) {
-                _global_value_init_flags[id] = true;
-                _module->getFunctionList().push_back(*fn);
-                _reset_after_emit.push_back(id);
-            }
-        }
-    }
-    return fn;
+    if (isLocalID(id)) return &_local_value_state[id - PRIV_SYMBOL_OFFSET];
+    return &_global_value_state[id];
 }
 llvm::Type** LLVMBackend::lookupTypeRaw(ureg id)
 {
@@ -625,6 +627,12 @@ bool LLVMBackend::isLocalID(ureg id)
 bool LLVMBackend::isGlobalID(ureg id)
 {
     return !isLocalID(id);
+}
+bool LLVMBackend::isPPSymbolGlobal(symbol* sym)
+{
+    if (sym->declaring_st->owning_node->kind != OSC_EXTEND) return false;
+    auto am = ast_flags_get_access_mod(sym->node.flags);
+    return (am == AM_PUBLIC || am == AM_PROTECTED);
 }
 llvm_error LLVMBackend::getFollowingBlock(llvm::BasicBlock** following_block)
 {
@@ -778,7 +786,98 @@ LLVMBackend::buildConstant(ast_elem* ctype, void* data, llvm::Constant** res)
         default: assert(false); return LLE_FATAL;
     }
 }
-
+llvm_error
+LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
+{
+    if (ast_flags_get_const(n->flags)) assert(false); // TODO (ctfe)
+    sym_var* var = (sym_var*)n;
+    llvm::Type* t;
+    ureg align;
+    llvm_error lle = lookupCType(var->ctype, &t, &align, NULL);
+    if (lle) return lle;
+    auto state = lookupValueState(var->var_id);
+    bool generated = true;
+    llvm::Value** llvar = (llvm::Value**)lookupAstElem(var->var_id);
+    if (*state == IMPL_ADDED || *state == STUB_ADDED ||
+        *state == PP_IMPL_ADDED || *state == PP_STUB_ADDED) {
+    }
+    else if (!_pp_mode && *state == PP_STUB_GENERATED) {
+        (**llvar).deleteValue();
+        generated = false;
+    }
+    else if (*state == STUB_GENERATED) {
+        assert(isGlobalID(var->var_id));
+        *state = STUB_ADDED;
+        _module->getGlobalList().push_back((llvm::GlobalVariable*)*llvar);
+        _reset_after_emit.push_back(var->var_id);
+    }
+    else if (*state == PP_STUB_GENERATED) {
+        assert(isLocalID(var->var_id));
+        assert(!isPPSymbolGlobal((symbol*)var));
+        *state = PP_STUB_ADDED;
+        _reset_after_emit.push_back(var->var_id);
+    }
+    else {
+        assert(*state == NOT_GENERATED);
+        *state = _pp_mode ? PP_IMPL_ADDED : IMPL_ADDED;
+        generated = false;
+    }
+    if (!generated) {
+        ast_node_kind k = var->sym.declaring_st->owning_node->kind;
+        llvm::Value* var_val;
+        if (k == ELEM_MDG_NODE || k == OSC_MODULE || k == OSC_EXTEND) {
+            // global var
+            llvm::GlobalVariable::LinkageTypes lt;
+            if (isLocalID(var->var_id)) {
+                lt = llvm::GlobalVariable::InternalLinkage;
+            }
+            else {
+                lt = llvm::GlobalVariable::ExternalLinkage;
+                _reset_after_emit.push_back(var->var_id);
+            }
+            llvm::Constant* init = NULL;
+            if (n->kind == SYM_VAR_INITIALIZED && isIDInModule(var->var_id)) {
+                llvm::Value* v;
+                lle = genAstNode(
+                    ((sym_var_initialized*)n)->initial_value, NULL, &v);
+                if (lle) return lle;
+                if (!(init = llvm::dyn_cast<llvm::Constant>(v))) {
+                    assert(false); // must be constant, TODO: error
+                    return LLE_FATAL;
+                }
+            }
+            var_val = (llvm::Value*)new llvm::GlobalVariable(
+                *_module, t, false, lt, init, var->sym.name);
+            if (!var_val) return LLE_FATAL;
+        }
+        else {
+            // These should be handled by member access
+            assert(k != SC_STRUCT);
+            // local var
+            auto all = new llvm::AllocaInst(
+                t, 0, nullptr, align, "" /* var->sym.name*/);
+            if (!all) return LLE_FATAL;
+            var_val = all;
+            _builder.Insert(all);
+            if (n->kind == SYM_VAR_INITIALIZED) {
+                llvm::Value* init_val;
+                lle = genAstNode(
+                    ((sym_var_initialized*)n)->initial_value, NULL, &init_val);
+                if (lle) return lle;
+                if (!_builder.CreateAlignedStore(
+                        init_val, var_val, align, false))
+                    return LLE_FATAL;
+            }
+        }
+        *llvar = var_val;
+    }
+    if (vl_loaded) {
+        *vl_loaded = _builder.CreateAlignedLoad(*llvar, align);
+        if (!*vl_loaded) return LLE_FATAL;
+    }
+    if (vl) *vl = *llvar;
+    return LLE_OK;
+}
 llvm_error
 LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
@@ -799,7 +898,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             assert(!vl);
             return LLE_OK; // these are handled by the osc iterator
         case SC_STRUCT: return lookupCType((ast_elem*)n, NULL, NULL, NULL);
-        case SC_FUNC: return genFunction((sc_func*)n, (llvm::Function**)vl);
+        case SC_FUNC: return genFunction((sc_func*)n, vl);
         case EXPR_OP_BINARY:
             return genBinaryOp((expr_op_binary*)n, vl, vl_loaded);
         case EXPR_OP_UNARY: return genUnaryOp((expr_op_unary*)n, vl, vl_loaded);
@@ -841,7 +940,11 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             sc_func* f = (sc_func*)p->sym.declaring_st->owning_node;
             ureg param_nr = p - f->params;
             llvm::Function* fn;
-            lle = genFunction(f, &fn);
+#if DEBUG
+            auto state = *lookupValueState(f->id);
+            assert(state == IMPL_ADDED || state == PP_IMPL_ADDED);
+#endif
+            lle = genFunction(f, (llvm::Value**)&fn);
             if (lle) return lle;
             llvm::Argument* a = fn->arg_begin() + param_nr;
             if (!a) return LLE_FATAL;
@@ -986,11 +1089,10 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             }
             llvm::ArrayRef<llvm::Value*> args_arr_ref(
                 args, args + c->arg_count);
-            llvm::Function* callee;
+            llvm::Value* callee;
             lle = genFunction((sc_func*)c->target.fn, &callee);
             if (lle) return lle;
-            auto call = _builder.CreateCall(
-                callee->getFunctionType(), callee, args_arr_ref);
+            auto call = _builder.CreateCall(callee, args_arr_ref);
             if (!call) return LLE_FATAL;
             if (vl) *vl = call;
             if (vl_loaded) *vl_loaded = call;
@@ -998,76 +1100,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         }
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: {
-            if (ast_flags_get_const(n->flags)) {
-                // TODO (ctfe)
-                assert(false);
-            }
-            sym_var* var = (sym_var*)n;
-            llvm::Type* t;
-            ureg align;
-            lle = lookupCType(var->ctype, &t, &align, NULL);
-            if (lle) return lle;
-            llvm::Value** llvar = lookupVariableRaw(var->var_id);
-            if (!*llvar) {
-                ast_node_kind k = var->sym.declaring_st->owning_node->kind;
-                llvm::Value* var_val;
-                if (k == ELEM_MDG_NODE || k == OSC_MODULE || k == OSC_EXTEND) {
-                    // global var
-                    llvm::GlobalVariable::LinkageTypes lt;
-                    if (isLocalID(var->var_id)) {
-                        lt = llvm::GlobalVariable::InternalLinkage;
-                    }
-                    else {
-                        lt = llvm::GlobalVariable::ExternalLinkage;
-                        _reset_after_emit.push_back(var->var_id);
-                    }
-                    llvm::Constant* init = NULL;
-                    if (n->kind == SYM_VAR_INITIALIZED &&
-                        isIDInModule(var->var_id)) {
-                        llvm::Value* v;
-                        lle = genAstNode(
-                            ((sym_var_initialized*)n)->initial_value, NULL, &v);
-                        if (lle) return lle;
-                        if (!(init = llvm::dyn_cast<llvm::Constant>(v))) {
-                            assert(false); // must be constant, TODO: error
-                            return LLE_FATAL;
-                        }
-                    }
-                    var_val = (llvm::Value*)new llvm::GlobalVariable(
-                        *_module, t, false, lt, init, var->sym.name);
-                    if (!var_val) return LLE_FATAL;
-                }
-                else {
-                    // These should be handled by member access
-                    assert(k != SC_STRUCT);
-                    // local var
-                    auto all = new llvm::AllocaInst(
-                        t, 0, nullptr, align, "" /* var->sym.name*/);
-                    if (!all) return LLE_FATAL;
-                    var_val = all;
-                    _builder.Insert(all);
-                    if (n->kind == SYM_VAR_INITIALIZED) {
-                        llvm::Value* init_val;
-                        lle = genAstNode(
-                            ((sym_var_initialized*)n)->initial_value, NULL,
-                            &init_val);
-                        if (lle) return lle;
-                        if (!_builder.CreateAlignedStore(
-                                init_val, var_val, align, false))
-                            return LLE_FATAL;
-                    }
-                }
-                *llvar = var_val;
-                if (isGlobalID(var->var_id)) {
-                    _global_value_init_flags[var->var_id] = true;
-                }
-            }
-            if (vl_loaded) {
-                *vl_loaded = _builder.CreateAlignedLoad(*llvar, align);
-                if (!*vl_loaded) return LLE_FATAL;
-            }
-            if (vl) *vl = *llvar;
-            return LLE_OK;
+            return genVariable(n, vl, vl_loaded);
         }
         case EXPR_SCOPE_ACCESS: {
             expr_scope_access* esa = (expr_scope_access*)n;
@@ -1263,13 +1296,56 @@ std::string name_mangle(sc_func* fn, const llvm::DataLayout& dl)
     return MangledName;
 }
 
-llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
+llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
 {
-    llvm::Function** res = lookupFunctionRaw(fn->id);
-    if (*res) {
+    auto res = (llvm::Value**)lookupAstElem(fn->id);
+    auto state = lookupValueState(fn->id);
+    if (*state == IMPL_ADDED || *state == STUB_ADDED ||
+        *state == PP_IMPL_ADDED || *state == PP_STUB_ADDED) {
         if (llfn) *llfn = *res;
         return LLE_OK;
     }
+    /*if (!_pp_mode && *state == PP_STUB_GENERATED) {
+        (**res).deleteValue();
+    }*/
+    else if (*state == STUB_GENERATED) {
+        *state = (*state == STUB_GENERATED) ? STUB_ADDED : PP_STUB_ADDED;
+        _module->getFunctionList().push_back((llvm::Function*)*res);
+        _reset_after_emit.push_back(fn->id);
+        if (llfn) *llfn = *res;
+        return LLE_OK;
+    }
+    else if (*state == PP_IMPL_DESTROYED) {
+        auto fun = PP_RUNNER->exec_session.lookup(
+            llvm::orc::JITDylibSearchList(
+                {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
+            PP_RUNNER->exec_session.intern(name_mangle(fn, *_data_layout)));
+        if (!fun) {
+            llvm::errs() << fun.takeError() << "\n";
+            assert(false);
+        }
+        auto old_fn = (llvm::Function*)*res;
+
+        auto cnst = llvm::ConstantInt::get(
+            _primitive_types[PT_UINT], fun.get().getAddress());
+        auto fnptr = llvm::ConstantExpr::getBitCast(
+            cnst, old_fn->getFunctionType()->getPointerTo());
+        if (llfn) *llfn = fnptr;
+        *res = fnptr;
+        *state = PP_STUB_ADDED;
+        return LLE_OK;
+    }
+    else if (*state == PP_STUB_ADDED) {
+        if (_pp_mode) {
+            if (llfn) *llfn = *res;
+            return LLE_OK;
+        }
+    }
+    else {
+        assert(*state == NOT_GENERATED || *state == PP_IMPL_DESTROYED);
+    }
+
+    llvm::Function* func;
     llvm::FunctionType* func_sig;
     llvm::Type* ret_type;
     llvm_error lle = lookupCType(fn->return_ctype, &ret_type, NULL, NULL);
@@ -1297,38 +1373,28 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
     auto func_name_mangled = extern_func ? std::string(fn->sc.sym.name)
                                          : name_mangle(fn, *_data_layout);
     if (extern_func || !isIDInModule(fn->id)) {
-        auto func = (llvm::Function*)llvm::Function::Create(
+        func = (llvm::Function*)llvm::Function::Create(
             func_sig, llvm::GlobalVariable::ExternalLinkage,
             _data_layout->getProgramAddressSpace(), func_name_mangled);
+        if (!func) return LLE_FATAL;
         _module->getFunctionList().push_back(func);
-        if (isGlobalID(fn->id)) {
-            _global_value_init_flags[fn->id] = true;
+        *state = STUB_ADDED;
+        if (isGlobalID(fn->id) || _pp_mode) {
             _reset_after_emit.push_back(fn->id);
         }
-        else if (_pp_mode) {
-            _pp_used_fns.push_back(func);
-        }
-        if (!func) return LLE_FATAL;
         *res = func;
         if (llfn) *llfn = func;
         return LLE_OK;
     }
-    auto lt = llvm::Function::ExternalLinkage;
-    if (isLocalID(fn->id)) {
-        lt = llvm::Function::InternalLinkage;
-    }
-    else {
-        _global_value_init_flags[fn->id] = true;
-    }
-
-    llvm::Function* func =
-        llvm::Function::Create(func_sig, lt, func_name_mangled, _module);
-    if (_pp_mode) {
-        _pp_used_fns.push_back(func);
-    }
+    auto lt = (isLocalID(fn->id) && !_pp_mode)
+                  ? llvm::Function::InternalLinkage
+                  : llvm::Function::ExternalLinkage;
+    func = llvm::Function::Create(func_sig, lt, func_name_mangled, _module);
     if (!func) return LLE_FATAL;
     *res = func;
     if (llfn) *llfn = func;
+    *state = (_pp_mode && isLocalID(fn->id)) ? PP_IMPL_ADDED : IMPL_ADDED;
+    _reset_after_emit.push_back(fn->id);
     llvm::BasicBlock* func_block = llvm::BasicBlock::Create(_context, "", func);
     if (!func_block) return LLE_FATAL;
     ureg cfcsize = _control_flow_ctx.size();
@@ -1382,8 +1448,8 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Function** llfn)
 llvm_error LLVMBackend::emitModuleIR()
 {
     std::error_code EC;
-    llvm::raw_fd_ostream ir_stream{_mod_handle->module_str + ".ll", EC,
-                                   llvm::sys::fs::F_None};
+    std::string filepath = (_module->getName() + ".ll").str();
+    llvm::raw_fd_ostream ir_stream{filepath.c_str(), EC, llvm::sys::fs::F_None};
     _module->print(ir_stream, nullptr, true, true);
     ir_stream.flush();
     return LLE_OK;
@@ -1481,10 +1547,12 @@ llvm_error LLVMBackend::emitModule()
     pmb.populateModulePassManager(PerModulePasses);
 
     PerFunctionPasses.doInitialization();
-    for (llvm::Function& F : *_module)
-        if (!F.isDeclaration()) PerFunctionPasses.run(F);
+    for (llvm::Function& F : *_module) {
+        if (!F.isDeclaration()) {
+            PerFunctionPasses.run(F);
+        }
+    }
     PerFunctionPasses.doFinalization();
-
     PerModulePasses.run(*_module);
     llvm_error lle = LLE_OK;
     if (!_pp_mode) {
