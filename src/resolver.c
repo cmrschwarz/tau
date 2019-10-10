@@ -597,11 +597,17 @@ resolve_error resolve_func_call(
             re = report_unknown_symbol(r, c->lhs, st);
             break;
         }
+        symbol* sym = *s;
         ureg fn_ppl = (**s).declaring_st->ppl;
         bool applicable;
-
-        if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
-            sym_func_overloaded* sfo = (sym_func_overloaded*)*s;
+        while (sym->node.kind == SYM_IMPORT_SYMBOL) {
+            re = resolve_ast_node(r, (ast_node*)*s, lt, ppl, NULL, NULL);
+            if (re) return re;
+            sym = ((sym_import_symbol*)*s)->target.sym;
+            lt = ((sym_import_symbol*)*s)->target_st;
+        }
+        if (sym->node.kind == SYM_FUNC_OVERLOADED) {
+            sym_func_overloaded* sfo = (sym_func_overloaded*)sym;
             scope* o = sfo->overloads;
             while (o) {
                 re = overload_applicable(
@@ -613,11 +619,11 @@ resolve_error resolve_func_call(
             }
             if (re || applicable) break;
         }
-        else if ((**s).node.kind == SC_FUNC) {
+        else if (sym->node.kind == SC_FUNC) {
             re = overload_applicable(
-                r, call_arg_types, c->arg_count, (scope*)(*s), fn_ppl,
+                r, call_arg_types, c->arg_count, (scope*)sym, fn_ppl,
                 &applicable, ctype);
-            if (applicable) tgt = (scope*)(*s);
+            if (applicable) tgt = (scope*)sym;
             if (re || applicable) break;
         }
         else {

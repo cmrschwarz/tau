@@ -97,19 +97,21 @@ int src_file_require(
     src_file_stage prev_stage;
     rwslock_write(&f->stage_lock);
     prev_stage = f->stage;
-    if (f->stage == SFS_UNPARSED || f->stage == SFS_PARSING) {
+    if (prev_stage == SFS_PARSING) {
         aseglist_add(&f->requiring_modules, n);
+        atomic_ureg_inc(&n->unparsed_files);
     }
-    if (f->stage == SFS_UNNEEDED) {
+    else if (f->stage == SFS_UNNEEDED) {
         f->stage = SFS_UNPARSED;
     }
     rwslock_end_write(&f->stage_lock);
     switch (prev_stage) {
-        case SFS_PARSED: return SF_ALREADY_PARSED;
+        case SFS_PARSED:
         case SFS_PARSING:
         case SFS_UNPARSED: return OK;
         case SFS_UNNEEDED: {
             aseglist_add(&f->requiring_modules, n);
+            atomic_ureg_inc(&n->unparsed_files);
             return tauc_request_parse(t, f, requiring_file, requiring_srange);
         }
         default: {

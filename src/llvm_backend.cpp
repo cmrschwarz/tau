@@ -881,7 +881,9 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 llvm_error
 LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
-    assert(ast_flags_get_resolved(n->flags));
+    assert(
+        ast_flags_get_resolved(n->flags) ||
+        ast_elem_is_open_scope((ast_elem*)n));
     // TODO: proper error handling
     llvm_error lle;
     switch (n->kind) {

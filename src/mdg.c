@@ -339,6 +339,7 @@ int mdg_node_file_parsed(
     module_dependency_graph* m, mdg_node* n, thread_context* tc)
 {
     ureg up = atomic_ureg_dec(&n->unparsed_files);
+    assert(up != 0);
     if (up == 1) return mdg_node_parsed(m, n, tc);
     return OK;
 }
@@ -674,6 +675,7 @@ int scc_detector_run(thread_context* tc, mdg_node* n)
     scc_detector_housekeep_ids(&tc->sccd);
     rwslock_read(&n->stage_lock);
     if (n->stage != MS_AWAITING_DEPENDENCIES) { // is this really possible?
+        assert(false);
         rwslock_end_read(&n->stage_lock);
         return OK;
     }

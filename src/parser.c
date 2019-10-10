@@ -387,8 +387,9 @@ static inline int pop_bpd(parser* p, parse_error pe)
     body_parse_data bpd = *(body_parse_data*)sbuffer_iterator_previous(
         &i, sizeof(body_parse_data));
     assert(bpd.node); // make sure it's not a pp node
+    bool is_osc = ast_elem_is_open_scope((ast_elem*)bpd.node);
     if (bpd.shared_decl_count > 0 || bpd.shared_usings_count > 0) {
-        assert(ast_elem_is_open_scope((ast_elem*)bpd.node));
+        assert(is_osc);
         // assert(*osc is member of current module*);
         atomic_ureg_add(&p->current_module->decl_count, bpd.shared_decl_count);
         atomic_ureg_add(
@@ -404,8 +405,10 @@ static inline int pop_bpd(parser* p, parse_error pe)
             &i, sizeof(body_parse_data));
         bool has_pp = (bpd2 && bpd2->node == NULL);
         if (!pe) {
+            bool force_unique = has_pp;
+            if (ppl == 0 && is_osc) force_unique = true;
             if (symbol_table_init(
-                    st, bpd.decl_count, bpd.usings_count, has_pp,
+                    st, bpd.decl_count, bpd.usings_count, force_unique,
                     (ast_elem*)bpd.node, ppl)) {
                 return ERR;
             }
@@ -2908,6 +2911,9 @@ parse_error parse_import_with_parent(
         }
         parse_error re;
         if (t->kind == TK_PAREN_OPEN) {
+            if (mdg_node_add_dependency(p->current_module, parent, p->lx.tc)) {
+                return PE_FATAL;
+            }
             re = parse_symbol_imports(
                 p, flags, start, kw_end, &end, decl_cnt, tgt);
         }
@@ -2998,9 +3004,6 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
         int r = src_file_require(
             f, p->lx.tc->t, p->lx.file, rq.srange, p->current_module);
         if (r == ERR) return PE_FATAL;
-        if (r != SF_ALREADY_PARSED) {
-            atomic_ureg_inc(&p->current_module->unparsed_files);
-        }
     }
     rq.handled = needed;
     int r = list_builder_add_block(&p->lx.tc->listb, &rq, sizeof(rq));
