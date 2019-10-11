@@ -324,7 +324,8 @@ void LLVMBackend::resetAfterEmit()
                 *state = STUB_GENERATED;
             }
             else if (*state == PP_IMPL_ADDED) {
-                *state = PP_IMPL_DESTROYED;
+                ((llvm::Function*)*val)->deleteBody();
+                *state = PP_STUB_GENERATED;
             }
             else if (*state == STUB_ADDED) {
                 *state = STUB_GENERATED;
@@ -353,7 +354,8 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
     _module->setDataLayout(*_data_layout);
     _pp_mode = true;
-    llvm_error lle = genPPFunc(pp_name.c_str(), pp);
+    bool is_void;
+    llvm_error lle = genPPFunc(pp_name.c_str(), pp, &is_void);
     if (lle) return lle;
 
     // emit
@@ -368,10 +370,15 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
         llvm::errs() << mainfn.takeError() << "\n";
         assert(false);
     }
-
-    auto jit_func = (void (*)(void*))(mainfn.get()).getAddress();
-    jit_func(pp->result);
-    assert(*(ureg*)pp->result);
+    if (!is_void) {
+        auto jit_func = (void (*)(void*))(mainfn.get()).getAddress();
+        jit_func(pp->result);
+        assert(*(ureg*)pp->result);
+    }
+    else {
+        auto jit_func = (void (*)())(mainfn.get()).getAddress();
+        jit_func();
+    }
     resetAfterEmit();
     delete _module;
     return lle;
@@ -411,22 +418,29 @@ void LLVMBackend::remapLocalID(ureg old_id, ureg new_id)
     assert(isLocalID(old_id));
     old_id -= PRIV_SYMBOL_OFFSET;
     if (isLocalID(new_id)) {
-        _local_value_store[new_id - PRIV_SYMBOL_OFFSET] =
-            _local_value_store[old_id];
+        new_id -= PRIV_SYMBOL_OFFSET;
+        _local_value_store[new_id] = _local_value_store[old_id];
+        _local_value_state[new_id] = _local_value_state[old_id];
     }
     else {
         _global_value_store[new_id] = _local_value_store[old_id];
+        _global_value_state[new_id] = _local_value_state[old_id];
     }
     _local_value_store[old_id] = NULL;
+    _local_value_state[old_id] = NOT_GENERATED;
 }
-llvm_error LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr)
+llvm_error
+LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr, bool* r_is_void)
 {
     llvm::FunctionType* func_sig;
     llvm::Type* ret_type;
     ureg size;
     ureg align;
     llvm_error lle;
-    if (expr->ctype != VOID_ELEM && expr->ctype != UNREACHABLE_ELEM) {
+    bool is_void =
+        (expr->ctype == VOID_ELEM || expr->ctype == UNREACHABLE_ELEM);
+    *r_is_void = is_void;
+    if (!is_void) {
         lle = lookupCType(expr->ctype, &ret_type, &align, &size);
         if (lle) return lle;
         assert(align <= REG_BYTES); // TODO
@@ -441,9 +455,7 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr)
             llvm::FunctionType::get(_primitive_types[PT_VOID], args, false);
     }
     else {
-        func_sig = llvm::FunctionType::get(
-            _primitive_types[PT_VOID],
-            _primitive_types[PT_VOID]->getPointerTo(), false);
+        func_sig = llvm::FunctionType::get(_primitive_types[PT_VOID], false);
     }
 
     if (!func_sig) return LLE_FATAL;
@@ -465,11 +477,13 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr)
     _builder.SetInsertPoint(func_block);
     llvm::Value* val;
     ctx.continues_afterwards = true;
-    lle = genAstNode(expr->pp_expr, NULL, &val);
+    lle = genAstNode(expr->pp_expr, NULL, is_void ? NULL : &val);
     if (lle) return lle;
     assert(!ctx.following_block && !ctx.value);
-    llvm::Argument* a = func->arg_begin();
-    if (!_builder.CreateStore(val, a)) return LLE_FATAL;
+    if (!is_void) {
+        llvm::Argument* a = func->arg_begin();
+        if (!_builder.CreateStore(val, a)) return LLE_FATAL;
+    }
     _builder.CreateRetVoid();
     _control_flow_ctx.pop_back();
     return lle;
@@ -1302,15 +1316,16 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
 {
     auto res = (llvm::Value**)lookupAstElem(fn->id);
     auto state = lookupValueState(fn->id);
+
     if (*state == IMPL_ADDED || *state == STUB_ADDED ||
         *state == PP_IMPL_ADDED || *state == PP_STUB_ADDED) {
         if (llfn) *llfn = *res;
         return LLE_OK;
     }
-    /*if (!_pp_mode && *state == PP_STUB_GENERATED) {
+    if (!_pp_mode && *state == PP_STUB_GENERATED) {
         (**res).deleteValue();
-    }*/
-    else if (*state == STUB_GENERATED) {
+    }
+    else if (*state == STUB_GENERATED || *state == PP_STUB_GENERATED) {
         *state = (*state == STUB_GENERATED) ? STUB_ADDED : PP_STUB_ADDED;
         _module->getFunctionList().push_back((llvm::Function*)*res);
         _reset_after_emit.push_back(fn->id);
@@ -1318,6 +1333,8 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         return LLE_OK;
     }
     else if (*state == PP_IMPL_DESTROYED) {
+        // we disabled this in favor of using stubs (--> PP_IMPL_GENERATED)
+        assert(false);
         auto fun = PP_RUNNER->exec_session.lookup(
             llvm::orc::JITDylibSearchList(
                 {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
@@ -1338,10 +1355,9 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         return LLE_OK;
     }
     else if (*state == PP_STUB_ADDED) {
-        if (_pp_mode) {
-            if (llfn) *llfn = *res;
-            return LLE_OK;
-        }
+        assert(_pp_mode);
+        if (llfn) *llfn = *res;
+        return LLE_OK;
     }
     else {
         assert(*state == NOT_GENERATED || *state == PP_IMPL_DESTROYED);

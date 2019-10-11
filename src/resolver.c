@@ -1145,8 +1145,8 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
-            // TODO: ctype should actually be some kind of func ptr
-            if (ctype) *ctype = (ast_elem*)n;
+            assert(!value);
+            if (ctype) *ctype = VOID_ELEM;
             if (resolved) return RE_OK;
             return resolve_func(r, (sc_func*)n, ppl);
         }
@@ -1675,6 +1675,9 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
             if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             update_id(r, &((sc_struct*)n)->id, id_space);
             adjust_body_ids(r, id_space, &((sc_struct*)n)->sc.body);
+        }
+        case EXPR_PP: {
+            adjust_node_ids(r, id_space, ((expr_pp*)n)->pp_expr);
         }
         default: return;
     }

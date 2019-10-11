@@ -42,7 +42,8 @@ int mdg_init(module_dependency_graph* m)
     if (r) return mdg_fin_partial(m, 2, r);
     m->root_node = mdg_node_create(m, string_from_cstr("_"), NULL, MS_PARSING);
     if (!m->root_node) return mdg_fin_partial(m, 1, ERR);
-    atomic_ureg_store(&m->root_node->unparsed_files, 1);
+    // this gets increased when we use src_file_require on the root file
+    atomic_ureg_store(&m->root_node->unparsed_files, 0);
     m->change_count = 0;
     return 0;
 }
@@ -304,7 +305,8 @@ mdg_node*
 mdg_found_node(module_dependency_graph* m, mdg_node* parent, string ident)
 {
     mdg_node* n = mdg_get_node(m, parent, ident, MS_UNNEEDED);
-    if (!n) return n;
+    if (!n) return NULL;
+    atomic_ureg_inc(&n->unparsed_files);
     rwslock_read(&n->stage_lock);
     bool found = (n->stage != MS_NOT_FOUND);
     rwslock_end_read(&n->stage_lock);
@@ -674,8 +676,9 @@ int scc_detector_run(thread_context* tc, mdg_node* n)
 {
     scc_detector_housekeep_ids(&tc->sccd);
     rwslock_read(&n->stage_lock);
-    if (n->stage != MS_AWAITING_DEPENDENCIES) { // is this really possible?
-        assert(false);
+    if (n->stage != MS_AWAITING_DEPENDENCIES) {
+        // this happens when the dependency found out by itself that we are done
+        // and started resolving
         rwslock_end_read(&n->stage_lock);
         return OK;
     }

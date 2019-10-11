@@ -464,6 +464,7 @@ char* get_context_msg(parser* p, ast_node* node)
         case STMT_USING: return "in this using statement";
         case STMT_COMPOUND_ASSIGN:
             return "in this compound assignment statement";
+        case EXPR_PP: return "in this preprocessor expression";
         default: panic("unexpected parent context");
     }
     return NULL;
@@ -2497,7 +2498,10 @@ parse_error parse_module_frame_decl(
     }
     mdg_node_add_osc(mdgn, (open_scope*)md, p->lx.tc->t);
     if (*(void**)md->requires == NULL) {
-        if (mdg_node_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc)) return PE_FATAL;
+        if (mdg_node_file_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc))
+            return PE_FATAL;
+        // if (mdg_node_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc)) return
+        // PE_FATAL;
     }
     return PE_OK; // consider PE_NO_STMT
 }
