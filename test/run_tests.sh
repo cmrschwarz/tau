@@ -9,16 +9,16 @@ TAUC="./build/tauc"
 #run unit tests
 $TAUC -U
 # test other output modes with at least one run :) 
-$TAUC -L -S -E ./test/branchtest.t 
+$TAUC -L -S -E ./test/branchtest.tau
 ./a.out
 
-$TAUC ./test/bigtest/footest.t
+$TAUC ./test/bigtest/footest.tau
 ./a.out
 
-$TAUC ./test/multimoduletest.t
+$TAUC ./test/multimoduletest.tau
 ./a.out
 
-$TAUC ./test/structtest.t 
+$TAUC ./test/structtest.tau 
 ./a.out
 
 rm ./a.out

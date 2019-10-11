@@ -1,4 +1,4 @@
-require "print.t";
+require "print.tau";
 struct foo{
     x: int;
     y: int;

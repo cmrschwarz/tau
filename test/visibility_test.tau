@@ -1,7 +1,7 @@
 module m{
     module impl{
     }
-    require "visibility_test.t";
+    require "visibility_test.tau";
     public struct Foo {
         protected struct Bar {
             private struct Baz {

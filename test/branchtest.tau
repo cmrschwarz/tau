@@ -1,4 +1,4 @@
-require "print.t";
+require "print.tau";
 
 func foo(i: int)-> int {
     return if(i < 5){

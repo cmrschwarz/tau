@@ -5,7 +5,7 @@
 /temp
 /deps/llvm-project-prebuild/**
 /deps/llvm-project-prebuild_8_0_0/**
-/test/test.t
+/test/test.tau
 *.obj
 *.ll
 *.out

@@ -1,4 +1,4 @@
-require "print.t";
+require "print.tau";
 struct foo{
     lorem : int;
     ipsum: int;
