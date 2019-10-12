@@ -211,7 +211,8 @@ struct LLVMBackend {
     llvm_error
     emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm);
 
-    llvm_error emitModuleToPP(llvm::TargetLibraryInfoImpl* tlii);
+    llvm_error
+    emitModuleToPP(llvm::TargetLibraryInfoImpl* tlii, bool write_out_file);
 
     llvm_error emitModuleIR();
 };

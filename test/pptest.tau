@@ -1,16 +1,26 @@
 require "print.tau";
-struct foo{
-    x: int;
-    y: int;
+module quux{
+    public func puts(s: string);
+    public func quux(){
+        puts("quux :)");
+    }
 }
-public func bar() -> int{
-   puts("foo");
-  return 5;
+module bar{
+    import quux::(quux);
+    public func foo(){
+        #quux();
+        quux();
+    }
 }
+
+import bar;
 public func main() -> int{
-    f := #bar();
-    g := #bar();
-    bar();
-    printfln("pp: %i%c", f + g);
+    i:= 0;
+    bar::foo();
+    loop{
+        printfln("foo: %i", i);
+        i++;
+        if(i==10)break;
+    }
     return 0;
 }

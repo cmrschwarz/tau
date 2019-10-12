@@ -373,7 +373,6 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
     if (!is_void) {
         auto jit_func = (void (*)(void*))(mainfn.get()).getAddress();
         jit_func(pp->result);
-        assert(*(ureg*)pp->result);
     }
     else {
         auto jit_func = (void (*)())(mainfn.get()).getAddress();
@@ -411,6 +410,7 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     resetAfterEmit();
     delete _module;
     _local_value_store.assign(_private_sym_count, NULL);
+    _local_value_state.assign(_private_sym_count, NOT_GENERATED);
     return lle;
 }
 void LLVMBackend::remapLocalID(ureg old_id, ureg new_id)
@@ -844,6 +844,9 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             llvm::GlobalVariable::LinkageTypes lt;
             if (isLocalID(var->var_id)) {
                 lt = llvm::GlobalVariable::InternalLinkage;
+                if (_pp_mode) {
+                    _reset_after_emit.push_back(var->var_id);
+                }
             }
             else {
                 lt = llvm::GlobalVariable::ExternalLinkage;
@@ -1255,10 +1258,13 @@ llvm_error LLVMBackend::genBinaryOp(
     if (b->op->kind == SC_FUNC) {
         assert(false); // TODO
     }
-    llvm::Value *lhs, *rhs;
+    llvm::Value *lhs, *lhs_flat, *rhs;
     llvm_error lle;
     if (b->node.op_kind == OP_ASSIGN) {
-        lle = genAstNode(b->lhs, &lhs, NULL);
+        lle = genAstNode(b->lhs, &lhs_flat, NULL);
+    }
+    else if (b->node.op_kind == OP_ADD_ASSIGN) {
+        lle = genAstNode(b->lhs, &lhs_flat, &lhs);
     }
     else {
         lle = genAstNode(b->lhs, NULL, &lhs);
@@ -1270,19 +1276,29 @@ llvm_error LLVMBackend::genBinaryOp(
     llvm::Value* v;
     switch (b->node.op_kind) {
         case OP_ADD: v = _builder.CreateNSWAdd(lhs, rhs); break;
-        case OP_SUB: v = _builder.CreateSub(lhs, rhs); break;
-        case OP_MUL: v = _builder.CreateMul(lhs, rhs); break;
+        case OP_SUB: v = _builder.CreateNSWSub(lhs, rhs); break;
+        case OP_MUL: v = _builder.CreateNSWMul(lhs, rhs); break;
         case OP_DIV: v = _builder.CreateSDiv(lhs, rhs); break;
         case OP_MOD: v = _builder.CreateSRem(lhs, rhs); break;
         case OP_GREATER_THAN: v = _builder.CreateICmpSGT(lhs, rhs); break;
         case OP_LESS_THAN: v = _builder.CreateICmpSLT(lhs, rhs); break;
         case OP_EQUAL: v = _builder.CreateICmpEQ(lhs, rhs); break;
         case OP_ASSIGN: {
-            // TODO: get align from ctype
-            ureg align = lhs->getPointerAlignment(*_data_layout);
-            // TODO: resolver has to make sure lhs is an lvalue
-            _builder.CreateAlignedStore(rhs, lhs, align);
-            if (vl_loaded) v = _builder.CreateAlignedLoad(lhs, align);
+            ureg align;
+            lookupCType(
+                get_resolved_ast_node_ctype(b->lhs), NULL, &align, NULL);
+            _builder.CreateAlignedStore(rhs, lhs_flat, align);
+            if (vl_loaded) v = _builder.CreateAlignedLoad(lhs_flat, align);
+        } break;
+        case OP_ADD_ASSIGN: {
+            ureg align;
+            lookupCType(
+                get_resolved_ast_node_ctype(b->lhs), NULL, &align, NULL);
+            v = _builder.CreateNSWAdd(lhs, rhs);
+            if (!v) return LLE_FATAL;
+            if (!_builder.CreateAlignedStore(v, lhs_flat, align))
+                return LLE_FATAL;
+            if (vl_loaded) v = _builder.CreateAlignedLoad(lhs_flat, align);
         } break;
         default: assert(false); return LLE_FATAL;
     }
@@ -1298,7 +1314,7 @@ std::string name_mangle(sc_func* fn, const llvm::DataLayout& dl)
     while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
     mdg_node* n = (mdg_node*)st->owning_node;
     while (n->parent != NULL) {
-        name = n->name + ("::" + name);
+        name = n->name + ("_" + name);
         n = n->parent;
     }
     if (name != "main") {
@@ -1504,16 +1520,22 @@ LLVMBackend::emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm)
                                      ec, llvm::sys::fs::F_None};
     return emitModuleToStream(tlii, &file_stream, emit_asm);
 }
-llvm_error LLVMBackend::emitModuleToPP(llvm::TargetLibraryInfoImpl* tlii)
+llvm_error LLVMBackend::emitModuleToPP(
+    llvm::TargetLibraryInfoImpl* tlii, bool write_out_file)
 {
     // output IR module to a memory buffer file
     llvm::SmallVector<char, 0> obj_sv;
     llvm::raw_svector_ostream obj_sv_stream{obj_sv};
     llvm_error lle = emitModuleToStream(tlii, &obj_sv_stream, false);
     if (lle) return lle;
+    if (write_out_file) {
+        std::error_code ec;
+        llvm::raw_fd_ostream file_stream{_mod_handle->module_obj, ec,
+                                         llvm::sys::fs::F_None};
+        file_stream.write(obj_sv.begin(), obj_sv.size());
+    }
     std::unique_ptr<llvm::MemoryBuffer> obj_svmb{
         new llvm::SmallVectorMemoryBuffer{std::move(obj_sv)}};
-
     // link that mem buffer file
     PP_RUNNER->obj_link_layer.add(
         PP_RUNNER->exec_session.getMainJITDylib(), std::move(obj_svmb));
@@ -1576,11 +1598,12 @@ llvm_error LLVMBackend::emitModule()
     if (!_pp_mode) {
         if (!lle && _tc->t->emit_ll) emitModuleIR();
         if (_tc->t->emit_asm) lle = emitModuleToFile(TLII.get(), true);
-        if (!lle && _tc->t->emit_exe) emitModuleToFile(TLII.get(), false);
+        // if (!lle && _tc->t->emit_exe) emitModuleToFile(TLII.get(), false);
+        if (!lle) emitModuleToPP(TLII.get(), _tc->t->emit_exe);
     }
     else {
         emitModuleIR();
-        emitModuleToPP(TLII.get());
+        emitModuleToPP(TLII.get(), false);
     }
     return lle;
 }
