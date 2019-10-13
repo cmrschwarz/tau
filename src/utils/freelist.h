@@ -4,7 +4,7 @@
 #include "pool.h"
 
 typedef struct freelist_node_s {
-    struct freelist_node* next;
+    struct freelist_node_s* next;
 } freelist_node;
 
 typedef struct freelist_s {
@@ -36,9 +36,14 @@ static inline void* freelist_alloc(freelist* f)
 static inline void freelist_free(freelist* f, void* n)
 {
     ((freelist_node*)n)->next = f->free_nodes;
-    f->free_nodes = n;
+    f->free_nodes = (freelist_node*)n;
 }
 static inline void freelist_fin(freelist* p)
 {
+}
+// release "ownership" of all nodes, useful after the pool was reset
+static inline void freelist_clear(freelist* p)
+{
+    p->free_nodes = NULL;
 }
 #endif
