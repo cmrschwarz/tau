@@ -15,37 +15,42 @@ typedef enum PACK_ENUM access_modifier_e {
     AM_ENUM_ELEMENT_COUNT = 5,
 } access_modifier;
 
-#define ASTF_RESOLVING_OFFSET 0
-#define ASTF_RESOLVED_OFFSET 1
-#define ASTF_STATIC_OFFSET 2
-#define ASTF_VIRTUAL_OFFSET 3
-#define ASTF_SEALED_OFFSET 4
-#define ASTF_CONST_OFFSET 5
-#define ASTF_ACCESS_MODIFIER_OFFSET 6
-#define ASTF_ACCESS_MODIFIER_MASK (7 << ASTF_ACCESS_MODIFIER_OFFSET)
-#define ASTF_ERROR_OFFSET 0
-#define ASTF_RELATIVE_IMPORT_OFFSET 10
-// never needed simultaneous with relative import, so we share the bit
-#define ASTF_COMPUND_DECL_OFFSET 10
-#define ASTF_PASTING_PP_EXPR_OFFSET 10
-#define ASTF_OVERLOADED_IN_PP_OFFSET 11
-#define ASTF_USED_IN_PP_OFFSET 12
+#define ASTF_DECLARED_OFFSET 0
+#define ASTF_RESOLVING_OFFSET 1
+#define ASTF_RESOLVED_OFFSET 2
+#define ASTF_STATIC_OFFSET 3
+#define ASTF_VIRTUAL_OFFSET 4
+#define ASTF_SEALED_OFFSET 5
+#define ASTF_CONST_OFFSET 6
+#define ASTF_ERROR_OFFSET 7
+
+// the following three are node specific and never overlap
+#define ASTF_RELATIVE_IMPORT_OFFSET 8
+#define ASTF_COMPUND_DECL_OFFSET 8
+#define ASTF_PASTING_PP_EXPR_OFFSET 8
+
+#define ASTF_OVERLOADED_IN_PP_OFFSET 9
+#define ASTF_USED_IN_PP_OFFSET 10
+// we have space for 3 more here
+#define ASTF_ACCESS_MODIFIER_OFFSET 13
+#define ASTF_ACCESS_MODIFIER_MASK (0x7 << ASTF_ACCESS_MODIFIER_OFFSET)
 
 typedef enum ast_flags_values_e {
     // this stays set even once resolved
+    ASTF_DECLARED = 1 << ASTF_DECLARED_OFFSET,
     ASTF_RESOLVING = 1 << ASTF_RESOLVING_OFFSET,
     ASTF_RESOLVED = 1 << ASTF_RESOLVED_OFFSET,
     ASTF_STATIC = 1 << ASTF_STATIC_OFFSET,
     ASTF_VIRTUAL = 1 << ASTF_VIRTUAL_OFFSET,
     ASTF_SEALED = 1 << ASTF_SEALED_OFFSET,
     ASTF_CONST = 1 << ASTF_CONST_OFFSET,
-    ASTF_ACCESS_MODIFIER = ASTF_ACCESS_MODIFIER_MASK, // ! multiple bits
     ASTF_ERROR = 1 << ASTF_ERROR_OFFSET,
     ASTF_RELATIVE_IMPORT = 1 << ASTF_RELATIVE_IMPORT_OFFSET,
     ASTF_COMPUND_DECL = 1 << ASTF_COMPUND_DECL_OFFSET,
     ASTF_PASTING_PP_EXPR = 1 << ASTF_PASTING_PP_EXPR_OFFSET,
     ASTF_OVERLOADED_IN_PP = 1 << ASTF_OVERLOADED_IN_PP_OFFSET,
     ASTF_USED_IN_PP = 1 << ASTF_USED_IN_PP_OFFSET,
+    ASTF_ACCESS_MODIFIER = ASTF_ACCESS_MODIFIER_MASK, // ! multiple bits
 } ast_flags_values;
 
 void ast_flags_set_access_mod(ast_flags* f, access_modifier m);
@@ -71,6 +76,9 @@ bool ast_flags_get_relative_import(ast_flags f);
 
 void ast_flags_set_pasting_pp_expr(ast_flags* f);
 bool ast_flags_get_pasting_pp_expr(ast_flags f);
+
+void ast_flags_set_declared(ast_flags* f);
+bool ast_flags_get_declared(ast_flags f);
 
 void ast_flags_set_resolved(ast_flags* f);
 bool ast_flags_get_resolved(ast_flags f);

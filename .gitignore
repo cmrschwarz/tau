@@ -3,8 +3,7 @@
 /.vscode
 /build
 /temp
-/deps/llvm-project-prebuild/**
-/deps/llvm-project-prebuild_8_0_0/**
+/deps/llvm-project-prebuild*/**
 /test/test.tau
 *.obj
 *.ll

@@ -89,6 +89,7 @@ typedef enum PACK_ENUM operator_kind_e {
     // special ops, these have their own node types but have a precedence
     OP_CALL,
     OP_ACCESS,
+    OP_MACRO_CALL,
     OP_PARENTHESES,
     OP_MEMBER_ACCESS,
     OP_SCOPE_ACCESS,

@@ -264,6 +264,8 @@ static resolve_error add_ast_node_decls(
     bool public_st)
 {
     if (n == NULL) return RE_OK;
+    if (ast_flags_get_declared(n->flags)) return RE_OK;
+    ast_flags_set_declared(&n->flags);
     resolve_error re;
     switch (n->kind) {
         case EXPR_LITERAL:
@@ -647,7 +649,6 @@ resolve_error resolve_func_call(
 resolve_error resolve_call(
     resolver* r, expr_call* c, symbol_table* st, ureg ppl, ast_elem** ctype)
 {
-
     if (c->lhs->kind == EXPR_IDENTIFIER) {
         return resolve_func_call(
             r, c, st, ppl, ((expr_identifier*)c->lhs)->value.str, st, ctype);
@@ -1044,7 +1045,7 @@ static inline resolve_error resolve_ast_node_raw(
                     ast_node_get_file((ast_node*)sym, sym->declaring_st);
                 error_log_report_annotated_twice(
                     r->tc->err_log, ES_RESOLVER, false,
-                    "cannot use variable of lesser preprocessing level",
+                    "cannot access variable of a different preprocessing level",
                     id_sr.file, id_sr.start, id_sr.end, "usage here",
                     sym_sr.file, sym_sr.start, sym_sr.end,
                     "variable defined here");

@@ -79,6 +79,16 @@ bool ast_flags_get_compound_decl(ast_flags f)
 {
     return bitmask_get_bit(f, ASTF_COMPUND_DECL_OFFSET);
 }
+
+void ast_flags_set_declared(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_DECLARED_OFFSET);
+}
+bool ast_flags_get_declared(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_DECLARED_OFFSET);
+}
+
 void ast_flags_set_relative_import(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_RELATIVE_IMPORT_OFFSET);

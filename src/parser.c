@@ -40,6 +40,7 @@ static const unsigned char op_precedence[] = {
     [OP_POST_INCREMENT] = 15,
     [OP_POST_DECREMENT] = 15,
     [OP_CALL] = 15,
+    [OP_MACRO_CALL] = 15,
     [OP_ACCESS] = 15,
     [OP_SCOPE_ACCESS] = 15,
     [OP_MEMBER_ACCESS] = 15,
@@ -225,12 +226,17 @@ static inline operator_kind token_to_prefix_unary_op(token* t)
         default: return OP_NOOP;
     }
 }
-static inline operator_kind token_to_postfix_unary_op(token* t)
+static inline operator_kind token_to_postfix_unary_op(parser* p, token* t)
 {
     switch (t->kind) {
         case TK_DOUBLE_PLUS: return OP_POST_INCREMENT;
         case TK_DOUBLE_MINUS: return OP_POST_DECREMENT;
         case TK_PAREN_OPEN: return OP_CALL;
+        case TK_BRACE_OPEN:
+        case TK_AT: {
+            if (!p->disable_macro_body_call) return OP_MACRO_CALL;
+            return OP_NOOP;
+        }
         case TK_BRACKET_OPEN: return OP_ACCESS;
         default: return OP_NOOP;
     }
@@ -908,21 +914,27 @@ parse_paren_group_or_tuple(parser* p, token* t, ast_node** ex)
         lx_void(&p->lx);
         return build_empty_tuple(p, t_start, t->end, ex);
     }
+    bool disable_mbc = p->disable_macro_body_call;
+    p->disable_macro_body_call = false;
     parse_error pe = parse_expression_of_prec(p, ex, PREC_BASELINE);
     if (pe != PE_OK && pe != PE_EOEX) return pe;
     PEEK(p, t);
     if (t->kind == TK_COMMA) {
         lx_void(&p->lx);
-        return parse_tuple_after_first_comma(p, t_start, t_end, ex);
+        pe = parse_tuple_after_first_comma(p, t_start, t_end, ex);
     }
-    if (t->kind == TK_PAREN_CLOSE) {
-        return build_expr_parentheses(p, t_start, t_end, ex);
+    else if (t->kind == TK_PAREN_CLOSE) {
+        pe = build_expr_parentheses(p, t_start, t_end, ex);
     }
-    parser_error_2a(
-        p, "unexpected token after expression", t->start, t->end,
-        "expected comma or closing parenthesis", t_start, t_end,
-        "in parenthesized expression starting here");
-    return PE_ERROR;
+    else {
+        parser_error_2a(
+            p, "unexpected token after expression", t->start, t->end,
+            "expected comma or closing parenthesis", t_start, t_end,
+            "in parenthesized expression starting here");
+        return PE_ERROR;
+    }
+    p->disable_macro_body_call = disable_mbc;
+    return pe;
 }
 typedef union tuple_ident_node {
     sym_var var;
@@ -1010,6 +1022,8 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         lx_void(&p->lx);
         return build_empty_tuple(p, t_start, t->end, ex);
     }
+    bool disable_mbc = p->disable_macro_body_call;
+    p->disable_macro_body_call = false;
     void** element_list = NULL;
     if (t->kind != TK_IDENTIFIER) {
         pe = parse_expression(p, ex);
@@ -1030,7 +1044,9 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             if (list_builder_add(&p->lx.tc->listb, *ex)) return PE_FATAL;
         }
         else {
-            return build_expr_parentheses(p, t_start, t_end, ex);
+            pe = build_expr_parentheses(p, t_start, t_end, ex);
+            p->disable_macro_body_call = disable_mbc;
+            return pe;
         }
     }
     else {
@@ -1048,7 +1064,9 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             if (pe) return pe;
             PEEK(p, t);
             if (t->kind == TK_PAREN_CLOSE) {
-                return build_expr_parentheses(p, t_start, t_end, ex);
+                pe = build_expr_parentheses(p, t_start, t_end, ex);
+                p->disable_macro_body_call = disable_mbc;
+                return pe;
             }
             PEEK(p, t);
         }
@@ -1095,6 +1113,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
                 tp->elem_count = res_elem_count;
                 *ex = (ast_node*)tp;
             }
+            p->disable_macro_body_call = disable_mbc;
             return PE_OK;
         }
         if (t->kind == TK_IDENTIFIER) {
@@ -1630,6 +1649,26 @@ static inline parse_error parse_value_expr(parser* p, ast_node** ex)
         } break;
     }
 }
+static inline parse_error
+parse_macro_block_call(parser* p, ast_node** ex, ast_node* lhs)
+{
+    expr_macro_call* emc = alloc_perm(p, sizeof(expr_macro_call));
+    if (!emc) return PE_FATAL;
+    emc->arg_count = 0;
+    emc->args = (ast_node**)NULL_PTR_PTR;
+    ast_node_init((ast_node*)emc, EXPR_MACRO_CALL);
+    emc->lhs = lhs;
+    parse_error pe =
+        parse_braced_namable_body(p, (ast_node*)emc, &emc->body, &emc->name);
+    if (pe) return pe;
+    if (ast_node_fill_srange(
+            p, &emc->node, src_range_get_start(lhs->srange),
+            src_range_get_end(emc->body.srange))) {
+        return PE_FATAL;
+    }
+    *ex = (ast_node*)emc;
+    return PE_OK;
+}
 static inline parse_error parse_call(parser* p, ast_node** ex, ast_node* lhs)
 {
     token* t = lx_aquire(&p->lx);
@@ -1719,8 +1758,11 @@ static inline parse_error parse_postfix_unary_op(
     if (op == OP_CALL) {
         return parse_call(p, ex, lhs);
     }
-    if (op == OP_ACCESS) {
+    else if (op == OP_ACCESS) {
         return parse_access(p, ex, lhs);
+    }
+    else if (op == OP_MACRO_CALL) {
+        return parse_macro_block_call(p, ex, lhs);
     }
     token* t = lx_aquire(&p->lx);
     lx_void(&p->lx);
@@ -1802,7 +1844,7 @@ parse_expression_of_prec_post_value(parser* p, ast_node** ex, ureg prec)
     // parse arbitrarily many postfix operators
     while (true) {
         PEEK(p, t);
-        op = token_to_postfix_unary_op(t);
+        op = token_to_postfix_unary_op(p, t);
         if (op != OP_NOOP) {
             if (op_precedence[op] < prec) return PE_OK;
             pe = parse_postfix_unary_op(p, op, ex, *ex);
@@ -1966,6 +2008,7 @@ parse_error parse_eof_delimited_open_scope(parser* p, open_scope* osc)
 }
 parse_error parser_parse_file(parser* p, job_parse* j)
 {
+    p->disable_macro_body_call = false;
     p->ppl = 0;
     int r = lx_open_file(&p->lx, j->file);
     tprintf("parsing ");
@@ -2246,7 +2289,9 @@ parse_error parse_func_decl(
     if (t->kind == TK_ARROW) {
         lx_void(&p->lx);
         ast_node* ret_type;
+        p->disable_macro_body_call = true;
         pe = parse_expression(p, &ret_type);
+        p->disable_macro_body_call = false;
         if (pe == PE_EOEX) {
             parser_error_2a(
                 p, "unexpected end of expression", t->start, t->end,
