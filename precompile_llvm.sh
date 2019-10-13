@@ -3,16 +3,24 @@ set -Eeuo pipefail
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd $SCRIPT_DIR
 
+keep_build=false
+if [ $# -gt 0 ]; then
+   if  [ "$1" = "-k" ] || [ "$1" = "--keep-build" ]; then
+        keep_build=true
+   fi
+fi
+
 #make sure llvm is up to date
 git submodule init
 git submodule update --recursive --remote
 cd ./deps/llvm-project/
+#reset potential divergencies caused by cmake
+git reset --hard    
 git checkout release/9.x
 git pull
 
-#if this dir exists we already precompiled, so we exit successfully
+#if this dir exist we already precompiled
 if [ -d "../llvm-project-prebuild" ]; then
-    
     #if we have the same commit id as during the prebuild exit successfully
     if [ "$(git rev-parse HEAD)" == "$(cat ../llvm-project-prebuild/prebuild_commit_id.txt 2>/dev/null || : )" ]; then
         echo "found existing prebuild"
@@ -22,7 +30,7 @@ if [ -d "../llvm-project-prebuild" ]; then
     rm -rf ../../precomile_llvm
 fi
 cd ../../
-mkdir precompile_llvm
+mkdir -p ./precompile_llvm
 cd ./precompile_llvm
 
 # compile tauc with llvm as a non precompiled dependency in ./precompile_llvm
@@ -30,9 +38,15 @@ cmake -DCMAKE_BUILD_TYPE=Release -DTAU_LLVM_PRECOMPILED:BOOL=OFF ../ || exit 1
 make -j$(nproc) || exit 1
 
 # move the resulting llvm libs to ./deps/llvm-project-prebuild and delete the rest
-mv ./deps/llvm-project ../deps/llvm-project-prebuild
-cd ..
-rm -rf ./precompile_llvm
+if $keep_build; then
+    cp -r ./deps/llvm-project ../deps/llvm-project-prebuild
+    cd ..
+else
+    mv ./deps/llvm-project ../deps/llvm-project-prebuild
+    cd ..
+    rm -rf ../precompile_llvm
+fi
+
 
 #store the llvm commit id
 cd ./deps/llvm-project
