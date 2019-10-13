@@ -5,6 +5,8 @@
 #include "ast.h"
 #include "utils/sbuffer.h"
 #include "utils/stack.h"
+#include "utils/freelist.h"
+#include "utils/ptrlist.h"
 #include "llvm_backend_api.h"
 typedef enum resolve_error {
     RE_FATAL = -1,
@@ -25,30 +27,41 @@ typedef enum resolve_error {
 typedef struct thread_context_s thread_context;
 
 typedef struct pp_resolve_node_s {
-    ast_node* node; // either expr_pp or stmt_using
+    ast_node* node; // either expr_pp or stmt_using or func
     symbol_table* declaring_st;
     ureg ppl;
+    struct pp_resolve_node_s* depending;
+    ureg dependency_count;
 } pp_resolve_node;
 
 typedef struct resolver_s {
-    stack error_stack;
-    sbuffer call_types;
+    // general stuff
     thread_context* tc;
+    llvm_backend* backend;
+    // current context
     mdg_node** mdgs_begin;
     mdg_node** mdgs_end;
-    ureg public_sym_count;
-    ureg private_sym_count;
-    ureg id_space;
-    sbuffer pp_resolve_nodes;
-    open_scope* curr_osc;
     mdg_node* curr_mdg;
+    open_scope* curr_osc;
+    // temporary memory space
+    sbuffer call_types;
+    // dealing with type loops and type inference in expr blocks
+    stack error_stack;
     ast_node* curr_expr_block_owner;
     ast_node* type_loop_start;
-    bool pp_mode;
     u8 allow_type_loops;
     bool retracing_type_loop;
+    // assigning ids
+    ureg id_space;
+    ureg public_sym_count;
+    ureg private_sym_count;
+    // dealing with the preprocessor
+    freelist pp_resolve_nodes;
+    ptrlist pp_resolve_nodes_pending;
+    ptrlist pp_resolve_nodes_ready;
+    pp_resolve_node* curr_pp_node;
     bool contains_paste;
-    llvm_backend* backend;
+    bool pp_mode;
 } resolver;
 
 int resolver_init(resolver* r, thread_context* tc);

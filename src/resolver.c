@@ -299,17 +299,29 @@ static resolve_error add_ast_node_decls(
             // TODO
             assert(false);
             return RE_OK;
+
         case STMT_USING: {
-            pp_resolve_node* pprn =
-                sbuffer_append(&r->pp_resolve_nodes, sizeof(pp_resolve_node));
+            pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
             if (!pprn) return RE_FATAL;
+            if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
+                return RE_FATAL;
+            }
             pprn->declaring_st = st;
             pprn->node = n;
             pprn->ppl = ppl;
             return RE_OK;
         }
         case EXPR_PP: {
-            // TODO: rework this piece of crap
+            if (ppl == 0) {
+                pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
+                if (!pprn) return RE_FATAL;
+                if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
+                    return RE_FATAL;
+                }
+                pprn->declaring_st = st;
+                pprn->node = n;
+                pprn->ppl = ppl;
+            }
             bool cp = r->contains_paste;
             r->contains_paste = false;
             if (st && st->pp_symtab) st = st->pp_symtab;
@@ -319,15 +331,6 @@ static resolve_error add_ast_node_decls(
             if (re) return re;
             if (r->contains_paste) {
                 ast_flags_set_pasting_pp_expr(&n->flags);
-                ppl = 0;
-            }
-            if (ppl == 0) {
-                pp_resolve_node* pprn = sbuffer_append(
-                    &r->pp_resolve_nodes, sizeof(pp_resolve_node));
-                if (!pprn) return RE_FATAL;
-                pprn->declaring_st = st;
-                pprn->node = n;
-                pprn->ppl = ppl;
             }
             r->contains_paste = cp;
             return RE_OK;
@@ -1239,6 +1242,9 @@ static inline resolve_error resolve_ast_node_raw(
             else {
                 re = resolve_ast_node(
                     r, vi->initial_value, st, ppl, NULL, &vi->var.ctype);
+                // this could become needed again once we support typeof,
+                // it allows one retry in cases of a variable initially
+                // assigned to a self referential expr block
                 /*  if (re == RE_TYPE_LOOP && r->type_loop_start == n &&
                      !r->retracing_type_loop) {
                      if (vi->var.ctype) {
@@ -1734,45 +1740,71 @@ resolve_error resolver_cleanup(resolver* r, ureg startid)
     if (res) return RE_FATAL;
     return RE_OK;
 }
-resolve_error resolver_run(resolver* r)
+resolve_error resolver_handle_pp(resolver* r)
 {
     resolve_error re;
+    // at this point the initial add_decls has run and added
+    // all top level pp exprs as pp_resolve_nodes
+    // now we run through all of these to create a list of all
+    // pp_resolve_nodes that require unique evaluation
     r->pp_mode = true;
-    sbuffer_iterator sbi;
-    bool progress;
+    pli it = pli_rbegin(&r->pp_resolve_nodes_pending);
+    for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
+        r->curr_pp_node = rn;
+        re = resolve_ast_node(
+            r, ((expr_pp*)rn->node)->pp_expr, rn->declaring_st, rn->ppl + 1,
+            NULL, NULL);
+        if (re) return re;
+        if (rn->dependency_count == 0) {
+            ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+            if (ptrlist_append(&r->pp_resolve_nodes_ready, rn)) return RE_FATAL;
+        }
+    }
+    bool progress = false;
     do {
-        progress = false;
-        sbi = sbuffer_iterator_begin_at_end(&r->pp_resolve_nodes);
-        for (pp_resolve_node* rn =
-                 sbuffer_iterator_previous(&sbi, sizeof(pp_resolve_node));
-             rn != NULL;
-             rn = sbuffer_iterator_previous(&sbi, sizeof(pp_resolve_node))) {
-            re = resolve_ast_node(
-                r, rn->node, rn->declaring_st, rn->ppl, NULL, NULL);
-            if (re == RE_SYMBOL_NOT_FOUND_YET) continue;
-            if (re) return re;
+        // TODO: evaluate all nodes and decrease depending dep counts
+        // TODO: resolve resulting pastes
+        it = pli_rbegin(&r->pp_resolve_nodes_pending);
+        for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
             if (rn->node->kind == EXPR_PP) {
                 llvm_error lle = llvm_backend_run_pp(
                     r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
                     (expr_pp*)rn->node);
                 if (lle) return RE_FATAL;
+                freelist_free(&r->pp_resolve_nodes, rn);
             }
-            progress = true;
-            sbuffer_remove(&r->pp_resolve_nodes, &sbi, sizeof(pp_resolve_node));
+        }
+        sbuffer_clear(&r->pp_resolve_nodes_ready);
+
+        // now we go through all ready nodes again and move all resolved
+        // ones with dep count 0 in pp_resolve_nodes_ready
+        it = pli_rbegin(&r->pp_resolve_nodes_pending);
+        for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
+            if (rn->depending == 0 && ast_flags_get_resolved(rn->node->flags)) {
+                if (ptrlist_append(&r->pp_resolve_nodes_ready, rn)) {
+                    return RE_FATAL;
+                }
+                ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+                progress = true;
+            }
         }
     } while (progress);
     r->pp_mode = false;
     // we rerun remaining pp nodes to generate unknown symbol errors
-    for (pp_resolve_node* rn =
-             sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node));
-         rn != NULL;
-         rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node))) {
+    it = pli_rbegin(&r->pp_resolve_nodes_pending);
+    for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
         re = resolve_ast_node(
-            r, rn->node, rn->declaring_st, rn->ppl, NULL, NULL);
+            r, ((expr_pp*)rn->node)->pp_expr, rn->declaring_st, rn->ppl + 1,
+            NULL, NULL);
         if (re) return re;
     }
-
-    // preprocessor is done, resolve the reset in peace
+    return RE_OK;
+}
+resolve_error resolver_run(resolver* r)
+{
+    resolve_error re;
+    re = resolver_handle_pp(r);
+    if (re) return re;
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         r->curr_mdg = *i;
         aseglist_iterator asi;
@@ -1838,8 +1870,10 @@ int resolver_partial_fin(resolver* r, int i, int res)
 {
     switch (i) {
         case -1:
-        case 4: llvm_backend_delete(r->backend);
-        case 3: sbuffer_fin(&r->pp_resolve_nodes);
+        case 6: llvm_backend_delete(r->backend);
+        case 5: ptrlist_fin(&r->pp_resolve_nodes_ready);
+        case 4: ptrlist_fin(&r->pp_resolve_nodes_pending);
+        case 3: freelist_fin(&r->pp_resolve_nodes);
         case 2: sbuffer_fin(&r->call_types);
         case 1: stack_fin(&r->error_stack);
         case 0: break;
@@ -1857,8 +1891,13 @@ int resolver_init(resolver* r, thread_context* tc)
     if (e) return resolver_partial_fin(r, 0, e);
     e = sbuffer_init(&r->call_types, sizeof(ast_node*) * 32);
     if (e) return resolver_partial_fin(r, 1, e);
-    e = sbuffer_init(&r->pp_resolve_nodes, sizeof(pp_resolve_node) * 32);
+    e = freelist_init(
+        &r->pp_resolve_nodes, &r->tc->permmem, sizeof(pp_resolve_node));
     if (e) return resolver_partial_fin(r, 2, e);
+    e = ptrlist_init(&r->pp_resolve_nodes_pending, 16);
+    if (e) return resolver_partial_fin(r, 3, e);
+    e = ptrlist_init(&r->pp_resolve_nodes_ready, 16);
+    if (e) return resolver_partial_fin(r, 4, e);
     r->backend = llvm_backend_new(r->tc);
     if (!r->backend) return resolver_partial_fin(r, 3, ERR);
     r->allow_type_loops = false;
