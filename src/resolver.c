@@ -312,7 +312,9 @@ static resolve_error add_ast_node_decls(
             return RE_OK;
         }
         case EXPR_PP: {
-            if (ppl == 0) {
+            resolve_mode rm = r->rm;
+            bool cp = r->contains_paste;
+            if (rm == RM_PP) {
                 pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
                 if (!pprn) return RE_FATAL;
                 if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
@@ -320,19 +322,27 @@ static resolve_error add_ast_node_decls(
                 }
                 pprn->declaring_st = st;
                 pprn->node = n;
+                pprn->start = &pprn->node;
+                pprn->end = &pprn->node + 1;
                 pprn->ppl = ppl;
             }
-            bool cp = r->contains_paste;
             r->contains_paste = false;
             if (st && st->pp_symtab) st = st->pp_symtab;
             if (sst && sst->pp_symtab) sst = sst->pp_symtab;
+            r->rm = RM_IN_PP_EXPR;
             re = add_ast_node_decls(
                 r, st, sst, ppl + 1, ((expr_pp*)n)->pp_expr, false);
             if (re) return re;
+            r->rm = rm;
             if (r->contains_paste) {
                 ast_flags_set_pasting_pp_expr(&n->flags);
             }
-            r->contains_paste = cp;
+            if (rm == RM_IN_PP_EXPR || rm == RM_SEEK_PASTES) {
+                r->contains_paste = cp || r->contains_paste;
+            }
+            else {
+                r->contains_paste = cp;
+            }
             return RE_OK;
         }
         case SC_STRUCT:
@@ -803,8 +813,12 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
     switch (s->node.kind) {
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
-        case SYM_NAMED_USING: assert(false); return NULL; // TODO
-        case PRIMITIVE: assert(false); return NULL; // would be ctype "Type"
+        case SYM_NAMED_USING:
+            assert(false);
+            return NULL; // TODO
+        case PRIMITIVE:
+            assert(false);
+            return NULL; // would be ctype "Type"
         default: return (ast_elem*)s;
     }
 }
@@ -1294,7 +1308,7 @@ static inline resolve_error resolve_ast_node_raw(
                     if (*tgtt) {
                         if (*tgtt != UNREACHABLE_ELEM) {
                             assert(false); // TODO: error, unreachable not
-                                           // unifiable
+                            // unifiable
                         }
                     }
                     else {
@@ -1747,7 +1761,7 @@ resolve_error resolver_handle_pp(resolver* r)
     // all top level pp exprs as pp_resolve_nodes
     // now we run through all of these to create a list of all
     // pp_resolve_nodes that require unique evaluation
-    r->pp_mode = true;
+    r->rm = RM_PP;
     pli it = pli_rbegin(&r->pp_resolve_nodes_pending);
     for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
         r->curr_pp_node = rn;
@@ -1789,7 +1803,7 @@ resolve_error resolver_handle_pp(resolver* r)
             }
         }
     } while (progress);
-    r->pp_mode = false;
+    r->pp_mode = RM_MAIN;
     // we rerun remaining pp nodes to generate unknown symbol errors
     it = pli_rbegin(&r->pp_resolve_nodes_pending);
     for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {

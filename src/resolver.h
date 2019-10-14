@@ -8,7 +8,7 @@
 #include "utils/freelist.h"
 #include "utils/ptrlist.h"
 #include "llvm_backend_api.h"
-typedef enum resolve_error {
+typedef enum resolve_error_e {
     RE_FATAL = -1,
     RE_OK = 0,
     RE_ERROR,
@@ -24,10 +24,19 @@ typedef enum resolve_error {
     RE_SYMBOL_NOT_FOUND_YET,
 } resolve_error;
 
+typedef enum resolve_mode_e {
+    RM_MAIN,
+    RM_PP,
+    RM_SEEK_PASTES,
+    RM_IN_PP_EXPR,
+} resolve_mode;
+
 typedef struct thread_context_s thread_context;
 
 typedef struct pp_resolve_node_s {
     ast_node* node; // either expr_pp or stmt_using or func
+    ast_node** start;
+    ast_node** end;
     symbol_table* declaring_st;
     ureg ppl;
     struct pp_resolve_node_s* depending;
@@ -61,7 +70,7 @@ typedef struct resolver_s {
     ptrlist pp_resolve_nodes_ready;
     pp_resolve_node* curr_pp_node;
     bool contains_paste;
-    bool pp_mode;
+    resolve_mode rm;
 } resolver;
 
 int resolver_init(resolver* r, thread_context* tc);
