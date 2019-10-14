@@ -15,6 +15,8 @@ precompile:
         paths:
             - deps/llvm-project
             - deps/llvm-project-prebuild/
+    only:
+        - master
 
 build:
     stage: build
@@ -34,8 +36,12 @@ build:
             - ./build
             - ./build/tauc
         expire_in: 20 minutes
+    only:
+        - master
 
 test:
     stage: test
     script:
        - ./test/run_tests.sh
+    only:
+        - master
