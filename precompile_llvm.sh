@@ -11,13 +11,8 @@ if [ $# -gt 0 ]; then
 fi
 
 #make sure llvm is up to date
-git submodule init
-git submodule update --recursive --remote
+git submodule update --init --recursive --remote
 cd ./deps/llvm-project/
-#reset potential divergencies caused by cmake
-git reset --hard    
-git checkout release/9.x
-git pull
 
 #if this dir exist we already precompiled
 if [ -d "../llvm-project-prebuild" ]; then
