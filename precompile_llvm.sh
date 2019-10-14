@@ -29,8 +29,8 @@ mkdir -p ./precompile_llvm
 cd ./precompile_llvm
 
 # compile tauc with llvm as a non precompiled dependency in ./precompile_llvm
-cmake -DCMAKE_BUILD_TYPE=Release -DTAU_LLVM_PRECOMPILED:BOOL=OFF ../ || exit 1
-make -j$(nproc) || exit 1
+cmake -DCMAKE_BUILD_TYPE=Release -DTAU_LLVM_PRECOMPILED:BOOL=OFF ../
+make -j$(nproc)
 
 # move the resulting llvm libs to ./deps/llvm-project-prebuild and delete the rest
 if $keep_build; then
