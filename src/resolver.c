@@ -325,6 +325,9 @@ static resolve_error add_ast_node_decls(
                 pprn->start = &pprn->node;
                 pprn->end = &pprn->node + 1;
                 pprn->ppl = ppl;
+                pprn->generation_estimate = r->pp_generation;
+                pprn->required_by = NULL;
+                pprn->same_requirement = NULL;
             }
             r->contains_paste = false;
             if (st && st->pp_symtab) st = st->pp_symtab;
@@ -813,12 +816,8 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
     switch (s->node.kind) {
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
-        case SYM_NAMED_USING:
-            assert(false);
-            return NULL; // TODO
-        case PRIMITIVE:
-            assert(false);
-            return NULL; // would be ctype "Type"
+        case SYM_NAMED_USING: assert(false); return NULL; // TODO
+        case PRIMITIVE: assert(false); return NULL; // would be ctype "Type"
         default: return (ast_elem*)s;
     }
 }
@@ -1455,19 +1454,11 @@ static inline resolve_error resolve_ast_node_raw(
                 if (ctype) *ctype = ppe->ctype;
                 return RE_OK;
             }
-            if (r->pp_mode && ast_flags_get_pasting_pp_expr(n->flags)) {
-                if (ppe->result != NULL) return RE_SYMBOL_NOT_FOUND_YET;
-            }
             re = resolve_ast_node_raw(
                 r, ppe->pp_expr, st, ppl + 1, value, &ppe->ctype);
             if (ctype) *ctype = ppe->ctype;
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
-            if (!r->pp_mode && !ppe->result) {
-                llvm_error lle = llvm_backend_run_pp(
-                    r->backend, r->id_space - PRIV_SYMBOL_OFFSET, ppe);
-                if (lle) return lle;
-            }
             return RE_OK;
         }
         case EXPR_MATCH: {
@@ -1762,12 +1753,15 @@ resolve_error resolver_handle_pp(resolver* r)
     // now we run through all of these to create a list of all
     // pp_resolve_nodes that require unique evaluation
     r->rm = RM_PP;
+    r->pp_generation = 0;
+    r->multi_evaluation_ctx = false;
     pli it = pli_rbegin(&r->pp_resolve_nodes_pending);
     for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
         r->curr_pp_node = rn;
         re = resolve_ast_node(
             r, ((expr_pp*)rn->node)->pp_expr, rn->declaring_st, rn->ppl + 1,
             NULL, NULL);
+        if (re == RE_SYMBOL_NOT_FOUND_YET) continue;
         if (re) return re;
         if (rn->dependency_count == 0) {
             ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
@@ -1778,13 +1772,18 @@ resolve_error resolver_handle_pp(resolver* r)
     do {
         // TODO: evaluate all nodes and decrease depending dep counts
         // TODO: resolve resulting pastes
-        it = pli_rbegin(&r->pp_resolve_nodes_pending);
+        it = pli_rbegin(&r->pp_resolve_nodes_ready);
         for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
             if (rn->node->kind == EXPR_PP) {
                 llvm_error lle = llvm_backend_run_pp(
                     r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
                     (expr_pp*)rn->node);
                 if (lle) return RE_FATAL;
+                pp_resolve_node* rqrn = rn->required_by;
+                while (rqrn) {
+                    // TODO: evaluate these the next time
+                    rqrn = rqrn->same_requirement;
+                }
                 freelist_free(&r->pp_resolve_nodes, rn);
             }
         }
@@ -1794,7 +1793,8 @@ resolve_error resolver_handle_pp(resolver* r)
         // ones with dep count 0 in pp_resolve_nodes_ready
         it = pli_rbegin(&r->pp_resolve_nodes_pending);
         for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
-            if (rn->depending == 0 && ast_flags_get_resolved(rn->node->flags)) {
+            if (rn->dependency_count == 0 &&
+                ast_flags_get_resolved(rn->node->flags)) {
                 if (ptrlist_append(&r->pp_resolve_nodes_ready, rn)) {
                     return RE_FATAL;
                 }
@@ -1803,7 +1803,7 @@ resolve_error resolver_handle_pp(resolver* r)
             }
         }
     } while (progress);
-    r->pp_mode = RM_MAIN;
+    r->rm = RM_MAIN;
     // we rerun remaining pp nodes to generate unknown symbol errors
     it = pli_rbegin(&r->pp_resolve_nodes_pending);
     for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {

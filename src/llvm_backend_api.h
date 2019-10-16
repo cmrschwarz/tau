@@ -11,6 +11,7 @@ typedef void llvm_backend;
 typedef void llvm_module;
 
 typedef struct mdg_node_s mdg_node;
+typedef struct pp_resolve_node_s pp_resolve_node;
 typedef struct thread_context_s thread_context;
 
 typedef enum llvm_error_e {
@@ -22,6 +23,9 @@ int llvm_backend_init_globals();
 void llvm_backend_fin_globals();
 
 llvm_backend* llvm_backend_new(thread_context* tc);
+
+pp_resolve_node**
+llvm_backend_lookup_pp_resolve_node(llvm_backend* llvmb, ureg id);
 
 void llvm_backend_delete(llvm_backend* llvmb);
 

@@ -39,8 +39,9 @@ typedef struct pp_resolve_node_s {
     ast_node** end;
     symbol_table* declaring_st;
     ureg ppl;
-    struct pp_resolve_node_s* depending;
-    ureg dependency_count;
+    // PERF: use a non threadsafe list here
+    aseglist required_by;
+    ureg dep_count;
 } pp_resolve_node;
 
 typedef struct resolver_s {
@@ -69,8 +70,10 @@ typedef struct resolver_s {
     ptrlist pp_resolve_nodes_pending;
     ptrlist pp_resolve_nodes_ready;
     pp_resolve_node* curr_pp_node;
+    bool multi_evaluation_ctx;
     bool contains_paste;
     resolve_mode rm;
+    ureg pp_generation;
 } resolver;
 
 int resolver_init(resolver* r, thread_context* tc);

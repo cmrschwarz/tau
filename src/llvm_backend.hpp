@@ -86,7 +86,8 @@ struct ControlFlowContext {
     bool continues_afterwards;
 };
 enum ValueState : char {
-    NOT_GENERATED,
+    NOT_GENERATED = 0,
+    PP_RN_GENERATED = 1, // state > PP_RN_GENERATED means the pp ran
     PP_IMPL_ADDED,
     PP_IMPL_DESTROYED,
     PP_STUB_GENERATED,
@@ -146,6 +147,8 @@ struct LLVMBackend {
     llvm_error runPP(ureg private_sym_count, expr_pp* pp);
     llvm_error reserveSymbols(ureg priv_sym_limit, ureg pub_sym_limit);
     llvm_error emit(ureg startid, ureg endid, ureg priv_sym_count);
+    pp_resolve_node** lookupPPResolveNode(ureg id);
+
     void resetAfterEmit();
 
   private:

@@ -127,7 +127,12 @@ int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
     if (lle) return ERR;
     return OK;
 }
+pp_resolve_node**
+llvm_backend_lookup_pp_resolve_node(llvm_backend* llvmb, ureg id)
+{
+    return ((LLVMBackend*)llvmb)->lookupPPResolveNode(id);
 }
+} // CPP
 static inline void link_dll(PPRunner* pp, const char* path)
 {
 
@@ -152,7 +157,6 @@ static inline void link_lib(PPRunner* pp, const char* path)
         assert(false);
     }
 }
-// CPP
 PPRunner::PPRunner()
     : exec_session(), obj_link_layer(exec_session, []() {
           return llvm::make_unique<llvm::SectionMemoryManager>();
@@ -428,6 +432,18 @@ void LLVMBackend::remapLocalID(ureg old_id, ureg new_id)
     }
     _local_value_store[old_id] = NULL;
     _local_value_state[old_id] = NOT_GENERATED;
+}
+pp_resolve_node** LLVMBackend::lookupPPResolveNode(ureg id)
+{
+    if (isLocalID(id)) {
+        id -= PRIV_SYMBOL_OFFSET;
+        if (_local_value_state[id] > PP_RN_GENERATED) return NULL;
+        return (pp_resolve_node**)&_local_value_store[id];
+    }
+    else {
+        if (_global_value_state[id] > PP_RN_GENERATED) return NULL;
+        return (pp_resolve_node**)&_global_value_state[id];
+    }
 }
 llvm_error
 LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr, bool* r_is_void)
