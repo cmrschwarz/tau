@@ -57,6 +57,7 @@ if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     # add "-pg -no-pie" for profiling with gprof
     message("Creating Debug Buildfiles")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g")
     set(TAUC_C_SRCS ${TAUC_C_SRCS} ${TAUC_C_TESTS})
     set(TAUC_CPP_SRCS ${TAUC_CPP_SRCS} ${TAUC_CPP_TESTS})
 else()

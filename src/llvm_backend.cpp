@@ -5,6 +5,7 @@
 
 static PPRunner* PP_RUNNER;
 extern "C" {
+#include "utils/ptrlist.h"
 #include "thread_context.h"
 #include "utils/pool.h"
 #include "tauc.h"
@@ -79,9 +80,9 @@ llvm_error llvm_backend_init_module(
 }
 
 llvm_error llvm_backend_run_pp(
-    llvm_backend* llvmb, ureg private_sym_count, expr_pp* pp_expr)
+    llvm_backend* llvmb, ureg private_sym_count, ptrlist* resolve_nodes)
 {
-    return ((LLVMBackend*)llvmb)->runPP(private_sym_count, pp_expr);
+    return ((LLVMBackend*)llvmb)->runPP(private_sym_count, resolve_nodes);
 }
 
 llvm_error llvm_backend_reserve_symbols(
@@ -182,12 +183,13 @@ LLVMBackend::LLVMBackend(thread_context* tc)
     }
     llvm::TargetOptions opt;
     opt.ThreadModel = llvm::ThreadModel::POSIX;
+    opt.DataSections = true;
     llvm::Optional<llvm::CodeModel::Model> CM = llvm::CodeModel::Small;
     llvm::CodeGenOpt::Level OptLevel = llvm::CodeGenOpt::None;
-
+    llvm::Optional<llvm::Reloc::Model> rm{llvm::Reloc::Model::PIC_};
     _target_machine = target->createTargetMachine(
         target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
-        llvm::Optional<llvm::Reloc::Model>(), CM, OptLevel);
+        std::move(rm), CM, OptLevel);
     _data_layout = new llvm::DataLayout(_target_machine->createDataLayout());
     _mod_dylib = NULL;
 }
@@ -342,7 +344,7 @@ void LLVMBackend::resetAfterEmit()
     }
     _reset_after_emit.clear();
 }
-llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
+llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
 {
     // init id space
     _mod_startid = 0;
@@ -350,38 +352,45 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, expr_pp* pp)
     _private_sym_count = private_sym_count;
     if (reserveSymbols(private_sym_count, 0)) return LLE_FATAL;
     // create name
-    std::string pp_name = "__pp_" + std::to_string((ureg)pp);
+    std::string num =
+        std::to_string(_pp_count.fetch_add(1, std::memory_order_relaxed));
+    std::string pp_func_name = "__pp_func_" + num;
     // create actual module
-    _module =
-        new (std::nothrow) llvm::Module(_mod_handle->module_str, _context);
+    _module = new (std::nothrow) llvm::Module("__pp_mod_" + num, _context);
     if (!_module) return LLE_OK;
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
     _module->setDataLayout(*_data_layout);
     _pp_mode = true;
     bool is_void;
-    llvm_error lle = genPPFunc(pp_name.c_str(), pp, &is_void);
+    llvm_error lle = genPPFunc(pp_func_name.c_str(), resolve_nodes);
     if (lle) return lle;
 
     // emit
     lle = emitModule();
     if (lle) return lle;
 
+    auto var = PP_RUNNER->exec_session.lookup(
+        llvm::orc::JITDylibSearchList(
+            {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
+        PP_RUNNER->exec_session.intern("x"));
     auto mainfn = PP_RUNNER->exec_session.lookup(
         llvm::orc::JITDylibSearchList(
             {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
-        PP_RUNNER->exec_session.intern(pp_name));
+        PP_RUNNER->exec_session.intern(pp_func_name));
+    if (!var) {
+        llvm::errs() << var.takeError() << "\n";
+        assert(false);
+    }
+    ureg* x = (ureg*)var->getAddress();
+    printf("x %x | %zu \n", (ureg)x, *x);
     if (!mainfn) {
         llvm::errs() << mainfn.takeError() << "\n";
         assert(false);
     }
-    if (!is_void) {
-        auto jit_func = (void (*)(void*))(mainfn.get()).getAddress();
-        jit_func(pp->result);
-    }
-    else {
-        auto jit_func = (void (*)())(mainfn.get()).getAddress();
-        jit_func();
-    }
+
+    auto jit_func = (void (*)())(mainfn.get()).getAddress();
+    jit_func();
+
     resetAfterEmit();
     delete _module;
     return lle;
@@ -445,35 +454,11 @@ pp_resolve_node** LLVMBackend::lookupPPResolveNode(ureg id)
         return (pp_resolve_node**)&_global_value_state[id];
     }
 }
-llvm_error
-LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr, bool* r_is_void)
+llvm_error LLVMBackend::genPPFunc(const char* func_name, ptrlist* resolve_nodes)
 {
     llvm::FunctionType* func_sig;
-    llvm::Type* ret_type;
-    ureg size;
-    ureg align;
     llvm_error lle;
-    bool is_void =
-        (expr->ctype == VOID_ELEM || expr->ctype == UNREACHABLE_ELEM);
-    *r_is_void = is_void;
-    if (!is_void) {
-        lle = lookupCType(expr->ctype, &ret_type, &align, &size);
-        if (lle) return lle;
-        assert(align <= REG_BYTES); // TODO
-        if (size <= sizeof(expr->result_buffer)) {
-            expr->result = (void*)&expr->result_buffer[0];
-        }
-        else {
-            expr->result = malloc(size); // TODO: use tempmem for this
-        }
-        std::array<llvm::Type*, 1> args{ret_type->getPointerTo()};
-        func_sig =
-            llvm::FunctionType::get(_primitive_types[PT_VOID], args, false);
-    }
-    else {
-        func_sig = llvm::FunctionType::get(_primitive_types[PT_VOID], false);
-    }
-
+    func_sig = llvm::FunctionType::get(_primitive_types[PT_VOID], false);
     if (!func_sig) return LLE_FATAL;
 
     llvm::Function* func = llvm::Function::Create(
@@ -491,15 +476,48 @@ LLVMBackend::genPPFunc(const char* func_name, expr_pp* expr, bool* r_is_void)
     // only used in genScopeValue and thats never called here
     _curr_fn_ast_node = NULL;
     _builder.SetInsertPoint(func_block);
-    llvm::Value* val;
+
     ctx.continues_afterwards = true;
-    lle = genAstNode(expr->pp_expr, NULL, is_void ? NULL : &val);
+    pli it = pli_begin(resolve_nodes);
+    for (auto n = (pp_resolve_node*)pli_next(&it); n;
+         n = (pp_resolve_node*)pli_next(&it)) {
+        if (n->node->kind == EXPR_PP) {
+            auto expr = (expr_pp*)n->node;
+            if (expr->ctype != VOID_ELEM && expr->ctype != UNREACHABLE_ELEM) {
+                llvm::Type* ret_type;
+                ureg size;
+                ureg align;
+                lle = lookupCType(expr->ctype, &ret_type, &align, &size);
+                if (lle) return lle;
+                assert(align <= REG_BYTES); // TODO
+                if (size <= sizeof(expr->result_buffer)) {
+                    expr->result = (void*)&expr->result_buffer[0];
+                }
+                else {
+                    expr->result = malloc(size); // TODO: use tempmem for this
+                }
+                llvm::Value *val, *tgt;
+                lle = genAstNode(expr->pp_expr, NULL, NULL); //&val
+                if (lle) return lle;
+                /* auto res = llvm::ConstantInt::get(
+                     _primitive_types[PT_UINT], (ureg)expr->result);
+                 auto resptr = llvm::ConstantExpr::getBitCast(
+                     res, ret_type->getPointerTo());
+                 if (!_builder.CreateStore(val, resptr)) return LLE_FATAL;*/
+            }
+            else {
+                lle = genAstNode(expr->pp_expr, NULL, NULL);
+                if (lle) return lle;
+            }
+        }
+        else {
+            lle = genAstNode(n->node, NULL, NULL);
+            if (lle) return lle;
+        }
+    }
+
     if (lle) return lle;
     assert(!ctx.following_block && !ctx.value);
-    if (!is_void) {
-        llvm::Argument* a = func->arg_begin();
-        if (!_builder.CreateStore(val, a)) return LLE_FATAL;
-    }
     _builder.CreateRetVoid();
     _control_flow_ctx.pop_back();
     return lle;
@@ -859,9 +877,12 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             // global var
             llvm::GlobalVariable::LinkageTypes lt;
             if (isLocalID(var->var_id)) {
-                lt = llvm::GlobalVariable::InternalLinkage;
                 if (_pp_mode) {
                     _reset_after_emit.push_back(var->var_id);
+                    lt = llvm::GlobalVariable::ExternalLinkage;
+                }
+                else {
+                    lt = llvm::GlobalVariable::InternalLinkage;
                 }
             }
             else {
@@ -879,9 +900,11 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     return LLE_FATAL;
                 }
             }
-            var_val = (llvm::Value*)new llvm::GlobalVariable(
+            auto gv = new llvm::GlobalVariable(
                 *_module, t, false, lt, init, var->sym.name);
-            if (!var_val) return LLE_FATAL;
+            if (!gv) return LLE_FATAL;
+            gv->setAlignment(align);
+            var_val = gv;
         }
         else {
             // These should be handled by member access
@@ -1376,7 +1399,6 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
             assert(false);
         }
         auto old_fn = (llvm::Function*)*res;
-
         auto cnst = llvm::ConstantInt::get(
             _primitive_types[PT_UINT], fun.get().getAddress());
         auto fnptr = llvm::ConstantExpr::getBitCast(
@@ -1531,9 +1553,9 @@ llvm_error
 LLVMBackend::emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm)
 {
     std::error_code ec;
-    llvm::raw_fd_ostream file_stream{emit_asm ? _mod_handle->module_str + ".asm"
-                                              : _mod_handle->module_obj,
-                                     ec, llvm::sys::fs::F_None};
+    std::string name = _mod_handle->module_obj;
+    if (emit_asm) name = (_module->getName() + ".asm").str();
+    llvm::raw_fd_ostream file_stream{name, ec, llvm::sys::fs::F_None};
     return emitModuleToStream(tlii, &file_stream, emit_asm);
 }
 llvm_error LLVMBackend::emitModuleToPP(
@@ -1554,7 +1576,8 @@ llvm_error LLVMBackend::emitModuleToPP(
         new llvm::SmallVectorMemoryBuffer{std::move(obj_sv)}};
     // link that mem buffer file
     PP_RUNNER->obj_link_layer.add(
-        PP_RUNNER->exec_session.getMainJITDylib(), std::move(obj_svmb));
+        PP_RUNNER->exec_session.getMainJITDylib(), std::move(obj_svmb),
+        PP_RUNNER->exec_session.allocateVModule());
     return LLE_OK;
 }
 
@@ -1619,6 +1642,7 @@ llvm_error LLVMBackend::emitModule()
     }
     else {
         emitModuleIR();
+        emitModuleToFile(TLII.get(), true);
         emitModuleToPP(TLII.get(), false);
     }
     return lle;

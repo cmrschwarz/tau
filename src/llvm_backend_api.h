@@ -13,6 +13,7 @@ typedef void llvm_module;
 typedef struct mdg_node_s mdg_node;
 typedef struct pp_resolve_node_s pp_resolve_node;
 typedef struct thread_context_s thread_context;
+typedef struct sbuffer_s ptrlist;
 
 typedef enum llvm_error_e {
     LLE_OK = 0,
@@ -36,7 +37,7 @@ llvm_error llvm_backend_reserve_symbols(
     llvm_backend* llvmb, ureg private_sym_count, ureg public_sym_count);
 
 llvm_error llvm_backend_run_pp(
-    llvm_backend* llvmb, ureg private_sym_count, expr_pp* pp_expr);
+    llvm_backend* llvmb, ureg private_sym_count, ptrlist* resolve_nodes);
 
 void llvm_backend_remap_local_id(llvm_backend* llvmb, ureg old_id, ureg new_id);
 

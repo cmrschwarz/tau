@@ -4,7 +4,7 @@
 
 #include "sbuffer.h"
 #include "error.h"
-typedef sbuffer ptrlist;
+typedef struct sbuffer_s ptrlist;
 typedef sbuffer_iterator pli;
 
 static inline int ptrlist_init(ptrlist* p, ureg initial_element_capacity)

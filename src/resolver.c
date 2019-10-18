@@ -314,8 +314,9 @@ static resolve_error add_ast_node_decls(
         case EXPR_PP: {
             resolve_mode rm = r->rm;
             bool cp = r->contains_paste;
-            if (rm == RM_PP) {
-                pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
+            pp_resolve_node* pprn = NULL;
+            if (r->curr_pp_node == NULL) {
+                pprn = freelist_alloc(&r->pp_resolve_nodes);
                 if (!pprn) return RE_FATAL;
                 if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
                     return RE_FATAL;
@@ -325,9 +326,8 @@ static resolve_error add_ast_node_decls(
                 pprn->start = &pprn->node;
                 pprn->end = &pprn->node + 1;
                 pprn->ppl = ppl;
-                pprn->generation_estimate = r->pp_generation;
-                pprn->required_by = NULL;
-                pprn->same_requirement = NULL;
+                if (aseglist_init(&pprn->required_by)) return RE_FATAL;
+                r->curr_pp_node = pprn;
             }
             r->contains_paste = false;
             if (st && st->pp_symtab) st = st->pp_symtab;
@@ -346,6 +346,7 @@ static resolve_error add_ast_node_decls(
             else {
                 r->contains_paste = cp;
             }
+            if (pprn) r->curr_pp_node = NULL;
             return RE_OK;
         }
         case SC_STRUCT:
@@ -574,7 +575,11 @@ resolve_error overload_applicable(
             r, fn->return_type, overload->sym.declaring_st, ppl,
             &fn->return_ctype, NULL);
         if (ctype) *ctype = fn->return_ctype;
-        return re;
+        if (re) return re;
+        if (r->rm != RM_MAIN) {
+            return resolve_func(r, fn, ppl);
+        }
+        return RE_OK;
     }
     else {
         // TODO: allow non void macros
@@ -905,6 +910,10 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
 resolve_error
 resolve_param(resolver* r, sym_param* p, ureg ppl, ast_elem** ctype)
 {
+    if (ast_flags_get_resolved(p->sym.node.flags)) {
+        if (ctype) *ctype = p->ctype;
+        return RE_OK;
+    }
     ast_flags_set_resolving(&p->sym.node.flags);
     resolve_error re;
     if (p->type) {
@@ -1090,11 +1099,13 @@ static inline resolve_error resolve_ast_node_raw(
         case EXPR_OP_UNARY: {
             expr_op_unary* ou = (expr_op_unary*)n;
             if (resolved) {
-                if (ou->op->kind == PRIMITIVE) {
+                assert(!value && ctype);
+                if (ou->op->kind == PRIMITIVE || ou->op->kind == TYPE_POINTER) {
                     *ctype =
                         (ast_elem*)&PRIMITIVES[((ast_node*)ou->op)->pt_kind];
                 }
                 else {
+                    assert(ou->op->kind == SC_FUNC);
                     *ctype = ((sc_func*)ou->op)->return_ctype;
                 }
                 return RE_OK;
@@ -1607,6 +1618,10 @@ resolve_error resolve_expr_body(
 resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl)
 {
     ast_body* b = &fn->sc.body;
+    if (b->srange == SRC_RANGE_INVALID) { // hack for external functions
+        ast_flags_set_resolved(&fn->sc.sym.node.flags);
+        return RE_OK;
+    }
     symbol_table* st = b->symtab;
     resolve_error re;
     for (ureg i = 0; i < fn->param_count; i++) {
@@ -1760,10 +1775,10 @@ resolve_error resolver_handle_pp(resolver* r)
         r->curr_pp_node = rn;
         re = resolve_ast_node(
             r, ((expr_pp*)rn->node)->pp_expr, rn->declaring_st, rn->ppl + 1,
-            NULL, NULL);
+            NULL, &((expr_pp*)rn->node)->ctype);
         if (re == RE_SYMBOL_NOT_FOUND_YET) continue;
         if (re) return re;
-        if (rn->dependency_count == 0) {
+        if (rn->dep_count == 0) {
             ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
             if (ptrlist_append(&r->pp_resolve_nodes_ready, rn)) return RE_FATAL;
         }
@@ -1772,18 +1787,13 @@ resolve_error resolver_handle_pp(resolver* r)
     do {
         // TODO: evaluate all nodes and decrease depending dep counts
         // TODO: resolve resulting pastes
+        llvm_error lle = llvm_backend_run_pp(
+            r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
+            &r->pp_resolve_nodes_ready);
+        if (lle) return RE_FATAL;
         it = pli_rbegin(&r->pp_resolve_nodes_ready);
         for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
             if (rn->node->kind == EXPR_PP) {
-                llvm_error lle = llvm_backend_run_pp(
-                    r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
-                    (expr_pp*)rn->node);
-                if (lle) return RE_FATAL;
-                pp_resolve_node* rqrn = rn->required_by;
-                while (rqrn) {
-                    // TODO: evaluate these the next time
-                    rqrn = rqrn->same_requirement;
-                }
                 freelist_free(&r->pp_resolve_nodes, rn);
             }
         }
@@ -1793,8 +1803,7 @@ resolve_error resolver_handle_pp(resolver* r)
         // ones with dep count 0 in pp_resolve_nodes_ready
         it = pli_rbegin(&r->pp_resolve_nodes_pending);
         for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
-            if (rn->dependency_count == 0 &&
-                ast_flags_get_resolved(rn->node->flags)) {
+            if (rn->dep_count == 0 && ast_flags_get_resolved(rn->node->flags)) {
                 if (ptrlist_append(&r->pp_resolve_nodes_ready, rn)) {
                     return RE_FATAL;
                 }
@@ -1836,6 +1845,7 @@ resolve_error resolver_run(resolver* r)
 int resolver_resolve(
     resolver* r, mdg_node** start, mdg_node** end, ureg* startid)
 {
+    r->curr_pp_node = NULL;
     r->retracing_type_loop = false;
     r->public_sym_count = 0;
     r->private_sym_count = 0;

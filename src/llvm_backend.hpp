@@ -130,6 +130,7 @@ struct LLVMBackend {
     ureg _private_sym_count;
     LLVMModule* _mod_handle;
     llvm::orc::JITDylib* _mod_dylib;
+    std::atomic<ureg> _pp_count;
     bool _pp_mode;
 
   public:
@@ -143,8 +144,8 @@ struct LLVMBackend {
     llvm_error
     initModule(mdg_node** start, mdg_node** end, LLVMModule** module);
     void remapLocalID(ureg old_id, ureg new_id);
-    llvm_error genPPFunc(const char* func_name, expr_pp* expr, bool* is_void);
-    llvm_error runPP(ureg private_sym_count, expr_pp* pp);
+    llvm_error genPPFunc(const char* func_name, ptrlist* resolve_nodes);
+    llvm_error runPP(ureg private_sym_count, ptrlist* resolve_nodes);
     llvm_error reserveSymbols(ureg priv_sym_limit, ureg pub_sym_limit);
     llvm_error emit(ureg startid, ureg endid, ureg priv_sym_count);
     pp_resolve_node** lookupPPResolveNode(ureg id);
