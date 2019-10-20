@@ -24,6 +24,12 @@ static inline int ptrlist_append(ptrlist* p, void* data)
     *v = data;
     return OK;
 }
+static inline bool ptrlist_is_empty(ptrlist* p)
+{
+    if (p->first_seg != p->tail_seg) return false;
+    void* start = ptradd(p->first_seg, sizeof(sbuffer_segment));
+    return (ptrdiff(p->first_seg->tail, start) == 0);
+}
 
 // invalidates pli->res, but revalidated after pli_next/prev
 static inline void ptrlist_remove(ptrlist* p, pli* pli)

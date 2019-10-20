@@ -369,20 +369,11 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     lle = emitModule();
     if (lle) return lle;
 
-    auto var = PP_RUNNER->exec_session.lookup(
-        llvm::orc::JITDylibSearchList(
-            {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
-        PP_RUNNER->exec_session.intern("x"));
     auto mainfn = PP_RUNNER->exec_session.lookup(
         llvm::orc::JITDylibSearchList(
             {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
         PP_RUNNER->exec_session.intern(pp_func_name));
-    if (!var) {
-        llvm::errs() << var.takeError() << "\n";
-        assert(false);
-    }
-    ureg* x = (ureg*)var->getAddress();
-    printf("x %x | %zu \n", (ureg)x, *x);
+
     if (!mainfn) {
         llvm::errs() << mainfn.takeError() << "\n";
         assert(false);
@@ -483,7 +474,8 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, ptrlist* resolve_nodes)
          n = (pp_resolve_node*)pli_next(&it)) {
         if (n->node->kind == EXPR_PP) {
             auto expr = (expr_pp*)n->node;
-            if (expr->ctype != VOID_ELEM && expr->ctype != UNREACHABLE_ELEM) {
+            if (n->result_used && expr->ctype != VOID_ELEM &&
+                expr->ctype != UNREACHABLE_ELEM) {
                 llvm::Type* ret_type;
                 ureg size;
                 ureg align;
@@ -497,13 +489,13 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, ptrlist* resolve_nodes)
                     expr->result = malloc(size); // TODO: use tempmem for this
                 }
                 llvm::Value *val, *tgt;
-                lle = genAstNode(expr->pp_expr, NULL, NULL); //&val
+                lle = genAstNode(expr->pp_expr, NULL, &val);
                 if (lle) return lle;
-                /* auto res = llvm::ConstantInt::get(
-                     _primitive_types[PT_UINT], (ureg)expr->result);
-                 auto resptr = llvm::ConstantExpr::getBitCast(
-                     res, ret_type->getPointerTo());
-                 if (!_builder.CreateStore(val, resptr)) return LLE_FATAL;*/
+                auto res = llvm::ConstantInt::get(
+                    _primitive_types[PT_UINT], (ureg)expr->result);
+                auto resptr = llvm::ConstantExpr::getBitCast(
+                    res, ret_type->getPointerTo());
+                if (!_builder.CreateStore(val, resptr)) return LLE_FATAL;
             }
             else {
                 lle = genAstNode(expr->pp_expr, NULL, NULL);

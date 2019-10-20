@@ -25,6 +25,7 @@ typedef enum resolve_error_e {
 } resolve_error;
 
 typedef enum resolve_mode_e {
+    RM_ADD_DECLS,
     RM_MAIN,
     RM_PP,
     RM_SEEK_PASTES,
@@ -42,6 +43,7 @@ typedef struct pp_resolve_node_s {
     // PERF: use a non threadsafe list here
     aseglist required_by;
     ureg dep_count;
+    bool result_used;
 } pp_resolve_node;
 
 typedef struct resolver_s {
