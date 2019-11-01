@@ -22,7 +22,7 @@ resolve_error resolve_func(
     resolver* r, sc_func* fn, ureg ppl, pp_resolve_node** awaiting_pprn);
 resolve_error resolve_expr_body(
     resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b, ureg ppl,
-    bool* end_reachable);
+    bool* end_reachable, pp_resolve_node** pprn);
 resolve_error resolve_expr_scope_access(
     resolver* r, expr_scope_access* esa, symbol_table* st, ureg ppl,
     access_modifier* access, ast_elem** value, ast_elem** ctype);
@@ -261,6 +261,23 @@ static inline ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st)
     }
     return r->id_space++;
 }
+static pp_resolve_node* pp_resolve_node_create(
+    resolver* r, ast_node* n, symbol_table* declaring_st, bool res_used,
+    ureg ppl)
+{
+    pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
+    if (!pprn) return NULL;
+    if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
+        return NULL;
+    }
+    pprn->result_used = res_used;
+    pprn->contains_pastes = false;
+    pprn->declaring_st = declaring_st;
+    pprn->node = n;
+    pprn->ppl = ppl;
+    if (aseglist_init(&pprn->required_by)) return NULL;
+    return pprn;
+}
 static resolve_error add_ast_node_decls(
     resolver* r, symbol_table* st, symbol_table* sst, ureg ppl, ast_node* n,
     bool public_st)
@@ -314,42 +331,18 @@ static resolve_error add_ast_node_decls(
             return RE_OK;
         }
         case EXPR_PP: {
-            resolve_mode rm = r->rm;
-            bool cp = r->contains_paste;
             pp_resolve_node* pprn = NULL;
             if (r->curr_pp_node == NULL) {
-                pprn = freelist_alloc(&r->pp_resolve_nodes);
+                pprn = pp_resolve_node_create(r, n, st, false, ppl);
                 if (!pprn) return RE_FATAL;
-                if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
-                    return RE_FATAL;
-                }
-                pprn->result_used = false;
-                pprn->declaring_st = st;
-                pprn->node = n;
-                pprn->start = &pprn->node;
-                pprn->end = &pprn->node + 1;
-                pprn->ppl = ppl;
-                if (aseglist_init(&pprn->required_by)) return RE_FATAL;
                 r->curr_pp_node = pprn;
             }
-            r->contains_paste = false;
             if (st && st->pp_symtab) st = st->pp_symtab;
             if (sst && sst->pp_symtab) sst = sst->pp_symtab;
-            r->rm = RM_IN_PP_EXPR;
             re = add_ast_node_decls(
                 r, st, sst, ppl + 1, ((expr_pp*)n)->pp_expr, false);
             // no need to reset curr_pp_node here, since we are nested
             if (re) return re;
-            r->rm = rm;
-            if (r->contains_paste) {
-                ast_flags_set_pasting_pp_expr(&n->flags);
-            }
-            if (rm == RM_IN_PP_EXPR || rm == RM_SEEK_PASTES) {
-                r->contains_paste = cp || r->contains_paste;
-            }
-            else {
-                r->contains_paste = cp;
-            }
             return RE_OK;
         }
         case SC_STRUCT:
@@ -1363,7 +1356,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (!resolved) {
                 bool end_reachable;
                 re = resolve_expr_body(
-                    r, st, (ast_node*)b, &b->body, ppl, &end_reachable);
+                    r, st, (ast_node*)b, &b->body, ppl, &end_reachable, NULL);
                 if (ctype) *ctype = b->ctype;
                 if (re) return re;
                 if (end_reachable) {
@@ -1449,7 +1442,8 @@ static inline resolve_error resolve_ast_node_raw(
                 RETURN_RESOLVED(value, ctype, NULL, l->ctype);
             }
             bool end_reachable;
-            re = resolve_expr_body(r, st, n, &l->body, ppl, &end_reachable);
+            re = resolve_expr_body(
+                r, st, n, &l->body, ppl, &end_reachable, NULL);
             if (ctype) *ctype = l->ctype;
             if (re) return re;
             assert(end_reachable); // TODO: error: why loop then?
@@ -1475,18 +1469,8 @@ static inline resolve_error resolve_ast_node_raw(
             }
             pp_resolve_node* pprn = NULL;
             if (r->curr_pp_node == NULL) {
-                pprn = freelist_alloc(&r->pp_resolve_nodes);
+                pprn = pp_resolve_node_create(r, n, st, true, ppl);
                 if (!pprn) return RE_FATAL;
-                if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
-                    return RE_FATAL;
-                }
-                pprn->result_used = true;
-                pprn->declaring_st = st;
-                pprn->node = n;
-                pprn->start = &pprn->node;
-                pprn->end = &pprn->node + 1;
-                pprn->ppl = ppl;
-                if (aseglist_init(&pprn->required_by)) return RE_FATAL;
                 r->curr_pp_node = pprn;
             }
             re = resolve_ast_node_raw(
@@ -1584,7 +1568,7 @@ static resolve_error resolve_ast_node(
 }
 resolve_error resolve_expr_body(
     resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b, ureg ppl,
-    bool* end_reachable)
+    bool* end_reachable, pp_resolve_node** pprn)
 {
     ast_node* parent_expr_block_owner = r->curr_expr_block_owner;
     r->curr_expr_block_owner = expr;
@@ -1596,8 +1580,6 @@ resolve_error resolve_expr_body(
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
     ureg saved_decl_count = 0;
     set_parent_symtabs(&b->symtab, parent_st);
-    resolve_mode rm = r->rm;
-    r->rm = RM_SEEK_PASTES;
     if (b->symtab->owning_node == (ast_elem*)expr && b->symtab->decl_count) {
         // if we already have decls this is the second pass.
         // all local syms are already defined so we don't need to check this
@@ -1609,7 +1591,12 @@ resolve_error resolve_expr_body(
         re = add_ast_node_decls(r, b->symtab, NULL, ppl, *n, false);
         if (re) break;
         re = resolve_ast_node(r, *n, b->symtab, ppl, NULL, stmt_ctype_ptr);
-        r->curr_pp_node = NULL;
+        if (r->curr_pp_node) {
+            bool cp = r->curr_pp_node->contains_pastes;
+            r->curr_pp_node = NULL;
+            if (cp) return RE_SYMBOL_NOT_FOUND_YET;
+        }
+
         if (re && re != RE_TYPE_LOOP) break;
         if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
             stmt_ctype_ptr = NULL;
@@ -1635,7 +1622,6 @@ resolve_error resolve_expr_body(
         b->symtab->decl_count = saved_decl_count;
     }
     *end_reachable = (stmt_ctype_ptr != NULL);
-    r->rm = rm;
     r->allow_type_loops = parent_allows_type_loops;
     r->curr_expr_block_owner = parent_expr_block_owner;
     if (re) return re;
@@ -1764,7 +1750,6 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
 }
 resolve_error resolver_setup_pass(resolver* r)
 {
-    r->rm = RM_ADD_DECLS;
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         aseglist_iterator asi;
         aseglist_iterator_begin(&asi, &(**i).open_scopes);
@@ -1775,7 +1760,6 @@ resolve_error resolver_setup_pass(resolver* r)
             if (re) return re;
         }
     }
-    r->rm = RM_MAIN;
     return RE_OK;
 }
 resolve_error resolver_cleanup(resolver* r, ureg startid)
@@ -1800,7 +1784,6 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
 {
     llvm_error lle;
     pli it;
-    r->rm = RM_PP;
     bool progress;
     do {
         progress = false;
@@ -1834,7 +1817,6 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             }
         }
     } while (progress);
-    r->rm = RM_MAIN;
     return RE_OK;
 }
 resolve_error resolver_handle_pp(resolver* r)
@@ -1846,7 +1828,6 @@ resolve_error resolver_handle_pp(resolver* r)
     // pp_resolve_nodes that require unique evaluation
     r->pp_generation = 0;
     r->multi_evaluation_ctx = false;
-    r->rm = RM_PP;
     pli it = pli_rbegin(&r->pp_resolve_nodes_pending);
     for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
         r->curr_pp_node = rn;
@@ -1974,7 +1955,6 @@ int resolver_init(resolver* r, thread_context* tc)
     r->backend = llvm_backend_new(r->tc);
     if (!r->backend) return resolver_partial_fin(r, 3, ERR);
     r->allow_type_loops = false;
-    r->contains_paste = false;
     r->type_loop_start = NULL;
     r->curr_expr_block_owner = NULL;
     return OK;

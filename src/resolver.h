@@ -24,25 +24,16 @@ typedef enum resolve_error_e {
     RE_SYMBOL_NOT_FOUND_YET,
 } resolve_error;
 
-typedef enum resolve_mode_e {
-    RM_ADD_DECLS,
-    RM_MAIN,
-    RM_PP,
-    RM_SEEK_PASTES,
-    RM_IN_PP_EXPR,
-} resolve_mode;
-
 typedef struct thread_context_s thread_context;
 
 typedef struct pp_resolve_node_s {
     ast_node* node; // either expr_pp or stmt_using or func
-    ast_node** start;
-    ast_node** end;
     symbol_table* declaring_st;
     ureg ppl;
     // PERF: use a non threadsafe list here
     aseglist required_by;
     ureg dep_count;
+    bool contains_pastes;
     bool result_used;
 } pp_resolve_node;
 
@@ -73,8 +64,6 @@ typedef struct resolver_s {
     ptrlist pp_resolve_nodes_ready;
     pp_resolve_node* curr_pp_node;
     bool multi_evaluation_ctx;
-    bool contains_paste;
-    resolve_mode rm;
     ureg pp_generation;
 } resolver;
 
