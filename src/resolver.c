@@ -274,6 +274,7 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->contains_pastes = false;
     pprn->declaring_st = declaring_st;
     pprn->node = n;
+    pprn->continue_block = NULL;
     pprn->ppl = ppl;
     if (aseglist_init(&pprn->required_by)) return NULL;
     return pprn;
@@ -1593,10 +1594,11 @@ resolve_error resolve_expr_body(
         re = resolve_ast_node(r, *n, b->symtab, ppl, NULL, stmt_ctype_ptr);
         if (r->curr_pp_node) {
             bool cp = r->curr_pp_node->contains_pastes;
+            if (pprn) *pprn = r->curr_pp_node;
+            if (cp) r->curr_pp_node->continue_block = n + 1;
             r->curr_pp_node = NULL;
             if (cp) return RE_SYMBOL_NOT_FOUND_YET;
         }
-
         if (re && re != RE_TYPE_LOOP) break;
         if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
             stmt_ctype_ptr = NULL;
@@ -1634,6 +1636,13 @@ resolve_error resolve_expr_body(
 resolve_error
 resolve_func(resolver* r, sc_func* fn, ureg ppl, pp_resolve_node** pprn)
 {
+    if (pprn) {
+        *pprn = llvm_backend_lookup_pp_resolve_node(r->backend, fn->id);
+        if (*pprn) {
+            if (ast_flags_get_resolved(fn->sc.sym.node.flags)) return RE_OK;
+            return RE_SYMBOL_NOT_FOUND_YET;
+        }
+    }
     ast_body* b = &fn->sc.body;
     if (b->srange == SRC_RANGE_INVALID) { // hack for external functions
         ast_flags_set_resolved(&fn->sc.sym.node.flags);
@@ -1650,12 +1659,21 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, pp_resolve_node** pprn)
     ast_node** n = b->elements;
     ast_elem* stmt_ctype;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
-
+    pp_resolve_node* last_rn = NULL;
     while (*n) {
         re = add_ast_node_decls(r, st, NULL, ppl, *n, false);
         if (re) break;
         re = resolve_ast_node(r, *n, st, ppl, NULL, stmt_ctype_ptr);
-        r->curr_pp_node = NULL;
+        if (r->curr_pp_node) {
+            last_rn = r->curr_pp_node;
+            r->curr_pp_node = NULL;
+            if (last_rn->contains_pastes) {
+                *pprn = last_rn;
+                last_rn->continue_block = n + 1;
+                llvm_backend_set_pp_resolve_node(r->backend, fn->id, last_rn);
+                return RE_SYMBOL_NOT_FOUND_YET;
+            }
+        }
         if (re) break;
         if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
             stmt_ctype_ptr = NULL;
@@ -1678,6 +1696,10 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, pp_resolve_node** pprn)
         return RE_TYPE_MISSMATCH;
     }
     ast_flags_set_resolved(&fn->sc.sym.node.flags);
+    if (last_rn) {
+        llvm_backend_set_pp_resolve_node(r->backend, fn->id, last_rn);
+    }
+    if (pprn) *pprn = last_rn;
     return RE_OK;
 }
 resolve_error resolve_body(resolver* r, ast_body* b, ureg ppl)

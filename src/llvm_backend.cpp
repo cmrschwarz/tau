@@ -128,7 +128,12 @@ int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
     if (lle) return ERR;
     return OK;
 }
-pp_resolve_node**
+void llvm_backend_set_pp_resolve_node(
+    llvm_backend* llvmb, ureg id, pp_resolve_node* pprn)
+{
+    ((LLVMBackend*)llvmb)->setPPResolveNode(id, pprn);
+}
+pp_resolve_node*
 llvm_backend_lookup_pp_resolve_node(llvm_backend* llvmb, ureg id)
 {
     return ((LLVMBackend*)llvmb)->lookupPPResolveNode(id);
@@ -433,16 +438,34 @@ void LLVMBackend::remapLocalID(ureg old_id, ureg new_id)
     _local_value_store[old_id] = NULL;
     _local_value_state[old_id] = NOT_GENERATED;
 }
-pp_resolve_node** LLVMBackend::lookupPPResolveNode(ureg id)
+void LLVMBackend::setPPResolveNode(ureg id, pp_resolve_node* pprn)
 {
     if (isLocalID(id)) {
         id -= PRIV_SYMBOL_OFFSET;
-        if (_local_value_state[id] > PP_RN_GENERATED) return NULL;
-        return (pp_resolve_node**)&_local_value_store[id];
+        reserveSymbols(id + 1, 0);
+        assert(_local_value_state[id] == NOT_GENERATED);
+        *(pp_resolve_node**)&_local_value_store[id] = pprn;
+        _local_value_state[id] = PP_RN_GENERATED;
     }
     else {
-        if (_global_value_state[id] > PP_RN_GENERATED) return NULL;
-        return (pp_resolve_node**)&_global_value_state[id];
+        reserveSymbols(0, id + 1);
+        assert(_global_value_state[id] == NOT_GENERATED);
+        *(pp_resolve_node**)&_global_value_state[id] = pprn;
+        _global_value_state[id] = PP_RN_GENERATED;
+    }
+}
+pp_resolve_node* LLVMBackend::lookupPPResolveNode(ureg id)
+{
+    if (isLocalID(id)) {
+        id -= PRIV_SYMBOL_OFFSET;
+        reserveSymbols(id + 1, 0);
+        if (_local_value_state[id] != PP_RN_GENERATED) return NULL;
+        return *(pp_resolve_node**)&_local_value_store[id];
+    }
+    else {
+        reserveSymbols(0, id + 1);
+        if (_global_value_state[id] != PP_RN_GENERATED) return NULL;
+        return *(pp_resolve_node**)&_global_value_state[id];
     }
 }
 llvm_error LLVMBackend::genPPFunc(const char* func_name, ptrlist* resolve_nodes)
@@ -1419,7 +1442,9 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         return LLE_OK;
     }
     else {
-        assert(*state == NOT_GENERATED || *state == PP_IMPL_DESTROYED);
+        assert(
+            *state == NOT_GENERATED || *state == PP_RN_GENERATED ||
+            *state == PP_IMPL_DESTROYED);
     }
 
     llvm::Function* func;

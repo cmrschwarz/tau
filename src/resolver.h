@@ -32,6 +32,7 @@ typedef struct pp_resolve_node_s {
     ureg ppl;
     // PERF: use a non threadsafe list here
     aseglist required_by;
+    ast_node** continue_block;
     ureg dep_count;
     bool contains_pastes;
     bool result_used;
