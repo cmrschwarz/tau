@@ -332,7 +332,11 @@ typedef struct expr_pp_s {
     ast_node* pp_expr;
     ast_elem* ctype;
     void* result;
-    ureg result_buffer[2];
+    union {
+        ureg data[2];
+        void* true_res_buffer;
+    } result_buffer;
+
 } expr_pp;
 
 typedef struct match_arm_s {

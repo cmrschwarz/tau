@@ -6,6 +6,7 @@
 #include "utils/panic.h"
 #include "utils/zero.h"
 #include "utils/debug_utils.h"
+#include "utils/aseglist.h"
 
 static resolve_error add_body_decls(
     resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
@@ -17,7 +18,8 @@ resolve_error resolve_body(resolver* r, ast_body* b, ureg ppl);
 static resolve_error resolve_ast_node(
     resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
     ast_elem** ctype);
-resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl);
+resolve_error resolve_func(
+    resolver* r, sc_func* fn, ureg ppl, pp_resolve_node** awaiting_pprn);
 resolve_error resolve_expr_body(
     resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b, ureg ppl,
     bool* end_reachable);
@@ -664,7 +666,7 @@ resolve_error resolve_func_call(
                 pp_resolve_node* pprn = NULL;
                 resolve_func(r, (sc_func*)tgt, ppl, &pprn);
                 if (pprn) {
-                    aseglist_append(&pprn->required_by, curr_pprn);
+                    aseglist_add(&pprn->required_by, curr_pprn);
                     curr_pprn->dep_count++;
                 }
             }
@@ -1182,7 +1184,7 @@ static inline resolve_error resolve_ast_node_raw(
             assert(!value);
             if (ctype) *ctype = VOID_ELEM;
             if (resolved) return RE_OK;
-            return resolve_func(r, (sc_func*)n, ppl);
+            return resolve_func(r, (sc_func*)n, ppl, NULL);
         }
         case SYM_IMPORT_PARENT: {
             if (!resolved) {

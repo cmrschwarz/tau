@@ -483,16 +483,19 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, ptrlist* resolve_nodes)
                 if (lle) return lle;
                 assert(align <= REG_BYTES); // TODO
                 if (size <= sizeof(expr->result_buffer)) {
-                    expr->result = (void*)&expr->result_buffer[0];
+                    expr->result_buffer.true_res_buffer =
+                        (void*)&expr->result_buffer.data[0];
                 }
                 else {
-                    expr->result = malloc(size); // TODO: use tempmem for this
+                    // TODO: use tempmem for this
+                    expr->result_buffer.true_res_buffer = malloc(size);
                 }
                 llvm::Value *val, *tgt;
                 lle = genAstNode(expr->pp_expr, NULL, &val);
                 if (lle) return lle;
                 auto res = llvm::ConstantInt::get(
-                    _primitive_types[PT_UINT], (ureg)expr->result);
+                    _primitive_types[PT_UINT],
+                    (ureg)expr->result_buffer.true_res_buffer);
                 auto resptr = llvm::ConstantExpr::getBitCast(
                     res, ret_type->getPointerTo());
                 if (!_builder.CreateStore(val, resptr)) return LLE_FATAL;
@@ -507,7 +510,17 @@ llvm_error LLVMBackend::genPPFunc(const char* func_name, ptrlist* resolve_nodes)
             if (lle) return lle;
         }
     }
-
+    it = pli_begin(resolve_nodes);
+    for (auto n = (pp_resolve_node*)pli_next(&it); n;
+         n = (pp_resolve_node*)pli_next(&it)) {
+        if (n->node->kind == EXPR_PP) {
+            auto expr = (expr_pp*)n->node;
+            if (n->result_used && expr->ctype != VOID_ELEM &&
+                expr->ctype != UNREACHABLE_ELEM) {
+                expr->result = (void*)&expr->result_buffer.true_res_buffer;
+            }
+        }
+    }
     if (lle) return lle;
     assert(!ctx.following_block && !ctx.value);
     _builder.CreateRetVoid();
