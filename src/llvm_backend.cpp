@@ -1669,8 +1669,12 @@ llvm_error LLVMBackend::emitModule()
     if (!_pp_mode) {
         if (!lle && _tc->t->emit_exe) lle = emitModuleToFile(TLII.get(), false);
     }
-    else {
-        if (!lle) lle = emitModuleToPP(TLII.get(), false);
+    if (!lle) {
+        // no need to add the root module to the pp,
+        // we're done with preprocessing at that point
+        if (_pp_mode || *_mods_start != _tc->t->mdg.root_node) {
+            lle = emitModuleToPP(TLII.get(), false);
+        }
     }
     return lle;
 }
