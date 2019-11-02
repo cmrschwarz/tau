@@ -1600,6 +1600,7 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     sp->result = NULL;
     if (!sp) return PE_FATAL;
     ast_node_init(&sp->node, EXPR_PP);
+    sp->result_buffer.state.pprn = NULL;
     if (push_bpd_pp(p, (ast_node*)sp)) return PE_FATAL;
     parse_error pe =
         parse_expression_of_prec(p, &sp->pp_expr, op_precedence[OP_PP]);
@@ -3121,6 +3122,7 @@ static inline parse_error parse_pp_stmt(
     expr_pp* sp = alloc_perm(p, sizeof(expr_pp));
     if (!sp) return PE_FATAL;
     ast_node_init(&sp->node, EXPR_PP);
+    sp->result_buffer.state.pprn = NULL;
     if (push_bpd_pp(p, (ast_node*)sp)) return PE_FATAL;
     pe = parse_statement(p, &sp->pp_expr);
     if (pop_bpd_pp(p, pe)) return PE_FATAL;

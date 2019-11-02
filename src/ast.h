@@ -332,11 +332,13 @@ typedef struct expr_pp_s {
     ast_node* pp_expr;
     ast_elem* ctype;
     void* result;
-    union {
+    union result_buffer_u {
         ureg data[2];
-        void* true_res_buffer;
+        struct state_s {
+            void* true_res_buffer;
+            struct pp_resolve_node_s* pprn;
+        } state;
     } result_buffer;
-
 } expr_pp;
 
 typedef struct match_arm_s {

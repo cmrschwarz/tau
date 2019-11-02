@@ -34,7 +34,7 @@ typedef struct pp_resolve_node_s {
     aseglist required_by;
     ast_node** continue_block;
     ureg dep_count;
-    bool contains_pastes;
+    ureg pending_pastes;
     bool result_used;
 } pp_resolve_node;
 
@@ -64,6 +64,7 @@ typedef struct resolver_s {
     ptrlist pp_resolve_nodes_pending;
     ptrlist pp_resolve_nodes_ready;
     pp_resolve_node* curr_pp_node;
+    pp_resolve_node* block_pp_node;
     bool multi_evaluation_ctx;
     ureg pp_generation;
 } resolver;

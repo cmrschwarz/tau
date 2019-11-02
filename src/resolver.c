@@ -18,17 +18,15 @@ resolve_error resolve_body(resolver* r, ast_body* b, ureg ppl);
 static resolve_error resolve_ast_node(
     resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
     ast_elem** ctype);
-resolve_error resolve_func(
-    resolver* r, sc_func* fn, ureg ppl, pp_resolve_node** awaiting_pprn);
+resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl);
 resolve_error resolve_expr_body(
     resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b, ureg ppl,
-    bool* end_reachable, pp_resolve_node** pprn);
+    bool* end_reachable);
 resolve_error resolve_expr_scope_access(
     resolver* r, expr_scope_access* esa, symbol_table* st, ureg ppl,
     access_modifier* access, ast_elem** value, ast_elem** ctype);
 resolve_error get_resolved_symbol_symtab(
     resolver* r, symbol* s, access_modifier* access, symbol_table** tgt_st);
-
 // must be a macro so value and ctype become lazily evaluated
 #define RETURN_RESOLVED(pvalue, pctype, value, ctype)                          \
     do {                                                                       \
@@ -81,6 +79,42 @@ add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
     if (conflict) {
         return report_redeclaration_error(r, sym, *conflict, tgtst);
     }
+    return RE_OK;
+}
+static pp_resolve_node* pp_resolve_node_create(
+    resolver* r, ast_node* n, symbol_table* declaring_st, bool res_used,
+    ureg ppl)
+{
+    pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
+    if (!pprn) return NULL;
+    if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
+        return NULL;
+    }
+    pprn->result_used = res_used;
+    pprn->pending_pastes = 0;
+    pprn->declaring_st = declaring_st;
+    pprn->node = n;
+    pprn->continue_block = NULL;
+    pprn->ppl = ppl;
+    if (aseglist_init(&pprn->required_by)) return NULL;
+    return pprn;
+}
+static resolve_error add_pp_dependency(resolver* r, pp_resolve_node* depends_on)
+{
+    pp_resolve_node* depending = NULL;
+    if (r->curr_pp_node) {
+        depending = r->curr_pp_node;
+    }
+    else {
+        if (r->block_pp_node) {
+            depending = r->block_pp_node;
+        }
+        else {
+            depending = pp_resolve_node_create(r, NULL, NULL, true, 0);
+        }
+    }
+    if (aseglist_add(&depends_on->required_by, depending)) return RE_FATAL;
+    depending->dep_count++;
     return RE_OK;
 }
 resolve_error add_sym_import_module_decl(
@@ -261,24 +295,6 @@ static inline ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st)
     }
     return r->id_space++;
 }
-static pp_resolve_node* pp_resolve_node_create(
-    resolver* r, ast_node* n, symbol_table* declaring_st, bool res_used,
-    ureg ppl)
-{
-    pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
-    if (!pprn) return NULL;
-    if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
-        return NULL;
-    }
-    pprn->result_used = res_used;
-    pprn->contains_pastes = false;
-    pprn->declaring_st = declaring_st;
-    pprn->node = n;
-    pprn->continue_block = NULL;
-    pprn->ppl = ppl;
-    if (aseglist_init(&pprn->required_by)) return NULL;
-    return pprn;
-}
 static resolve_error add_ast_node_decls(
     resolver* r, symbol_table* st, symbol_table* sst, ureg ppl, ast_node* n,
     bool public_st)
@@ -332,18 +348,20 @@ static resolve_error add_ast_node_decls(
             return RE_OK;
         }
         case EXPR_PP: {
-            pp_resolve_node* pprn = NULL;
-            if (r->curr_pp_node == NULL) {
-                pprn = pp_resolve_node_create(r, n, st, false, ppl);
+            expr_pp* epp = (expr_pp*)n;
+            if (public_st) {
+                pp_resolve_node* pprn =
+                    pp_resolve_node_create(r, n, st, false, ppl);
                 if (!pprn) return RE_FATAL;
                 r->curr_pp_node = pprn;
+                epp->result_buffer.state.pprn = pprn;
             }
             if (st && st->pp_symtab) st = st->pp_symtab;
             if (sst && sst->pp_symtab) sst = sst->pp_symtab;
-            re = add_ast_node_decls(
-                r, st, sst, ppl + 1, ((expr_pp*)n)->pp_expr, false);
+            re = add_ast_node_decls(r, st, sst, ppl + 1, epp->pp_expr, false);
             // no need to reset curr_pp_node here, since we are nested
             if (re) return re;
+            if (public_st) r->curr_pp_node = NULL;
             return RE_OK;
         }
         case SC_STRUCT:
@@ -658,7 +676,7 @@ resolve_error resolve_func_call(
             ast_flags_set_resolved(&c->node.flags);
             if (curr_pprn != NULL) {
                 pp_resolve_node* pprn = NULL;
-                resolve_func(r, (sc_func*)tgt, ppl, &pprn);
+                resolve_func_from_call(r, (sc_func*)tgt, ppl, &pprn);
                 if (pprn) {
                     aseglist_add(&pprn->required_by, curr_pprn);
                     curr_pprn->dep_count++;
@@ -1178,7 +1196,7 @@ static inline resolve_error resolve_ast_node_raw(
             assert(!value);
             if (ctype) *ctype = VOID_ELEM;
             if (resolved) return RE_OK;
-            return resolve_func(r, (sc_func*)n, ppl, NULL);
+            return resolve_func(r, (sc_func*)n, ppl);
         }
         case SYM_IMPORT_PARENT: {
             if (!resolved) {
@@ -1357,7 +1375,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (!resolved) {
                 bool end_reachable;
                 re = resolve_expr_body(
-                    r, st, (ast_node*)b, &b->body, ppl, &end_reachable, NULL);
+                    r, st, (ast_node*)b, &b->body, ppl, &end_reachable);
                 if (ctype) *ctype = b->ctype;
                 if (re) return re;
                 if (end_reachable) {
@@ -1443,8 +1461,7 @@ static inline resolve_error resolve_ast_node_raw(
                 RETURN_RESOLVED(value, ctype, NULL, l->ctype);
             }
             bool end_reachable;
-            re = resolve_expr_body(
-                r, st, n, &l->body, ppl, &end_reachable, NULL);
+            re = resolve_expr_body(r, st, n, &l->body, ppl, &end_reachable);
             if (ctype) *ctype = l->ctype;
             if (re) return re;
             assert(end_reachable); // TODO: error: why loop then?
@@ -1472,6 +1489,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (r->curr_pp_node == NULL) {
                 pprn = pp_resolve_node_create(r, n, st, true, ppl);
                 if (!pprn) return RE_FATAL;
+                if (add_pp_dependency(r, pprn)) return RE_FATAL;
                 r->curr_pp_node = pprn;
             }
             re = resolve_ast_node_raw(
@@ -1569,7 +1587,7 @@ static resolve_error resolve_ast_node(
 }
 resolve_error resolve_expr_body(
     resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b, ureg ppl,
-    bool* end_reachable, pp_resolve_node** pprn)
+    bool* end_reachable)
 {
     ast_node* parent_expr_block_owner = r->curr_expr_block_owner;
     r->curr_expr_block_owner = expr;
@@ -1580,6 +1598,7 @@ resolve_error resolve_expr_body(
     ast_elem* stmt_ctype = NULL;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
     ureg saved_decl_count = 0;
+    pp_resolve_node* prev_block_pprn = r->block_pp_node;
     set_parent_symtabs(&b->symtab, parent_st);
     if (b->symtab->owning_node == (ast_elem*)expr && b->symtab->decl_count) {
         // if we already have decls this is the second pass.
@@ -1592,12 +1611,10 @@ resolve_error resolve_expr_body(
         re = add_ast_node_decls(r, b->symtab, NULL, ppl, *n, false);
         if (re) break;
         re = resolve_ast_node(r, *n, b->symtab, ppl, NULL, stmt_ctype_ptr);
-        if (r->curr_pp_node) {
-            bool cp = r->curr_pp_node->contains_pastes;
-            if (pprn) *pprn = r->curr_pp_node;
-            if (cp) r->curr_pp_node->continue_block = n + 1;
-            r->curr_pp_node = NULL;
-            if (cp) return RE_SYMBOL_NOT_FOUND_YET;
+        if (r->block_pp_node && r->block_pp_node->pending_pastes) {
+            r->block_pp_node->continue_block = n + 1;
+            re = RE_SYMBOL_NOT_FOUND_YET;
+            break;
         }
         if (re && re != RE_TYPE_LOOP) break;
         if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
@@ -1623,6 +1640,14 @@ resolve_error resolve_expr_body(
     if (saved_decl_count) {
         b->symtab->decl_count = saved_decl_count;
     }
+    if (r->block_pp_node) {
+        assert(r->block_pp_node->node = NULL);
+        r->block_pp_node->node = (ast_node*)expr;
+        r->block_pp_node->declaring_st = parent_st;
+        r->block_pp_node->ppl = ppl;
+        if (add_pp_dependency(r, r->block_pp_node)) return RE_FATAL;
+    }
+    r->block_pp_node = prev_block_pprn;
     *end_reachable = (stmt_ctype_ptr != NULL);
     r->allow_type_loops = parent_allows_type_loops;
     r->curr_expr_block_owner = parent_expr_block_owner;
@@ -1632,22 +1657,31 @@ resolve_error resolve_expr_body(
     }
     return RE_OK;
 }
-// TODO: make sure we return!
-resolve_error
-resolve_func(resolver* r, sc_func* fn, ureg ppl, pp_resolve_node** pprn)
+resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl)
 {
-    if (pprn) {
-        *pprn = llvm_backend_lookup_pp_resolve_node(r->backend, fn->id);
-        if (*pprn) {
-            if (ast_flags_get_resolved(fn->sc.sym.node.flags)) return RE_OK;
+    if (ast_flags_get_resolved(fn->sc.sym.node.flags)) return RE_OK;
+    if (ppl) {
+        pp_resolve_node* pprn =
+            llvm_backend_lookup_pp_resolve_node(r->backend, fn->id);
+        if (pprn) {
+            if (aseglist_add(&pprn->required_by, r->curr_pp_node)) {
+                return RE_FATAL;
+            }
+            r->curr_pp_node->dep_count++;
             return RE_SYMBOL_NOT_FOUND_YET;
         }
     }
+    return resolve_func(r, fn, ppl);
+}
+// TODO: make sure we return!
+resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl)
+{
     ast_body* b = &fn->sc.body;
     if (b->srange == SRC_RANGE_INVALID) { // hack for external functions
         ast_flags_set_resolved(&fn->sc.sym.node.flags);
         return RE_OK;
     }
+
     symbol_table* st = b->symtab;
     resolve_error re;
     for (ureg i = 0; i < fn->param_count; i++) {
@@ -1656,6 +1690,8 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, pp_resolve_node** pprn)
     }
     re = resolve_ast_node(r, fn->return_type, st, ppl, &fn->return_ctype, NULL);
     if (re) return re;
+    pp_resolve_node* prev_block_pprn = r->block_pp_node;
+    r->block_pp_node = NULL;
     ast_node** n = b->elements;
     ast_elem* stmt_ctype;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
@@ -1664,22 +1700,26 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, pp_resolve_node** pprn)
         re = add_ast_node_decls(r, st, NULL, ppl, *n, false);
         if (re) break;
         re = resolve_ast_node(r, *n, st, ppl, NULL, stmt_ctype_ptr);
-        if (r->curr_pp_node) {
-            last_rn = r->curr_pp_node;
-            r->curr_pp_node = NULL;
-            if (last_rn->contains_pastes) {
-                *pprn = last_rn;
-                last_rn->continue_block = n + 1;
-                llvm_backend_set_pp_resolve_node(r->backend, fn->id, last_rn);
-                return RE_SYMBOL_NOT_FOUND_YET;
-            }
-        }
         if (re) break;
+        if (r->block_pp_node && r->block_pp_node->pending_pastes) {
+            r->block_pp_node->continue_block = n + 1;
+            llvm_backend_set_pp_resolve_node(r->backend, fn->id, last_rn);
+            re = RE_SYMBOL_NOT_FOUND_YET;
+            break;
+        }
         if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
             stmt_ctype_ptr = NULL;
         }
         n++;
     }
+    if (r->block_pp_node) {
+        assert(r->block_pp_node->node = NULL);
+        r->block_pp_node->node = (ast_node*)fn;
+        r->block_pp_node->declaring_st = fn->sc.sym.declaring_st;
+        r->block_pp_node->ppl = ppl;
+        add_pp_dependency(r, r->block_pp_node);
+    }
+    r->block_pp_node = prev_block_pprn;
     if (re) return re;
     if (stmt_ctype_ptr && fn->return_ctype != VOID_ELEM) {
         ureg brace_end = src_range_get_end(fn->sc.body.srange);
@@ -1699,7 +1739,6 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, pp_resolve_node** pprn)
     if (last_rn) {
         llvm_backend_set_pp_resolve_node(r->backend, fn->id, last_rn);
     }
-    if (pprn) *pprn = last_rn;
     return RE_OK;
 }
 resolve_error resolve_body(resolver* r, ast_body* b, ureg ppl)
@@ -1770,7 +1809,7 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
     if (!contains_root) atomic_ureg_inc(&r->tc->t->linking_holdups);
     return RE_OK;
 }
-resolve_error resolver_setup_pass(resolver* r)
+resolve_error resolver_add_osc_decls(resolver* r)
 {
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         aseglist_iterator asi;
@@ -1875,7 +1914,7 @@ resolve_error resolver_handle_pp(resolver* r)
     }
     return RE_OK;
 }
-resolve_error resolver_run(resolver* r)
+resolve_error resolver_run_resolution(resolver* r)
 {
     resolve_error re;
     re = resolver_handle_pp(r);
@@ -1908,9 +1947,9 @@ int resolver_resolve(
     print_debug_info(r);
     re = resolver_init_mdg_symtabs_and_handle_root(r);
     if (re) return re;
-    re = resolver_setup_pass(r);
+    re = resolver_add_osc_decls(r);
     if (re) return re;
-    re = resolver_run(r);
+    re = resolver_run_resolution(r);
     if (re) return re;
     *startid = atomic_ureg_add(&r->tc->t->node_ids, r->public_sym_count);
     re = resolver_cleanup(r, *startid);
