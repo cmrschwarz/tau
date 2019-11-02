@@ -410,7 +410,6 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     TIME(lle = genModules(););
     tflush();
     if (lle) return lle;
-    emitModuleIR();
     TIME(lle = emitModule(););
     tflush();
     // PERF: instead of this last minute checking
@@ -1665,16 +1664,13 @@ llvm_error LLVMBackend::emitModule()
     PerFunctionPasses.doFinalization();
     PerModulePasses.run(*_module);
     llvm_error lle = LLE_OK;
+    if (!lle && _tc->t->emit_ll) lle = emitModuleIR();
+    if (!lle && _tc->t->emit_asm) lle = emitModuleToFile(TLII.get(), true);
     if (!_pp_mode) {
-        if (!lle && _tc->t->emit_ll) emitModuleIR();
-        if (_tc->t->emit_asm) lle = emitModuleToFile(TLII.get(), true);
-        // if (!lle && _tc->t->emit_exe) emitModuleToFile(TLII.get(), false);
-        if (!lle) emitModuleToPP(TLII.get(), _tc->t->emit_exe);
+        if (!lle && _tc->t->emit_exe) lle = emitModuleToFile(TLII.get(), false);
     }
     else {
-        emitModuleIR();
-        emitModuleToFile(TLII.get(), true);
-        emitModuleToPP(TLII.get(), false);
+        if (!lle) lle = emitModuleToPP(TLII.get(), false);
     }
     return lle;
 }

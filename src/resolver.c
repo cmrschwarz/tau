@@ -1862,6 +1862,7 @@ resolve_error resolver_cleanup(resolver* r, ureg startid)
     if (res) return RE_FATAL;
     return RE_OK;
 }
+// this is just for debugging purposes
 void print_pprns(resolver* r)
 {
     if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
@@ -1897,6 +1898,7 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
             }
         }
     }
+    aseglist_fin(&pprn->required_by);
     freelist_free(&r->pp_resolve_nodes, pprn);
 }
 resolve_error resolver_run_pp_resolve_nodes(resolver* r)
@@ -1905,7 +1907,6 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
     pli it;
     bool progress;
     do {
-        print_pprns(r);
         progress = false;
         if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
             lle = llvm_backend_run_pp(
@@ -1937,7 +1938,6 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
 resolve_error resolver_handle_osc_level_pp(resolver* r)
 {
     resolve_error re;
-    print_pprns(r);
     // at this point the initial add_decls has run and added
     // all top level pp exprs as pp_resolve_nodes
     // now we run through all of these to create a list of all
