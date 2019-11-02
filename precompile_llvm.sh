@@ -50,7 +50,8 @@ git rev-parse HEAD > ../llvm-project-prebuild/prebuild_commit_id.txt
 # create empty files for the libs we don't need to stop llvm-config from complaining
 # we later check for these during linking and ignore them
 cd ./../llvm-project-prebuild/llvm/bin/
-./llvm-config --libs 2>&1 1>/dev/null | sed -n "s/.*error: missing: //p" | xargs touch
+#since we are using the error output here we expect to get an error so we ignore the status code
+./llvm-config --libs 2>&1 1>/dev/null | sed -n "s/.*error: missing: //p" | xargs -r touch || : 
 
 # done
 exit 0
