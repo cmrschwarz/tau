@@ -39,7 +39,7 @@ if $keep_build; then
 else
     mv ./deps/llvm-project ../deps/llvm-project-prebuild
     cd ..
-    rm -rf ../precompile_llvm
+    rm -rf ./precompile_llvm
 fi
 
 
