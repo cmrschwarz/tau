@@ -61,8 +61,8 @@ typedef struct resolver_s {
     ureg private_sym_count;
     // dealing with the preprocessor
     freelist pp_resolve_nodes;
-    ptrlist pp_resolve_nodes_pending;
-    ptrlist pp_resolve_nodes_ready;
+    ptrlist pp_resolve_nodes_pending; // dep_count = 0, but unresolved
+    ptrlist pp_resolve_nodes_ready; // resolved and ready to run
     pp_resolve_node* curr_pp_node;
     pp_resolve_node* block_pp_node;
     bool multi_evaluation_ctx;

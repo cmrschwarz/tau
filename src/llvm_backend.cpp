@@ -360,13 +360,12 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     std::string num =
         std::to_string(_pp_count.fetch_add(1, std::memory_order_relaxed));
     std::string pp_func_name = "__pp_func_" + num;
+    std::string pp_mod_name = "__pp_mod_" + num;
     // create actual module
-    _module = new (std::nothrow) llvm::Module("__pp_mod_" + num, _context);
+    _module = new (std::nothrow) llvm::Module(pp_mod_name, _context);
     if (!_module) return LLE_OK;
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
-    _module->setDataLayout(*_data_layout);
     _pp_mode = true;
-    bool is_void;
     llvm_error lle = genPPFunc(pp_func_name.c_str(), resolve_nodes);
     if (lle) return lle;
 
@@ -444,13 +443,13 @@ void LLVMBackend::setPPResolveNode(ureg id, pp_resolve_node* pprn)
         id -= PRIV_SYMBOL_OFFSET;
         reserveSymbols(id + 1, 0);
         assert(_local_value_state[id] == NOT_GENERATED);
-        *(pp_resolve_node**)&_local_value_store[id] = pprn;
+        _local_value_store[id] = (void*)pprn;
         _local_value_state[id] = PP_RN_GENERATED;
     }
     else {
         reserveSymbols(0, id + 1);
         assert(_global_value_state[id] == NOT_GENERATED);
-        *(pp_resolve_node**)&_global_value_state[id] = pprn;
+        _global_value_store[id] = (void*)pprn;
         _global_value_state[id] = PP_RN_GENERATED;
     }
 }
@@ -468,7 +467,8 @@ pp_resolve_node* LLVMBackend::lookupPPResolveNode(ureg id)
         return *(pp_resolve_node**)&_global_value_state[id];
     }
 }
-llvm_error LLVMBackend::genPPFunc(const char* func_name, ptrlist* resolve_nodes)
+llvm_error
+LLVMBackend::genPPFunc(const std::string& func_name, ptrlist* resolve_nodes)
 {
     llvm::FunctionType* func_sig;
     llvm_error lle;
