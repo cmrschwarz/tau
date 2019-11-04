@@ -95,8 +95,29 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->node = n;
     pprn->continue_block = NULL;
     pprn->ppl = ppl;
+    pprn->last_child = NULL;
+    pprn->list.next = NULL;
     if (aseglist_init(&pprn->required_by)) return NULL;
     return pprn;
+}
+static resolve_error
+curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
+{
+    pp_resolve_node* block = NULL;
+    assert(!r->curr_pp_node);
+    // we only do this if we are the top most pp
+    // expr in the statement
+    if (r->block_pp_node) {
+        block = r->block_pp_node;
+    }
+    else {
+        block = pp_resolve_node_create(r, NULL, NULL, true, 0);
+        if (!block) return RE_FATAL;
+        r->block_pp_node = block;
+    }
+    child->list.next = block->last_child;
+    block->last_child = child;
+    return RE_OK;
 }
 static resolve_error
 curr_pp_node_add_dependency(resolver* r, pp_resolve_node* depends_on)
@@ -618,12 +639,13 @@ static inline resolve_error resolve_no_block_macro_call(
 {
     assert(false); // TODO
 }
+
 resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl)
 {
     pp_resolve_node* pprn =
         llvm_backend_lookup_pp_resolve_node(r->backend, fn->id);
     if (pprn) {
-        curr_pp_node_add_dependency(r, pprn);
+        curr_pp_block_add_child(r, pprn);
         if (ast_flags_get_resolved(fn->sc.sym.node.flags)) return RE_OK;
         return RE_SYMBOL_NOT_FOUND_YET;
     }
@@ -855,8 +877,12 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
     switch (s->node.kind) {
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
-        case SYM_NAMED_USING: assert(false); return NULL; // TODO
-        case PRIMITIVE: assert(false); return NULL; // would be ctype "Type"
+        case SYM_NAMED_USING:
+            assert(false);
+            return NULL; // TODO
+        case PRIMITIVE:
+            assert(false);
+            return NULL; // would be ctype "Type"
         default: return (ast_elem*)s;
     }
 }
@@ -1668,7 +1694,7 @@ resolve_error resolve_expr_body(
     }
     pp_resolve_node* bpprn = r->block_pp_node;
     if (r->block_pp_node) {
-        assert(r->block_pp_node->node = NULL);
+        assert(r->block_pp_node->node == NULL);
         bpprn->node = (ast_node*)expr;
         bpprn->declaring_st = parent_st;
         bpprn->ppl = ppl;

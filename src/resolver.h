@@ -27,7 +27,7 @@ typedef enum resolve_error_e {
 typedef struct thread_context_s thread_context;
 
 typedef struct pp_resolve_node_s {
-    ast_node* node; // either expr_pp or stmt_using or func
+    ast_node* node; // either expr_pp, stmt_using or func
     symbol_table* declaring_st;
     ureg ppl;
     // PERF: use a non threadsafe list here
@@ -36,6 +36,11 @@ typedef struct pp_resolve_node_s {
     ureg dep_count;
     ureg pending_pastes;
     bool result_used;
+    struct pp_resolve_node_s* last_child;
+    union {
+        struct pp_resolve_node_s* last_resolved_child;
+        struct pp_resolve_node_s* next;
+    } list;
 } pp_resolve_node;
 
 typedef struct resolver_s {

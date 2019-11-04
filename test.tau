@@ -1,0 +1,9 @@
+func printf(s: string, x: int, y: int);
+func fib(x: int) -> int {
+    if(x < 2) return x;
+    return fib(x-1) + fib(x-2); 
+}
+public func main(){
+    //everything prefixed with ''#' gets compile time evaluated
+    printf("foo %i%c", #fib(30), 10); 
+}
