@@ -36,11 +36,14 @@ typedef struct pp_resolve_node_s {
     ureg dep_count;
     ureg pending_pastes;
     bool result_used;
+    bool run_when_done;
+    ANONYMOUS_UNION_START
     struct pp_resolve_node_s* last_child;
-    union {
-        struct pp_resolve_node_s* last_resolved_child;
-        struct pp_resolve_node_s* next;
-    } list;
+    struct pp_resolve_node_s* parent;
+    ANONYMOUS_UNION_END
+    ANONYMOUS_UNION_START struct pp_resolve_node_s* first_unresolved_child;
+    struct pp_resolve_node_s* next;
+    ANONYMOUS_UNION_END
 } pp_resolve_node;
 
 typedef struct resolver_s {

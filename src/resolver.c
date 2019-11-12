@@ -95,8 +95,9 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->node = n;
     pprn->continue_block = NULL;
     pprn->ppl = ppl;
+    pprn->next = NULL;
     pprn->last_child = NULL;
-    pprn->list.next = NULL;
+    pprn->run_when_done = true;
     if (aseglist_init(&pprn->required_by)) return NULL;
     return pprn;
 }
@@ -115,7 +116,12 @@ curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
         if (!block) return RE_FATAL;
         r->block_pp_node = block;
     }
-    child->list.next = block->last_child;
+    if (block->first_unresolved_child == NULL) {
+        block->first_unresolved_child = child;
+    }
+    child->run_when_done = false;
+    child->parent = block;
+    child->next = block->last_child;
     block->last_child = child;
     return RE_OK;
 }
@@ -147,7 +153,7 @@ pp_resolve_node_activate(resolver* r, pp_resolve_node* pprn, bool resolved)
         if (!resolved) {
             res = ptrlist_append(&r->pp_resolve_nodes_pending, pprn);
         }
-        else {
+        else if (pprn->run_when_done) {
             res = ptrlist_append(&r->pp_resolve_nodes_ready, pprn);
         }
         if (res) return RE_FATAL;
@@ -645,7 +651,7 @@ resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl)
     pp_resolve_node* pprn =
         llvm_backend_lookup_pp_resolve_node(r->backend, fn->id);
     if (pprn) {
-        curr_pp_block_add_child(r, pprn);
+        curr_pp_node_add_dependency(r, pprn);
         if (ast_flags_get_resolved(fn->sc.sym.node.flags)) return RE_OK;
         return RE_SYMBOL_NOT_FOUND_YET;
     }
@@ -1534,7 +1540,7 @@ static inline resolve_error resolve_ast_node_raw(
                     pprn = pp_resolve_node_create(r, n, st, true, ppl);
                     if (!pprn) return RE_FATAL;
                     ppe->result_buffer.state.pprn = pprn;
-                    if (curr_pp_node_add_dependency(r, pprn)) return RE_FATAL;
+                    if (curr_pp_block_add_child(r, pprn)) return RE_FATAL;
                 }
                 r->curr_pp_node = pprn;
             }
@@ -1651,6 +1657,7 @@ resolve_error resolve_expr_body(
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
     ureg saved_decl_count = 0;
     pp_resolve_node* prev_block_pprn = r->block_pp_node;
+    r->block_pp_node = NULL;
     set_parent_symtabs(&b->symtab, parent_st);
     if (b->symtab->owning_node == (ast_elem*)expr && b->symtab->decl_count) {
         // if we already have decls this is the second pass.
@@ -1745,6 +1752,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
         if (re) break;
         re = resolve_ast_node(r, *n, st, ppl, NULL, stmt_ctype_ptr);
         if (re) break;
+        r->curr_pp_node = NULL;
         if (r->block_pp_node && r->block_pp_node->pending_pastes) {
             r->block_pp_node->continue_block = n + 1;
             re = RE_SYMBOL_NOT_FOUND_YET;
@@ -1904,28 +1912,45 @@ void print_pprns(resolver* r)
     }
 }
 resolve_error
+pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress);
+resolve_error
 pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
 {
+    assert(pprn->node);
     aseglist_iterator asit;
+    resolve_error re;
     aseglist_iterator_begin(&asit, &pprn->required_by);
     for (pp_resolve_node* rn = aseglist_iterator_next(&asit); rn;
          rn = aseglist_iterator_next(&asit)) {
-        assert(rn->dep_count);
-        rn->dep_count--;
-        if (rn->dep_count == 0) {
-            *progress = true;
-            if (rn->node->kind != SC_FUNC) {
-                if (ptrlist_append(&r->pp_resolve_nodes_pending, rn)) {
-                    return RE_FATAL;
-                }
-            }
-            else {
-                pp_resolve_node_done(r, rn, progress);
-            }
-        }
+        re = pp_resolve_node_dep_done(r, rn, progress);
+        if (re) return re;
+    }
+    if (!pprn->run_when_done) {
+        re = pp_resolve_node_dep_done(r, pprn->parent, progress);
+        if (re) return re;
     }
     aseglist_fin(&pprn->required_by);
     freelist_free(&r->pp_resolve_nodes, pprn);
+}
+resolve_error
+pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
+{
+    assert(pprn->dep_count);
+    pprn->dep_count--;
+    if (pprn->dep_count == 0) {
+        *progress = true;
+        if (pprn->node->kind != SC_FUNC) {
+            if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
+                return RE_FATAL;
+            }
+        }
+        else {
+            if (ptrlist_append(&r->pp_resolve_nodes_ready, pprn)) {
+                return RE_FATAL;
+            }
+        }
+    }
+    return RE_OK;
 }
 resolve_error resolver_run_pp_resolve_nodes(resolver* r)
 {
@@ -1935,6 +1960,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
     do {
         progress = false;
         if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
+            print_pprns(r);
             lle = llvm_backend_run_pp(
                 r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
                 &r->pp_resolve_nodes_ready);

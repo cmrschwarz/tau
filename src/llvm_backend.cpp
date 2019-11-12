@@ -122,8 +122,9 @@ int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
     }
     tput("} ");
     llvm_error lle;
-    TIME(lle = linkLLVMModules(
-             (LLVMModule**)start, (LLVMModule**)end, output_path););
+    TIME(
+        lle = linkLLVMModules(
+            (LLVMModule**)start, (LLVMModule**)end, output_path););
     tflush();
     if (lle) return ERR;
     return OK;
@@ -466,6 +467,53 @@ pp_resolve_node* LLVMBackend::lookupPPResolveNode(ureg id)
         return *(pp_resolve_node**)&_global_value_state[id];
     }
 }
+llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
+{
+    llvm_error lle;
+    if (n->node->kind == EXPR_PP) {
+        auto expr = (expr_pp*)n->node;
+        if (n->result_used && expr->ctype != VOID_ELEM &&
+            expr->ctype != UNREACHABLE_ELEM) {
+            llvm::Type* ret_type;
+            ureg size;
+            ureg align;
+            lle = lookupCType(expr->ctype, &ret_type, &align, &size);
+            if (lle) return lle;
+            assert(align <= REG_BYTES); // TODO
+            if (size <= sizeof(expr->result_buffer)) {
+                expr->result_buffer.state.true_res_buffer =
+                    (void*)&expr->result_buffer.data[0];
+            }
+            else {
+                // TODO: use tempmem for this
+                expr->result_buffer.state.true_res_buffer = malloc(size);
+            }
+            llvm::Value *val, *tgt;
+            lle = genAstNode(expr->pp_expr, NULL, &val);
+            if (lle) return lle;
+            auto res = llvm::ConstantInt::get(
+                _primitive_types[PT_UINT],
+                (ureg)expr->result_buffer.state.true_res_buffer);
+            auto resptr =
+                llvm::ConstantExpr::getBitCast(res, ret_type->getPointerTo());
+            if (!_builder.CreateStore(val, resptr)) return LLE_FATAL;
+        }
+        else {
+            lle = genAstNode(expr->pp_expr, NULL, NULL);
+            if (lle) return lle;
+        }
+    }
+    else {
+        for (pp_resolve_node* cn = n->first_unresolved_child; cn;
+             cn = cn->next) {
+            lle = genPPRN(cn);
+            if (lle) return lle;
+        }
+        lle = genAstNode(n->node, NULL, NULL);
+        if (lle) return lle;
+    }
+    return LLE_OK;
+}
 llvm_error
 LLVMBackend::genPPFunc(const std::string& func_name, ptrlist* resolve_nodes)
 {
@@ -494,43 +542,8 @@ LLVMBackend::genPPFunc(const std::string& func_name, ptrlist* resolve_nodes)
     pli it = pli_begin(resolve_nodes);
     for (auto n = (pp_resolve_node*)pli_next(&it); n;
          n = (pp_resolve_node*)pli_next(&it)) {
-        if (n->node->kind == EXPR_PP) {
-            auto expr = (expr_pp*)n->node;
-            if (n->result_used && expr->ctype != VOID_ELEM &&
-                expr->ctype != UNREACHABLE_ELEM) {
-                llvm::Type* ret_type;
-                ureg size;
-                ureg align;
-                lle = lookupCType(expr->ctype, &ret_type, &align, &size);
-                if (lle) return lle;
-                assert(align <= REG_BYTES); // TODO
-                if (size <= sizeof(expr->result_buffer)) {
-                    expr->result_buffer.state.true_res_buffer =
-                        (void*)&expr->result_buffer.data[0];
-                }
-                else {
-                    // TODO: use tempmem for this
-                    expr->result_buffer.state.true_res_buffer = malloc(size);
-                }
-                llvm::Value *val, *tgt;
-                lle = genAstNode(expr->pp_expr, NULL, &val);
-                if (lle) return lle;
-                auto res = llvm::ConstantInt::get(
-                    _primitive_types[PT_UINT],
-                    (ureg)expr->result_buffer.state.true_res_buffer);
-                auto resptr = llvm::ConstantExpr::getBitCast(
-                    res, ret_type->getPointerTo());
-                if (!_builder.CreateStore(val, resptr)) return LLE_FATAL;
-            }
-            else {
-                lle = genAstNode(expr->pp_expr, NULL, NULL);
-                if (lle) return lle;
-            }
-        }
-        else {
-            lle = genAstNode(n->node, NULL, NULL);
-            if (lle) return lle;
-        }
+        lle = genPPRN(n);
+        if (lle) return lle;
     }
     it = pli_begin(resolve_nodes);
     for (auto n = (pp_resolve_node*)pli_next(&it); n;
@@ -1565,8 +1578,9 @@ llvm_error LLVMBackend::emitModuleToStream(
     if (emit_asm) file_type = llvm::TargetMachine::CGFT_AssemblyFile;
     llvm::legacy::PassManager CodeGenPasses;
 
-    CodeGenPasses.add(llvm::createTargetTransformInfoWrapperPass(
-        _target_machine->getTargetIRAnalysis()));
+    CodeGenPasses.add(
+        llvm::createTargetTransformInfoWrapperPass(
+            _target_machine->getTargetIRAnalysis()));
 
     CodeGenPasses.add(new llvm::TargetLibraryInfoWrapperPass(*tlii));
 
@@ -1620,12 +1634,14 @@ llvm_error LLVMBackend::emitModule()
     std::unique_ptr<llvm::TargetLibraryInfoImpl> TLII(
         new llvm::TargetLibraryInfoImpl(TargetTriple));
     llvm::legacy::PassManager PerModulePasses;
-    PerModulePasses.add(llvm::createTargetTransformInfoWrapperPass(
-        _target_machine->getTargetIRAnalysis()));
+    PerModulePasses.add(
+        llvm::createTargetTransformInfoWrapperPass(
+            _target_machine->getTargetIRAnalysis()));
 
     llvm::legacy::FunctionPassManager PerFunctionPasses(_module);
-    PerFunctionPasses.add(llvm::createTargetTransformInfoWrapperPass(
-        _target_machine->getTargetIRAnalysis()));
+    PerFunctionPasses.add(
+        llvm::createTargetTransformInfoWrapperPass(
+            _target_machine->getTargetIRAnalysis()));
 
     // CreatePasses(PerModulePasses, PerFunctionPasses);
     llvm::PassManagerBuilder pmb{};
