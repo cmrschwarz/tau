@@ -121,7 +121,9 @@ curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
     }
     child->run_when_done = false;
     child->parent = block;
-    child->next = block->last_child;
+    if (block->last_child) {
+        block->last_child->next = child;
+    }
     block->last_child = child;
     return RE_OK;
 }
@@ -883,12 +885,8 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
     switch (s->node.kind) {
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
-        case SYM_NAMED_USING:
-            assert(false);
-            return NULL; // TODO
-        case PRIMITIVE:
-            assert(false);
-            return NULL; // would be ctype "Type"
+        case SYM_NAMED_USING: assert(false); return NULL; // TODO
+        case PRIMITIVE: assert(false); return NULL; // would be ctype "Type"
         default: return (ast_elem*)s;
     }
 }
@@ -1537,7 +1535,11 @@ static inline resolve_error resolve_ast_node_raw(
                     pprn = ppe->result_buffer.state.pprn;
                 }
                 else {
-                    pprn = pp_resolve_node_create(r, n, st, true, ppl);
+                    // TODO: find a better way to determine this,
+                    // since lots of places use the ctype to determine
+                    // reachability despite not needing the value
+                    bool res_used = (value || ctype);
+                    pprn = pp_resolve_node_create(r, n, st, res_used, ppl);
                     if (!pprn) return RE_FATAL;
                     ppe->result_buffer.state.pprn = pprn;
                     if (curr_pp_block_add_child(r, pprn)) return RE_FATAL;
@@ -1727,11 +1729,6 @@ resolve_error resolve_expr_body(
 resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
 {
     ast_body* b = &fn->sc.body;
-    if (b->srange == SRC_RANGE_INVALID) { // hack for external functions
-        ast_flags_set_resolved(&fn->sc.sym.node.flags);
-        return RE_OK;
-    }
-
     symbol_table* st = b->symtab;
     resolve_error re;
     for (ureg i = 0; i < fn->param_count; i++) {
@@ -1740,6 +1737,11 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
     }
     re = resolve_ast_node(r, fn->return_type, st, ppl, &fn->return_ctype, NULL);
     if (re) return re;
+    if (b->srange == SRC_RANGE_INVALID) { // hack for external functions
+        ast_flags_set_resolved(&fn->sc.sym.node.flags);
+        return RE_OK;
+    }
+
     pp_resolve_node* prev_block_pprn = r->block_pp_node;
     r->block_pp_node = NULL;
     ast_node** n = b->elements;

@@ -487,7 +487,7 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
                 // TODO: use tempmem for this
                 expr->result_buffer.state.true_res_buffer = malloc(size);
             }
-            llvm::Value *val, *tgt;
+            llvm::Value* val;
             lle = genAstNode(expr->pp_expr, NULL, &val);
             if (lle) return lle;
             auto res = llvm::ConstantInt::get(
@@ -502,16 +502,30 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
             if (lle) return lle;
         }
     }
-    else {
+    else if (n->node->kind == SC_FUNC) {
         for (pp_resolve_node* cn = n->first_unresolved_child; cn;
              cn = cn->next) {
             lle = genPPRN(cn);
             if (lle) return lle;
         }
+        for (pp_resolve_node* cn = n->first_unresolved_child; cn;
+             cn = cn->next) {
+            prepareForPPRNResult(cn);
+        }
         lle = genAstNode(n->node, NULL, NULL);
         if (lle) return lle;
     }
     return LLE_OK;
+}
+void LLVMBackend::prepareForPPRNResult(pp_resolve_node* pprn)
+{
+    if (pprn->node->kind == EXPR_PP) {
+        auto expr = (expr_pp*)pprn->node;
+        if (pprn->result_used && expr->ctype != VOID_ELEM &&
+            expr->ctype != UNREACHABLE_ELEM) {
+            expr->result = (void*)&expr->result_buffer.state.true_res_buffer;
+        }
+    }
 }
 llvm_error
 LLVMBackend::genPPFunc(const std::string& func_name, ptrlist* resolve_nodes)
@@ -547,14 +561,7 @@ LLVMBackend::genPPFunc(const std::string& func_name, ptrlist* resolve_nodes)
     it = pli_begin(resolve_nodes);
     for (auto n = (pp_resolve_node*)pli_next(&it); n;
          n = (pp_resolve_node*)pli_next(&it)) {
-        if (n->node->kind == EXPR_PP) {
-            auto expr = (expr_pp*)n->node;
-            if (n->result_used && expr->ctype != VOID_ELEM &&
-                expr->ctype != UNREACHABLE_ELEM) {
-                expr->result =
-                    (void*)&expr->result_buffer.state.true_res_buffer;
-            }
-        }
+        prepareForPPRNResult(n);
     }
     if (lle) return lle;
     assert(!ctx.following_block && !ctx.value);
@@ -1342,7 +1349,8 @@ llvm_error LLVMBackend::genBinaryOp(
     if (b->node.op_kind == OP_ASSIGN) {
         lle = genAstNode(b->lhs, &lhs_flat, NULL);
     }
-    else if (b->node.op_kind == OP_ADD_ASSIGN) {
+    else if (
+        b->node.op_kind == OP_ADD_ASSIGN || b->node.op_kind == OP_MUL_ASSIGN) {
         lle = genAstNode(b->lhs, &lhs_flat, &lhs);
     }
     else {

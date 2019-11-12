@@ -145,6 +145,7 @@ struct LLVMBackend {
     initModule(mdg_node** start, mdg_node** end, LLVMModule** module);
     void remapLocalID(ureg old_id, ureg new_id);
     llvm_error genPPRN(pp_resolve_node* pprn);
+    void prepareForPPRNResult(pp_resolve_node* pprn);
     llvm_error genPPFunc(const std::string& func_name, ptrlist* resolve_nodes);
     llvm_error runPP(ureg private_sym_count, ptrlist* resolve_nodes);
     llvm_error reserveSymbols(ureg priv_sym_limit, ureg pub_sym_limit);
