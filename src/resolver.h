@@ -36,7 +36,7 @@ typedef struct pp_resolve_node_s {
     ureg dep_count;
     ureg pending_pastes;
     bool result_used;
-    bool run_when_done;
+    bool run_when_done; // false for exprs in functions
     ANONYMOUS_UNION_START
     struct pp_resolve_node_s* last_child;
     struct pp_resolve_node_s* parent;

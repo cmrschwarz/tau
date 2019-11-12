@@ -9,6 +9,8 @@
 #include "utils/aseglist.h"
 #include "print_ast.h"
 
+#define OSC_PP_NODE ((pp_resolve_node*)NULL_PTR_PTR)
+
 static resolve_error add_body_decls(
     resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
     ast_body* b, bool public_st);
@@ -106,10 +108,11 @@ static resolve_error
 curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
 {
     pp_resolve_node* block = NULL;
-    assert(!r->curr_pp_node);
     // we only do this if we are the top most pp
     // expr in the statement
+    assert(!r->curr_pp_node);
     if (r->block_pp_node) {
+        if (r->block_pp_node == OSC_PP_NODE) return RE_OK;
         block = r->block_pp_node;
     }
     else {
@@ -138,6 +141,7 @@ curr_pp_node_add_dependency(resolver* r, pp_resolve_node* depends_on)
     }
     else {
         if (r->block_pp_node) {
+            if (r->block_pp_node == OSC_PP_NODE) return RE_OK;
             depending = r->block_pp_node;
         }
         else {
@@ -1743,10 +1747,6 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
         ast_flags_set_resolved(&fn->sc.sym.node.flags);
         return RE_OK;
     }
-<<<<<<< HEAD
-
-=======
->>>>>>> make external functions work in pp
     pp_resolve_node* prev_block_pprn = r->block_pp_node;
     r->block_pp_node = NULL;
     ast_node** n = b->elements;
@@ -1930,7 +1930,6 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
     aseglist_iterator_begin(&asit, &pprn->required_by);
     for (pp_resolve_node* rn = aseglist_iterator_next(&asit); rn;
          rn = aseglist_iterator_next(&asit)) {
-<<<<<<< HEAD
         re = pp_resolve_node_dep_done(r, rn, progress);
         if (re) return re;
     }
@@ -1945,22 +1944,13 @@ resolve_error
 pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
 {
     assert(pprn->dep_count);
+    assert(pprn->node);
     pprn->dep_count--;
     if (pprn->dep_count == 0) {
         *progress = true;
         if (pprn->node->kind != SC_FUNC) {
             if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
                 return RE_FATAL;
-=======
-        assert(rn->dep_count);
-        rn->dep_count--;
-        if (rn->dep_count == 0) {
-            *progress = true;
-            if (!rn->meta) {
-                if (ptrlist_append(&r->pp_resolve_nodes_pending, rn)) {
-                    return RE_FATAL;
-                }
->>>>>>> make external functions work in pp
             }
         }
         else {
@@ -2061,7 +2051,7 @@ int resolver_resolve(
     resolver* r, mdg_node** start, mdg_node** end, ureg* startid)
 {
     r->curr_pp_node = NULL;
-    r->block_pp_node = NULL;
+    r->block_pp_node = OSC_PP_NODE;
     r->retracing_type_loop = false;
     r->public_sym_count = 0;
     r->private_sym_count = 0;
