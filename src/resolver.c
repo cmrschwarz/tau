@@ -89,6 +89,7 @@ static pp_resolve_node* pp_resolve_node_create(
     pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
     if (!pprn) return NULL;
     pprn->result_used = res_used;
+    pprn->meta = false;
     pprn->dep_count = 0;
     pprn->pending_pastes = 0;
     pprn->declaring_st = declaring_st;
@@ -119,6 +120,7 @@ curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
     if (block->first_unresolved_child == NULL) {
         block->first_unresolved_child = child;
     }
+    block->dep_count++;
     child->run_when_done = false;
     child->parent = block;
     if (block->last_child) {
@@ -152,7 +154,7 @@ pp_resolve_node_activate(resolver* r, pp_resolve_node* pprn, bool resolved)
 {
     if (pprn->dep_count == 0) {
         int res;
-        if (!resolved) {
+        if (!resolved || !pprn->run_when_done) {
             res = ptrlist_append(&r->pp_resolve_nodes_pending, pprn);
         }
         else if (pprn->run_when_done) {
@@ -1272,7 +1274,7 @@ static inline resolve_error resolve_ast_node_raw(
             is->target.sym = *s;
             re = resolve_ast_node(
                 r, (ast_node*)*s, (**s).declaring_st, ppl, value, ctype);
-            if (re) return re;
+            return re;
             ast_flags_set_resolved(&n->flags);
             return RE_OK;
         }
@@ -1741,7 +1743,10 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
         ast_flags_set_resolved(&fn->sc.sym.node.flags);
         return RE_OK;
     }
+<<<<<<< HEAD
 
+=======
+>>>>>>> make external functions work in pp
     pp_resolve_node* prev_block_pprn = r->block_pp_node;
     r->block_pp_node = NULL;
     ast_node** n = b->elements;
@@ -1772,6 +1777,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
         bpprn->node = (ast_node*)fn;
         bpprn->declaring_st = fn->sc.sym.declaring_st;
         bpprn->ppl = ppl;
+        bpprn->meta = true;
         r->block_pp_node = prev_block_pprn;
         if (from_call) curr_pp_node_add_dependency(r, bpprn);
         if (pp_resolve_node_activate(r, bpprn, re == RE_OK)) return RE_FATAL;
@@ -1924,6 +1930,7 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
     aseglist_iterator_begin(&asit, &pprn->required_by);
     for (pp_resolve_node* rn = aseglist_iterator_next(&asit); rn;
          rn = aseglist_iterator_next(&asit)) {
+<<<<<<< HEAD
         re = pp_resolve_node_dep_done(r, rn, progress);
         if (re) return re;
     }
@@ -1944,6 +1951,16 @@ pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
         if (pprn->node->kind != SC_FUNC) {
             if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
                 return RE_FATAL;
+=======
+        assert(rn->dep_count);
+        rn->dep_count--;
+        if (rn->dep_count == 0) {
+            *progress = true;
+            if (!rn->meta) {
+                if (ptrlist_append(&r->pp_resolve_nodes_pending, rn)) {
+                    return RE_FATAL;
+                }
+>>>>>>> make external functions work in pp
             }
         }
         else {
