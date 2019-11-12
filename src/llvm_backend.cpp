@@ -122,9 +122,8 @@ int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
     }
     tput("} ");
     llvm_error lle;
-    TIME(
-        lle = linkLLVMModules(
-            (LLVMModule**)start, (LLVMModule**)end, output_path););
+    TIME(lle = linkLLVMModules(
+             (LLVMModule**)start, (LLVMModule**)end, output_path););
     tflush();
     if (lle) return ERR;
     return OK;
@@ -1380,6 +1379,16 @@ llvm_error LLVMBackend::genBinaryOp(
                 return LLE_FATAL;
             if (vl_loaded) v = _builder.CreateAlignedLoad(lhs_flat, align);
         } break;
+        case OP_MUL_ASSIGN: {
+            ureg align;
+            lookupCType(
+                get_resolved_ast_node_ctype(b->lhs), NULL, &align, NULL);
+            v = _builder.CreateNSWMul(lhs, rhs);
+            if (!v) return LLE_FATAL;
+            if (!_builder.CreateAlignedStore(v, lhs_flat, align))
+                return LLE_FATAL;
+            if (vl_loaded) v = _builder.CreateAlignedLoad(lhs_flat, align);
+        } break;
         default: assert(false); return LLE_FATAL;
     }
     if (vl_loaded) *vl_loaded = v;
@@ -1578,9 +1587,8 @@ llvm_error LLVMBackend::emitModuleToStream(
     if (emit_asm) file_type = llvm::TargetMachine::CGFT_AssemblyFile;
     llvm::legacy::PassManager CodeGenPasses;
 
-    CodeGenPasses.add(
-        llvm::createTargetTransformInfoWrapperPass(
-            _target_machine->getTargetIRAnalysis()));
+    CodeGenPasses.add(llvm::createTargetTransformInfoWrapperPass(
+        _target_machine->getTargetIRAnalysis()));
 
     CodeGenPasses.add(new llvm::TargetLibraryInfoWrapperPass(*tlii));
 
@@ -1634,14 +1642,12 @@ llvm_error LLVMBackend::emitModule()
     std::unique_ptr<llvm::TargetLibraryInfoImpl> TLII(
         new llvm::TargetLibraryInfoImpl(TargetTriple));
     llvm::legacy::PassManager PerModulePasses;
-    PerModulePasses.add(
-        llvm::createTargetTransformInfoWrapperPass(
-            _target_machine->getTargetIRAnalysis()));
+    PerModulePasses.add(llvm::createTargetTransformInfoWrapperPass(
+        _target_machine->getTargetIRAnalysis()));
 
     llvm::legacy::FunctionPassManager PerFunctionPasses(_module);
-    PerFunctionPasses.add(
-        llvm::createTargetTransformInfoWrapperPass(
-            _target_machine->getTargetIRAnalysis()));
+    PerFunctionPasses.add(llvm::createTargetTransformInfoWrapperPass(
+        _target_machine->getTargetIRAnalysis()));
 
     // CreatePasses(PerModulePasses, PerFunctionPasses);
     llvm::PassManagerBuilder pmb{};
