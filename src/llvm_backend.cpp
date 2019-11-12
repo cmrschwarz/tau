@@ -913,7 +913,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         _reset_after_emit.push_back(var->var_id);
     }
     else {
-        assert(*state == NOT_GENERATED);
+        assert(*state == NOT_GENERATED || *state == PP_IMPL_DESTROYED);
         *state = _pp_mode ? PP_IMPL_ADDED : IMPL_ADDED;
         generated = false;
     }
