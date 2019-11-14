@@ -25,12 +25,6 @@ void llvm_backend_fin_globals();
 
 llvm_backend* llvm_backend_new(thread_context* tc);
 
-pp_resolve_node*
-llvm_backend_lookup_pp_resolve_node(llvm_backend* llvmb, ureg id);
-
-void llvm_backend_set_pp_resolve_node(
-    llvm_backend* llvmb, ureg id, pp_resolve_node* pprn);
-
 void llvm_backend_delete(llvm_backend* llvmb);
 
 llvm_error llvm_backend_init_module(

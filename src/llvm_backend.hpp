@@ -87,7 +87,6 @@ struct ControlFlowContext {
 };
 enum ValueState : char {
     NOT_GENERATED = 0,
-    PP_RN_GENERATED,
     PP_IMPL_ADDED,
     PP_IMPL_DESTROYED,
     PP_STUB_GENERATED,

@@ -75,9 +75,8 @@ get_block_pprn(resolver* r, symbol_table* st, ureg ppl)
     if (r->block_pp_node && r->block_pp_node->declaring_st == st) {
         return &r->block_pp_node;
     }
-    // TODO: think about this case
-    assert(st->ppl = ppl);
-    ast_node* n = st->owning_node;
+    // TODO: think about the importance of the ppl here
+    ast_elem* n = st->owning_node;
     switch (n->kind) {
         case SC_STRUCT: return &((sc_struct*)n)->pprn;
         case SC_FUNC: return &((sc_func*)n)->pprn;
@@ -109,7 +108,6 @@ static pp_resolve_node* pp_resolve_node_create(
     pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
     if (!pprn) return NULL;
     pprn->result_used = res_used;
-    pprn->meta = false;
     pprn->dep_count = 0;
     pprn->pending_pastes = 0;
     pprn->declaring_st = declaring_st;
@@ -674,10 +672,9 @@ static inline resolve_error resolve_no_block_macro_call(
 
 resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl)
 {
-    pp_resolve_node* pprn =
-        llvm_backend_lookup_pp_resolve_node(r->backend, fn->id);
-    if (pprn) {
-        curr_pp_node_add_dependency(r, pprn);
+    pp_resolve_node** pprn = get_block_pprn(r, fn->sc.body.symtab, ppl);
+    if (*pprn) {
+        curr_pp_node_add_dependency(r, *pprn);
         if (ast_flags_get_resolved(fn->sc.sym.node.flags)) return RE_OK;
         return RE_SYMBOL_NOT_FOUND_YET;
     }
@@ -909,8 +906,12 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
     switch (s->node.kind) {
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
-        case SYM_NAMED_USING: assert(false); return NULL; // TODO
-        case PRIMITIVE: assert(false); return NULL; // would be ctype "Type"
+        case SYM_NAMED_USING:
+            assert(false);
+            return NULL; // TODO
+        case PRIMITIVE:
+            assert(false);
+            return NULL; // would be ctype "Type"
         default: return (ast_elem*)s;
     }
 }
@@ -1795,11 +1796,10 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
         bpprn->node = (ast_node*)fn;
         bpprn->declaring_st = fn->sc.sym.declaring_st;
         bpprn->ppl = ppl;
-        bpprn->meta = true;
         r->block_pp_node = prev_block_pprn;
         if (from_call) curr_pp_node_add_dependency(r, bpprn);
         if (pp_resolve_node_activate(r, bpprn, re == RE_OK)) return RE_FATAL;
-        llvm_backend_set_pp_resolve_node(r->backend, fn->id, bpprn);
+        fn->pprn = bpprn;
     }
     else {
         r->block_pp_node = prev_block_pprn;
