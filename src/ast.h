@@ -11,6 +11,7 @@
 #define TYPE_ELEM ((ast_elem*)&PRIMITIVES[PT_TYPE])
 
 typedef struct mdg_node_s mdg_node;
+typedef struct pp_resolve_node_s pp_resolve_node;
 
 typedef enum PACK_ENUM ast_node_kind_e {
     OSC_MODULE,
@@ -273,7 +274,10 @@ typedef struct expr_block_s {
     char* name; // NULL if no label provided and not in if/else/etc.
     ast_body body;
     ast_elem* ctype;
+    ANONYMOUS_UNION_START
     void* control_flow_ctx;
+    pp_resolve_node* pprn;
+    ANONYMOUS_UNION_END
 } expr_block;
 
 typedef struct expr_if_s {
@@ -372,6 +376,7 @@ typedef struct sc_func_s {
     ast_node* return_type;
     ast_elem* return_ctype;
     ureg id;
+    pp_resolve_node* pprn;
 } sc_func;
 
 typedef struct sym_func_overloaded_s {
@@ -392,6 +397,7 @@ typedef struct sc_func_generic_s {
 typedef struct sc_struct_s {
     scope sc;
     ureg id;
+    pp_resolve_node* pprn;
 } sc_struct;
 
 typedef struct sc_struct_generic_s {

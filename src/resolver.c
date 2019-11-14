@@ -69,6 +69,24 @@ static resolve_error report_redeclaration_error(
         src_range_get_end(prev->node.srange), "previous definition here");
     return RE_SYMBOL_REDECLARATION;
 }
+static inline pp_resolve_node**
+get_block_pprn(resolver* r, symbol_table* st, ureg ppl)
+{
+    if (r->block_pp_node && r->block_pp_node->declaring_st == st) {
+        return &r->block_pp_node;
+    }
+    // TODO: think about this case
+    assert(st->ppl = ppl);
+    ast_node* n = st->owning_node;
+    switch (n->kind) {
+        case SC_STRUCT: return &((sc_struct*)n)->pprn;
+        case SC_FUNC: return &((sc_func*)n)->pprn;
+        case EXPR_BLOCK:
+            return &((expr_block*)n)->pprn;
+        // only funcs, blocks and structs have pprns
+        default: assert(false);
+    }
+}
 static resolve_error
 add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
 {
