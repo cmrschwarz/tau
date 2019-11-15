@@ -1,5 +1,5 @@
 variables:
-    #GIT_SUBMODULE_STRATEGY: recursive
+    GIT_SUBMODULE_STRATEGY: recursive
 
 stages:
     - precompile
@@ -13,10 +13,10 @@ precompile:
     cache:
         key: precompile
         paths:
-            - deps/llvm-project
             - deps/llvm-project-prebuild/
     only:
         - master
+        - testing
 
 build:
     stage: build
@@ -28,7 +28,6 @@ build:
     cache:
         key: precompile
         paths:
-            - deps/llvm-project
             - deps/llvm-project-prebuild/
         policy: pull
     artifacts:
@@ -38,6 +37,7 @@ build:
         expire_in: 20 minutes
     only:
         - master
+        - testing
 
 test:
     stage: test
@@ -45,3 +45,4 @@ test:
        - ./test/run_tests.sh
     only:
         - master
+        - testing

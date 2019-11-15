@@ -10,8 +10,8 @@ if [ $# -gt 0 ]; then
    fi
 fi
 
-#make sure llvm is up to date
-git submodule update --init --recursive --remote
+# # make sure llvm is up to date
+# git submodule update --init --recursive --remote
 cd ./deps/llvm-project/
 
 #if this dir exist we already precompiled
