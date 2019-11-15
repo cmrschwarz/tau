@@ -132,8 +132,8 @@ static inline resolve_error get_curr_pprn(
             panic("attempted to add block child to variable");
             return RE_FATAL;
         }
-        if (r->var_pp_node) {
-            *curr_pprn = r->var_pp_node;
+        if (r->curr_var_pp_node) {
+            *curr_pprn = r->curr_var_pp_node;
             return RE_OK;
         }
         *curr_pprn = pp_resolve_node_create(
@@ -141,7 +141,7 @@ static inline resolve_error get_curr_pprn(
             ast_elem_get_body((ast_elem*)r->curr_var_decl_block_owner)->symtab,
             false, 0);
         if (!*curr_pprn) return RE_FATAL;
-        r->var_pp_node = *curr_pprn;
+        r->curr_var_pp_node = *curr_pprn;
         return RE_OK;
     }
 
@@ -152,8 +152,8 @@ static inline resolve_error get_curr_pprn(
         return RE_OK;
     }
 
-    if (r->block_pp_node) {
-        *curr_pprn = r->block_pp_node;
+    if (r->curr_block_pp_node) {
+        *curr_pprn = r->curr_block_pp_node;
         return RE_OK;
     }
 
@@ -161,7 +161,7 @@ static inline resolve_error get_curr_pprn(
         r, r->curr_block_owner,
         ast_elem_get_body((ast_elem*)r->curr_block_owner)->symtab, true, 0);
     if (!*curr_pprn) return RE_FATAL;
-    r->block_pp_node = *curr_pprn;
+    r->curr_block_pp_node = *curr_pprn;
     return RE_OK;
 }
 static resolve_error
@@ -1119,67 +1119,79 @@ static inline resolve_error resolve_var(
     ast_elem** ctype)
 {
     resolve_error re;
+    sym_var* prev_var_decl = r->curr_var_decl;
+    pp_resolve_node* prev_var_pp_node = r->curr_var_pp_node;
+    ast_node* prev_var_decl_block_owner = r->curr_var_decl_block_owner;
+    r->curr_var_decl = v;
+    r->curr_var_pp_node = NULL;
+    r->curr_var_decl_block_owner = r->curr_block_owner;
     if (v->sym.node.kind == SYM_VAR) {
         re = check_var_ppl(r, v, ppl);
-        if (re) return re;
-        ast_elem* type;
-        re = resolve_ast_node(r, v->type, st, ppl, &type, NULL);
-        if (re) return re;
-        v->ctype = type;
-        ast_flags_set_resolved(&v->sym.node.flags);
-        RETURN_RESOLVED(value, ctype, v, v->ctype);
-    }
-    sym_var_initialized* vi = (sym_var_initialized*)v;
-    re = check_var_ppl(r, (sym_var*)vi, ppl);
-    if (re) return re;
-    if (vi->var.type) {
-        re = resolve_ast_node(r, vi->var.type, st, ppl, &vi->var.ctype, NULL);
         if (!re) {
-            ast_elem* val_type;
-            re = resolve_ast_node(
-                r, vi->initial_value, st, ppl, NULL, &val_type);
-            if (!re) {
-                if (!ctypes_unifiable(vi->var.ctype, val_type)) {
-                    error_log_report_annotated_twice(
-                        r->tc->err_log, ES_RESOLVER, false,
-                        "type missmatch in variable declaration",
-                        ast_node_get_file(vi->var.type, st),
-                        src_range_get_start(vi->var.type->srange),
-                        src_range_get_end(vi->var.type->srange),
-                        "declared type here",
-                        ast_node_get_file(vi->initial_value, st),
-                        src_range_get_start(vi->initial_value->srange),
-                        src_range_get_end(vi->initial_value->srange),
-                        "doesn' t match type of the initial value");
-                    re = RE_TYPE_MISSMATCH;
-                }
-            }
+            ast_elem* type;
+            re = resolve_ast_node(r, v->type, st, ppl, &type, NULL);
+            if (!re) v->ctype = type;
         }
     }
     else {
-        re = resolve_ast_node(
-            r, vi->initial_value, st, ppl, NULL, &vi->var.ctype);
-        // this could become needed again once we support typeof,
-        // it allows one retry in cases of a variable initially
-        // assigned to a self referential expr block
-        /*  if (re == RE_TYPE_LOOP && r->type_loop_start == n &&
-             !r->retracing_type_loop) {
-             if (vi->var.ctype) {
-                 ast_flags_set_resolved(&n->flags);
-                 stack_clear(&r->error_stack);
-                 re = resolve_ast_node(
-                     r, vi->initial_value, st, ppl, NULL,
-                     &vi->var.ctype);
+        sym_var_initialized* vi = (sym_var_initialized*)v;
+        re = check_var_ppl(r, (sym_var*)vi, ppl);
+        if (re) {
+            // fallthrough
+        }
+        else if (vi->var.type) {
+            re = resolve_ast_node(
+                r, vi->var.type, st, ppl, &vi->var.ctype, NULL);
+            if (!re) {
+                ast_elem* val_type;
+                re = resolve_ast_node(
+                    r, vi->initial_value, st, ppl, NULL, &val_type);
+                if (!re) {
+                    if (!ctypes_unifiable(vi->var.ctype, val_type)) {
+                        error_log_report_annotated_twice(
+                            r->tc->err_log, ES_RESOLVER, false,
+                            "type missmatch in variable declaration",
+                            ast_node_get_file(vi->var.type, st),
+                            src_range_get_start(vi->var.type->srange),
+                            src_range_get_end(vi->var.type->srange),
+                            "declared type here",
+                            ast_node_get_file(vi->initial_value, st),
+                            src_range_get_start(vi->initial_value->srange),
+                            src_range_get_end(vi->initial_value->srange),
+                            "doesn' t match type of the initial value");
+                        re = RE_TYPE_MISSMATCH;
+                    }
+                }
             }
-            else{
-                report_type_loop(r, n, st, ppl);
-            }
-            }
-        }*/
+        }
+        else {
+            re = resolve_ast_node(
+                r, vi->initial_value, st, ppl, NULL, &vi->var.ctype);
+            // this could become needed again once we support typeof,
+            // it allows one retry in cases of a variable initially
+            // assigned to a self referential expr block
+            /*  if (re == RE_TYPE_LOOP && r->type_loop_start == n &&
+                 !r->retracing_type_loop) {
+                 if (vi->var.ctype) {
+                     ast_flags_set_resolved(&n->flags);
+                     stack_clear(&r->error_stack);
+                     re = resolve_ast_node(
+                         r, vi->initial_value, st, ppl, NULL,
+                         &vi->var.ctype);
+                }
+                else{
+                    report_type_loop(r, n, st, ppl);
+                }
+                }
+            }*/
+        }
     }
+    r->curr_var_decl = prev_var_decl;
+    r->curr_var_pp_node = prev_var_pp_node;
+    r->curr_var_decl_block_owner = prev_var_decl_block_owner;
     if (re) return re;
     ast_flags_set_resolved(&v->sym.node.flags);
-    RETURN_RESOLVED(value, ctype, vi, vi->var.ctype);
+    RETURN_RESOLVED(value, ctype, v, v->ctype);
 }
 static inline resolve_error
 resolve_return_or_break(resolver* r, symbol_table* st, ureg ppl, expr_break* b)
@@ -1724,8 +1736,8 @@ resolve_error resolve_expr_body(
     ast_elem* stmt_ctype = NULL;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
     ureg saved_decl_count = 0;
-    pp_resolve_node* prev_block_pprn = r->block_pp_node;
-    r->block_pp_node = NULL;
+    pp_resolve_node* prev_block_pprn = r->curr_block_pp_node;
+    r->curr_block_pp_node = NULL;
 
     bool parent_allows_type_loops = r->allow_type_loops;
     bool parenting_type_loop = false;
@@ -1744,8 +1756,8 @@ resolve_error resolve_expr_body(
         re = add_ast_node_decls(r, b->symtab, NULL, ppl, *n, false);
         if (re) break;
         re = resolve_ast_node(r, *n, b->symtab, ppl, NULL, stmt_ctype_ptr);
-        if (r->block_pp_node && r->block_pp_node->pending_pastes) {
-            r->block_pp_node->continue_block = n + 1;
+        if (r->curr_block_pp_node && r->curr_block_pp_node->pending_pastes) {
+            r->curr_block_pp_node->continue_block = n + 1;
             re = RE_SYMBOL_NOT_FOUND_YET;
             break;
         }
@@ -1773,9 +1785,9 @@ resolve_error resolve_expr_body(
     if (saved_decl_count) {
         b->symtab->decl_count = saved_decl_count;
     }
-    pp_resolve_node* bpprn = r->block_pp_node;
+    pp_resolve_node* bpprn = r->curr_block_pp_node;
     r->curr_block_owner = parent_block_owner;
-    r->block_pp_node = prev_block_pprn;
+    r->curr_block_pp_node = prev_block_pprn;
     if (bpprn) {
         assert(bpprn->node == expr);
         bpprn->node = (ast_node*)expr;
@@ -1820,8 +1832,8 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
         r->curr_block_owner = parent_block_owner;
         return RE_OK;
     }
-    pp_resolve_node* prev_block_pprn = r->block_pp_node;
-    r->block_pp_node = NULL;
+    pp_resolve_node* prev_block_pprn = r->curr_block_pp_node;
+    r->curr_block_pp_node = NULL;
     ast_node** n = b->elements;
     ast_elem* stmt_ctype;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
@@ -1833,8 +1845,8 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
         re = resolve_ast_node(r, *n, st, ppl, NULL, stmt_ctype_ptr);
         if (re) break;
         r->curr_pp_node = NULL;
-        if (r->block_pp_node && r->block_pp_node->pending_pastes) {
-            r->block_pp_node->continue_block = n + 1;
+        if (r->curr_block_pp_node && r->curr_block_pp_node->pending_pastes) {
+            r->curr_block_pp_node->continue_block = n + 1;
             re = RE_SYMBOL_NOT_FOUND_YET;
             break;
         }
@@ -1846,19 +1858,19 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
     r->curr_pp_node = prev_pprn;
     // this must be reset before we call add dependency
     r->curr_block_owner = parent_block_owner;
-    pp_resolve_node* bpprn = r->block_pp_node;
+    pp_resolve_node* bpprn = r->curr_block_pp_node;
     if (bpprn) {
         assert(bpprn->node == (ast_node*)fn);
         bpprn->node = (ast_node*)fn;
         bpprn->declaring_st = fn->sc.sym.declaring_st;
         bpprn->ppl = ppl;
-        r->block_pp_node = prev_block_pprn;
+        r->curr_block_pp_node = prev_block_pprn;
         if (from_call) curr_pprn_add_dependency(r, bpprn);
         if (pp_resolve_node_activate(r, bpprn, re == RE_OK)) return RE_FATAL;
         fn->pprn = bpprn;
     }
     else {
-        r->block_pp_node = prev_block_pprn;
+        r->curr_block_pp_node = prev_block_pprn;
     }
     if (re) return re;
     if (stmt_ctype_ptr && fn->return_ctype != VOID_ELEM) {
@@ -2131,10 +2143,10 @@ int resolver_resolve(
     resolver* r, mdg_node** start, mdg_node** end, ureg* startid)
 {
     r->curr_pp_node = NULL;
-    r->block_pp_node = NULL;
+    r->curr_block_pp_node = NULL;
     r->curr_var_decl = NULL;
     r->curr_var_decl_block_owner = NULL;
-    r->var_pp_node = NULL;
+    r->curr_var_pp_node = NULL;
     r->retracing_type_loop = false;
     r->public_sym_count = 0;
     r->private_sym_count = 0;

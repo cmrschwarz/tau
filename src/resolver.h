@@ -72,9 +72,9 @@ typedef struct resolver_s {
     ptrlist pp_resolve_nodes_pending; // dep_count = 0, but unresolved
     ptrlist pp_resolve_nodes_ready; // resolved and ready to run
     pp_resolve_node* curr_pp_node;
-    pp_resolve_node* block_pp_node;
+    pp_resolve_node* curr_block_pp_node;
     sym_var* curr_var_decl;
-    pp_resolve_node* var_pp_node;
+    pp_resolve_node* curr_var_pp_node;
     // this is used to determine whether the curr block is inside the decl
     // or the other way round by storing the block the func decl is in
     ast_node* curr_var_decl_block_owner;
