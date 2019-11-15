@@ -581,6 +581,7 @@ bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
 bool ast_elem_is_expr(ast_elem* s);
 bool ast_elem_is_stmt(ast_elem* s);
+ast_body* ast_elem_get_body(ast_elem* s);
 char* ast_elem_get_label(ast_elem* n, bool* lbl);
 src_file* open_scope_get_file(open_scope* s);
 src_file* ast_node_get_file(ast_node* n, symbol_table* st);

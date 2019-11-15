@@ -9,15 +9,14 @@
 #include "utils/aseglist.h"
 #include "print_ast.h"
 
-#define OSC_PP_NODE ((pp_resolve_node*)NULL_PTR_PTR)
-
 static resolve_error add_body_decls(
     resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
     ast_body* b, bool public_st);
 
 resolve_error
 resolve_param(resolver* r, sym_param* p, ureg ppl, ast_elem** ctype);
-resolve_error resolve_body(resolver* r, ast_body* b, ureg ppl);
+resolve_error
+resolve_body(resolver* r, ast_node* block_owner, ast_body* b, ureg ppl);
 static resolve_error resolve_ast_node(
     resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
     ast_elem** ctype);
@@ -69,23 +68,7 @@ static resolve_error report_redeclaration_error(
         src_range_get_end(prev->node.srange), "previous definition here");
     return RE_SYMBOL_REDECLARATION;
 }
-static inline pp_resolve_node**
-get_block_pprn(resolver* r, symbol_table* st, ureg ppl)
-{
-    if (r->block_pp_node && r->block_pp_node->declaring_st == st) {
-        return &r->block_pp_node;
-    }
-    // TODO: think about the importance of the ppl here
-    ast_elem* n = st->owning_node;
-    switch (n->kind) {
-        case SC_STRUCT: return &((sc_struct*)n)->pprn;
-        case SC_FUNC: return &((sc_func*)n)->pprn;
-        case EXPR_BLOCK:
-            return &((expr_block*)n)->pprn;
-        // only funcs, blocks and structs have pprns
-        default: assert(false);
-    }
-}
+
 static resolve_error
 add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
 {
@@ -120,22 +103,82 @@ static pp_resolve_node* pp_resolve_node_create(
     if (aseglist_init(&pprn->required_by)) return NULL;
     return pprn;
 }
+static inline pp_resolve_node** get_ast_node_pprn(ast_node* n)
+{
+    switch (n->kind) {
+        case SC_STRUCT: return &((sc_struct*)n)->pprn;
+        case SC_FUNC: return &((sc_func*)n)->pprn;
+        case EXPR_BLOCK: return &((expr_block*)n)->pprn;
+        // only funcs, blocks and structs have pprns
+        default: panic("attempted to get pprn from ast_node without pprn");
+    }
+    return NULL;
+}
+static inline resolve_error get_curr_pprn(
+    resolver* r, pp_resolve_node* for_dep, bool allow_vars,
+    pp_resolve_node** curr_pprn)
+{
+    if (r->curr_pp_node) {
+        *curr_pprn = r->curr_pp_node;
+        return RE_OK;
+    }
+
+    if (r->curr_var_decl &&
+        r->curr_block_owner == r->curr_var_decl_block_owner) {
+        if (!allow_vars) {
+            panic("attempted to add block child to variable");
+            return RE_FATAL;
+        }
+        if (r->var_pp_node) {
+            *curr_pprn = r->var_pp_node;
+            return RE_OK;
+        }
+        *curr_pprn = pp_resolve_node_create(
+            r, (ast_node*)r->curr_var_decl,
+            ast_elem_get_body((ast_elem*)r->curr_var_decl_block_owner)->symtab,
+            false, 0);
+        if (!*curr_pprn) return RE_FATAL;
+        r->var_pp_node = *curr_pprn;
+        return RE_OK;
+    }
+
+    if (ast_elem_is_open_scope((ast_elem*)r->curr_block_owner)) {
+        // when in public scope, nobody depends on this
+        //(for now, this might change with is_defined and so on)
+        *curr_pprn = NULL;
+        return RE_OK;
+    }
+
+    if (r->block_pp_node) {
+        *curr_pprn = r->block_pp_node;
+        return RE_OK;
+    }
+
+    *curr_pprn = pp_resolve_node_create(
+        r, r->curr_block_owner,
+        ast_elem_get_body((ast_elem*)r->curr_block_owner)->symtab, true, 0);
+    if (!*curr_pprn) return RE_FATAL;
+    r->block_pp_node = *curr_pprn;
+    return RE_OK;
+}
+static resolve_error
+curr_pprn_add_dependency(resolver* r, pp_resolve_node* dependency)
+{
+    pp_resolve_node* depending;
+    resolve_error re = get_curr_pprn(r, dependency, true, &depending);
+    if (re) return re;
+    if (!depending) return RE_OK;
+    if (aseglist_add(&dependency->required_by, depending)) return RE_FATAL;
+    depending->dep_count++;
+    return RE_OK;
+}
 static resolve_error
 curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
 {
-    pp_resolve_node* block = NULL;
-    // we only do this if we are the top most pp
-    // expr in the statement
-    assert(!r->curr_pp_node);
-    if (r->block_pp_node) {
-        if (r->block_pp_node == OSC_PP_NODE) return RE_OK;
-        block = r->block_pp_node;
-    }
-    else {
-        block = pp_resolve_node_create(r, NULL, NULL, true, 0);
-        if (!block) return RE_FATAL;
-        r->block_pp_node = block;
-    }
+    pp_resolve_node* block;
+    resolve_error re = get_curr_pprn(r, child, false, &block);
+    if (re) return re;
+    if (!block) return RE_OK;
     if (block->first_unresolved_child == NULL) {
         block->first_unresolved_child = child;
     }
@@ -146,27 +189,6 @@ curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
         block->last_child->next = child;
     }
     block->last_child = child;
-    return RE_OK;
-}
-static resolve_error
-curr_pp_node_add_dependency(resolver* r, pp_resolve_node* depends_on)
-{
-    pp_resolve_node* depending = NULL;
-    if (r->curr_pp_node) {
-        depending = r->curr_pp_node;
-    }
-    else {
-        if (r->block_pp_node) {
-            if (r->block_pp_node == OSC_PP_NODE) return RE_OK;
-            depending = r->block_pp_node;
-        }
-        else {
-            depending = pp_resolve_node_create(r, NULL, NULL, true, 0);
-            r->block_pp_node = depending;
-        }
-    }
-    if (aseglist_add(&depends_on->required_by, depending)) return RE_FATAL;
-    depending->dep_count++;
     return RE_OK;
 }
 resolve_error
@@ -484,8 +506,8 @@ static resolve_error add_ast_node_decls(
                     return report_redeclaration_error(r, sym, *conflict, tgtst);
                 }
             }
-            // we only do the parameters here because the declaration and use
-            // func body vars is strongly ordered
+            // we only do the parameters here because the declaration and
+            // use func body vars is strongly ordered
             ast_body* b = &((scope*)n)->body;
             ureg param_count = fn ? fn->param_count : m->param_count;
             sym_param* params = fn ? fn->params : m->params;
@@ -672,9 +694,8 @@ static inline resolve_error resolve_no_block_macro_call(
 
 resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl)
 {
-    pp_resolve_node** pprn = get_block_pprn(r, fn->sc.body.symtab, ppl);
-    if (*pprn) {
-        curr_pp_node_add_dependency(r, *pprn);
+    if (fn->pprn) {
+        curr_pprn_add_dependency(r, fn->pprn);
         if (ast_flags_get_resolved(fn->sc.sym.node.flags)) return RE_OK;
         return RE_SYMBOL_NOT_FOUND_YET;
     }
@@ -698,7 +719,8 @@ resolve_error resolve_func_call(
     while (lt) {
         symbol** s = symbol_table_lookup(lt, ppl, AM_DEFAULT, func_name);
         if (!s) {
-            // we use args_st here because thats the scope that the call is in
+            // we use args_st here because thats the scope that the call is
+            // in
             re = report_unknown_symbol(r, c->lhs, st);
             break;
         }
@@ -906,12 +928,8 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
     switch (s->node.kind) {
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
-        case SYM_NAMED_USING:
-            assert(false);
-            return NULL; // TODO
-        case PRIMITIVE:
-            assert(false);
-            return NULL; // would be ctype "Type"
+        case SYM_NAMED_USING: assert(false); return NULL; // TODO
+        case PRIMITIVE: assert(false); return NULL; // would be ctype "Type"
         default: return (ast_elem*)s;
     }
 }
@@ -921,7 +939,7 @@ ast_elem** get_break_target_ctype(ast_node* n)
         case EXPR_BLOCK: return &((expr_block*)n)->ctype;
         case EXPR_IF: return &((expr_if*)n)->ctype;
         case EXPR_LOOP: return &((expr_loop*)n)->ctype;
-        default: assert(false); return NULL;
+        default: return NULL;
     }
 }
 resolve_error get_resolved_symbol_symtab(
@@ -1159,7 +1177,8 @@ static inline resolve_error resolve_ast_node_raw(
                     ast_node_get_file((ast_node*)sym, sym->declaring_st);
                 error_log_report_annotated_twice(
                     r->tc->err_log, ES_RESOLVER, false,
-                    "cannot access variable of a different preprocessing level",
+                    "cannot access variable of a different preprocessing "
+                    "level",
                     id_sr.file, id_sr.start, id_sr.end, "usage here",
                     sym_sr.file, sym_sr.start, sym_sr.end,
                     "variable defined here");
@@ -1255,7 +1274,7 @@ static inline resolve_error resolve_ast_node_raw(
         case SC_TRAIT:
         case SC_TRAIT_GENERIC: {
             if (resolved) RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
-            re = resolve_body(r, &((scope*)n)->body, ppl);
+            re = resolve_body(r, n, &((scope*)n)->body, ppl);
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
@@ -1401,17 +1420,19 @@ static inline resolve_error resolve_ast_node_raw(
             else {
                 // if we return from a block, this block's result becomes
                 // unreachable
-                if (r->curr_expr_block_owner) {
+                if (r->curr_block_owner) {
                     ast_elem** tgtt =
-                        get_break_target_ctype(r->curr_expr_block_owner);
-                    if (*tgtt) {
-                        if (*tgtt != UNREACHABLE_ELEM) {
-                            assert(false); // TODO: error, unreachable not
-                            // unifiable
+                        get_break_target_ctype(r->curr_block_owner);
+                    if (tgtt) {
+                        if (*tgtt) {
+                            if (*tgtt != UNREACHABLE_ELEM) {
+                                assert(false); // TODO: error, unreachable not
+                                // unifiable
+                            }
                         }
-                    }
-                    else {
-                        *tgtt = UNREACHABLE_ELEM;
+                        else {
+                            *tgtt = UNREACHABLE_ELEM;
+                        }
                     }
                 }
                 if (b->target->kind == SC_FUNC) {
@@ -1476,10 +1497,7 @@ static inline resolve_error resolve_ast_node_raw(
             else {
                 if (re) return re;
             }
-            ast_node* old_expr_block_owner = r->curr_expr_block_owner;
-            r->curr_expr_block_owner = NULL;
             re = resolve_ast_node(r, ei->if_body, st, ppl, NULL, &ctype_if);
-            r->curr_expr_block_owner = old_expr_block_owner;
             if (re == RE_TYPE_LOOP) {
                 if_branch_type_loop = true;
             }
@@ -1674,18 +1692,21 @@ resolve_error resolve_expr_body(
     resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b, ureg ppl,
     bool* end_reachable)
 {
-    ast_node* parent_expr_block_owner = r->curr_expr_block_owner;
-    r->curr_expr_block_owner = expr;
-    bool parent_allows_type_loops = r->allow_type_loops;
-    if (!r->retracing_type_loop) r->allow_type_loops = true;
+    ast_node* parent_block_owner = r->curr_block_owner;
+    r->curr_block_owner = expr;
     resolve_error re;
-    bool parenting_type_loop = false;
     ast_elem* stmt_ctype = NULL;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
     ureg saved_decl_count = 0;
     pp_resolve_node* prev_block_pprn = r->block_pp_node;
     r->block_pp_node = NULL;
-    set_parent_symtabs(&b->symtab, parent_st);
+
+    bool parent_allows_type_loops = r->allow_type_loops;
+    bool parenting_type_loop = false;
+    if (!r->retracing_type_loop) {
+        r->allow_type_loops = true;
+        set_parent_symtabs(&b->symtab, parent_st);
+    }
     if (b->symtab->owning_node == (ast_elem*)expr && b->symtab->decl_count) {
         // if we already have decls this is the second pass.
         // all local syms are already defined so we don't need to check this
@@ -1727,23 +1748,21 @@ resolve_error resolve_expr_body(
         b->symtab->decl_count = saved_decl_count;
     }
     pp_resolve_node* bpprn = r->block_pp_node;
-    if (r->block_pp_node) {
-        assert(r->block_pp_node->node == NULL);
+    r->curr_block_owner = parent_block_owner;
+    r->block_pp_node = prev_block_pprn;
+    if (bpprn) {
+        assert(bpprn->node == expr);
         bpprn->node = (ast_node*)expr;
         bpprn->declaring_st = parent_st;
         bpprn->ppl = ppl;
-        r->block_pp_node = prev_block_pprn;
-        if (curr_pp_node_add_dependency(r, bpprn)) return RE_FATAL;
+        if (curr_pprn_add_dependency(r, bpprn)) return RE_FATAL;
         if (pp_resolve_node_activate(r, bpprn, re == RE_OK)) {
             return RE_FATAL;
         }
     }
-    else {
-        r->block_pp_node = prev_block_pprn;
-    }
     *end_reachable = (stmt_ctype_ptr != NULL);
     r->allow_type_loops = parent_allows_type_loops;
-    r->curr_expr_block_owner = parent_expr_block_owner;
+    r->curr_block_owner = parent_block_owner;
     if (re) return re;
     if (parenting_type_loop) {
         return RE_TYPE_LOOP;
@@ -1756,14 +1775,23 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
     ast_body* b = &fn->sc.body;
     symbol_table* st = b->symtab;
     resolve_error re;
+    ast_node* parent_block_owner = r->curr_block_owner;
+    r->curr_block_owner = (ast_node*)fn;
     for (ureg i = 0; i < fn->param_count; i++) {
         re = resolve_param(r, &fn->params[i], ppl, NULL);
-        if (re) return re;
+        if (re) {
+            r->curr_block_owner = parent_block_owner;
+            return re;
+        }
     }
     re = resolve_ast_node(r, fn->return_type, st, ppl, &fn->return_ctype, NULL);
-    if (re) return re;
+    if (re) {
+        return re;
+        r->curr_block_owner = parent_block_owner;
+    }
     if (b->srange == SRC_RANGE_INVALID) { // hack for external functions
         ast_flags_set_resolved(&fn->sc.sym.node.flags);
+        r->curr_block_owner = parent_block_owner;
         return RE_OK;
     }
     pp_resolve_node* prev_block_pprn = r->block_pp_node;
@@ -1790,14 +1818,16 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
         n++;
     }
     r->curr_pp_node = prev_pprn;
+    // this must be reset before we call add dependency
+    r->curr_block_owner = parent_block_owner;
     pp_resolve_node* bpprn = r->block_pp_node;
     if (bpprn) {
-        assert(bpprn->node == NULL);
+        assert(bpprn->node == (ast_node*)fn);
         bpprn->node = (ast_node*)fn;
         bpprn->declaring_st = fn->sc.sym.declaring_st;
         bpprn->ppl = ppl;
         r->block_pp_node = prev_block_pprn;
-        if (from_call) curr_pp_node_add_dependency(r, bpprn);
+        if (from_call) curr_pprn_add_dependency(r, bpprn);
         if (pp_resolve_node_activate(r, bpprn, re == RE_OK)) return RE_FATAL;
         fn->pprn = bpprn;
     }
@@ -1822,14 +1852,18 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
     ast_flags_set_resolved(&fn->sc.sym.node.flags);
     return RE_OK;
 }
-resolve_error resolve_body(resolver* r, ast_body* b, ureg ppl)
+resolve_error
+resolve_body(resolver* r, ast_node* block_owner, ast_body* b, ureg ppl)
 {
     resolve_error re;
+    ast_node* parent_block_owner = r->curr_block_owner;
+    r->curr_block_owner = block_owner;
     for (ast_node** n = b->elements; *n != NULL; n++) {
         re = resolve_ast_node(r, *n, b->symtab, ppl, NULL, NULL);
-        if (re) return re;
+        if (re) break;
     }
-    return RE_OK;
+    r->curr_block_owner = parent_block_owner;
+    return re;
 }
 static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n);
 static inline void adjust_body_ids(resolver* r, ureg* id_space, ast_body* b)
@@ -1930,7 +1964,7 @@ void print_pprns(resolver* r)
         pli it = pli_begin(&r->pp_resolve_nodes_ready);
         for (pp_resolve_node* rn = pli_next(&it); rn; rn = pli_next(&it)) {
             assert(rn->node != NULL);
-            printf("    dep count: %i\n", rn->dep_count);
+            printf("    dep count: %zu\n", rn->dep_count);
             print_indent(1);
             print_ast_node(rn->node, r->curr_mdg, 1);
             puts("");
@@ -1957,6 +1991,7 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
     }
     aseglist_fin(&pprn->required_by);
     freelist_free(&r->pp_resolve_nodes, pprn);
+    return RE_OK;
 }
 resolve_error
 pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
@@ -2058,7 +2093,8 @@ resolve_error resolver_handle_post_pp(resolver* r)
         for (open_scope* osc = aseglist_iterator_next(&asi); osc != NULL;
              osc = aseglist_iterator_next(&asi)) {
             r->curr_osc = osc;
-            re = resolve_body(r, &osc->sc.body, 0);
+            r->curr_block_owner = (ast_node*)osc;
+            re = resolve_body(r, (ast_node*)osc, &osc->sc.body, 0);
             ast_flags_set_resolved(&osc->sc.sym.node.flags);
             if (re) return re;
         }
@@ -2069,7 +2105,10 @@ int resolver_resolve(
     resolver* r, mdg_node** start, mdg_node** end, ureg* startid)
 {
     r->curr_pp_node = NULL;
-    r->block_pp_node = OSC_PP_NODE;
+    r->block_pp_node = NULL;
+    r->curr_var_decl = NULL;
+    r->curr_var_decl_block_owner = NULL;
+    r->var_pp_node = NULL;
     r->retracing_type_loop = false;
     r->public_sym_count = 0;
     r->private_sym_count = 0;
@@ -2152,7 +2191,7 @@ int resolver_init(resolver* r, thread_context* tc)
     if (!r->backend) return resolver_partial_fin(r, 3, ERR);
     r->allow_type_loops = false;
     r->type_loop_start = NULL;
-    r->curr_expr_block_owner = NULL;
+    r->curr_block_owner = NULL;
     return OK;
 }
 ast_elem* get_resolved_ast_node_ctype(ast_node* n)

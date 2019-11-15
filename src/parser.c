@@ -1366,6 +1366,8 @@ static inline parse_error
 parse_expr_block(parser* p, char* label, ureg start, ast_node** ex)
 {
     expr_block* b = alloc_perm(p, sizeof(expr_block));
+    if (!b) return PE_FATAL;
+    b->pprn = NULL;
     ast_node_init((ast_node*)b, EXPR_BLOCK);
     b->name = label;
     *ex = (ast_node*)b;
@@ -2259,11 +2261,13 @@ parse_error parse_func_decl(
             p, f, &fng->generic_params, &fng->generic_param_count, true, start,
             decl_end, "in this function declaration");
         if (pe) return pe;
+        // TODO: fng->pprn = NULL;
         PEEK(p, t);
     }
     else {
         fnp = alloc_perm(p, sizeof(sc_func));
         if (!fnp) return PE_FATAL;
+        fnp->pprn = NULL;
         f = (symbol*)fnp;
     }
     f->name = name;
@@ -2408,6 +2412,7 @@ parse_error parse_struct_decl(
     if (t->kind == TK_BRACKET_OPEN) {
         sg = alloc_perm(p, sizeof(sc_struct_generic));
         if (!sg) return PE_FATAL;
+        // TODO:  sg->pprn = NULL;
         s = (symbol*)sg;
         lx_void(&p->lx);
         pe = parse_param_list(
@@ -2419,6 +2424,7 @@ parse_error parse_struct_decl(
     else {
         sp = alloc_perm(p, sizeof(sc_struct));
         if (!sp) return PE_FATAL;
+        sp->pprn = NULL;
         s = (symbol*)sp;
     }
     ast_node_init_with_flags(

@@ -55,11 +55,11 @@ typedef struct resolver_s {
     mdg_node** mdgs_end;
     mdg_node* curr_mdg;
     open_scope* curr_osc;
+    ast_node* curr_block_owner;
     // temporary memory space
     sbuffer call_types;
     // dealing with type loops and type inference in expr blocks
     stack error_stack;
-    ast_node* curr_expr_block_owner;
     ast_node* type_loop_start;
     u8 allow_type_loops;
     bool retracing_type_loop;
@@ -73,6 +73,11 @@ typedef struct resolver_s {
     ptrlist pp_resolve_nodes_ready; // resolved and ready to run
     pp_resolve_node* curr_pp_node;
     pp_resolve_node* block_pp_node;
+    sym_var* curr_var_decl;
+    pp_resolve_node* var_pp_node;
+    // this is used to determine whether the curr block is inside the decl
+    // or the other way round by storing the block the func decl is in
+    ast_node* curr_var_decl_block_owner;
     bool multi_evaluation_ctx;
     ureg pp_generation;
 } resolver;

@@ -128,32 +128,6 @@ void ast_node_get_bounds(ast_node* n, ureg* start, ureg* end)
         }
     }
 }
-/*
-int ast_type_node_get_mod_count(ast_type_node atn)
-{
-    int b = 0;
-    while (b < ATM_BYTES && atn.mods[b] != 0) b++;
-    int f = 0;
-    while (atn.mods[b] != 0) {
-        f++;
-        atn.mods[b] >>= ATM_BITS;
-    }
-    return b * ATM_PER_BYTE + f;
-}
-ast_type_mod ast_type_node_get_mod_n(ast_type_node atn, int n)
-{
-    assert(n < ATM_MAX_COUNT);
-    int offs = (n % ATM_PER_BYTE) * ATM_BITS;
-    return atn.mods[n / ATM_PER_BYTE] >> offs;
-}
-void ast_type_node_set_mod_n(ast_type_node atn, ast_type_mod mod, int n)
-{
-    assert(n < ATM_MAX_COUNT);
-    int b = n / ATM_PER_BYTE;
-    int offs = (n % ATM_PER_BYTE) * ATM_BITS;
-    atn.mods[b] = (atn.mods[b] & (ATM_MASK << offs)) | (mod << offs);
-}
-*/
 char* op_to_str(operator_kind t)
 {
     switch (t) {
@@ -206,4 +180,17 @@ char* op_to_str(operator_kind t)
         default: return "<Unknown Operator>";
     }
     return 0;
+}
+ast_body* ast_elem_get_body(ast_elem* s)
+{
+    if (ast_elem_is_scope(s)) {
+        return &((scope*)s)->body;
+    }
+    switch (s->kind) {
+        case EXPR_BLOCK: return &((expr_block*)s)->body;
+        case EXPR_MATCH: return &((expr_match*)s)->body;
+        case EXPR_LOOP: return &((expr_loop*)s)->body;
+        default: panic("tried to get body from ast node without body");
+    }
+    return NULL;
 }
