@@ -118,8 +118,7 @@ static inline pp_resolve_node** get_ast_node_pprn(ast_node* n)
     return NULL;
 }
 static inline resolve_error get_curr_pprn(
-    resolver* r, pp_resolve_node* for_dep, bool allow_vars,
-    pp_resolve_node** curr_pprn)
+    resolver* r, pp_resolve_node* for_dep, pp_resolve_node** curr_pprn)
 {
     if (r->curr_pp_node) {
         *curr_pprn = r->curr_pp_node;
@@ -128,10 +127,6 @@ static inline resolve_error get_curr_pprn(
 
     if (r->curr_var_decl &&
         r->curr_block_owner == r->curr_var_decl_block_owner) {
-        if (!allow_vars) {
-            panic("attempted to add block child to variable");
-            return RE_FATAL;
-        }
         if (r->curr_var_pp_node) {
             *curr_pprn = r->curr_var_pp_node;
             return RE_OK;
@@ -168,7 +163,7 @@ static resolve_error
 curr_pprn_add_dependency(resolver* r, pp_resolve_node* dependency)
 {
     pp_resolve_node* depending;
-    resolve_error re = get_curr_pprn(r, dependency, true, &depending);
+    resolve_error re = get_curr_pprn(r, dependency, &depending);
     if (re) return re;
     if (!depending) return RE_OK;
     if (aseglist_add(&dependency->required_by, depending)) return RE_FATAL;
@@ -179,7 +174,7 @@ static resolve_error
 curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
 {
     pp_resolve_node* block;
-    resolve_error re = get_curr_pprn(r, child, false, &block);
+    resolve_error re = get_curr_pprn(r, child, &block);
     if (re) return re;
     if (!block) return RE_OK;
     if (block->first_unresolved_child == NULL) {
@@ -1186,6 +1181,7 @@ static inline resolve_error resolve_var(
             }*/
         }
     }
+    if (!re) v->pprn = r->curr_var_pp_node;
     r->curr_var_decl = prev_var_decl;
     r->curr_var_pp_node = prev_var_pp_node;
     r->curr_var_decl_block_owner = prev_var_decl_block_owner;

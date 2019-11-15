@@ -2171,6 +2171,7 @@ parse_error parse_var_decl(
         if (!v) return PE_FATAL;
         ast_node_init((ast_node*)v, SYM_VAR);
     }
+    v->pprn = NULL;
     v->type = type;
     v->sym.name = ident;
     if (!v->sym.name) return PE_FATAL;

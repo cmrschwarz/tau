@@ -420,6 +420,7 @@ typedef struct sym_var_s {
     symbol sym;
     ast_node* type; // may be NULL in sym_var_initialized or compoind_assignment
     ast_elem* ctype;
+    pp_resolve_node* pprn;
     ureg var_id;
 } sym_var;
 
