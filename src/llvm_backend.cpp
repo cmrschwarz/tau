@@ -462,7 +462,7 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
             if (lle) return lle;
         }
     }
-    else if (n->node->kind == SC_FUNC) {
+    else if (n->last_child) {
         for (pp_resolve_node* cn = n->first_unresolved_child; cn;
              cn = cn->next) {
             lle = genPPRN(cn);

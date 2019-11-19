@@ -102,6 +102,7 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->ppl = ppl;
     pprn->next = NULL;
     pprn->last_child = NULL;
+    pprn->parent = NULL;
     pprn->run_when_done = run_when_done;
     if (aseglist_init(&pprn->required_by)) return NULL;
     return pprn;
@@ -136,7 +137,6 @@ static inline resolve_error get_curr_pprn(
             ast_elem_get_body((ast_elem*)r->curr_var_decl_block_owner)->symtab,
             false, false, 0);
         if (!*curr_pprn) return RE_FATAL;
-        (**curr_pprn).parent = r->curr_var_decl_block_owner;
         r->curr_var_pp_node = *curr_pprn;
         return RE_OK;
     }
@@ -1203,6 +1203,10 @@ static inline resolve_error resolve_var(
     r->curr_var_pp_node = prev_var_pp_node;
     r->curr_var_decl_block_owner = prev_var_decl_block_owner;
     if (re) return re;
+    if (v->pprn) {
+        re = curr_pp_block_add_child(r, v->pprn);
+        if (re) return re;
+    }
     ast_flags_set_resolved(&v->sym.node.flags);
     RETURN_RESOLVED(value, ctype, v, v->ctype);
 }
@@ -2037,7 +2041,7 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
         re = pp_resolve_node_dep_done(r, rn, progress);
         if (re) return re;
     }
-    if (!pprn->run_when_done) {
+    if (pprn->parent) {
         re = pp_resolve_node_dep_done(r, pprn->parent, progress);
         if (re) return re;
     }
@@ -2053,7 +2057,7 @@ pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
     pprn->dep_count--;
     if (pprn->dep_count == 0) {
         *progress = true;
-        if (pprn->node->kind != SC_FUNC) {
+        if (pprn->parent) {
             if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
                 return RE_FATAL;
             }
