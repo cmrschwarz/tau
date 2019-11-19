@@ -23,7 +23,7 @@ static resolve_error resolve_ast_node(
 static inline resolve_error resolve_ast_node_raw(
     resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
     ast_elem** ctype);
-resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call);
+resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl);
 resolve_error resolve_expr_body(
     resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b, ureg ppl,
     bool* end_reachable);
@@ -690,15 +690,30 @@ static inline resolve_error resolve_no_block_macro_call(
     assert(false); // TODO
 }
 
-resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl)
+resolve_error
+resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl, ast_elem** ctype)
 {
-    if (fn->pprn) {
-        curr_pprn_add_dependency(r, fn->pprn);
-        if (ast_flags_get_resolved(fn->sc.sym.node.flags)) return RE_OK;
-        return RE_SYMBOL_NOT_FOUND_YET;
+    ureg fnppl = fn->sc.sym.declaring_st->ppl;
+    resolve_error re;
+    if (ast_flags_get_resolved(fn->sc.sym.node.flags)) {
+        if (!fn->pprn) return RE_OK;
     }
-    if (ast_flags_get_resolved(fn->sc.sym.node.flags)) return RE_OK;
-    return resolve_func(r, fn, ppl, true);
+    else {
+        if (!fn->pprn) {
+            fn->pprn = pp_resolve_node_create(
+                r, (ast_node*)fn, fn->sc.sym.declaring_st, false, fnppl);
+            if (!fn->pprn) return RE_FATAL;
+        }
+        re = resolve_ast_node(
+            r, fn->return_type, fn->sc.sym.declaring_st, fnppl,
+            &fn->return_ctype, NULL);
+        if (re) return re;
+    }
+    if (ctype) *ctype = fn->return_ctype;
+    re = curr_pprn_add_dependency(r, fn->pprn);
+    if (re) return re;
+    return RE_OK;
+    // return resolve_func(r, fn, ppl, true);
 }
 // we need a seperate func_st for cases like foo::bar()
 resolve_error resolve_func_call(
@@ -767,7 +782,7 @@ resolve_error resolve_func_call(
             ast_flags_set_resolved(&c->node.flags);
             // we sadly need to do this so the resolved flag means
             //"ready to emit and run" which we need for the pp
-            re = resolve_func_from_call(r, (sc_func*)tgt, ppl);
+            re = resolve_func_from_call(r, (sc_func*)tgt, ppl, ctype);
         }
     }
     return re;
@@ -1521,7 +1536,7 @@ static inline resolve_error resolve_ast_node_raw(
             assert(!value);
             if (ctype) *ctype = VOID_ELEM;
             if (resolved) return RE_OK;
-            return resolve_func(r, (sc_func*)n, ppl, false);
+            return resolve_func(r, (sc_func*)n, ppl);
         }
         case SYM_IMPORT_PARENT: {
             if (!resolved) {
@@ -1804,7 +1819,7 @@ resolve_error resolve_expr_body(
     return RE_OK;
 }
 // TODO: make sure we return!
-resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
+resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl)
 {
     ast_body* b = &fn->sc.body;
     symbol_table* st = b->symtab;
@@ -1829,7 +1844,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
         return RE_OK;
     }
     pp_resolve_node* prev_block_pprn = r->curr_block_pp_node;
-    r->curr_block_pp_node = NULL;
+    r->curr_block_pp_node = fn->pprn;
     ast_node** n = b->elements;
     ast_elem* stmt_ctype;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
@@ -1861,7 +1876,6 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl, bool from_call)
         bpprn->declaring_st = fn->sc.sym.declaring_st;
         bpprn->ppl = ppl;
         r->curr_block_pp_node = prev_block_pprn;
-        if (from_call) curr_pprn_add_dependency(r, bpprn);
         if (pp_resolve_node_activate(r, bpprn, re == RE_OK)) return RE_FATAL;
         fn->pprn = bpprn;
     }
