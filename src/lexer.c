@@ -489,17 +489,17 @@ static token* lx_load(lexer* tk)
                             case '\t': break;
                             case '*': {
                                 curr = lx_peek_char(tk);
-                                tok->start++;
                                 if (curr == '/') {
                                     lx_void_char_peek(tk);
+                                    tok->start++;
                                     nest_count--;
                                 }
                             } break;
                             case '/': {
                                 curr = lx_peek_char(tk);
-                                tok->start++;
                                 if (curr == '*') {
                                     lx_void_char_peek(tk);
+                                    tok->start++;
                                     nest_count++;
                                 }
                             } break;
