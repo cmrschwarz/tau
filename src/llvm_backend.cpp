@@ -851,39 +851,74 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     llvm_error lle = lookupCType(var->ctype, &t, &align, NULL);
     if (lle) return lle;
     auto state = lookupValueState(var->var_id);
-    bool generated = true;
+    bool generate = false;
+    bool gen_stub = false;
     llvm::Value** llvar = (llvm::Value**)lookupAstElem(var->var_id);
-    if (*state == IMPL_ADDED || *state == STUB_ADDED ||
-        *state == PP_IMPL_ADDED || *state == PP_STUB_ADDED) {
+    switch (*state) {
+        // in case it's added we can just use it.
+        // there are no "no longer pp" worries
+        // since that would have been reset to GENERATED
+        case IMPL_ADDED:
+        case STUB_ADDED:
+        case PP_IMPL_ADDED:
+        case PP_STUB_ADDED: break;
+
+        case PP_STUB_GENERATED: {
+            if (_pp_mode) {
+                assert(isLocalID(var->var_id));
+                assert(!isPPSymbolGlobal((symbol*)var));
+                *state = PP_STUB_ADDED;
+                _module->getGlobalList().push_back(
+                    (llvm::GlobalVariable*)*llvar);
+                _reset_after_emit.push_back(var->var_id);
+            }
+            else {
+                (**llvar).deleteValue();
+                *state = IMPL_ADDED;
+                generate = true;
+            }
+        } break;
+        case STUB_GENERATED: {
+            assert(isGlobalID(var->var_id));
+            *state = STUB_ADDED;
+            _module->getGlobalList().push_back((llvm::GlobalVariable*)*llvar);
+            _reset_after_emit.push_back(var->var_id);
+        } break;
+        case IMPL_DESTROYED: {
+            *state = STUB_ADDED;
+            gen_stub = true;
+            generate = true;
+        } break;
+        case PP_IMPL_DESTROYED: {
+            if (_pp_mode) {
+                *state = PP_STUB_ADDED;
+                gen_stub = true;
+                generate = true;
+            }
+            else if (!isIDInModule(var->var_id)) {
+                *state = STUB_ADDED;
+                generate = true;
+                gen_stub = true;
+            }
+            else {
+                *state = IMPL_ADDED;
+                generate = true;
+            }
+
+        } break;
+        case NOT_GENERATED: {
+            *state = _pp_mode ? PP_IMPL_ADDED : IMPL_ADDED;
+            generate = true;
+        } break;
+        default: assert(false);
     }
-    else if (!_pp_mode && *state == PP_STUB_GENERATED) {
-        (**llvar).deleteValue();
-        generated = false;
-    }
-    else if (*state == STUB_GENERATED) {
-        assert(isGlobalID(var->var_id));
-        *state = STUB_ADDED;
-        _module->getGlobalList().push_back((llvm::GlobalVariable*)*llvar);
-        _reset_after_emit.push_back(var->var_id);
-    }
-    else if (*state == PP_STUB_GENERATED) {
-        assert(isLocalID(var->var_id));
-        assert(!isPPSymbolGlobal((symbol*)var));
-        *state = PP_STUB_ADDED;
-        _reset_after_emit.push_back(var->var_id);
-    }
-    else {
-        assert(*state == NOT_GENERATED || *state == PP_IMPL_DESTROYED);
-        *state = _pp_mode ? PP_IMPL_ADDED : IMPL_ADDED;
-        generated = false;
-    }
-    if (!generated) {
+    if (generate) {
         ast_node_kind k = var->sym.declaring_st->owning_node->kind;
         llvm::Value* var_val;
         if (k == ELEM_MDG_NODE || k == OSC_MODULE || k == OSC_EXTEND) {
             // global var
             llvm::GlobalVariable::LinkageTypes lt;
-            if (isLocalID(var->var_id)) {
+            if (isLocalID(var->var_id) || gen_stub) {
                 if (_pp_mode) {
                     _reset_after_emit.push_back(var->var_id);
                     lt = llvm::GlobalVariable::ExternalLinkage;
@@ -897,7 +932,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                 _reset_after_emit.push_back(var->var_id);
             }
             llvm::Constant* init = NULL;
-            if (n->kind == SYM_VAR_INITIALIZED && isIDInModule(var->var_id)) {
+            if (n->kind == SYM_VAR_INITIALIZED && !gen_stub) {
                 llvm::Value* v;
                 lle = genAstNode(
                     ((sym_var_initialized*)n)->initial_value, NULL, &v);
