@@ -163,6 +163,32 @@ PPRunner::PPRunner()
     link_dll(this, "/lib/x86_64-linux-gnu/libc.so.6");
     // link_lib(this, "/usr/lib/x86_64-linux-gnu/libc_nonshared.a");
 }
+
+llvm_error processEscapeSymbols(char** str_ptr)
+{
+    char* str = *str_ptr;
+    for (char* i = str; *i != '\0'; i++) {
+        if (*i == '\\') {
+            switch (*(i + 1)) {
+                case 'n': {
+                    memmove(str + 1, str, ptrdiff(i, str));
+                    i++;
+                    str++;
+                    *i = '\n';
+                } break;
+                case 'r': {
+                    memmove(str + 1, str, ptrdiff(i, str));
+                    i++;
+                    str++;
+                    *i = '\r';
+                } break;
+            }
+        }
+    }
+    *str_ptr = str;
+    return LLE_OK;
+}
+
 PPRunner::~PPRunner()
 {
 }
@@ -228,7 +254,8 @@ void LLVMBackend::addPrimitives()
         llvm::Type* t;
         switch (i) {
             case PT_INT:
-            // llvm expects bits, we store bytes (for now)
+            // llvm expects bits, we store bytes (for
+            // now)
             case PT_UINT: t = _builder.getIntNTy(PRIMITIVES[i].size * 8); break;
             case PT_BINARY_STRING:
             case PT_STRING: t = _builder.getInt8PtrTy(); break;
@@ -240,8 +267,9 @@ void LLVMBackend::addPrimitives()
                     t = _builder.getDoubleTy();
                 }
                 else {
-                    // TODO: decide on supported architectures and handle
-                    // this accordingly
+                    // TODO: decide on supported
+                    // architectures and handle this
+                    // accordingly
                     assert(false);
                     return;
                 }
@@ -403,7 +431,8 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     TIME(lle = emitModule(););
     tflush();
     // PERF: instead of this last minute checking
-    // just have different buffers for the different reset types
+    // just have different buffers for the different
+    // reset types
     resetAfterEmit();
     delete _module;
     _local_value_store.assign(_private_sym_count, NULL);
@@ -507,7 +536,8 @@ LLVMBackend::genPPFunc(const std::string& func_name, ptrlist* resolve_nodes)
     ctx.first_block = func_block;
     ctx.following_block = NULL;
     _curr_fn = func;
-    // only used in genScopeValue and thats never called here
+    // only used in genScopeValue and thats never called
+    // here
     _curr_fn_ast_node = NULL;
     _builder.SetInsertPoint(func_block);
 
@@ -598,15 +628,18 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
                 if (isGlobalID(st->id) && isIDInModule(st->id)) {
                     _globals_not_to_free.push_back(st->id);
                 }
-                // PERF: we could steal the array of elements for our types
-                // here this might be too big because of nested structs etc.
-                // but it's definitely big enough
+                // PERF: we could steal the array of
+                // elements for our types here this
+                // might be too big because of nested
+                // structs etc. but it's definitely big
+                // enough
                 auto members = (llvm::Type**)pool_alloc(
                     &_tc->permmem,
                     sizeof(llvm::Type*) * st->sc.body.symtab->decl_count);
                 ureg memcnt = 0;
                 for (ast_node** i = st->sc.body.elements; *i; i++) {
-                    // TODO: usings, static members, etc.
+                    // TODO: usings, static members,
+                    // etc.
                     if ((**i).kind == SYM_VAR ||
                         (**i).kind == SYM_VAR_INITIALIZED) {
                         if (ast_flags_get_static((**i).flags)) {
@@ -635,8 +668,8 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             }
         } break;
         case TYPE_POINTER: {
-            // this is the alignment requirement of the pointer itself, not
-            // the base type
+            // this is the alignment requirement of the
+            // pointer itself, not the base type
             if (align) *align = PRIMITIVES[PT_VOID_PTR].alignment;
             if (size) *size = PRIMITIVES[PT_VOID_PTR].size;
             if (!t) return LLE_OK;
@@ -647,7 +680,9 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
         } break;
         default: {
             assert(false); // TODO
-            if (t) *t = NULL; // to silcence -Wmaybe-uninitialized :(
+            if (t)
+                *t = NULL; // to silcence
+                           // -Wmaybe-uninitialized :(
         }
     }
     return LLE_OK;
@@ -726,7 +761,8 @@ llvm_error LLVMBackend::genIfBranch(ast_node* branch)
     llvm_error lle;
     bool ret;
     if (branch->kind == EXPR_BLOCK) {
-        // TODO: we might need to cast the expr block return type?
+        // TODO: we might need to cast the expr block
+        // return type?
         auto eb = (expr_block*)branch;
         eb->control_flow_ctx = &ctx;
         ret = (eb->ctype != UNREACHABLE_ELEM);
@@ -938,7 +974,8 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     ((sym_var_initialized*)n)->initial_value, NULL, &v);
                 if (lle) return lle;
                 if (!(init = llvm::dyn_cast<llvm::Constant>(v))) {
-                    // TODO: global varialble initializers
+                    // TODO: global varialble
+                    // initializers
                     assert(false); // must be constant
                     return LLE_FATAL;
                 }
@@ -997,7 +1034,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case OSC_MODULE:
         case OSC_EXTEND:
             assert(!vl);
-            return LLE_OK; // these are handled by the osc iterator
+            return LLE_OK; // these are handled by the
+                           // osc iterator
         case SC_STRUCT: return lookupCType((ast_elem*)n, NULL, NULL, NULL);
         case SC_FUNC: return genFunction((sc_func*)n, vl);
         case EXPR_OP_BINARY:
@@ -1018,6 +1056,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     return LLE_OK;
                 }
                 case PT_STRING: {
+                    lle = processEscapeSymbols(&l->value.str);
+                    if (lle) return lle;
                     auto c = _builder.CreateGlobalStringPtr(l->value.str);
                     if (!c) return LLE_FATAL;
                     assert(!vl);
@@ -1442,7 +1482,8 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         return LLE_OK;
     }
     else if (*state == PP_IMPL_DESTROYED) {
-        // we disabled this in favor of using stubs (--> PP_IMPL_GENERATED)
+        // we disabled this in favor of using stubs (-->
+        // PP_IMPL_GENERATED)
         assert(false);
         auto fun = PP_RUNNER->exec_session.lookup(
             llvm::orc::JITDylibSearchList(
@@ -1494,7 +1535,8 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         func_sig = llvm::FunctionType::get(ret_type, false);
         if (!func_sig) return LLE_FATAL;
     }
-    // TODO: ugly hack,  use a proper extern function ast node
+    // TODO: ugly hack,  use a proper extern function
+    // ast node
     bool extern_func = (fn->sc.body.srange == SRC_RANGE_INVALID);
     auto func_name_mangled = extern_func ? std::string(fn->sc.sym.name)
                                          : name_mangle(fn, *_data_layout);
@@ -1596,7 +1638,8 @@ llvm_error LLVMBackend::emitModuleToStream(
 
     if (_target_machine->addPassesToEmitFile(
             CodeGenPasses, *stream, nullptr, file_type)) {
-        llvm::errs() << "TheTargetMachine can't emit a file of this type\n";
+        llvm::errs() << "TheTargetMachine can't emit a "
+                        "file of this type\n";
         return LLE_FATAL;
     }
     CodeGenPasses.run(*_module);

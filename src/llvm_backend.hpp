@@ -97,6 +97,8 @@ enum ValueState : char {
     STUB_ADDED,
 };
 
+llvm_error processEscapeSymbols(char** str_ptr);
+
 struct LLVMBackend {
 
   private:
