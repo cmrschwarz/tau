@@ -35,6 +35,12 @@ src_file* ast_node_get_file(ast_node* n, symbol_table* st)
     assert(f);
     return f;
 }
+void ast_node_fill_src_range(
+    ast_node* n, symbol_table* st, src_range_large* srl)
+{
+    src_range_unpack(n->srange, srl);
+    if (!srl->file) srl->file = ast_node_get_file(n, st);
+}
 char* ast_elem_get_label(ast_elem* n, bool* lbl)
 {
     char* name;

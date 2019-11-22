@@ -20,10 +20,7 @@ void debug_utils_free_res();
     do {                                                                       \
         timer ____timer_reserved_name_for_bench_macro;                         \
         timer_init(&____timer_reserved_name_for_bench_macro);                  \
-        {                                                                      \
-            code                                                               \
-        }                                                                      \
-        timer_stop(&____timer_reserved_name_for_bench_macro);                  \
+        {code} timer_stop(&____timer_reserved_name_for_bench_macro);           \
         timespan ____timespan_reserved_name_for_bench_macro;                   \
         timer_get_elapsed(                                                     \
             &____timer_reserved_name_for_bench_macro,                          \

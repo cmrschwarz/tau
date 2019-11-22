@@ -18,6 +18,7 @@ typedef enum resolve_error_e {
     RE_DIFFERENT_PP_LEVEL,
     RE_UNKNOWN_SYMBOL,
     RE_TYPE_LOOP,
+    RE_PP_DEPS_LOOP,
     RE_OVERLOADED,
 
     RE_REQUIRES_BODY_TYPE,
@@ -37,9 +38,11 @@ typedef struct pp_resolve_node_s {
     ureg pending_pastes;
     bool result_used;
     bool run_when_done; // false for exprs in functions
+    struct pp_resolve_node_s* parent; // gets informed once this is pending
     struct pp_resolve_node_s* last_child;
-    struct pp_resolve_node_s* parent;
-    ANONYMOUS_UNION_START struct pp_resolve_node_s* first_unresolved_child;
+    struct pp_resolve_node_s** waiting_list_entry;
+    ANONYMOUS_UNION_START
+    struct pp_resolve_node_s* first_unresolved_child;
     struct pp_resolve_node_s* next;
     ANONYMOUS_UNION_END
 } pp_resolve_node;
@@ -67,8 +70,17 @@ typedef struct resolver_s {
     ureg private_sym_count;
     // dealing with the preprocessor
     freelist pp_resolve_nodes;
-    ptrlist pp_resolve_nodes_pending; // dep_count = 0, but unresolved
-    ptrlist pp_resolve_nodes_ready; // resolved and ready to run
+
+    // dep count > 0, what remains in the end are cyclic dependencies
+    sbuffer pp_resolve_nodes_waiting;
+
+    // dep_count == 0, but unresolved.
+    // when run with the parent it's not added here
+    ptrlist pp_resolve_nodes_pending;
+
+    // resolved and ready to run. cleared after every run
+    ptrlist pp_resolve_nodes_ready;
+
     pp_resolve_node* curr_pp_node;
     pp_resolve_node* curr_block_pp_node;
     sym_var* curr_var_decl;

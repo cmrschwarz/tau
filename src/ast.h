@@ -586,7 +586,8 @@ ast_body* ast_elem_get_body(ast_elem* s);
 char* ast_elem_get_label(ast_elem* n, bool* lbl);
 src_file* open_scope_get_file(open_scope* s);
 src_file* ast_node_get_file(ast_node* n, symbol_table* st);
-
+void ast_node_fill_src_range(
+    ast_node* n, symbol_table* st, src_range_large* srl);
 bool ast_body_is_braced(ast_body* b);
 
 bool is_unary_op_postfix(operator_kind t);

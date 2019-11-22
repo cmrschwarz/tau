@@ -203,6 +203,14 @@ pp_resolve_node_activate(resolver* r, pp_resolve_node* pprn, bool resolved)
             res = ptrlist_append(&r->pp_resolve_nodes_ready, pprn);
         }
         if (res) return RE_FATAL;
+        pprn->waiting_list_entry = NULL;
+    }
+    else {
+        pp_resolve_node** res = sbuffer_append(
+            &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*));
+        if (!res) return RE_FATAL;
+        *res = pprn;
+        pprn->waiting_list_entry = res;
     }
     return RE_OK;
 }
@@ -692,31 +700,6 @@ static inline resolve_error resolve_no_block_macro_call(
     assert(false); // TODO
 }
 
-resolve_error
-resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl, ast_elem** ctype)
-{
-    ureg fnppl = fn->sc.sym.declaring_st->ppl;
-    resolve_error re;
-    if (ast_flags_get_resolved(fn->sc.sym.node.flags)) {
-        if (!fn->pprn) return RE_OK;
-    }
-    else {
-        if (!fn->pprn) {
-            fn->pprn = pp_resolve_node_create(
-                r, (ast_node*)fn, fn->sc.sym.declaring_st, false, false, fnppl);
-            if (!fn->pprn) return RE_FATAL;
-        }
-        re = resolve_ast_node(
-            r, fn->return_type, fn->sc.sym.declaring_st, fnppl,
-            &fn->return_ctype, NULL);
-        if (re) return re;
-    }
-    if (ctype) *ctype = fn->return_ctype;
-    re = curr_pprn_add_dependency(r, fn->pprn);
-    if (re) return re;
-    return RE_OK;
-    // return resolve_func(r, fn, ppl, true);
-}
 // we need a seperate func_st for cases like foo::bar()
 resolve_error resolve_func_call(
     resolver* r, expr_call* c, symbol_table* st, ureg ppl, char* func_name,
@@ -1826,6 +1809,32 @@ resolve_error resolve_expr_body(
     }
     return RE_OK;
 }
+
+resolve_error
+resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl, ast_elem** ctype)
+{
+    ureg fnppl = fn->sc.sym.declaring_st->ppl;
+    resolve_error re;
+    if (ast_flags_get_resolved(fn->sc.sym.node.flags)) {
+        if (ctype) *ctype = fn->return_ctype;
+        if (!fn->pprn) return RE_OK; // fn already emitted
+    }
+    else {
+        if (!fn->pprn) {
+            fn->pprn = pp_resolve_node_create(
+                r, (ast_node*)fn, fn->sc.sym.declaring_st, false, false, fnppl);
+            if (!fn->pprn) return RE_FATAL;
+        }
+        re = resolve_ast_node(
+            r, fn->return_type, fn->sc.sym.declaring_st, fnppl,
+            &fn->return_ctype, NULL);
+        if (re) return re;
+        if (ctype) *ctype = fn->return_ctype;
+    }
+    re = curr_pprn_add_dependency(r, fn->pprn);
+    if (re) return re;
+    return RE_OK;
+}
 // TODO: make sure we return!
 resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl)
 {
@@ -1852,6 +1861,11 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl)
         return RE_OK;
     }
     pp_resolve_node* prev_block_pprn = r->curr_block_pp_node;
+    if (!fn->pprn) {
+        fn->pprn = pp_resolve_node_create(
+            r, (ast_node*)fn, fn->sc.sym.declaring_st, false, false, ppl);
+        if (!fn->pprn) return RE_FATAL;
+    }
     r->curr_block_pp_node = fn->pprn;
     ast_node** n = b->elements;
     ast_elem* stmt_ctype;
@@ -1878,18 +1892,8 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl)
     // this must be reset before we call add dependency
     r->curr_block_owner = parent_block_owner;
     pp_resolve_node* bpprn = r->curr_block_pp_node;
-    if (bpprn) {
-        assert(bpprn->node == (ast_node*)fn);
-        bpprn->node = (ast_node*)fn;
-        bpprn->declaring_st = fn->sc.sym.declaring_st;
-        bpprn->ppl = ppl;
-        r->curr_block_pp_node = prev_block_pprn;
-        if (pp_resolve_node_activate(r, bpprn, re == RE_OK)) return RE_FATAL;
-        fn->pprn = bpprn;
-    }
-    else {
-        r->curr_block_pp_node = prev_block_pprn;
-    }
+    r->curr_block_pp_node = prev_block_pprn;
+    re = pp_resolve_node_activate(r, bpprn, re == RE_OK);
     if (re) return re;
     if (stmt_ctype_ptr && fn->return_ctype != VOID_ELEM) {
         ureg brace_end = src_range_get_end(fn->sc.body.srange);
@@ -2012,20 +2016,29 @@ resolve_error resolver_cleanup(resolver* r, ureg startid)
     if (res) return RE_FATAL;
     return RE_OK;
 }
-// this is just for debugging purposes
+
+// this stuff is just for debugging purposes
+void print_pprnlist(resolver* r, sbuffer* buff, char* msg)
+{
+    if (sbuffer_get_used_size(buff) == 0) return;
+    puts(msg);
+    sbuffer_iterator sbi = sbuffer_iterator_begin(buff);
+    for (pp_resolve_node** rn =
+             sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
+         rn; rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*))) {
+        assert((**rn).node != NULL);
+        printf("    dep count: %zu\n", (**rn).dep_count);
+        print_indent(1);
+        print_ast_node((**rn).node, r->curr_mdg, 1);
+        puts("");
+    }
+}
+
 void print_pprns(resolver* r)
 {
-    if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
-        puts("ready pprns:");
-        pli it = pli_begin(&r->pp_resolve_nodes_ready);
-        for (pp_resolve_node* rn = pli_next(&it); rn; rn = pli_next(&it)) {
-            assert(rn->node != NULL);
-            printf("    dep count: %zu\n", rn->dep_count);
-            print_indent(1);
-            print_ast_node(rn->node, r->curr_mdg, 1);
-            puts("");
-        }
-    }
+    print_pprnlist(r, &r->pp_resolve_nodes_ready, "resady:");
+    print_pprnlist(r, &r->pp_resolve_nodes_pending, "pending:");
+    print_pprnlist(r, &r->pp_resolve_nodes_waiting, "waiting:");
 }
 resolve_error
 pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress);
@@ -2057,6 +2070,15 @@ pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
     pprn->dep_count--;
     if (pprn->dep_count == 0) {
         *progress = true;
+        if (pprn->waiting_list_entry) {
+            sbuffer_iterator sbi =
+                sbuffer_iterator_begin_at_end(&r->pp_resolve_nodes_waiting);
+            pp_resolve_node** last =
+                sbuffer_iterator_previous(&sbi, sizeof(pp_resolve_node*));
+            *pprn->waiting_list_entry = *last;
+            sbuffer_remove_back(
+                &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node**));
+        }
         if (pprn->parent) {
             if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
                 return RE_FATAL;
@@ -2070,6 +2092,24 @@ pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
     }
     return RE_OK;
 }
+resolve_error report_cyclic_pp_deps(resolver* r)
+{
+    sbuffer_iterator sbi = sbuffer_iterator_begin(&r->pp_resolve_nodes_waiting);
+    pp_resolve_node** rn =
+        sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
+    if (!rn) return RE_OK;
+    // TODO: create a nice cycle display instead of dumping out everything
+    do {
+        src_range_large srl;
+        ast_node_fill_src_range((**rn).node, (**rn).declaring_st, &srl);
+        error_log_report_annotated(
+            r->tc->err_log, ES_RESOLVER, false,
+            "encountered cyclic dependency during preprocessor execution",
+            srl.file, srl.start, srl.end, "loop contains this element");
+        rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
+    } while (rn);
+    return RE_PP_DEPS_LOOP;
+}
 resolve_error resolver_run_pp_resolve_nodes(resolver* r)
 {
     llvm_error lle;
@@ -2077,8 +2117,8 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
     bool progress;
     do {
         progress = false;
+        print_pprns(r);
         if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
-            print_pprns(r);
             lle = llvm_backend_run_pp(
                 r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
                 &r->pp_resolve_nodes_ready);
@@ -2155,7 +2195,9 @@ resolve_error resolver_handle_post_pp(resolver* r)
             if (re) return re;
         }
     }
-    return resolver_run_pp_resolve_nodes(r);
+    re = resolver_run_pp_resolve_nodes(r);
+    if (re) return re;
+    return report_cyclic_pp_deps(r);
 }
 int resolver_resolve(
     resolver* r, mdg_node** start, mdg_node** end, ureg* startid)
@@ -2215,9 +2257,10 @@ int resolver_partial_fin(resolver* r, int i, int res)
 {
     switch (i) {
         case -1:
-        case 6: llvm_backend_delete(r->backend);
-        case 5: ptrlist_fin(&r->pp_resolve_nodes_ready);
-        case 4: ptrlist_fin(&r->pp_resolve_nodes_pending);
+        case 7: llvm_backend_delete(r->backend);
+        case 6: ptrlist_fin(&r->pp_resolve_nodes_ready);
+        case 5: ptrlist_fin(&r->pp_resolve_nodes_pending);
+        case 4: sbuffer_fin(&r->pp_resolve_nodes_waiting);
         case 3: freelist_fin(&r->pp_resolve_nodes);
         case 2: sbuffer_fin(&r->call_types);
         case 1: stack_fin(&r->error_stack);
@@ -2239,12 +2282,15 @@ int resolver_init(resolver* r, thread_context* tc)
     e = freelist_init(
         &r->pp_resolve_nodes, &r->tc->permmem, sizeof(pp_resolve_node));
     if (e) return resolver_partial_fin(r, 2, e);
-    e = ptrlist_init(&r->pp_resolve_nodes_pending, 16);
+    e = sbuffer_init(
+        &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*) * 16);
     if (e) return resolver_partial_fin(r, 3, e);
-    e = ptrlist_init(&r->pp_resolve_nodes_ready, 16);
+    e = ptrlist_init(&r->pp_resolve_nodes_pending, 16);
     if (e) return resolver_partial_fin(r, 4, e);
+    e = ptrlist_init(&r->pp_resolve_nodes_ready, 16);
+    if (e) return resolver_partial_fin(r, 5, e);
     r->backend = llvm_backend_new(r->tc);
-    if (!r->backend) return resolver_partial_fin(r, 3, ERR);
+    if (!r->backend) return resolver_partial_fin(r, 6, ERR);
     r->allow_type_loops = false;
     r->type_loop_start = NULL;
     r->curr_block_owner = NULL;
