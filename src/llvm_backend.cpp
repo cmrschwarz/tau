@@ -970,12 +970,14 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             llvm::Constant* init = NULL;
             if (n->kind == SYM_VAR_INITIALIZED && !gen_stub) {
                 llvm::Value* v;
+                // TODO: we get some dumb crashes here if the var is used
+                // in its own initialization. we will eventually have to check
+                // for the const'ness of the initializer in the resolver
                 lle = genAstNode(
                     ((sym_var_initialized*)n)->initial_value, NULL, &v);
                 if (lle) return lle;
                 if (!(init = llvm::dyn_cast<llvm::Constant>(v))) {
-                    // TODO: global varialble
-                    // initializers
+                    // even global varialble initializers must use hash
                     assert(false); // must be constant
                     return LLE_FATAL;
                 }

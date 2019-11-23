@@ -1572,7 +1572,13 @@ static inline resolve_error resolve_ast_node_raw(
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: {
             sym_var* v = (sym_var*)n;
-            if (resolved) RETURN_RESOLVED(value, ctype, v, v->ctype);
+            if (resolved) {
+                if (v->pprn) {
+                    re = curr_pprn_add_dependency(r, v->pprn);
+                    if (re) return re;
+                }
+                RETURN_RESOLVED(value, ctype, v, v->ctype);
+            }
             return resolve_var(r, st, ppl, v, value, ctype);
         }
         case EXPR_RETURN:
