@@ -1899,6 +1899,7 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl)
     r->curr_block_owner = parent_block_owner;
     pp_resolve_node* bpprn = r->curr_block_pp_node;
     r->curr_block_pp_node = prev_block_pprn;
+    if (re) return re; // we could have had a break from the resolution loop
     re = pp_resolve_node_activate(r, bpprn, re == RE_OK);
     if (re) return re;
     if (stmt_ctype_ptr && fn->return_ctype != VOID_ELEM) {
