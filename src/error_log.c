@@ -598,7 +598,7 @@ int print_src_line(
             ureg squig_len =
                 (ep_pos->col_end - ep_pos->col_start) +
                 (ep_pos->length_diff_end - ep_pos->length_diff_start);
-            bool msg_before = space_before + squig_len > msg_len + 2;
+            bool msg_before = space_before > msg_len + 2;
             if (msg_before) {
                 sreg blank_space = (sreg)space_before - msg_len;
                 for (sreg i = 0; i < blank_space; i++) pe(" ");
