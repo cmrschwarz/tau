@@ -6,6 +6,7 @@
 const char* token_strings[255] = {
     [TK_KW_MODULE] = "module",
     [TK_KW_MACRO] = "macro",
+    [TK_KW_PASTE] = "paste",
     [TK_KW_EXTEND] = "extend",
     [TK_KW_REQUIRE] = "require",
     [TK_KW_IMPORT] = "import",

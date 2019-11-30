@@ -20,7 +20,7 @@ typedef enum resolve_error_e {
     RE_TYPE_LOOP,
     RE_PP_DEPS_LOOP,
     RE_OVERLOADED,
-
+    RE_UNREALIZED_PASTE,
     RE_REQUIRES_BODY_TYPE,
     RE_SYMBOL_NOT_FOUND_YET,
 } resolve_error;

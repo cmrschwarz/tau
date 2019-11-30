@@ -1391,6 +1391,36 @@ parse_error parse_loop(parser* p, ast_node** tgt)
     *tgt = (ast_node*)l;
     return parse_braced_namable_body(p, (ast_node*)l, &l->body, &l->name);
 }
+parse_error parse_paste(parser* p, ast_node** tgt)
+{
+    token* t = lx_aquire(&p->lx);
+    ureg start = t->start;
+    lx_void(&p->lx);
+    PEEK(p, t);
+    if (t->kind != TK_PAREN_OPEN) {
+        return parser_error_2a(
+            p, "invalid paste syntax", t->start, t->end,
+            "expected opening parenthesis", start, t->end, NULL);
+    }
+    lx_void(&p->lx);
+    ast_node* expr;
+    parse_error pe = parse_expression(p, &expr);
+    if (pe) return pe;
+    PEEK(p, t);
+    if (t->kind != TK_PAREN_CLOSE) {
+        return parser_error_2a(
+            p, "invalid paste syntax", t->start, t->end,
+            "expected paste string", start, t->end, NULL);
+    }
+    lx_void(&p->lx);
+    expr_paste_str* ps = alloc_perm(p, sizeof(expr_paste_str));
+    if (!ps) return PE_FATAL;
+    ast_node_init((ast_node*)ps, EXPR_PASTE_STR);
+    ast_node_fill_srange(p, (ast_node*)ps, start, t->end);
+    ps->value = expr;
+    *tgt = (ast_node*)ps;
+    return PE_OK;
+}
 parse_error parse_match(parser* p, ast_node** tgt)
 {
     token* t = lx_aquire(&p->lx);
@@ -1631,6 +1661,8 @@ static inline parse_error parse_value_expr(parser* p, ast_node** ex)
         case TK_HASH: return parse_pp_expr(p, ex);
 
         case TK_KW_IF: return parse_if(p, ex);
+
+        case TK_KW_PASTE: return parse_paste(p, ex);
 
         case TK_KW_RETURN: return parse_return(p, ex);
 

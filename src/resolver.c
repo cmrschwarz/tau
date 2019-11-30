@@ -32,6 +32,9 @@ resolve_error resolve_expr_scope_access(
     access_modifier* access, ast_elem** value, ast_elem** ctype);
 resolve_error get_resolved_symbol_symtab(
     resolver* r, symbol* s, access_modifier* access, symbol_table** tgt_st);
+resolve_error
+resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl, ast_elem** ctype);
+
 // must be a macro so value and ctype become lazily evaluated
 #define RETURN_RESOLVED(pvalue, pctype, value, ctype)                          \
     do {                                                                       \
@@ -422,6 +425,7 @@ static resolve_error add_ast_node_decls(
         case EXPR_SCOPE_ACCESS:
         case EXPR_MEMBER_ACCESS:
         case EXPR_PARENTHESES:
+        case EXPR_PASTE_STR:
         case EXPR_OP_UNARY: {
             // only called inside an expression context.
             // we add the symbols individually to avoid use before define
@@ -1379,7 +1383,33 @@ static inline resolve_error resolve_expr_pp(
     ast_flags_set_resolved(&ppe->node.flags);
     return RE_OK;
 }
+static inline resolve_error resolve_expr_paste_str(
+    resolver* r, symbol_table* st, ureg ppl, expr_paste_str* eps,
+    ast_elem** value, ast_elem** ctype)
+{
+    ast_elem* val_type;
+    resolve_error re =
+        resolve_ast_node(r, eps->value, st, ppl, NULL, &val_type);
+    if (re) return re;
+    ast_flags_set_resolved(&eps->node.flags);
 
+    if (!ctypes_unifiable(val_type, (ast_elem*)&PRIMITIVES[PT_STRING])) {
+        src_range_large paste_srl, val_srl;
+        ast_node_fill_src_range((ast_node*)eps, st, &paste_srl);
+        ast_node_fill_src_range(eps->value, st, &val_srl);
+        error_log_report_annotated_twice(
+            r->tc->err_log, ES_RESOLVER, false,
+            "incompatible type in paste argument", val_srl.file, val_srl.start,
+            val_srl.end, "paste expects a string as an argument",
+            paste_srl.file, paste_srl.start, paste_srl.end, NULL);
+        return RE_TYPE_MISSMATCH;
+    }
+    pp_resolve_node* pprn =
+        pp_resolve_node_create(r, eps, st, false, true, ppl);
+    re = curr_pp_block_add_child(r, pprn);
+    if (re) return re;
+    return RE_UNREALIZED_PASTE;
+}
 static inline void
 report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl);
 // the symbol table is not the one that contains the symbol, but the one
@@ -1648,6 +1678,14 @@ static inline resolve_error resolve_ast_node_raw(
             }
             return resolve_expr_pp(r, st, ppl, ppe, value, ctype);
         }
+        case EXPR_PASTE_STR: {
+            if (resolved) {
+                RETURN_RESOLVED(value, ctype, PASTE_EXPR_ELEM, PASTE_EXPR_ELEM);
+                return RE_OK;
+            }
+            return resolve_expr_paste_str(
+                r, st, ppl, (expr_paste_str*)n, value, ctype);
+        } break;
         case EXPR_MATCH: {
             // TODO ctype
             if (ctype) *ctype = NULL;

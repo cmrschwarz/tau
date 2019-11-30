@@ -8,6 +8,7 @@
 
 #define VOID_ELEM ((ast_elem*)&PRIMITIVES[PT_VOID])
 #define UNREACHABLE_ELEM ((ast_elem*)&PRIMITIVES[PT_UNREACHABLE])
+#define PASTE_EXPR_ELEM ((ast_elem*)&PRIMITIVES[PT_UNREACHABLE])
 #define TYPE_ELEM ((ast_elem*)&PRIMITIVES[PT_TYPE])
 
 typedef struct mdg_node_s mdg_node;
@@ -52,6 +53,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     EXPR_CONTINUE,
     EXPR_BREAK,
     EXPR_MATCH,
+    EXPR_PASTE_STR,
     EXPR_IF,
     EXPR_WHILE,
     EXPR_DO_WHILE,
@@ -157,6 +159,7 @@ typedef enum PACK_ENUM primitive_kind_e {
     PT_BINARY_STRING,
     PT_TYPE,
     PT_VOID_PTR,
+    PT_PASTED_EXPR,
     PRIMITIVE_COUNT,
 } primitive_kind;
 
@@ -344,6 +347,13 @@ typedef struct expr_pp_s {
         } state;
     } result_buffer;
 } expr_pp;
+
+// TODO: add "syntactical pasting" paste{}
+// we can depend on this always being after a expr_pp of sorts
+typedef struct expr_paste_str_s {
+    ast_node node;
+    ast_node* value; // ctype shall always be string
+} expr_paste_str;
 
 typedef struct match_arm_s {
     ast_node* condition;

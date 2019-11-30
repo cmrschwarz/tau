@@ -20,6 +20,7 @@ primitive PRIMITIVES[] = {
     mk_prim(PT_STRING, "string"),
     mk_prim(PT_BINARY_STRING, "bstring"),
     mk_prim(PT_VOID_PTR, "*void"),
+    mk_prim(PT_PASTED_EXPR, "Expr"),
     mk_prim(PT_TYPE, "type"),
 };
 

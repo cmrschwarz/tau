@@ -182,7 +182,9 @@ static void free_astn_symtabs(ast_node* n)
         } break;
 
         case EXPR_PP: free_astn_symtabs(((expr_pp*)n)->pp_expr); break;
-
+        case EXPR_PASTE_STR: {
+            free_astn_symtabs(((expr_paste_str*)n)->value);
+        } break;
         case EXPR_MATCH: {
             expr_match* em = (expr_match*)n;
             free_astn_symtabs(em->match_expr);
