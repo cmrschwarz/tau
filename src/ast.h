@@ -352,6 +352,7 @@ typedef struct expr_pp_s {
 // we can depend on this always being after a expr_pp of sorts
 typedef struct expr_paste_str_s {
     ast_node node;
+    expr_pp* target;
     ast_node* value; // ctype shall always be string
 } expr_paste_str;
 

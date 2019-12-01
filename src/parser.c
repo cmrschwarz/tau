@@ -1182,6 +1182,25 @@ parse_prefix_unary_op(parser* p, ast_node_kind op, ast_node** ex)
     *ex = (ast_node*)ou;
     return PE_OK;
 }
+parse_error get_pasting_target(
+    parser* p, ureg paste_start, ureg paste_end, expr_pp** target)
+{
+    sbuffer_iterator it = sbuffer_iterator_begin_at_end(&p->body_stack);
+    while (true) {
+        body_parse_data* bpd =
+            sbuffer_iterator_previous(&it, sizeof(body_parse_data));
+        if (!bpd) {
+            parser_error_1a(
+                p, "invalid paste", paste_start, paste_end,
+                "not inside a suitable preprocessor expression");
+            return PE_ERROR;
+        }
+        if (bpd->node->kind == EXPR_PP) {
+            *target = bpd->node;
+            return PE_OK;
+        }
+    }
+}
 parse_error get_breaking_target(
     parser* p, ast_node* requiring, ureg req_start, ureg req_end,
     ast_node** target, ureg* lbl_end, ast_node_kind break_kind)
@@ -1416,7 +1435,10 @@ parse_error parse_paste(parser* p, ast_node** tgt)
     expr_paste_str* ps = alloc_perm(p, sizeof(expr_paste_str));
     if (!ps) return PE_FATAL;
     ast_node_init((ast_node*)ps, EXPR_PASTE_STR);
-    ast_node_fill_srange(p, (ast_node*)ps, start, t->end);
+    pe = ast_node_fill_srange(p, (ast_node*)ps, start, t->end);
+    if (pe) return pe;
+    pe = get_pasting_target(p, start, t->end, &ps->target);
+    if (pe) return pe;
     ps->value = expr;
     *tgt = (ast_node*)ps;
     return PE_OK;
