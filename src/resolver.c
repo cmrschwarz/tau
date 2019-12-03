@@ -23,7 +23,8 @@ static resolve_error resolve_ast_node(
 static inline resolve_error resolve_ast_node_raw(
     resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
     ast_elem** ctype);
-resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl);
+resolve_error
+resolve_func(resolver* r, sc_func* fn, ureg ppl, ast_node** continue_block);
 resolve_error resolve_expr_body(
     resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b, ureg ppl,
     bool* end_reachable);
@@ -107,6 +108,7 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->last_child = NULL;
     pprn->parent = NULL;
     pprn->run_when_done = run_when_done;
+    pprn->block_pos_reachable = true;
     if (aseglist_init(&pprn->required_by)) return NULL;
     return pprn;
 }
@@ -178,6 +180,7 @@ curr_pprn_add_dependency(resolver* r, pp_resolve_node* dependency)
 static resolve_error
 curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
 {
+    if (child->parent) return RE_OK; // must be a rerun after a continuation
     pp_resolve_node* block;
     resolve_error re = get_curr_pprn(r, child, &block);
     if (re) return re;
@@ -199,7 +202,7 @@ pp_resolve_node_activate(resolver* r, pp_resolve_node* pprn, bool resolved)
 {
     if (pprn->dep_count == 0) {
         int res;
-        if (!resolved || !pprn->run_when_done) {
+        if (!resolved) {
             res = ptrlist_append(&r->pp_resolve_nodes_pending, pprn);
         }
         else if (pprn->run_when_done) {
@@ -1185,15 +1188,17 @@ static inline resolve_error resolve_var(
             }*/
         }
     }
-    if (!re) v->pprn = r->curr_var_pp_node;
+    v->pprn = r->curr_var_pp_node;
     r->curr_var_decl = prev_var_decl;
     r->curr_var_pp_node = prev_var_pp_node;
     r->curr_var_decl_block_owner = prev_var_decl_block_owner;
-    if (re) return re;
     if (v->pprn) {
+        resolve_error re_prev = re;
         re = curr_pp_block_add_child(r, v->pprn);
         if (re) return re;
+        re = re_prev;
     }
+    if (re) return re;
     ast_flags_set_resolved(&v->sym.node.flags);
     RETURN_RESOLVED(value, ctype, v, v->ctype);
 }
@@ -1571,7 +1576,7 @@ static inline resolve_error resolve_ast_node_raw(
             assert(!value);
             if (ctype) *ctype = VOID_ELEM;
             if (resolved) return RE_OK;
-            return resolve_func(r, (sc_func*)n, ppl);
+            return resolve_func(r, (sc_func*)n, ppl, NULL);
         }
         case SYM_IMPORT_PARENT: {
             if (!resolved) {
@@ -1902,40 +1907,48 @@ resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl, ast_elem** ctype)
     return RE_OK;
 }
 // TODO: make sure we return!
-resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl)
+resolve_error
+resolve_func(resolver* r, sc_func* fn, ureg ppl, ast_node** continue_block)
 {
     ast_body* b = &fn->sc.body;
     symbol_table* st = b->symtab;
     resolve_error re;
     ast_node* parent_block_owner = r->curr_block_owner;
+    pp_resolve_node* prev_block_pprn = r->curr_block_pp_node;
     r->curr_block_owner = (ast_node*)fn;
-    for (ureg i = 0; i < fn->param_count; i++) {
-        re = resolve_param(r, &fn->params[i], ppl, NULL);
+    if (!continue_block) {
+        for (ureg i = 0; i < fn->param_count; i++) {
+            re = resolve_param(r, &fn->params[i], ppl, NULL);
+            if (re) {
+                r->curr_block_owner = parent_block_owner;
+                return re;
+            }
+        }
+        re = resolve_ast_node(
+            r, fn->return_type, st, ppl, &fn->return_ctype, NULL);
         if (re) {
-            r->curr_block_owner = parent_block_owner;
             return re;
+            r->curr_block_owner = parent_block_owner;
+        }
+        if (b->srange == SRC_RANGE_INVALID) { // hack for external functions
+            ast_flags_set_resolved(&fn->sc.sym.node.flags);
+            r->curr_block_owner = parent_block_owner;
+            return RE_OK;
+        }
+        if (!fn->pprn) {
+            fn->pprn = pp_resolve_node_create(
+                r, (ast_node*)fn, fn->sc.sym.declaring_st, false, false, ppl);
+            if (!fn->pprn) return RE_FATAL;
         }
     }
-    re = resolve_ast_node(r, fn->return_type, st, ppl, &fn->return_ctype, NULL);
-    if (re) {
-        return re;
-        r->curr_block_owner = parent_block_owner;
-    }
-    if (b->srange == SRC_RANGE_INVALID) { // hack for external functions
-        ast_flags_set_resolved(&fn->sc.sym.node.flags);
-        r->curr_block_owner = parent_block_owner;
-        return RE_OK;
-    }
-    pp_resolve_node* prev_block_pprn = r->curr_block_pp_node;
-    if (!fn->pprn) {
-        fn->pprn = pp_resolve_node_create(
-            r, (ast_node*)fn, fn->sc.sym.declaring_st, false, false, ppl);
-        if (!fn->pprn) return RE_FATAL;
-    }
     r->curr_block_pp_node = fn->pprn;
-    ast_node** n = b->elements;
     ast_elem* stmt_ctype;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
+    ast_node** n = b->elements;
+    if (continue_block) {
+        n = continue_block;
+        if (!fn->pprn->block_pos_reachable) stmt_ctype_ptr = NULL;
+    }
     pp_resolve_node* prev_pprn = r->curr_pp_node;
     r->curr_pp_node = NULL;
     while (*n) {
@@ -1962,6 +1975,9 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl)
     if (re) {
         if (re == RE_UNREALIZED_PASTE) {
             bpprn->continue_block = n;
+            bpprn->block_pos_reachable = (stmt_ctype_ptr == NULL);
+            if (ptrlist_append(&r->pp_resolve_nodes_ready, bpprn))
+                return RE_FATAL;
             return RE_OK;
         }
         return re;
@@ -2143,6 +2159,15 @@ pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
     pprn->dep_count--;
     if (pprn->dep_count == 0) {
         *progress = true;
+        if (pprn->continue_block) {
+            if (pprn->node->kind == SC_FUNC) {
+                return resolve_func(
+                    r, (sc_func*)pprn->node, pprn->ppl, pprn->continue_block);
+            }
+            else {
+                assert(false); // TODO: expr blocks
+            }
+        }
         if (pprn->waiting_list_entry) {
             sbuffer_iterator sbi =
                 sbuffer_iterator_begin_at_end(&r->pp_resolve_nodes_waiting);

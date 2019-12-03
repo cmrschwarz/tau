@@ -238,7 +238,7 @@ LLVMBackend::~LLVMBackend()
 }
 void LLVMBackend::buildPasteHelpers()
 {
-    auto params = *new std::vector<llvm::Type*>{
+    auto& params = *new std::vector<llvm::Type*>{
         _primitive_types[PT_UINT], // this
         _primitive_types[PT_UINT], // paste target
         _primitive_types[PT_UINT] // pasted string
@@ -1355,7 +1355,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             llvm::Value* paste_val;
             lle = genAstNode(eps->value, NULL, &paste_val);
             if (lle) return lle;
-            auto args = *new std::vector<llvm::Value*>{
+            auto& args = *new std::vector<llvm::Value*>{
                 llvm::ConstantInt::get(_primitive_types[PT_UINT], (size_t)this),
                 llvm::ConstantInt::get(_primitive_types[PT_UINT], (size_t)n),
                 paste_val};

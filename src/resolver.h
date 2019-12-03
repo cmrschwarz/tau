@@ -40,13 +40,12 @@ typedef struct pp_resolve_node_s {
     ureg pending_pastes;
     bool result_used;
     bool run_when_done; // false for exprs in functions
+    bool block_pos_reachable;
     struct pp_resolve_node_s* parent; // gets informed once this is pending
     struct pp_resolve_node_s* last_child;
     struct pp_resolve_node_s** waiting_list_entry;
-    ANONYMOUS_UNION_START
     struct pp_resolve_node_s* first_unresolved_child;
     struct pp_resolve_node_s* next;
-    ANONYMOUS_UNION_END
 } pp_resolve_node;
 
 typedef struct resolver_s {
