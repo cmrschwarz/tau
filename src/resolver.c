@@ -1371,16 +1371,34 @@ static inline resolve_error resolve_expr_pp(
     }
     resolve_error re =
         resolve_ast_node_raw(r, ppe->pp_expr, st, ppl + 1, value, &ppe->ctype);
-
     if (pprn) {
         r->curr_pp_node = NULL;
         if (pp_resolve_node_activate(r, pprn, re == RE_OK)) {
             return RE_FATAL;
         }
+        if (pprn->pending_pastes) {
+            if (ppe->ctype != VOID_ELEM) {
+                src_range_large pp_srl;
+                ast_node_fill_src_range((ast_node*)ppe, st, &pp_srl);
+                // TODO: report where the value is coming from
+                error_log_report_annotated(
+                    r->tc->err_log, ES_RESOLVER, false,
+                    "pasting preprocessor expression can't return a value",
+                    pp_srl.file, pp_srl.start, pp_srl.end,
+                    "in this pp expression");
+                return RE_TYPE_MISSMATCH;
+            }
+            ppe->ctype = PASTED_EXPR_ELEM;
+            pprn->result_used = false;
+        }
+    }
+    if (re == RE_UNREALIZED_PASTE) {
+        assert(false); // TODO: figure out if this is possible?
     }
     if (re) return re;
     if (ctype) *ctype = ppe->ctype;
     ast_flags_set_resolved(&ppe->node.flags);
+    if (pprn && pprn->pending_pastes) return RE_UNREALIZED_PASTE;
     return RE_OK;
 }
 static inline resolve_error resolve_expr_paste_str(
@@ -1404,11 +1422,8 @@ static inline resolve_error resolve_expr_paste_str(
             paste_srl.file, paste_srl.start, paste_srl.end, NULL);
         return RE_TYPE_MISSMATCH;
     }
-    pp_resolve_node* pprn =
-        pp_resolve_node_create(r, eps, st, false, true, ppl);
-    re = curr_pp_block_add_child(r, pprn);
-    if (re) return re;
-    return RE_UNREALIZED_PASTE;
+    r->curr_pp_node->pending_pastes++;
+    RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
 }
 static inline void
 report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl);
@@ -1680,7 +1695,8 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_PASTE_STR: {
             if (resolved) {
-                RETURN_RESOLVED(value, ctype, PASTE_EXPR_ELEM, PASTE_EXPR_ELEM);
+                RETURN_RESOLVED(
+                    value, ctype, PASTED_EXPR_ELEM, PASTED_EXPR_ELEM);
                 return RE_OK;
             }
             return resolve_expr_paste_str(
@@ -1797,7 +1813,8 @@ resolve_error resolve_expr_body(
         saved_decl_count = b->symtab->decl_count;
         b->symtab->decl_count = 0;
     }
-    for (ast_node** n = b->elements; *n != NULL; n++) {
+    ast_node** n;
+    for (n = b->elements; *n != NULL; n++) {
         re = add_ast_node_decls(r, b->symtab, NULL, ppl, *n, false);
         if (re) break;
         re = resolve_ast_node(r, *n, b->symtab, ppl, NULL, stmt_ctype_ptr);
@@ -1806,26 +1823,27 @@ resolve_error resolve_expr_body(
             re = RE_SYMBOL_NOT_FOUND_YET;
             break;
         }
-        if (re && re != RE_TYPE_LOOP) break;
         if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
             stmt_ctype_ptr = NULL;
         }
-        if (!re) continue;
-        assert(re == RE_TYPE_LOOP);
-        if (r->type_loop_start == expr) {
-            if (r->retracing_type_loop) {
-                stack_clear(&r->error_stack);
+        if (re == RE_TYPE_LOOP) {
+            if (r->type_loop_start == expr) {
+                if (r->retracing_type_loop) {
+                    stack_clear(&r->error_stack);
+                }
+                parenting_type_loop = true;
             }
-            parenting_type_loop = true;
-        }
-        else if (!r->retracing_type_loop) {
-            parenting_type_loop = true;
+            else if (!r->retracing_type_loop) {
+                parenting_type_loop = true;
+            }
+            else {
+                break;
+            }
+            re = RE_OK;
         }
         else {
-            break;
+            if (re) break; // this includes RE_UNREALIZED_PASTE
         }
-        re = RE_OK;
-        continue;
     }
     if (saved_decl_count) {
         b->symtab->decl_count = saved_decl_count;
@@ -1843,15 +1861,19 @@ resolve_error resolve_expr_body(
         if (pp_resolve_node_activate(r, bpprn, re == RE_OK)) {
             return RE_FATAL;
         }
+        if (re == RE_UNREALIZED_PASTE) {
+            bpprn->continue_block = n;
+            re = RE_OK;
+        }
     }
     *end_reachable = (stmt_ctype_ptr != NULL);
     r->allow_type_loops = parent_allows_type_loops;
     r->curr_block_owner = parent_block_owner;
-    if (re) return re;
+    if (!re) return RE_OK;
     if (parenting_type_loop) {
         return RE_TYPE_LOOP;
     }
-    return RE_OK;
+    return re;
 }
 
 resolve_error
@@ -1937,7 +1959,13 @@ resolve_error resolve_func(resolver* r, sc_func* fn, ureg ppl)
     r->curr_block_owner = parent_block_owner;
     pp_resolve_node* bpprn = r->curr_block_pp_node;
     r->curr_block_pp_node = prev_block_pprn;
-    if (re) return re; // we could have had a break from the resolution loop
+    if (re) {
+        if (re == RE_UNREALIZED_PASTE) {
+            bpprn->continue_block = n;
+            return RE_OK;
+        }
+        return re;
+    }
     re = pp_resolve_node_activate(r, bpprn, re == RE_OK);
     if (re) return re;
     if (stmt_ctype_ptr && fn->return_ctype != VOID_ELEM) {

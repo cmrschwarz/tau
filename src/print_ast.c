@@ -91,8 +91,8 @@ void print_namable_braced_body(
     ast_body* body, char* name, mdg_node* cmdg, ureg indent)
 {
     if (name) {
-        p(name);
         pc('@');
+        p(name);
     }
     print_body_braced(body, cmdg, indent);
 }
@@ -414,6 +414,11 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             pc('#');
             print_ast_node(((expr_pp*)n)->pp_expr, cmdg, indent);
         } break;
+        case EXPR_PASTE_STR: {
+            p("paste(");
+            print_ast_node(((expr_paste_str*)n)->value, cmdg, indent);
+            pc(')');
+        } break;
         case SYM_NAMED_USING: {
             sym_named_using* nu = (sym_named_using*)n;
             print_ast_node_modifiers(nu->sym.node.flags);
@@ -456,11 +461,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
-            if (b->name) {
-                p(b->name);
-                pc('@');
-            }
-            print_body_braced(&b->body, cmdg, indent);
+            print_namable_braced_body(&b->body, b->name, cmdg, indent);
         } break;
         case SYM_VAR: {
             sym_var* v = (sym_var*)n;
@@ -586,8 +587,8 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             print_expr_in_parens(m->match_expr, cmdg, indent);
             pc(' ');
             if (m->name != NULL) {
-                p(m->name);
                 pc('@');
+                p(m->name);
             }
             p("{\n");
             match_arm** ma = (match_arm**)m->body.elements;

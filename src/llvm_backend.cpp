@@ -48,7 +48,7 @@ int llvm_initialize_primitive_information()
     PRIMITIVES[PT_UINT].size = reg_size;
     PRIMITIVES[PT_INT].size = reg_size;
     PRIMITIVES[PT_FLOAT].size = reg_size;
-
+    PRIMITIVES[PT_PASTED_EXPR].size = 32;
     PRIMITIVES[PT_STRING].size = reg_size;
     PRIMITIVES[PT_BINARY_STRING].size = reg_size;
     PRIMITIVES[PT_VOID].size = 0;
@@ -67,6 +67,12 @@ llvm_backend* llvm_backend_new(thread_context* tc)
     if (!b) return NULL;
     if (LLVMBackend::Initialize(b, tc)) return NULL;
     return b;
+}
+
+void llvm_backend_run_paste(
+    LLVMBackend* llvmb, expr_pp* pasted_str_s, char* str)
+{
+    printf("pasting '%s'\n", str);
 }
 
 void llvm_backend_delete(llvm_backend* llvmb)
@@ -230,7 +236,22 @@ LLVMBackend::~LLVMBackend()
     delete _data_layout;
     delete _target_machine;
 }
-
+void LLVMBackend::buildPasteHelpers()
+{
+    auto params = *new std::vector<llvm::Type*>{
+        _primitive_types[PT_UINT], // this
+        _primitive_types[PT_UINT], // paste target
+        _primitive_types[PT_UINT] // pasted string
+    };
+    llvm::ArrayRef<llvm::Type*> params_array_ref(
+        &params[0], &params[params.size() - 1] + 1);
+    auto func_type = llvm::FunctionType::get(
+        _primitive_types[PT_VOID], params_array_ref, false);
+    auto func_ptr = llvm::ConstantInt::get(
+        _primitive_types[PT_UINT], (size_t)llvm_backend_run_paste);
+    _paste_func_ptr =
+        llvm::ConstantExpr::getBitCast(func_ptr, func_type->getPointerTo());
+}
 int LLVMBackend::Initialize(LLVMBackend* llvmb, thread_context* tc)
 {
     void* res = new (llvmb) LLVMBackend(tc); // placement new is noexcept
@@ -241,6 +262,7 @@ int LLVMBackend::Initialize(LLVMBackend* llvmb, thread_context* tc)
 llvm_error LLVMBackend::setup()
 {
     addPrimitives();
+    buildPasteHelpers();
     return LLE_OK;
 }
 void LLVMBackend::Finalize(LLVMBackend* llvmb)
@@ -1017,6 +1039,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     if (vl) *vl = *llvar;
     return LLE_OK;
 }
+
 llvm_error
 LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
@@ -1325,6 +1348,21 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                 *vl_loaded = _builder.CreateAlignedLoad(val, align);
                 if (!*vl_loaded) return LLE_FATAL;
             }
+            return LLE_OK;
+        }
+        case EXPR_PASTE_STR: {
+            auto eps = (expr_paste_str*)n;
+            llvm::Value* paste_val;
+            lle = genAstNode(eps->value, NULL, &paste_val);
+            if (lle) return lle;
+            auto args = *new std::vector<llvm::Value*>{
+                llvm::ConstantInt::get(_primitive_types[PT_UINT], (size_t)this),
+                llvm::ConstantInt::get(_primitive_types[PT_UINT], (size_t)n),
+                paste_val};
+            llvm::ArrayRef<llvm::Value*> args_array{&args[0],
+                                                    &args[args.size() - 1] + 1};
+            _builder.CreateCall(_paste_func_ptr, args_array);
+            assert(!vl && !vl_loaded);
             return LLE_OK;
         }
         default: assert(false);

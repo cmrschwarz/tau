@@ -8,7 +8,7 @@
 
 #define VOID_ELEM ((ast_elem*)&PRIMITIVES[PT_VOID])
 #define UNREACHABLE_ELEM ((ast_elem*)&PRIMITIVES[PT_UNREACHABLE])
-#define PASTE_EXPR_ELEM ((ast_elem*)&PRIMITIVES[PT_UNREACHABLE])
+#define PASTED_EXPR_ELEM ((ast_elem*)&PRIMITIVES[PT_PASTED_EXPR])
 #define TYPE_ELEM ((ast_elem*)&PRIMITIVES[PT_TYPE])
 
 typedef struct mdg_node_s mdg_node;
@@ -355,6 +355,11 @@ typedef struct expr_paste_str_s {
     expr_pp* target;
     ast_node* value; // ctype shall always be string
 } expr_paste_str;
+
+typedef struct pasted_str_s {
+    char* pasted_str;
+    struct pasted_str_s* next;
+} pasted_str_s;
 
 typedef struct match_arm_s {
     ast_node* condition;

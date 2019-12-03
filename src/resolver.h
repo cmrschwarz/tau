@@ -20,6 +20,8 @@ typedef enum resolve_error_e {
     RE_TYPE_LOOP,
     RE_PP_DEPS_LOOP,
     RE_OVERLOADED,
+    // returned by the first # on the way up to let the parent know he can't
+    // continue until the paste was evaluated
     RE_UNREALIZED_PASTE,
     RE_REQUIRES_BODY_TYPE,
     RE_SYMBOL_NOT_FOUND_YET,
