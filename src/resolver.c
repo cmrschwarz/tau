@@ -206,29 +206,30 @@ curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
 resolve_error
 pp_resolve_node_activate(resolver* r, pp_resolve_node** pprn, bool resolved)
 {
-    if ((**pprn).dep_count == 0) {
+    pp_resolve_node* rn = *pprn;
+    if (rn->dep_count == 0) {
         int res;
         if (!resolved) {
-            res = ptrlist_append(&r->pp_resolve_nodes_pending, *pprn);
+            res = ptrlist_append(&r->pp_resolve_nodes_pending, rn);
         }
         else if ((**pprn).run_when_done) {
-            res = ptrlist_append(&r->pp_resolve_nodes_ready, *pprn);
+            res = ptrlist_append(&r->pp_resolve_nodes_ready, rn);
         }
-        else {
+        else if (!rn->parent) {
             bool b;
-            pp_resolve_node_done(r, *pprn, &b);
+            pp_resolve_node_done(r, rn, &b);
             *pprn = NULL;
             return RE_OK;
         }
         if (res) return RE_FATAL;
-        (**pprn).waiting_list_entry = NULL;
+        rn->waiting_list_entry = NULL;
     }
-    else if ((**pprn).run_when_done) {
+    else if (rn->run_when_done) {
         pp_resolve_node** res = sbuffer_append(
             &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*));
         if (!res) return RE_FATAL;
-        *res = *pprn;
-        (**pprn).waiting_list_entry = res;
+        *res = rn;
+        rn->waiting_list_entry = res;
     }
     return RE_OK;
 }
@@ -1982,6 +1983,7 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, ast_node** continue_block)
     // this must be reset before we call add dependency
     r->curr_block_owner = parent_block_owner;
     pp_resolve_node* bpprn = r->curr_block_pp_node;
+    fn->pprn = bpprn;
     r->curr_block_pp_node = prev_block_pprn;
     if (re) {
         if (re == RE_UNREALIZED_PASTE) {
@@ -1995,6 +1997,7 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, ast_node** continue_block)
         return re;
     }
     if (bpprn) {
+        if (!re) bpprn->continue_block = NULL;
         re = pp_resolve_node_activate(r, &fn->pprn, re == RE_OK);
     }
     if (re) return re;
@@ -2244,17 +2247,18 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
         for (pp_resolve_node* rn = pli_next(&it); rn; rn = pli_next(&it)) {
             if (rn->continue_block) {
                 if (rn->node->kind == SC_FUNC) {
+                    ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
                     re = resolve_func(
                         r, (sc_func*)rn->node, rn->ppl, rn->continue_block);
+                    if (re) return re;
                 }
                 else {
                     assert(false);
                 }
+                continue;
             }
-            else {
-                re = resolve_ast_node(
-                    r, rn->node, rn->declaring_st, rn->ppl, NULL, NULL);
-            }
+            re = resolve_ast_node(
+                r, rn->node, rn->declaring_st, rn->ppl, NULL, NULL);
             if (re == RE_SYMBOL_NOT_FOUND_YET) continue;
             if (re) return re;
             if (ast_flags_get_resolved(rn->node->flags)) {
