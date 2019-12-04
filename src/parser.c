@@ -1196,7 +1196,7 @@ parse_error get_pasting_target(
             return PE_ERROR;
         }
         if (bpd->node->kind == EXPR_PP) {
-            *target = bpd->node;
+            *target = (expr_pp*)bpd->node;
             return PE_OK;
         }
     }
@@ -1435,6 +1435,7 @@ parse_error parse_paste(parser* p, ast_node** tgt)
     expr_paste_str* ps = alloc_perm(p, sizeof(expr_paste_str));
     if (!ps) return PE_FATAL;
     ast_node_init((ast_node*)ps, EXPR_PASTE_STR);
+    ps->value = NULL;
     pe = ast_node_fill_srange(p, (ast_node*)ps, start, t->end);
     if (pe) return pe;
     pe = get_pasting_target(p, start, t->end, &ps->target);
@@ -1655,6 +1656,8 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     if (!sp) return PE_FATAL;
     ast_node_init(&sp->node, EXPR_PP);
     sp->result_buffer.state.pprn = NULL;
+    sp->result_buffer.paste_result.last_next =
+        &sp->result_buffer.paste_result.first;
     if (push_bpd_pp(p, (ast_node*)sp)) return PE_FATAL;
     parse_error pe =
         parse_expression_of_prec(p, &sp->pp_expr, op_precedence[OP_PP]);
@@ -2015,7 +2018,7 @@ static inline parse_error parse_delimited_open_scope(
     t = lx_peek(&p->lx);
     if (!t) {
         if (pop_bpd(p, PE_LX_ERROR)) return PE_FATAL;
-        osc->sc.body.elements = NULL_PTR_PTR;
+        osc->sc.body.elements = (ast_node**)NULL_PTR_PTR;
         return PE_LX_ERROR;
     }
     ureg start = t->start;
@@ -3185,6 +3188,8 @@ static inline parse_error parse_pp_stmt(
     if (!sp) return PE_FATAL;
     ast_node_init(&sp->node, EXPR_PP);
     sp->result_buffer.state.pprn = NULL;
+    sp->result_buffer.paste_result.last_next =
+        &sp->result_buffer.paste_result.first;
     if (push_bpd_pp(p, (ast_node*)sp)) return PE_FATAL;
     pe = parse_statement(p, &sp->pp_expr);
     if (pop_bpd_pp(p, pe)) return PE_FATAL;

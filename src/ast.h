@@ -334,6 +334,11 @@ typedef struct expr_macro_call_s {
     sc_macro* tgt;
 } expr_macro_call;
 
+typedef struct pasted_str_s {
+    char* str;
+    struct pasted_str_s* next;
+} pasted_str;
+
 typedef struct expr_pp_s {
     ast_node node;
     ast_node* pp_expr;
@@ -342,9 +347,13 @@ typedef struct expr_pp_s {
     union result_buffer_u {
         ureg data[2];
         struct state_s {
-            void* true_res_buffer;
             struct pp_resolve_node_s* pprn;
+            void* true_res_buffer;
         } state;
+        struct paste_result_s {
+            pasted_str* first;
+            pasted_str** last_next;
+        } paste_result;
     } result_buffer;
 } expr_pp;
 
@@ -354,12 +363,8 @@ typedef struct expr_paste_str_s {
     ast_node node;
     expr_pp* target;
     ast_node* value; // ctype shall always be string
+    pasted_str* result;
 } expr_paste_str;
-
-typedef struct pasted_str_s {
-    char* pasted_str;
-    struct pasted_str_s* next;
-} pasted_str_s;
 
 typedef struct match_arm_s {
     ast_node* condition;

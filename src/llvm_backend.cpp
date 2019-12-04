@@ -69,10 +69,14 @@ llvm_backend* llvm_backend_new(thread_context* tc)
     return b;
 }
 
-void llvm_backend_run_paste(
-    LLVMBackend* llvmb, expr_pp* pasted_str_s, char* str)
+void llvm_backend_run_paste(LLVMBackend* llvmb, expr_pp* tgt, char* str)
 {
-    printf("pasting '%s'\n", str);
+    // TODO: proper allocation
+    auto pstr = (pasted_str*)malloc(sizeof(pasted_str));
+    pstr->str = str;
+    *tgt->result_buffer.paste_result.last_next = pstr;
+    tgt->result_buffer.paste_result.last_next = &pstr->next;
+    printf("pasted '%s'\n", str);
 }
 
 void llvm_backend_delete(llvm_backend* llvmb)
@@ -1357,7 +1361,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (lle) return lle;
             auto& args = *new std::vector<llvm::Value*>{
                 llvm::ConstantInt::get(_primitive_types[PT_UINT], (size_t)this),
-                llvm::ConstantInt::get(_primitive_types[PT_UINT], (size_t)n),
+                llvm::ConstantInt::get(
+                    _primitive_types[PT_UINT], (size_t)eps->target),
                 paste_val};
             llvm::ArrayRef<llvm::Value*> args_array{&args[0],
                                                     &args[args.size() - 1] + 1};

@@ -2009,6 +2009,7 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, ast_node** continue_block)
     }
     if (bpprn) {
         if (!re) bpprn->continue_block = NULL;
+        bpprn->run_when_done = false;
         re = pp_resolve_node_activate(r, fn->pprn, re == RE_OK);
     }
     if (re) return re;
