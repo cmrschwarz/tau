@@ -6,90 +6,90 @@
 #include "utils/panic.h"
 #include "thread_context.h"
 
-static token* lx_load(lexer* tk);
+static token* lx_load(lexer* lx);
 
-static inline void lx_inc_iter(lexer* tk, token** t)
+static inline void lx_inc_iter(lexer* lx, token** t)
 {
     (*t)++;
-    if (*t == tk->token_buffer_end) {
-        *t = tk->token_buffer;
+    if (*t == lx->token_buffer_end) {
+        *t = lx->token_buffer;
     }
 }
-static inline void lx_inc_iter_n(lexer* tk, token** t, ureg n)
+static inline void lx_inc_iter_n(lexer* lx, token** t, ureg n)
 {
-    ureg rem = tk->token_buffer_end - *t;
+    ureg rem = lx->token_buffer_end - *t;
     if (rem > n) {
         *t += n;
     }
     else {
-        *t = tk->token_buffer + (n - rem); /*% LX_TOKEN_BUFFER_SIZE*/
+        *t = lx->token_buffer + (n - rem); /*% LX_TOKEN_BUFFER_SIZE*/
     }
 }
-static inline void lx_dec_iter(lexer* tk, token** t)
+static inline void lx_dec_iter(lexer* lx, token** t)
 {
     (*t)--;
-    if (*t == tk->token_buffer) {
-        *t = tk->token_buffer_end - 1;
+    if (*t == lx->token_buffer) {
+        *t = lx->token_buffer_end - 1;
     }
 }
-static inline void lx_dec_iter_n(lexer* tk, token** t, ureg n)
+static inline void lx_dec_iter_n(lexer* lx, token** t, ureg n)
 {
-    ureg rem = *t - tk->token_buffer;
+    ureg rem = *t - lx->token_buffer;
     if (rem >= n) {
         *t -= n;
     }
     else {
-        *t = tk->token_buffer_end - (n - rem); /*% LX_TOKEN_BUFFER_SIZE*/
+        *t = lx->token_buffer_end - (n - rem); /*% LX_TOKEN_BUFFER_SIZE*/
     }
 }
-token* lx_peek_nth(lexer* tk, ureg n)
+token* lx_peek_nth(lexer* lx, ureg n)
 {
-    token* t = tk->loaded_tokens_start;
-    if (tk->loaded_tokens_head < tk->loaded_tokens_start) {
-        ureg rem = tk->token_buffer_end - t;
+    token* t = lx->loaded_tokens_start;
+    if (lx->loaded_tokens_head < lx->loaded_tokens_start) {
+        ureg rem = lx->token_buffer_end - t;
         if (rem >= n) return t + n - 1;
         n -= rem;
-        t = tk->token_buffer;
+        t = lx->token_buffer;
     }
-    ureg rem = tk->loaded_tokens_head - t;
+    ureg rem = lx->loaded_tokens_head - t;
     if (rem >= n) {
         return t + n - 1;
     }
     n -= rem;
     while (n > 1) {
-        if (!lx_load(tk)) return NULL;
+        if (!lx_load(lx)) return NULL;
         n--;
     }
-    return lx_load(tk);
+    return lx_load(lx);
 }
-token* lx_peek(lexer* tk)
+token* lx_peek(lexer* lx)
 {
-    if (tk->loaded_tokens_start != tk->loaded_tokens_head) {
-        return tk->loaded_tokens_start;
+    if (lx->loaded_tokens_start != lx->loaded_tokens_head) {
+        return lx->loaded_tokens_start;
     }
-    return lx_load(tk);
+    return lx_load(lx);
 }
 
-token* lx_peek_2nd(lexer* tk)
+token* lx_peek_2nd(lexer* lx)
 {
-    return lx_peek_nth(tk, 2);
+    return lx_peek_nth(lx, 2);
 }
-token* lx_peek_3rd(lexer* tk)
+token* lx_peek_3rd(lexer* lx)
 {
-    return lx_peek_nth(tk, 3);
+    return lx_peek_nth(lx, 3);
 }
-void lx_void(lexer* tk)
+void lx_void(lexer* lx)
 {
-    lx_inc_iter(tk, &tk->loaded_tokens_start);
+    lx_inc_iter(lx, &lx->loaded_tokens_start);
 }
-void lx_void_n(lexer* tk, ureg n)
+void lx_void_n(lexer* lx, ureg n)
 {
-    lx_inc_iter_n(tk, &tk->loaded_tokens_start, n);
+    lx_inc_iter_n(lx, &lx->loaded_tokens_start, n);
 }
-token* lx_consume(lexer* tk)
+token* lx_consume(lexer* lx)
 {
-    token* t = lx_peek(tk);
-    if (t) lx_void(tk); // PERF: is the if required?
+    token* t = lx_peek(lx);
+    if (t) lx_void(lx); // PERF: is the if required?
     return t;
 }
 static inline size_t
@@ -118,113 +118,113 @@ lx_stream_read(lexer* lx, char* tgt, size_t size, int* error)
     *error = 0;
     return i;
 }
-static inline int lx_load_file_buffer(lexer* tk, char** holding)
+static inline int lx_load_file_buffer(lexer* lx, char** holding)
 {
-    token* t = tk->loaded_tokens_start;
+    token* t = lx->loaded_tokens_start;
     ureg size_to_keep = 0;
-    while (t != tk->loaded_tokens_head) {
+    while (t != lx->loaded_tokens_head) {
         if (token_has_string(t)) size_to_keep += string_len(t->str);
-        lx_inc_iter(tk, &t);
+        lx_inc_iter(lx, &t);
     }
     if (holding) {
-        size_to_keep += ptrdiff(tk->file_buffer_pos, *holding);
+        size_to_keep += ptrdiff(lx->file_buffer_pos, *holding);
     }
-    ureg buff_size = ptrdiff(tk->file_buffer_end, tk->file_buffer_start);
+    ureg buff_size = ptrdiff(lx->file_buffer_end, lx->file_buffer_start);
     void* old_buff = NULL;
     if (buff_size - size_to_keep < LX_MIN_FILE_READ_SIZE) {
         buff_size *= 2;
-        old_buff = tk->file_buffer_start;
-        tk->file_buffer_start = tmalloc(buff_size);
-        if (!tk->file_buffer_start) {
-            error_log_report_allocation_failiure(tk->tc->err_log);
+        old_buff = lx->file_buffer_start;
+        lx->file_buffer_start = tmalloc(buff_size);
+        if (!lx->file_buffer_start) {
+            error_log_report_allocation_failiure(lx->tc->err_log);
             return -1;
         }
-        tk->file_buffer_end = ptradd(tk->file_buffer_start, buff_size);
+        lx->file_buffer_end = ptradd(lx->file_buffer_start, buff_size);
     }
-    tk->file_buffer_head = tk->file_buffer_start;
-    t = tk->loaded_tokens_start;
-    while (t != tk->loaded_tokens_head) {
+    lx->file_buffer_head = lx->file_buffer_start;
+    t = lx->loaded_tokens_start;
+    while (t != lx->loaded_tokens_head) {
         if (token_has_string(t)) {
             ureg slen = string_len(t->str);
-            memcpy(tk->file_buffer_head, t->str.start, slen);
-            tk->file_buffer_head = (char*)ptradd(tk->file_buffer_head, slen);
+            memcpy(lx->file_buffer_head, t->str.start, slen);
+            lx->file_buffer_head = (char*)ptradd(lx->file_buffer_head, slen);
         }
-        lx_inc_iter(tk, &t);
+        lx_inc_iter(lx, &t);
     }
     if (holding) {
-        ureg slen = ptrdiff(tk->file_buffer_pos, *holding);
-        memcpy(tk->file_buffer_head, *holding, slen);
-        *holding = tk->file_buffer_head;
-        tk->file_buffer_head = (char*)ptradd(tk->file_buffer_head, slen);
+        ureg slen = ptrdiff(lx->file_buffer_pos, *holding);
+        memcpy(lx->file_buffer_head, *holding, slen);
+        *holding = lx->file_buffer_head;
+        lx->file_buffer_head = (char*)ptradd(lx->file_buffer_head, slen);
     }
     if (old_buff) {
         tfree(old_buff);
     }
-    tk->file_buffer_pos = tk->file_buffer_head;
+    lx->file_buffer_pos = lx->file_buffer_head;
     int error = 0;
     ureg siz = lx_stream_read(
-        tk, tk->file_buffer_head, buff_size - size_to_keep, &error);
+        lx, lx->file_buffer_head, buff_size - size_to_keep, &error);
     if (siz == 0) {
         if (error) {
-            tk->status = LX_STATUS_IO_ERROR;
+            lx->status = LX_STATUS_IO_ERROR;
             error_log_report_simple(
-                tk->tc->err_log, ES_TOKENIZER, false, "file io error", tk->file,
-                tk->loaded_tokens_head->start);
+                lx->tc->err_log, ES_TOKENIZER, false, "file io error", lx->file,
+                lx->loaded_tokens_head->start);
             return ERR;
         }
-        if (tk->status == LX_STATUS_EOF) return 0;
-        *tk->file_buffer_pos = '\0';
-        tk->file_buffer_head++;
-        tk->status = LX_STATUS_EOF;
+        if (lx->status == LX_STATUS_EOF) return 0;
+        *lx->file_buffer_pos = '\0';
+        lx->file_buffer_head++;
+        lx->status = LX_STATUS_EOF;
     }
     else {
-        if (tk->status == LX_STATUS_EOF) tk->status = LX_STATUS_OK;
-        tk->file_buffer_head += siz;
+        if (lx->status == LX_STATUS_EOF) lx->status = LX_STATUS_OK;
+        lx->file_buffer_head += siz;
     }
     return 0;
 }
-static inline char lx_peek_char_holding(lexer* tk, char** hold)
+static inline char lx_peek_char_holding(lexer* lx, char** hold)
 {
-    if (tk->file_buffer_pos == tk->file_buffer_head) {
-        if (lx_load_file_buffer(tk, hold)) {
-            tk->status = LX_STATUS_IO_ERROR;
+    if (lx->file_buffer_pos == lx->file_buffer_head) {
+        if (lx_load_file_buffer(lx, hold)) {
+            lx->status = LX_STATUS_IO_ERROR;
             return '\0';
         }
     }
-    char r = *tk->file_buffer_pos;
+    char r = *lx->file_buffer_pos;
     return r;
 }
-static inline char lx_peek_char(lexer* tk)
+static inline char lx_peek_char(lexer* lx)
 {
-    return lx_peek_char_holding(tk, NULL);
+    return lx_peek_char_holding(lx, NULL);
 }
-static inline void lx_void_char_peek(lexer* tk)
+static inline void lx_void_char_peek(lexer* lx)
 {
-    tk->file_buffer_pos++;
+    lx->file_buffer_pos++;
 }
-static inline char lx_consume_char(lexer* tk)
+static inline char lx_consume_char(lexer* lx)
 {
-    char c = lx_peek_char_holding(tk, NULL);
-    lx_void_char_peek(tk);
+    char c = lx_peek_char_holding(lx, NULL);
+    lx_void_char_peek(lx);
     return c;
 }
 
-int lx_init(lexer* tk, thread_context* tc)
+int lx_init(lexer* lx, thread_context* tc)
 {
-    tk->tc = tc;
+    lx->tc = tc;
     ureg size = plattform_get_page_size() * 8;
-    tk->file = NULL;
-    tk->file_buffer_start = tmalloc(size);
-    if (!tk->file_buffer_start) return -1;
-    tk->file_buffer_end = ptradd(tk->file_buffer_start, size);
-    tk->token_buffer_end = tk->token_buffer + LX_TOKEN_BUFFER_SIZE;
-    tk->loaded_tokens_start = tk->token_buffer; // head is set on open_file
-    tk->status = LX_STATUS_OK;
+    lx->file = NULL;
+    lx->file_buffer_start = tmalloc(size);
+    if (!lx->file_buffer_start) return -1;
+    lx->file_buffer_end = ptradd(lx->file_buffer_start, size);
+    lx->token_buffer_end = lx->token_buffer + LX_TOKEN_BUFFER_SIZE;
+    lx->loaded_tokens_start = lx->token_buffer; // head is set on open_file
+    lx->status = LX_STATUS_OK;
     return 0;
 }
-void lx_fin(lexer* tk)
+void lx_fin(lexer* lx)
 {
-    tfree(tk->file_buffer_start);
+    tfree(lx->file_buffer_start);
 }
 void lx_reset_buffer(lexer* lx)
 {
@@ -233,16 +233,16 @@ void lx_reset_buffer(lexer* lx)
     lx->loaded_tokens_start->start = 0;
     lx->loaded_tokens_head = lx->loaded_tokens_start;
 }
-int lx_open_stream(lexer* tk, src_file* f, FILE* stream)
+int lx_open_stream(lexer* lx, src_file* f, FILE* stream)
 {
-    tk->file = f;
-    tk->file->file_stream = stream;
-    lx_reset_buffer(tk);
-    if (lx_load_file_buffer(tk, NULL)) {
-        lx_close_file(tk);
+    lx->file = f;
+    lx->file->file_stream = stream;
+    lx_reset_buffer(lx);
+    if (lx_load_file_buffer(lx, NULL)) {
+        lx_close_file(lx);
         return ERR;
     }
-    tk->status = LX_STATUS_OK;
+    lx->status = LX_STATUS_OK;
     return OK;
 }
 int lx_open_paste(lexer* lx, pasted_str* str)
@@ -264,9 +264,9 @@ void lx_close_paste(lexer* lx)
     return OK;
 }
 
-int lx_open_file(lexer* tk, src_file* f)
+int lx_open_file(lexer* lx, src_file* f)
 {
-    if (src_file_start_parse(f, tk->tc)) {
+    if (src_file_start_parse(f, lx->tc)) {
         return ERR;
     }
     char pathbuff[256];
@@ -285,268 +285,268 @@ int lx_open_file(lexer* tk, src_file* f)
     if (fs == NULL) {
         return ERR;
     }
-    return lx_open_stream(tk, f, fs);
+    return lx_open_stream(lx, f, fs);
 }
-void lx_close_file(lexer* tk)
+void lx_close_file(lexer* lx)
 {
-    int r = fclose(tk->file->file_stream);
+    int r = fclose(lx->file->file_stream);
     assert(r == 0);
-    tk->file->file_stream = NULL;
-    tk->file = NULL;
+    lx->file->file_stream = NULL;
+    lx->file = NULL;
 }
 
-static inline token* lx_return_head(lexer* tk, ureg tok_length)
+static inline token* lx_return_head(lexer* lx, ureg tok_length)
 {
-    token* tok = tk->loaded_tokens_head;
-    lx_inc_iter(tk, &tk->loaded_tokens_head);
-    token* next = tk->loaded_tokens_head;
+    token* tok = lx->loaded_tokens_head;
+    lx_inc_iter(lx, &lx->loaded_tokens_head);
+    token* next = lx->loaded_tokens_head;
     tok->end = tok->start + tok_length;
     next->start = tok->end;
     return tok;
 }
 static inline token*
-lx_unterminated_string_error(lexer* tk, char* string_start, ureg tok_pos)
+lx_unterminated_string_error(lexer* lx, char* string_start, ureg tok_pos)
 {
-    ureg start1 = tok_pos + ptrdiff(tk->file_buffer_pos, string_start) - 1;
+    ureg start1 = tok_pos + ptrdiff(lx->file_buffer_pos, string_start) - 1;
     ureg start2 = tok_pos;
     error_log_report_annotated_twice(
-        tk->tc->err_log, ES_TOKENIZER, false, "unterminated string", tk->file,
+        lx->tc->err_log, ES_TOKENIZER, false, "unterminated string", lx->file,
         start1, start1 + 1, "reached eof before the string was closed",
-        tk->file, start2, start2 + 1, "string starts here");
-    tk->status = LX_STATUS_TOKENIZATION_ERROR;
+        lx->file, start2, start2 + 1, "string starts here");
+    lx->status = LX_STATUS_TOKENIZATION_ERROR;
     return NULL;
 }
-static token* lx_load(lexer* tk)
+static token* lx_load(lexer* lx)
 {
-    char curr = lx_peek_char(tk);
-    token* tok = tk->loaded_tokens_head;
+    char curr = lx_peek_char(lx);
+    token* tok = lx->loaded_tokens_head;
     while (true) {
-        lx_void_char_peek(tk);
+        lx_void_char_peek(lx);
         switch (curr) {
             case '\0': {
-                if (tk->status == LX_STATUS_IO_ERROR) return NULL;
+                if (lx->status == LX_STATUS_IO_ERROR) return NULL;
                 tok->kind = TK_EOF;
-                return lx_return_head(tk, 0);
+                return lx_return_head(lx, 0);
             }
-            case '$': tok->kind = TK_DOLLAR; return lx_return_head(tk, 1);
-            case '(': tok->kind = TK_PAREN_OPEN; return lx_return_head(tk, 1);
-            case ')': tok->kind = TK_PAREN_CLOSE; return lx_return_head(tk, 1);
-            case '{': tok->kind = TK_BRACE_OPEN; return lx_return_head(tk, 1);
-            case '}': tok->kind = TK_BRACE_CLOSE; return lx_return_head(tk, 1);
-            case '[': tok->kind = TK_BRACKET_OPEN; return lx_return_head(tk, 1);
-            case '#': tok->kind = TK_HASH; return lx_return_head(tk, 1);
-            case '@': tok->kind = TK_AT; return lx_return_head(tk, 1);
+            case '$': tok->kind = TK_DOLLAR; return lx_return_head(lx, 1);
+            case '(': tok->kind = TK_PAREN_OPEN; return lx_return_head(lx, 1);
+            case ')': tok->kind = TK_PAREN_CLOSE; return lx_return_head(lx, 1);
+            case '{': tok->kind = TK_BRACE_OPEN; return lx_return_head(lx, 1);
+            case '}': tok->kind = TK_BRACE_CLOSE; return lx_return_head(lx, 1);
+            case '[': tok->kind = TK_BRACKET_OPEN; return lx_return_head(lx, 1);
+            case '#': tok->kind = TK_HASH; return lx_return_head(lx, 1);
+            case '@': tok->kind = TK_AT; return lx_return_head(lx, 1);
             case ']':
                 tok->kind = TK_BRACKET_CLOSE;
-                return lx_return_head(tk, 1);
-            case ',': tok->kind = TK_COMMA; return lx_return_head(tk, 1);
-            case ';': tok->kind = TK_SEMICOLON; return lx_return_head(tk, 1);
-            case '.': tok->kind = TK_DOT; return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
+            case ',': tok->kind = TK_COMMA; return lx_return_head(lx, 1);
+            case ';': tok->kind = TK_SEMICOLON; return lx_return_head(lx, 1);
+            case '.': tok->kind = TK_DOT; return lx_return_head(lx, 1);
             case '\t': {
-                curr = lx_peek_char(tk);
+                curr = lx_peek_char(lx);
                 tok->start++; // TODO: make an option to increase by 2/4/8/n
                 continue;
             }
             case ' ': {
-                curr = lx_peek_char(tk);
+                curr = lx_peek_char(lx);
                 tok->start++;
                 continue;
             }
             case '\n': {
-                curr = lx_peek_char(tk);
+                curr = lx_peek_char(lx);
                 tok->start++;
-                src_map_add_line(&tk->file->src_map, tok->start);
+                src_map_add_line(&lx->file->src_map, tok->start);
                 continue;
             }
             case ':': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == ':') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_DOUBLE_COLON;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_COLON;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '*': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '=') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_STAR_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_STAR;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '+': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '+') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_DOUBLE_PLUS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 if (peek == '=') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_PLUS_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_PLUS;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '-': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '-') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_DOUBLE_MINUS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 if (peek == '=') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_MINUS_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 if (peek == '>') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_ARROW;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_MINUS;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '!': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '=') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_EXCLAMATION_MARK_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_EXCLAMATION_MARK;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '|': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '|') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_DOUBLE_PIPE;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 if (peek == '=') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_PIPE_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_PIPE;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '&': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '&') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_DOUBLE_AND;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 if (peek == '=') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_AND_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_AND;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '^': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '^') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_DOUBLE_CARET;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 if (peek == '=') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_CARET_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_CARET;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '~': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '=') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_TILDE_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_TILDE;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '=': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '=') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_DOUBLE_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 if (peek == '>') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_FAT_ARROW;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_EQUALS;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '/': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '/') {
                     tok->start += 2;
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     do {
-                        curr = lx_peek_char(tk);
-                        lx_void_char_peek(tk);
+                        curr = lx_peek_char(lx);
+                        lx_void_char_peek(lx);
                         tok->start++;
                     } while (curr != '\n' && curr != '\0');
                     if (curr == '\n') {
-                        src_map_add_line(&tk->file->src_map, tok->start);
-                        curr = lx_peek_char(tk);
+                        src_map_add_line(&lx->file->src_map, tok->start);
+                        curr = lx_peek_char(lx);
                         continue;
                     }
                     else {
-                        if (tk->status == LX_STATUS_EOF) {
+                        if (lx->status == LX_STATUS_EOF) {
                             tok->start--;
                             tok->kind = TK_EOF;
-                            return lx_return_head(tk, 1);
+                            return lx_return_head(lx, 1);
                         }
                         else {
                             // TODO: print error
-                            lx_dec_iter(tk, &tk->loaded_tokens_start);
+                            lx_dec_iter(lx, &lx->loaded_tokens_start);
                             return NULL;
                         }
                     }
                 }
                 if (peek == '*') {
                     ureg comment_start = tok->start;
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->start += 2;
                     ureg nest_count = 1;
                     do {
-                        curr = lx_consume_char(tk);
+                        curr = lx_consume_char(lx);
                         tok->start++;
                         switch (curr) {
                             case '\n': {
                                 src_map_add_line(
-                                    &tk->file->src_map, tok->start);
+                                    &lx->file->src_map, tok->start);
                             } break;
                             case '\t': break;
                             case '*': {
-                                curr = lx_peek_char(tk);
+                                curr = lx_peek_char(lx);
                                 if (curr == '/') {
-                                    lx_void_char_peek(tk);
+                                    lx_void_char_peek(lx);
                                     tok->start++;
                                     nest_count--;
                                 }
                             } break;
                             case '/': {
-                                curr = lx_peek_char(tk);
+                                curr = lx_peek_char(lx);
                                 if (curr == '*') {
-                                    lx_void_char_peek(tk);
+                                    lx_void_char_peek(lx);
                                     tok->start++;
                                     nest_count++;
                                 }
@@ -554,142 +554,142 @@ static token* lx_load(lexer* tk)
                             case '\0': {
                                 tok->start--;
                                 error_log_report_annotated_twice(
-                                    tk->tc->err_log, ES_TOKENIZER, false,
-                                    "unterminated block comment", tk->file,
+                                    lx->tc->err_log, ES_TOKENIZER, false,
+                                    "unterminated block comment", lx->file,
                                     tok->start, tok->start + 1,
                                     "reached eof before the comment was closed",
-                                    tk->file, comment_start, comment_start + 2,
+                                    lx->file, comment_start, comment_start + 2,
                                     "comment starts here");
-                                tk->status = LX_STATUS_TOKENIZATION_ERROR;
+                                lx->status = LX_STATUS_TOKENIZATION_ERROR;
                                 return NULL;
                             }
                         }
                     } while (nest_count > 0);
-                    curr = lx_peek_char(tk);
+                    curr = lx_peek_char(lx);
                     continue;
                 }
                 if (peek == '=') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_SLASH_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 else {
                     tok->kind = TK_SLASH;
-                    return lx_return_head(tk, 1);
+                    return lx_return_head(lx, 1);
                 }
             }
             case '%': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '=') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_PERCENT_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_PERCENT;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '<': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '<') {
-                    lx_void_char_peek(tk);
-                    peek = lx_peek_char(tk);
+                    lx_void_char_peek(lx);
+                    peek = lx_peek_char(lx);
                     if (peek == '=') {
-                        lx_void_char_peek(tk);
+                        lx_void_char_peek(lx);
                         tok->kind = TK_DOUBLE_LESS_THAN_EQUALS;
-                        return lx_return_head(tk, 3);
+                        return lx_return_head(lx, 3);
                     }
                     tok->kind = TK_DOUBLE_LESS_THAN;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 if (peek == '=') {
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                     tok->kind = TK_LESS_THAN_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_LESS_THAN;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '>': {
-                char peek = lx_peek_char(tk);
+                char peek = lx_peek_char(lx);
                 if (peek == '>') {
-                    lx_void_char_peek(tk);
-                    peek = lx_peek_char(tk);
+                    lx_void_char_peek(lx);
+                    peek = lx_peek_char(lx);
                     if (peek == '=') {
-                        lx_void_char_peek(tk);
+                        lx_void_char_peek(lx);
                         tok->kind = TK_DOUBLE_GREATER_THAN_EQUALS;
-                        return lx_return_head(tk, 3);
+                        return lx_return_head(lx, 3);
                     }
                     tok->kind = TK_DOUBLE_GREATER_THAN;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 if (peek == '=') {
                     tok->kind = TK_GREATER_THAN_EQUALS;
-                    return lx_return_head(tk, 2);
+                    return lx_return_head(lx, 2);
                 }
                 tok->kind = TK_GREATER_THAN;
-                return lx_return_head(tk, 1);
+                return lx_return_head(lx, 1);
             }
             case '\'': {
-                char* str_start = tk->file_buffer_pos - 1;
+                char* str_start = lx->file_buffer_pos - 1;
                 do {
-                    curr = lx_peek_char_holding(tk, &str_start);
-                    lx_void_char_peek(tk);
+                    curr = lx_peek_char_holding(lx, &str_start);
+                    lx_void_char_peek(lx);
                     if (curr == '\0') {
                         return lx_unterminated_string_error(
-                            tk, str_start, tok->start);
+                            lx, str_start, tok->start);
                     }
                     if (curr == '\\') {
                         // TODO: think about converting escaped chars
-                        curr = lx_peek_char_holding(tk, &str_start);
-                        lx_void_char_peek(tk);
+                        curr = lx_peek_char_holding(lx, &str_start);
+                        lx_void_char_peek(lx);
                         if (curr == '\0') {
                             return lx_unterminated_string_error(
-                                tk, str_start, tok->start);
+                                lx, str_start, tok->start);
                         }
                     }
                     if (curr == '\n') {
                         src_map_add_line(
-                            &tk->file->src_map,
+                            &lx->file->src_map,
                             tok->start +
-                                ptrdiff(tk->file_buffer_pos, str_start));
+                                ptrdiff(lx->file_buffer_pos, str_start));
                     }
                 } while (curr != '\'');
                 tok->kind = TK_BINARY_STRING;
                 tok->str.start = str_start + 1;
-                tok->str.end = tk->file_buffer_pos - 1;
+                tok->str.end = lx->file_buffer_pos - 1;
                 return lx_return_head(
-                    tk, ptrdiff(tk->file_buffer_pos, str_start));
+                    lx, ptrdiff(lx->file_buffer_pos, str_start));
             }
             case '"': {
-                char* str_start = tk->file_buffer_pos - 1;
+                char* str_start = lx->file_buffer_pos - 1;
                 do {
-                    curr = lx_peek_char_holding(tk, &str_start);
-                    lx_void_char_peek(tk);
+                    curr = lx_peek_char_holding(lx, &str_start);
+                    lx_void_char_peek(lx);
                     if (curr == '\0') {
                         return lx_unterminated_string_error(
-                            tk, str_start, tok->start);
+                            lx, str_start, tok->start);
                     }
                     if (curr == '\\') {
                         // TODO: think about converting escaped chars
-                        curr = lx_peek_char_holding(tk, &str_start);
-                        lx_void_char_peek(tk);
+                        curr = lx_peek_char_holding(lx, &str_start);
+                        lx_void_char_peek(lx);
                         if (curr == '\0') {
                             return lx_unterminated_string_error(
-                                tk, str_start, tok->start);
+                                lx, str_start, tok->start);
                         }
                     }
                     if (curr == '\n') {
                         src_map_add_line(
-                            &tk->file->src_map,
+                            &lx->file->src_map,
                             tok->start +
-                                ptrdiff(tk->file_buffer_pos, str_start));
+                                ptrdiff(lx->file_buffer_pos, str_start));
                     }
                 } while (curr != '"');
                 tok->kind = TK_STRING;
                 tok->str.start = str_start + 1;
-                tok->str.end = tk->file_buffer_pos - 1;
+                tok->str.end = lx->file_buffer_pos - 1;
                 return lx_return_head(
-                    tk, ptrdiff(tk->file_buffer_pos, str_start));
+                    lx, ptrdiff(lx->file_buffer_pos, str_start));
             }
             case 'a':
             case 'b':
@@ -744,20 +744,20 @@ static token* lx_load(lexer* tk)
             case 'Y':
             case 'Z':
             case '_': {
-                char* str_start = tk->file_buffer_pos - 1;
-                curr = lx_peek_char_holding(tk, &str_start);
+                char* str_start = lx->file_buffer_pos - 1;
+                curr = lx_peek_char_holding(lx, &str_start);
                 while ((curr >= 'a' && curr <= 'z') ||
                        (curr >= 'A' && curr <= 'Z') ||
                        (curr >= '0' && curr <= '9') || (curr == '_')) {
-                    lx_void_char_peek(tk);
-                    curr = lx_peek_char_holding(tk, &str_start);
+                    lx_void_char_peek(lx);
+                    curr = lx_peek_char_holding(lx, &str_start);
                 }
                 tok->str.start = str_start;
-                tok->str.end = tk->file_buffer_pos;
+                tok->str.end = lx->file_buffer_pos;
                 tok->kind = match_kw(tok->str);
                 if (tok->kind == TK_NONE) tok->kind = TK_IDENTIFIER;
                 return lx_return_head(
-                    tk, ptrdiff(tk->file_buffer_pos, str_start));
+                    lx, ptrdiff(lx->file_buffer_pos, str_start));
             }
             case '0':
             case '1':
@@ -769,34 +769,34 @@ static token* lx_load(lexer* tk)
             case '7':
             case '8':
             case '9': {
-                char* str_start = tk->file_buffer_pos - 1;
-                curr = lx_peek_char_holding(tk, &str_start);
+                char* str_start = lx->file_buffer_pos - 1;
+                curr = lx_peek_char_holding(lx, &str_start);
                 while (curr >= '0' && curr <= '9') {
-                    lx_void_char_peek(tk);
-                    curr = lx_peek_char_holding(tk, &str_start);
+                    lx_void_char_peek(lx);
+                    curr = lx_peek_char_holding(lx, &str_start);
                 }
                 tok->kind = TK_NUMBER;
                 tok->str.start = str_start;
-                tok->str.end = tk->file_buffer_pos;
+                tok->str.end = lx->file_buffer_pos;
                 return lx_return_head(
-                    tk, ptrdiff(tk->file_buffer_pos, str_start));
+                    lx, ptrdiff(lx->file_buffer_pos, str_start));
             }
             default: {
                 /*
                 //TODO: proper unicode handling
                 ureg len = get_utf8_seq_len_from_head(curr);
                 for(ureg i = 1; i<len;i++){
-                    char c = lx_peek_char(tk);
+                    char c = lx_peek_char(lx);
                     if(!is_utf8_continuation(c)){
                         len = i;
                         break;
                     }
-                    lx_void_char_peek(tk);
+                    lx_void_char_peek(lx);
                 }
                 */
                 error_log_report_annotated(
-                    tk->tc->err_log, ES_TOKENIZER, false, "unknown token",
-                    tk->file, tok->start, tok->start + 1,
+                    lx->tc->err_log, ES_TOKENIZER, false, "unknown token",
+                    lx->file, tok->start, tok->start + 1,
                     "not the start for any valid token");
                 return NULL;
             }

@@ -38,30 +38,30 @@ typedef struct lexer_s {
     lx_status status;
 } lexer;
 
-int lx_init(lexer* tk, thread_context* tc);
-void lx_fin(lexer* tk);
+int lx_init(lexer* lx, thread_context* tc);
+void lx_fin(lexer* lx);
 
-int lx_open_paste(lexer* tk, pasted_str* str);
-void lx_close_paste(lexer* tk);
+int lx_open_paste(lexer* lx, pasted_str* str);
+void lx_close_paste(lexer* lx);
 
-int lx_open_stream(lexer* tk, src_file* f, FILE* stream);
-int lx_open_file(lexer* tk, src_file* f);
-void lx_close_file(lexer* tk);
+int lx_open_stream(lexer* lx, src_file* f, FILE* stream);
+int lx_open_file(lexer* lx, src_file* f);
+void lx_close_file(lexer* lx);
 
 // any peek or consume invalidates all pointers to voided tokens
 // and to strings these contained
 // the void operation itself does not invalidate
-token* lx_consume(lexer* tk);
-token* lx_peek(lexer* tk);
+token* lx_consume(lexer* lx);
+token* lx_peek(lexer* lx);
 token* lx_peek_2nd(lexer* p);
 token* lx_peek_3rd(lexer* p);
-token* lx_peek_nth(lexer* tk, ureg n);
-void lx_void(lexer* tk);
-void lx_void_n(lexer* tk, ureg n);
+token* lx_peek_nth(lexer* lx, ureg n);
+void lx_void(lexer* lx);
+void lx_void_n(lexer* lx, ureg n);
 
 // get a token that was already peeked at
-static inline token* lx_aquire(lexer* tk)
+static inline token* lx_aquire(lexer* lx)
 {
-    return tk->loaded_tokens_start;
+    return lx->loaded_tokens_start;
 }
 #endif
