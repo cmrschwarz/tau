@@ -44,11 +44,13 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SYM_LAST_SYM_ID = PRIMITIVE,
 
     STMT_USING,
+    STMT_PASTE_EVALUATION,
     STMT_COMPOUND_ASSIGN,
     STMT_LAST_STMT_ID = STMT_COMPOUND_ASSIGN,
 
     EXPR_BLOCK,
     EXPR_PP,
+    EXPR_PASTE_EVALUATION,
     EXPR_RETURN,
     EXPR_CONTINUE,
     EXPR_BREAK,
@@ -363,8 +365,25 @@ typedef struct expr_paste_str_s {
     ast_node node;
     expr_pp* target;
     ast_node* value; // ctype shall always be string
-    pasted_str* result;
 } expr_paste_str;
+
+typedef struct expr_paste_evaluation_s {
+    ast_node node;
+    ast_node* expr;
+    pasted_str* paste_str;
+    ast_node* source_pp_expr;
+    src_range source_pp_srange;
+} expr_paste_evaluation;
+
+typedef struct stmt_paste_evaluation_s {
+    ast_node node;
+    ast_body body;
+    pasted_str* paste_str;
+    ast_node* source_pp_expr;
+    src_range source_pp_srange;
+} stmt_paste_evaluation;
+
+// ASSERT: sizeof(stmt_paste_evaluation) < sizeof(expr_pp)
 
 typedef struct match_arm_s {
     ast_node* condition;

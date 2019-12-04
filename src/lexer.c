@@ -92,7 +92,32 @@ token* lx_consume(lexer* tk)
     if (t) lx_void(tk); // PERF: is the if required?
     return t;
 }
-
+static inline size_t
+lx_stream_read(lexer* lx, char* tgt, size_t size, int* error)
+{
+    if (lx->file) {
+        size = fread(tgt, 1, size, lx->file->file_stream);
+        *error = ferror(lx->file->file_stream);
+        return size;
+    }
+    if (!lx->paste_str) return 0;
+    char* s = lx->pasted_str_pos;
+    ureg i = 0;
+    while (i < size) {
+        if (i == size) break;
+        if (*s == '\0') {
+            lx->paste_str = lx->paste_str->next;
+            if (!lx->paste_str) break;
+        }
+        *tgt = *s;
+        tgt++;
+        s++;
+        i++;
+    }
+    lx->pasted_str_pos = s;
+    *error = 0;
+    return i;
+}
 static inline int lx_load_file_buffer(lexer* tk, char** holding)
 {
     token* t = tk->loaded_tokens_start;
@@ -136,11 +161,11 @@ static inline int lx_load_file_buffer(lexer* tk, char** holding)
         tfree(old_buff);
     }
     tk->file_buffer_pos = tk->file_buffer_head;
-    ureg siz = fread(
-        tk->file_buffer_head, 1, buff_size - size_to_keep,
-        tk->file->file_stream);
+    int error = 0;
+    ureg siz = lx_stream_read(
+        tk, tk->file_buffer_head, buff_size - size_to_keep, &error);
     if (siz == 0) {
-        if (ferror(tk->file->file_stream)) {
+        if (error) {
             tk->status = LX_STATUS_IO_ERROR;
             error_log_report_simple(
                 tk->tc->err_log, ES_TOKENIZER, false, "file io error", tk->file,
@@ -188,6 +213,7 @@ int lx_init(lexer* tk, thread_context* tc)
 {
     tk->tc = tc;
     ureg size = plattform_get_page_size() * 8;
+    tk->file = NULL;
     tk->file_buffer_start = tmalloc(size);
     if (!tk->file_buffer_start) return -1;
     tk->file_buffer_end = ptradd(tk->file_buffer_start, size);
@@ -200,16 +226,18 @@ void lx_fin(lexer* tk)
 {
     tfree(tk->file_buffer_start);
 }
-
+void lx_reset_buffer(lexer* lx)
+{
+    lx->file_buffer_pos = lx->file_buffer_start;
+    lx->file_buffer_head = lx->file_buffer_start;
+    lx->loaded_tokens_start->start = 0;
+    lx->loaded_tokens_head = lx->loaded_tokens_start;
+}
 int lx_open_stream(lexer* tk, src_file* f, FILE* stream)
 {
     tk->file = f;
     tk->file->file_stream = stream;
-    tk->file_buffer_pos = tk->file_buffer_start;
-    tk->file_buffer_head = tk->file_buffer_start;
-    tk->loaded_tokens_start->start = 0;
-    tk->loaded_tokens_head = tk->loaded_tokens_start;
-
+    lx_reset_buffer(tk);
     if (lx_load_file_buffer(tk, NULL)) {
         lx_close_file(tk);
         return ERR;
@@ -217,6 +245,25 @@ int lx_open_stream(lexer* tk, src_file* f, FILE* stream)
     tk->status = LX_STATUS_OK;
     return OK;
 }
+int lx_open_paste(lexer* lx, pasted_str* str)
+{
+    assert(lx->file == NULL);
+    lx->paste_str = str;
+    lx->pasted_str_pos = str->str;
+    lx_reset_buffer(lx);
+    if (lx_load_file_buffer(lx, NULL)) {
+        lx_close_paste(lx);
+        return ERR;
+    }
+    lx->status = LX_STATUS_OK;
+    return OK;
+}
+void lx_close_paste(lexer* lx)
+{
+    lx->paste_str = NULL;
+    return OK;
+}
+
 int lx_open_file(lexer* tk, src_file* f)
 {
     if (src_file_start_parse(f, tk->tc)) {
@@ -240,11 +287,12 @@ int lx_open_file(lexer* tk, src_file* f)
     }
     return lx_open_stream(tk, f, fs);
 }
-int lx_close_file(lexer* tk)
+void lx_close_file(lexer* tk)
 {
     int r = fclose(tk->file->file_stream);
+    assert(r == 0);
     tk->file->file_stream = NULL;
-    return r;
+    tk->file = NULL;
 }
 
 static inline token* lx_return_head(lexer* tk, ureg tok_length)

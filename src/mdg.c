@@ -233,6 +233,11 @@ static void free_astn_symtabs(ast_node* n)
         case EXPR_IDENTIFIER:
         case SYM_IMPORT_MODULE:
         case EXPR_LITERAL: break;
+        case EXPR_PASTE_EVALUATION: {
+            expr_paste_evaluation* epe = (expr_paste_evaluation*)n;
+            free_astn_symtabs(epe->expr);
+            free_astn_symtabs(epe->source_pp_expr);
+        } break;
         default: assert(false);
     }
 }

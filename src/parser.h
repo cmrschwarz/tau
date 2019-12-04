@@ -38,6 +38,8 @@ typedef struct body_parse_data_s {
 int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
 parse_error parser_parse_file(parser* p, job_parse* j);
+parse_error parser_parse_paste_expr(parser* p, expr_pp* epp);
+parse_error parser_parse_paste_stmt(parser* p, expr_pp* epp);
 
 bool ast_node_may_drop_semicolon(ast_node* n);
 #endif

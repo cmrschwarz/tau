@@ -1066,6 +1066,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             assert(!vl);
             return LLE_OK; // these are handled by the
                            // osc iterator
+        
         case SC_STRUCT: return lookupCType((ast_elem*)n, NULL, NULL, NULL);
         case SC_FUNC: return genFunction((sc_func*)n, vl);
         case EXPR_OP_BINARY:
@@ -1073,6 +1074,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case EXPR_OP_UNARY: return genUnaryOp((expr_op_unary*)n, vl, vl_loaded);
         case EXPR_PARENTHESES:
             return genAstNode(((expr_parentheses*)n)->child, vl, vl_loaded);
+        case EXPR_PASTE_EVALUATION:
+            return genAstNode(((expr_paste_evaluation*)n)->expr, vl, vl_loaded);
         case EXPR_LITERAL: {
             expr_literal* l = (expr_literal*)n;
             switch (n->pt_kind) {

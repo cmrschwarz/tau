@@ -1380,6 +1380,17 @@ static inline resolve_error resolve_expr_pp(
     resolver* r, symbol_table* st, ureg ppl, expr_pp* ppe, ast_elem** value,
     ast_elem** ctype)
 {
+    if (ppe->ctype == PASTED_EXPR_ELEM) {
+        assert(value || ctype);
+        *ppe->result_buffer.paste_result.last_next = NULL;
+        parse_error pe = parser_parse_paste_expr(&r->tc->p, ppe);
+        if (pe) return RE_ERROR;
+        resolve_error re = resolve_ast_node_raw(
+            r, ((expr_paste_evaluation*)ppe)->expr, st, ppl, value, ctype);
+        if (re) return re;
+        ast_flags_set_resolved(&ppe->node.flags);
+        return RE_OK;
+    }
     pp_resolve_node* pprn = NULL;
     if (r->curr_pp_node == NULL) {
         if (ppe->result_buffer.state.pprn) {
@@ -1426,8 +1437,8 @@ static inline resolve_error resolve_expr_pp(
     }
     if (re) return re;
     if (ctype) *ctype = ppe->ctype;
-    ast_flags_set_resolved(&ppe->node.flags);
     if (pprn && pprn->pending_pastes) return RE_UNREALIZED_PASTE;
+    ast_flags_set_resolved(&ppe->node.flags);
     return RE_OK;
 }
 static inline resolve_error resolve_expr_paste_str(

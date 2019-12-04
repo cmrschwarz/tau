@@ -207,6 +207,7 @@ int tauc_run_jobs(tauc* t)
     }
     return atomic_sreg_load_flat(&t->error_code);
 }
+
 int tauc_run(int argc, char** argv)
 {
     tauc t;

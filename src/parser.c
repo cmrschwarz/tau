@@ -36,6 +36,10 @@ parse_error parse_braced_namable_body(
     parser* p, ast_node* parent, ast_body* b, char** name);
 parse_error parse_expr_in_parens(
     parser* p, ast_node* parent, ureg start, ureg end, ast_node** tgt);
+parse_error parse_delimited_body(
+    parser* p, ast_body* b, ast_node* parent, ureg param_count, ureg bstart,
+    ureg bend, token_kind delimiter);
+
 static const unsigned char op_precedence[] = {
     [OP_POST_INCREMENT] = 15,
     [OP_POST_DECREMENT] = 15,
@@ -2111,6 +2115,58 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     }
     return pe;
 }
+parse_error parser_parse_paste_expr(parser* p, expr_pp* epp)
+{
+    assert(sizeof(expr_pp) >= sizeof(expr_paste_evaluation));
+    expr_paste_evaluation* eval = (expr_paste_evaluation*)epp;
+    src_range sr = epp->node.srange;
+    ast_flags fl = epp->node.flags;
+    ast_node* expr = epp->pp_expr;
+    pasted_str* ps = epp->result_buffer.paste_result.first;
+    eval->node.kind = EXPR_PASTE_EVALUATION;
+    eval->node.flags = fl;
+    eval->node.srange = SRC_RANGE_INVALID; // TODO
+    eval->source_pp_srange = sr;
+    eval->source_pp_expr = expr;
+    eval->paste_str = ps;
+
+    p->disable_macro_body_call = false;
+    p->ppl = 0;
+    int r = lx_open_paste(&p->lx, ps);
+    if (r) return PE_LX_ERROR;
+    tprintf("parsing a paste expression\n");
+    parse_error pe = parse_expression(p, &eval->expr);
+    if (pe) return pe;
+    token* t = lx_peek(&p->lx);
+    if (t->kind != TK_EOF) {
+        assert(false); // TODO
+    }
+    return PE_OK;
+}
+parse_error parser_parse_paste_stmt(parser* p, expr_pp* epp)
+{
+    assert(sizeof(expr_pp) >= sizeof(stmt_paste_evaluation));
+    stmt_paste_evaluation* eval = (stmt_paste_evaluation*)epp;
+    src_range sr = epp->node.srange;
+    ast_flags fl = epp->node.flags;
+    ast_node* expr = epp->pp_expr;
+    pasted_str* ps = epp->result_buffer.paste_result.first;
+    eval->node.kind = EXPR_PASTE_EVALUATION;
+    eval->node.flags = fl;
+    eval->node.srange = SRC_RANGE_INVALID; // TODO
+    eval->source_pp_srange = sr;
+    eval->source_pp_expr = expr;
+    eval->paste_str = ps;
+
+    p->disable_macro_body_call = false;
+    p->ppl = 0;
+    int r = lx_open_paste(&p->lx, ps);
+    if (r) return PE_LX_ERROR;
+    tprintf("parsing a paste statement\n");
+    parse_error pe =
+        parse_delimited_body(p, &eval->body, (ast_node*)eval, 0, 0, 1, TK_EOF);
+    return pe;
+}
 static inline const char* access_modifier_string(access_modifier am)
 {
     switch (am) {
@@ -3278,20 +3334,18 @@ parse_error parse_statement(parser* p, ast_node** tgt)
         }
     }
 }
-parse_error parse_brace_delimited_body(
-    parser* p, ast_body* b, ast_node* parent, ureg param_count)
+parse_error parse_delimited_body(
+    parser* p, ast_body* b, ast_node* parent, ureg param_count, ureg bstart,
+    ureg bend, token_kind delimiter)
 {
-    token* t = lx_aquire(&p->lx);
-    ureg bstart = t->start;
-    ureg bend = t->end;
-    lx_void(&p->lx);
+    token* t;
     parse_error pe = PE_OK;
     PEEK(p, t);
     void** elements_list_start = list_builder_start(&p->lx.tc->listb2);
     ast_node* target;
     if (push_bpd(p, parent, b)) return PE_FATAL;
     curr_scope_add_decls(p, AM_DEFAULT, param_count);
-    while (t->kind != TK_BRACE_CLOSE) {
+    while (t->kind != delimiter) {
         if (t->kind != TK_EOF) {
             pe = parse_statement(p, &target);
             if (pe) {
@@ -3334,6 +3388,14 @@ parse_error parse_brace_delimited_body(
     if (pop_bpd(p, pe)) return PE_FATAL;
     if (!b->elements) return PE_FATAL;
     return pe;
+}
+parse_error parse_brace_delimited_body(
+    parser* p, ast_body* b, ast_node* parent, ureg param_count)
+{
+    token* t = lx_aquire(&p->lx);
+    lx_void(&p->lx);
+    return parse_delimited_body(
+        p, b, parent, param_count, t->start, t->end, TK_BRACE_CLOSE);
 }
 parse_error parse_scope_body(parser* p, scope* s, ureg param_count)
 {
