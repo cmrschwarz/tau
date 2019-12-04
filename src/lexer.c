@@ -104,15 +104,17 @@ lx_stream_read(lexer* lx, char* tgt, size_t size, int* error)
     char* s = lx->pasted_str_pos;
     ureg i = 0;
     while (i < size) {
-        if (i == size) break;
         if (*s == '\0') {
             lx->paste_str = lx->paste_str->next;
             if (!lx->paste_str) break;
+            s = lx->paste_str->str;
+            continue;
         }
         *tgt = *s;
         tgt++;
         s++;
         i++;
+        if (i == size) break;
     }
     lx->pasted_str_pos = s;
     *error = 0;
