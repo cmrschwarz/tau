@@ -2015,6 +2015,7 @@ static inline parse_error parse_delimited_open_scope(
     t = lx_peek(&p->lx);
     if (!t) {
         if (pop_bpd(p, PE_LX_ERROR)) return PE_FATAL;
+        osc->sc.body.elements = NULL_PTR_PTR;
         return PE_LX_ERROR;
     }
     ureg start = t->start;

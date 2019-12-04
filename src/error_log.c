@@ -282,13 +282,17 @@ typedef struct err_point {
     const char* squigly_color;
     const char* message_color;
 } err_point;
+bool escape_char(char c)
+{
+    return (c > 126 || c < 32);
+}
 void print_until(
     master_error_log* mel, ureg* bpos, ureg* next, char* buffer,
     ureg* after_tab, sreg* length_diff)
 {
     while (*bpos < *next) {
         unsigned char curr = (unsigned char)buffer[*bpos];
-        if (curr > 126 || curr < 32) {
+        if (escape_char(curr)) {
             if (bpos > after_tab) {
                 buffer[*bpos] = '\0';
                 pe(&buffer[*after_tab]);
@@ -455,8 +459,12 @@ int print_src_line(
                 }
             }
         }
-        if (pos + buff_len - ((!end_of_line) * 3) > mel->max_err_line_length) {
+        if (pos + buff_len + length_diff - ((!end_of_line) * 3) >
+            mel->max_err_line_length) {
             buff_len = mel->max_err_line_length - pos;
+            for (ureg i = 0; i < buff_len; i++) {
+                if (escape_char(buffer[i])) buff_len -= 2;
+            }
             length = pos + buff_len;
             end_of_line = true;
             buffer[buff_len - 3] = '.';
