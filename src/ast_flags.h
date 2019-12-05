@@ -20,7 +20,10 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_RESOLVED_OFFSET 2
 #define ASTF_STATIC_OFFSET 3
 #define ASTF_VIRTUAL_OFFSET 4
+
+// shared bit since applied to different nodes
 #define ASTF_SEALED_OFFSET 5
+#define ASTF_PP_STMT_END_UNREACHABLE 5
 
 // shared bit since applied to different nodes
 #define ASTF_PP_STMT 6
@@ -68,6 +71,9 @@ bool ast_flags_get_pp_stmt(ast_flags f);
 
 void ast_flags_set_sealed(ast_flags* f);
 bool ast_flags_get_sealed(ast_flags f);
+
+void ast_flags_set_pp_stmt_end_unreachabale(ast_flags* f);
+bool ast_flags_get_pp_stmt_end_unreachabale(ast_flags f);
 
 void ast_flags_set_virtual(ast_flags* f);
 bool ast_flags_get_virtual(ast_flags f);

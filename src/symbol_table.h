@@ -10,20 +10,21 @@ typedef struct ast_elem_s ast_elem;
 typedef struct ast_node_s ast_node;
 typedef struct src_file_s src_file;
 
+typedef struct usings_table_s {
+    ureg usings_count;
+    symbol_table** using_ends[AM_ENUM_ELEMENT_COUNT];
+} usings_table;
+
 typedef struct symbol_table_s {
-    ureg capacity;
-    symbol_table** usings_start;
+    symbol** table;
+    ureg hash_mask;
     symbol_table* parent; // this points to the postprocessing symtab for ppsts
+    usings_table* usings;
     ast_elem* owning_node;
     symbol_table* pp_symtab;
     ureg ppl;
     ureg decl_count;
 } symbol_table;
-
-typedef struct symbol_table_with_usings {
-    symbol_table** using_ends[AM_ENUM_ELEMENT_COUNT];
-    symbol_table table;
-} symbol_table_with_usings;
 
 int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
@@ -50,6 +51,8 @@ symbol** symbol_table_lookup_limited(
     const char* s);
 // might return NULL, for example for mdg_node symbol tables
 src_file* symbol_table_get_file(symbol_table* st);
+
+int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings);
 
 int init_root_symtab(symbol_table** root_st);
 void fin_root_symtab(symbol_table* root_st);

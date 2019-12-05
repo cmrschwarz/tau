@@ -62,6 +62,15 @@ bool ast_flags_get_sealed(ast_flags f)
     return bitmask_get_bit(f, ASTF_SEALED_OFFSET);
 }
 
+void ast_flags_set_pp_stmt_end_unreachabale(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_PP_STMT_END_UNREACHABLE);
+}
+bool ast_flags_get_pp_stmt_end_unreachabale(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_PP_STMT_END_UNREACHABLE);
+}
+
 void ast_flags_set_virtual(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_VIRTUAL_OFFSET);

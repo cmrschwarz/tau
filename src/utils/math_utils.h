@@ -25,9 +25,6 @@ static inline ureg ulog2(ureg v)
 // if the number is greater than UREG_MAX / 2 + 1, the result is undefined
 static inline ureg ceil_to_pow2(ureg v)
 {
-#if ARCH_X86
-    return (ureg)(1) << ulog2(v);
-#else
     v--;
     v |= v >> 1;
     v |= v >> 2;
@@ -38,7 +35,6 @@ static inline ureg ceil_to_pow2(ureg v)
     v |= v >> 32;
 #endif
     v++;
-#endif
     return v;
 }
 

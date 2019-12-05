@@ -21,7 +21,7 @@ typedef struct parser_s {
     lexer lx;
     mdg_node* current_module;
     bool disable_macro_body_call;
-    bool is_paste_block;
+    ast_body* paste_block;
     sbuffer body_stack; // sounds kinda morbid :)
 } parser;
 
@@ -40,7 +40,7 @@ int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
 parse_error parser_parse_file(parser* p, job_parse* j);
 parse_error parser_parse_paste_expr(parser* p, expr_pp* epp);
-parse_error parser_parse_paste_stmt(parser* p, expr_pp* epp);
+parse_error parser_parse_paste_stmt(parser* p, expr_pp* epp, symbol_table* st);
 
 bool ast_node_may_drop_semicolon(ast_node* n);
 #endif

@@ -238,6 +238,10 @@ static void free_astn_symtabs(ast_node* n)
             free_astn_symtabs(epe->expr);
             free_astn_symtabs(epe->source_pp_expr);
         } break;
+        case STMT_PASTE_EVALUATION: {
+            stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
+            free_body_symtabs(n, &spe->body);
+        } break;
         default: assert(false);
     }
 }

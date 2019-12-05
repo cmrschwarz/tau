@@ -391,7 +391,7 @@ resolve_error add_import_group_decls(
 static inline void
 set_parent_symtabs(symbol_table** tgt, symbol_table* parent_st)
 {
-
+    assert(parent_st);
     if (*tgt == NULL) {
         *tgt = parent_st;
     }
@@ -403,7 +403,9 @@ set_parent_symtabs(symbol_table** tgt, symbol_table* parent_st)
         while (parent_st->parent->owning_node == parent_st->owning_node) {
             parent_st = parent_st->parent;
         }
-        assert((*tgt)->parent == NULL);
+        assert(
+            (*tgt)->parent == NULL ||
+            (*tgt)->owning_node->kind == STMT_PASTE_EVALUATION);
         (*tgt)->parent = parent_st;
     }
 }
@@ -1377,26 +1379,12 @@ static inline resolve_error resolve_expr_pp(
         parse_error pe;
         if (!is_stmt) {
             pe = parser_parse_paste_expr(&r->tc->p, ppe);
-            if (pe) return RE_ERROR;
-            resolve_error re = resolve_ast_node_raw(
-                r, ((expr_paste_evaluation*)ppe)->expr, st, ppl, value, ctype);
-            if (re) return re;
-            ast_flags_set_resolved(&ppe->node.flags);
-            return RE_OK;
         }
-        pe = parser_parse_paste_stmt(&r->tc->p, ppe);
+        else {
+            pe = parser_parse_paste_stmt(&r->tc->p, ppe, st);
+        }
         if (pe) return RE_ERROR;
-        stmt_paste_evaluation* spe = (stmt_paste_evaluation*)ppe;
-        bool end_reachable = true;
-        spe->body.symtab = st;
-        resolve_error re = resolve_expr_body(
-            r, st, (ast_node*)spe, &spe->body, ppl, &end_reachable);
-        if (re) return re;
-        ast_flags_set_resolved(&ppe->node.flags);
-        if (end_reachable) {
-            RETURN_RESOLVED(value, ctype, UNREACHABLE_ELEM, UNREACHABLE_ELEM);
-        }
-        RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
+        return resolve_ast_node_raw(r, (ast_node*)ppe, st, ppl, value, ctype);
     }
     pp_resolve_node* pprn = NULL;
     if (r->curr_pp_node == NULL) {
@@ -1720,6 +1708,30 @@ static inline resolve_error resolve_ast_node_raw(
             ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, value, l->ctype);
         }
+        case STMT_PASTE_EVALUATION: {
+            stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
+            if (resolved) {
+                assert(!value);
+                RETURN_RESOLVED(
+                    value, ctype, NULL,
+                    ast_flags_get_pp_stmt_end_unreachabale(n->flags)
+                        ? UNREACHABLE_ELEM
+                        : VOID_ELEM);
+            }
+            bool end_reachable;
+            re = resolve_expr_body(r, st, n, &spe->body, ppl, &end_reachable);
+            if (ctype) {
+                *ctype = (end_reachable) ? VOID_ELEM : UNREACHABLE_ELEM;
+            }
+            if (value) *value = VOID_ELEM;
+            if (re) return re;
+
+            if (!end_reachable) {
+                ast_flags_set_pp_stmt_end_unreachabale(&n->flags);
+            }
+            ast_flags_set_resolved(&n->flags);
+            return RE_OK;
+        }
         case EXPR_MACRO_CALL: {
             // TODO ctype
             if (resolved) {
@@ -1855,13 +1867,8 @@ resolve_error resolve_expr_body(
         r->allow_type_loops = true;
         set_parent_symtabs(&b->symtab, parent_st);
     }
-    if (b->symtab->owning_node == (ast_elem*)expr && b->symtab->decl_count) {
-        // if we already have decls this is the second pass.
-        // all local syms are already defined so we don't need to check this
-        // symtab during lookup. this way we prevent use before define
-        saved_decl_count = b->symtab->decl_count;
-        b->symtab->decl_count = 0;
-    }
+    // if we already have decls this is the second pass.
+    // TODO prevent use before define
     ast_node** n;
     for (n = b->elements; *n != NULL; n++) {
         re = add_ast_node_decls(r, b->symtab, NULL, ppl, *n, false);

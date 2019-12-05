@@ -334,7 +334,7 @@ static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
         sbuffer_append(&p->body_stack, sizeof(body_parse_data));
     if (bpd == NULL) return ERR;
     // make sure the symtab is NULL to prevent it from being freed
-    if (b) b->symtab = NULL;
+    if (b && b != p->paste_block) b->symtab = NULL;
     init_bpd(bpd, n, b);
     return OK;
 }
@@ -406,6 +406,7 @@ static inline int pop_bpd(parser* p, parse_error pe)
             &p->current_module->using_count, bpd.shared_usings_count);
     }
     ast_body* bd = bpd.body;
+    symbol_table* paste_parent_st = bpd.body->symtab;
     symbol_table** st = &bd->symtab;
     symbol_table* postp_st = NULL;
     ureg ppl = p->ppl;
@@ -414,22 +415,40 @@ static inline int pop_bpd(parser* p, parse_error pe)
         body_parse_data* bpd2 = (body_parse_data*)sbuffer_iterator_previous(
             &i, sizeof(body_parse_data));
         bool has_pp = (bpd2 && bpd2->node == NULL);
-        if (!pe) {
-            bool force_unique = has_pp;
-            if (ppl == 0 && is_osc) force_unique = true;
-            if (symbol_table_init(
-                    st, bpd.decl_count, bpd.usings_count, force_unique,
-                    (ast_elem*)bpd.node, ppl)) {
+        if (bpd.body == p->paste_block) {
+            assert(paste_parent_st); // TODO: init if necessary
+            if (symbol_table_amend(
+                    paste_parent_st, bpd.decl_count, bpd.usings_count)) {
                 return ERR;
             }
+            bpd.body->symtab = NULL; // to avoid the assertion in init
+            if (symbol_table_init(
+                    &bpd.body->symtab, 0, 0, true, bpd.node, ppl)) {
+                return ERR;
+            }
+            bpd.body->symtab->parent = paste_parent_st;
+            st = &bpd.body->symtab->pp_symtab;
+            postp_st = bpd.body->symtab;
+            paste_parent_st = paste_parent_st->pp_symtab;
         }
         else {
-            *st = NULL;
-        }
-        if (*st) {
-            (*st)->parent = postp_st;
-            postp_st = *st;
-            st = &(**st).pp_symtab;
+            if (!pe) {
+                bool force_unique = has_pp;
+                if (ppl == 0 && is_osc) force_unique = true;
+                if (symbol_table_init(
+                        st, bpd.decl_count, bpd.usings_count, force_unique,
+                        (ast_elem*)bpd.node, ppl)) {
+                    return ERR;
+                }
+            }
+            else {
+                *st = NULL;
+            }
+            if (*st) {
+                (*st)->parent = postp_st;
+                postp_st = *st;
+                st = &(**st).pp_symtab;
+            }
         }
         if (!has_pp) break;
         ppl++;
@@ -603,7 +622,7 @@ int parser_init(parser* p, thread_context* tc)
         lx_fin(&p->lx);
         return r;
     }
-    p->is_paste_block = false;
+    p->paste_block = NULL;
     p->disable_macro_body_call = false;
     p->ppl = 0;
     return OK;
@@ -2138,11 +2157,10 @@ parse_error parser_parse_paste_expr(parser* p, expr_pp* epp)
     assert(sizeof(expr_pp) >= sizeof(expr_paste_evaluation));
     expr_paste_evaluation* eval = (expr_paste_evaluation*)epp;
     src_range sr = epp->node.srange;
-    ast_flags fl = epp->node.flags;
     ast_node* expr = epp->pp_expr;
     pasted_str* ps = epp->result_buffer.paste_result.first;
     eval->node.kind = EXPR_PASTE_EVALUATION;
-    eval->node.flags = fl;
+    eval->node.flags = AST_NODE_FLAGS_DEFAULT;
     eval->node.srange = SRC_RANGE_INVALID; // TODO
     eval->source_pp_srange = sr;
     eval->source_pp_expr = expr;
@@ -2159,26 +2177,27 @@ parse_error parser_parse_paste_expr(parser* p, expr_pp* epp)
     }
     return PE_OK;
 }
-parse_error parser_parse_paste_stmt(parser* p, expr_pp* epp)
+parse_error parser_parse_paste_stmt(parser* p, expr_pp* epp, symbol_table* st)
 {
     assert(sizeof(expr_pp) >= sizeof(stmt_paste_evaluation));
-    p->is_paste_block = true;
     stmt_paste_evaluation* eval = (stmt_paste_evaluation*)epp;
     src_range sr = epp->node.srange;
-    ast_flags fl = epp->node.flags;
     ast_node* expr = epp->pp_expr;
     pasted_str* ps = epp->result_buffer.paste_result.first;
-    eval->node.kind = EXPR_PASTE_EVALUATION;
-    eval->node.flags = fl;
+    eval->node.kind = STMT_PASTE_EVALUATION;
+    eval->node.flags = AST_NODE_FLAGS_DEFAULT;
     eval->node.srange = SRC_RANGE_INVALID; // TODO
     eval->source_pp_srange = sr;
     eval->source_pp_expr = expr;
     eval->paste_str = ps;
+    eval->body.symtab = st;
     int r = lx_open_paste(&p->lx, ps);
     if (r) return PE_LX_ERROR;
     tprintf("parsing a paste statement\n");
+    p->paste_block = &eval->body;
     parse_error pe =
         parse_delimited_body(p, &eval->body, (ast_node*)eval, 0, 0, 1, TK_EOF);
+    p->paste_block = false;
     return pe;
 }
 static inline const char* access_modifier_string(access_modifier am)
