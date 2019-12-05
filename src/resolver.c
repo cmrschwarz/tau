@@ -125,7 +125,6 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->continue_block = NULL;
     pprn->ppl = ppl;
     pprn->next = NULL;
-    pprn->last_child = NULL;
     pprn->parent = NULL;
     pprn->run_when_done = run_when_done;
     pprn->block_pos_reachable = true;
@@ -210,10 +209,6 @@ curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
     }
     child->run_when_done = false;
     child->parent = block;
-    if (block->last_child) {
-        block->last_child->next = child;
-    }
-    block->last_child = child;
     return RE_OK;
 }
 resolve_error
@@ -1397,6 +1392,7 @@ static inline resolve_error resolve_expr_pp(
         resolve_error re = resolve_expr_body(
             r, st, (ast_node*)spe, &spe->body, ppl, &end_reachable);
         if (re) return re;
+        ast_flags_set_resolved(&ppe->node.flags);
         if (end_reachable) {
             RETURN_RESOLVED(value, ctype, UNREACHABLE_ELEM, UNREACHABLE_ELEM);
         }
@@ -2299,6 +2295,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                     re = resolve_func(
                         r, (sc_func*)rn->node, rn->ppl, rn->continue_block);
                     if (re) return re;
+                    progress = true;
                 }
                 else {
                     assert(false);

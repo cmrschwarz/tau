@@ -518,7 +518,7 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
             if (lle) return lle;
         }
     }
-    else if (n->last_child) {
+    else if (n->first_unresolved_child) {
         for (pp_resolve_node* cn = n->first_unresolved_child; cn;
              cn = cn->next) {
             lle = genPPRN(cn);
@@ -1066,7 +1066,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             assert(!vl);
             return LLE_OK; // these are handled by the
                            // osc iterator
-        
+
         case SC_STRUCT: return lookupCType((ast_elem*)n, NULL, NULL, NULL);
         case SC_FUNC: return genFunction((sc_func*)n, vl);
         case EXPR_OP_BINARY:
