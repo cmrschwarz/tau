@@ -636,6 +636,14 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
                 pu(esa->target.sym->name);
             }
         } break;
+        case EXPR_PASTE_EVALUATION: {
+            print_ast_node(((expr_paste_evaluation*)n)->expr, cmdg, indent);
+            break;
+        }
+        case STMT_PASTE_EVALUATION: {
+            print_body(&((stmt_paste_evaluation*)n)->body, cmdg, indent);
+            break;
+        }
         default: {
             p("<unknown expression>");
         } break;
