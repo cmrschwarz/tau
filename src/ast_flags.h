@@ -21,10 +21,14 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_STATIC_OFFSET 3
 #define ASTF_VIRTUAL_OFFSET 4
 #define ASTF_SEALED_OFFSET 5
+
+// shared bit since applied to different nodes
+#define ASTF_PP_STMT 6
 #define ASTF_CONST_OFFSET 6
+
 #define ASTF_ERROR_OFFSET 7
 
-// the following three are node specific and never overlap
+// shared bit since applied to different nodes
 #define ASTF_RELATIVE_IMPORT_OFFSET 8
 #define ASTF_COMPUND_DECL_OFFSET 8
 #define ASTF_PASTING_PP_EXPR_OFFSET 8
@@ -58,6 +62,9 @@ access_modifier ast_flags_get_access_mod(ast_flags f);
 
 void ast_flags_set_const(ast_flags* f);
 bool ast_flags_get_const(ast_flags f);
+
+void ast_flags_set_pp_stmt(ast_flags* f);
+bool ast_flags_get_pp_stmt(ast_flags f);
 
 void ast_flags_set_sealed(ast_flags* f);
 bool ast_flags_get_sealed(ast_flags f);

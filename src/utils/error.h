@@ -2,7 +2,8 @@
 #define TAUC_UTILS_ERROR_H
 
 #define ERR -1
-#define OK 0 // zero to allow error handling like if(res){errorhandling}
+// zero to allow error handling like if(res){errorhandling}
+#define OK 0
 // general purpose status return codes guaranteed not to conflict with OK and
 // ERR
 #define STATUS_1 1

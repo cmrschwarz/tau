@@ -21,6 +21,7 @@ typedef struct parser_s {
     lexer lx;
     mdg_node* current_module;
     bool disable_macro_body_call;
+    bool is_paste_block;
     sbuffer body_stack; // sounds kinda morbid :)
 } parser;
 

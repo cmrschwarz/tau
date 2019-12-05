@@ -1371,11 +1371,11 @@ static inline resolve_error resolve_expr_pp(
     // TODO: find a better way to determine this,
     // since lots of places use the ctype to determine
     // reachability despite not needing the value
-    bool res_used = (value || ctype);
+    bool is_stmt = ast_flags_get_pp_stmt(ppe->node.flags);
     if (ppe->ctype == PASTED_EXPR_ELEM) {
         *ppe->result_buffer.paste_result.last_next = NULL;
         parse_error pe;
-        if (res_used) {
+        if (!is_stmt) {
             pe = parser_parse_paste_expr(&r->tc->p, ppe);
             if (pe) return RE_ERROR;
             resolve_error re = resolve_ast_node_raw(
@@ -1405,7 +1405,7 @@ static inline resolve_error resolve_expr_pp(
         }
         else {
             pprn = pp_resolve_node_create(
-                r, (ast_node*)ppe, st, res_used, true, ppl);
+                r, (ast_node*)ppe, st, is_stmt, true, ppl);
             if (!pprn) return RE_FATAL;
             ppe->result_buffer.state.pprn = pprn;
             if (curr_pp_block_add_child(r, pprn)) return RE_FATAL;

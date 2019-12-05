@@ -347,7 +347,9 @@ typedef struct expr_pp_s {
     ast_elem* ctype;
     void* result;
     union result_buffer_u {
-        ureg data[2];
+        // this must be big enough that
+        // sizeof(expr_paste_evaluation) >= sizeof(expr_pp)
+        ureg data[3];
         struct state_s {
             struct pp_resolve_node_s* pprn;
             void* true_res_buffer;

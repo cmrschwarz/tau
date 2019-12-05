@@ -263,7 +263,6 @@ int lx_open_paste(lexer* lx, pasted_str* str)
 void lx_close_paste(lexer* lx)
 {
     lx->paste_str = NULL;
-    return OK;
 }
 
 int lx_open_file(lexer* lx, src_file* f)

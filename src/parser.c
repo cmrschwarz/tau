@@ -603,6 +603,9 @@ int parser_init(parser* p, thread_context* tc)
         lx_fin(&p->lx);
         return r;
     }
+    p->is_paste_block = false;
+    p->disable_macro_body_call = false;
+    p->ppl = 0;
     return OK;
 }
 void parser_fin(parser* p)
@@ -921,8 +924,15 @@ parse_paren_group_or_tuple(parser* p, token* t, ast_node** ex)
     bool disable_mbc = p->disable_macro_body_call;
     p->disable_macro_body_call = false;
     parse_error pe = parse_expression_of_prec(p, ex, PREC_BASELINE);
-    if (pe != PE_OK && pe != PE_EOEX) return pe;
-    PEEK(p, t);
+    if (pe != PE_OK && pe != PE_EOEX) {
+        p->disable_macro_body_call = disable_mbc;
+        return pe;
+    }
+    t = lx_peek(&p->lx);
+    if (!t) {
+        p->disable_macro_body_call = disable_mbc;
+        return PE_LX_ERROR;
+    }
     if (t->kind == TK_COMMA) {
         lx_void(&p->lx);
         pe = parse_tuple_after_first_comma(p, t_start, t_end, ex);
@@ -1013,7 +1023,9 @@ static inline void turn_ident_nodes_to_exprs(ast_node** elems, ureg elem_count)
         elems++;
     }
 }
-static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
+
+static inline parse_error
+parse_paren_group_or_tuple_or_compound_decl_with_enabled_mbc(
     parser* p, token* t, ast_node** ex, ast_node*** elem_list, ureg* elem_count,
     ureg* list_end, ureg* decl_count, ureg* ident_count)
 {
@@ -1026,8 +1038,6 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         lx_void(&p->lx);
         return build_empty_tuple(p, t_start, t->end, ex);
     }
-    bool disable_mbc = p->disable_macro_body_call;
-    p->disable_macro_body_call = false;
     void** element_list = NULL;
     if (t->kind != TK_IDENTIFIER) {
         pe = parse_expression(p, ex);
@@ -1049,7 +1059,6 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         }
         else {
             pe = build_expr_parentheses(p, t_start, t_end, ex);
-            p->disable_macro_body_call = disable_mbc;
             return pe;
         }
     }
@@ -1069,7 +1078,6 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             PEEK(p, t);
             if (t->kind == TK_PAREN_CLOSE) {
                 pe = build_expr_parentheses(p, t_start, t_end, ex);
-                p->disable_macro_body_call = disable_mbc;
                 return pe;
             }
             PEEK(p, t);
@@ -1111,13 +1119,13 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
                 expr_tuple* tp = alloc_perm(p, sizeof(expr_tuple));
                 if (!tp) return PE_FATAL;
                 ast_node_init((ast_node*)tp, EXPR_TUPLE);
-                if (ast_node_fill_srange(p, (ast_node*)tp, t_start, t->end))
+                if (ast_node_fill_srange(p, (ast_node*)tp, t_start, t->end)) {
                     return PE_FATAL;
+                }
                 tp->elements = res_elem_list;
                 tp->elem_count = res_elem_count;
                 *ex = (ast_node*)tp;
             }
-            p->disable_macro_body_call = disable_mbc;
             return PE_OK;
         }
         if (t->kind == TK_IDENTIFIER) {
@@ -1140,7 +1148,7 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
             }
         }
         else if (t->kind == TK_PAREN_OPEN) {
-            pe = parse_paren_group_or_tuple_or_compound_decl(
+            pe = parse_paren_group_or_tuple_or_compound_decl_with_enabled_mbc(
                 p, t, ex, NULL, NULL, NULL, decl_count, ident_count);
             if (pe) return pe;
         }
@@ -1159,6 +1167,18 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
         if (list_builder_add(&p->lx.tc->listb, *ex)) return PE_FATAL;
         PEEK(p, t);
     }
+}
+static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
+    parser* p, token* t, ast_node** ex, ast_node*** elem_list, ureg* elem_count,
+    ureg* list_end, ureg* decl_count, ureg* ident_count)
+{
+    bool disable_mbc = p->disable_macro_body_call;
+    p->disable_macro_body_call = false;
+    parse_error pe =
+        parse_paren_group_or_tuple_or_compound_decl_with_enabled_mbc(
+            p, t, ex, elem_list, elem_count, list_end, decl_count, ident_count);
+    p->disable_macro_body_call = disable_mbc;
+    return pe;
 }
 static inline parse_error
 parse_prefix_unary_op(parser* p, ast_node_kind op, ast_node** ex)
@@ -2073,8 +2093,6 @@ parse_error parse_eof_delimited_open_scope(parser* p, open_scope* osc)
 }
 parse_error parser_parse_file(parser* p, job_parse* j)
 {
-    p->disable_macro_body_call = false;
-    p->ppl = 0;
     int r = lx_open_file(&p->lx, j->file);
     tprintf("parsing ");
     tprintn(j->file->head.name.start, string_len(j->file->head.name));
@@ -2130,8 +2148,6 @@ parse_error parser_parse_paste_expr(parser* p, expr_pp* epp)
     eval->source_pp_expr = expr;
     eval->paste_str = ps;
 
-    p->disable_macro_body_call = false;
-    p->ppl = 0;
     int r = lx_open_paste(&p->lx, ps);
     if (r) return PE_LX_ERROR;
     tprintf("parsing a paste expression\n");
@@ -2146,6 +2162,7 @@ parse_error parser_parse_paste_expr(parser* p, expr_pp* epp)
 parse_error parser_parse_paste_stmt(parser* p, expr_pp* epp)
 {
     assert(sizeof(expr_pp) >= sizeof(stmt_paste_evaluation));
+    p->is_paste_block = true;
     stmt_paste_evaluation* eval = (stmt_paste_evaluation*)epp;
     src_range sr = epp->node.srange;
     ast_flags fl = epp->node.flags;
@@ -2157,9 +2174,6 @@ parse_error parser_parse_paste_stmt(parser* p, expr_pp* epp)
     eval->source_pp_srange = sr;
     eval->source_pp_expr = expr;
     eval->paste_str = ps;
-
-    p->disable_macro_body_call = false;
-    p->ppl = 0;
     int r = lx_open_paste(&p->lx, ps);
     if (r) return PE_LX_ERROR;
     tprintf("parsing a paste statement\n");
@@ -3243,6 +3257,7 @@ static inline parse_error parse_pp_stmt(
     expr_pp* sp = alloc_perm(p, sizeof(expr_pp));
     if (!sp) return PE_FATAL;
     ast_node_init(&sp->node, EXPR_PP);
+    ast_flags_set_pp_stmt(&sp->node.flags);
     sp->result_buffer.state.pprn = NULL;
     sp->result_buffer.paste_result.last_next =
         &sp->result_buffer.paste_result.first;

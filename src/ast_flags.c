@@ -44,6 +44,15 @@ bool ast_flags_get_const(ast_flags f)
     return bitmask_get_bit(f, ASTF_CONST_OFFSET);
 }
 
+void ast_flags_set_pp_stmt(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_PP_STMT);
+}
+bool ast_flags_get_pp_stmt(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_PP_STMT);
+}
+
 void ast_flags_set_sealed(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_SEALED_OFFSET);
