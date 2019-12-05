@@ -1152,20 +1152,13 @@ static inline resolve_error resolve_var(
     r->curr_var_pp_node = NULL;
     r->curr_var_decl_block_owner = r->curr_block_owner;
     if (v->sym.node.kind == SYM_VAR) {
-        re = check_var_ppl(r, v, ppl);
-        if (!re) {
-            ast_elem* type;
-            re = resolve_ast_node(r, v->type, st, ppl, &type, NULL);
-            if (!re) v->ctype = type;
-        }
+        ast_elem* type;
+        re = resolve_ast_node(r, v->type, st, ppl, &type, NULL);
+        if (!re) v->ctype = type;
     }
     else {
         sym_var_initialized* vi = (sym_var_initialized*)v;
-        re = check_var_ppl(r, (sym_var*)vi, ppl);
-        if (re) {
-            // fallthrough
-        }
-        else if (vi->var.type) {
+        if (vi->var.type) {
             re = resolve_ast_node(
                 r, vi->var.type, st, ppl, &vi->var.ctype, NULL);
             if (!re) {
@@ -1380,16 +1373,34 @@ static inline resolve_error resolve_expr_pp(
     resolver* r, symbol_table* st, ureg ppl, expr_pp* ppe, ast_elem** value,
     ast_elem** ctype)
 {
+    // TODO: find a better way to determine this,
+    // since lots of places use the ctype to determine
+    // reachability despite not needing the value
+    bool res_used = (value || ctype);
     if (ppe->ctype == PASTED_EXPR_ELEM) {
-        assert(value || ctype);
         *ppe->result_buffer.paste_result.last_next = NULL;
-        parse_error pe = parser_parse_paste_expr(&r->tc->p, ppe);
+        parse_error pe;
+        if (res_used) {
+            pe = parser_parse_paste_expr(&r->tc->p, ppe);
+            if (pe) return RE_ERROR;
+            resolve_error re = resolve_ast_node_raw(
+                r, ((expr_paste_evaluation*)ppe)->expr, st, ppl, value, ctype);
+            if (re) return re;
+            ast_flags_set_resolved(&ppe->node.flags);
+            return RE_OK;
+        }
+        pe = parser_parse_paste_stmt(&r->tc->p, ppe);
         if (pe) return RE_ERROR;
-        resolve_error re = resolve_ast_node_raw(
-            r, ((expr_paste_evaluation*)ppe)->expr, st, ppl, value, ctype);
+        stmt_paste_evaluation* spe = (stmt_paste_evaluation*)ppe;
+        bool end_reachable = true;
+        spe->body.symtab = st;
+        resolve_error re = resolve_expr_body(
+            r, st, (ast_node*)spe, &spe->body, ppl, &end_reachable);
         if (re) return re;
-        ast_flags_set_resolved(&ppe->node.flags);
-        return RE_OK;
+        if (end_reachable) {
+            RETURN_RESOLVED(value, ctype, UNREACHABLE_ELEM, UNREACHABLE_ELEM);
+        }
+        RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
     }
     pp_resolve_node* pprn = NULL;
     if (r->curr_pp_node == NULL) {
@@ -1397,10 +1408,6 @@ static inline resolve_error resolve_expr_pp(
             pprn = ppe->result_buffer.state.pprn;
         }
         else {
-            // TODO: find a better way to determine this,
-            // since lots of places use the ctype to determine
-            // reachability despite not needing the value
-            bool res_used = (value || ctype);
             pprn = pp_resolve_node_create(
                 r, (ast_node*)ppe, st, res_used, true, ppl);
             if (!pprn) return RE_FATAL;
@@ -1657,6 +1664,8 @@ static inline resolve_error resolve_ast_node_raw(
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: {
             sym_var* v = (sym_var*)n;
+            re = check_var_ppl(r, v, ppl);
+            if (re) return re;
             if (resolved) {
                 if (v->pprn) {
                     re = curr_pprn_add_dependency(r, v->pprn);
@@ -1986,6 +1995,15 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, ast_node** continue_block)
     pp_resolve_node* prev_pprn = r->curr_pp_node;
     r->curr_pp_node = NULL;
     while (*n) {
+        if (stmt_ctype_ptr == NULL && n != continue_block) {
+            src_range_large srl;
+            ast_node_fill_src_range(*n, st, &srl);
+            error_log_report_annotated(
+                r->tc->err_log, ES_RESOLVER, false,
+                "unreachable statement in function", srl.file, srl.start,
+                srl.end, "after return statement");
+            return RE_ERROR;
+        }
         re = add_ast_node_decls(r, st, NULL, ppl, *n, false);
         if (re) break;
         re = resolve_ast_node(r, *n, st, ppl, NULL, stmt_ctype_ptr);
@@ -2013,7 +2031,7 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, ast_node** continue_block)
             if (ptrlist_append(&r->pp_resolve_nodes_ready, bpprn))
                 return RE_FATAL;
             bpprn->continue_block = n;
-            bpprn->block_pos_reachable = (stmt_ctype_ptr == NULL);
+            bpprn->block_pos_reachable = (stmt_ctype_ptr != NULL);
             return RE_OK;
         }
         return re;
