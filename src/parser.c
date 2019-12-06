@@ -391,22 +391,35 @@ static inline int pop_bpd_pp(parser* p, parse_error pe)
     bpd->shared_usings_count += bpd_popped.shared_usings_count;
     return OK;
 }
-static inline int handle_paste_bpd(parser* p, body_parse_data* bpd, ureg ppl)
+static inline int
+handle_paste_bpd(parser* p, body_parse_data* bpd, ureg ppl, symbol_table*** st)
 {
     if (bpd->decl_count || bpd->usings_count) {
         if (p->paste_parent_owns_st) {
-            if (symbol_table_amend(
-                    *p->paste_parent_symtab, bpd->decl_count,
-                    bpd->usings_count)) {
+            symbol_table** s = p->paste_parent_symtab;
+            while ((**s).ppl < ppl) {
+                if (!(**s).pp_symtab) {
+                    assert(false); // TODO: handle inserting (!) symbol tables
+                }
+                else {
+                    s = &(**s).pp_symtab;
+                }
+            }
+            if (!*s) {
+                assert(false); // TODO: handle inserting (!) symbol tables
+                return OK;
+            }
+            if (symbol_table_amend(*s, bpd->decl_count, bpd->usings_count)) {
                 return ERR;
             }
         }
         else {
-            assert(false);
+            assert(false); // TODO: handle inserting (!) symbol tables
+            p->paste_parent_symtab = NULL;
+            p->paste_parent_owns_st = true;
         }
     }
-    if (symbol_table_init(
-            &bpd->body->symtab, 0, 0, true, (ast_elem*)bpd->node, ppl)) {
+    if (symbol_table_init(*st, 0, 0, true, (ast_elem*)bpd->node, ppl)) {
         return ERR;
     }
     return OK;
@@ -435,8 +448,8 @@ static inline int pop_bpd(parser* p, parse_error pe)
             &i, sizeof(body_parse_data));
         bool has_pp = (bpd2 && bpd2->node == NULL);
         if (bpd.body == p->paste_block) {
-            if (handle_paste_bpd(p, &bpd, ppl)) return ERR;
-            st = &bpd.body->symtab;
+            if (handle_paste_bpd(p, &bpd, ppl, &st)) return ERR;
+            if (!postp_st) postp_st = *p->paste_parent_symtab;
         }
         else {
             if (!pe) {
@@ -2146,6 +2159,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     }
     p->current_module = p->lx.tc->t->mdg.root_node;
     j->file->root.oscope.sc.sym.name = p->lx.tc->t->mdg.root_node->name;
+    p->ppl = 0;
     ast_node_init((ast_node*)&j->file->root, OSC_EXTEND);
     parse_error pe = parse_eof_delimited_open_scope(p, &j->file->root.oscope);
     lx_close_file(&p->lx);
@@ -2159,7 +2173,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     }
     return pe;
 }
-parse_error parser_parse_paste_expr(parser* p, expr_pp* epp)
+parse_error parser_parse_paste_expr(parser* p, expr_pp* epp, ureg ppl)
 {
     assert(sizeof(expr_pp) >= sizeof(expr_paste_evaluation));
     expr_paste_evaluation* eval = (expr_paste_evaluation*)epp;
@@ -2172,7 +2186,7 @@ parse_error parser_parse_paste_expr(parser* p, expr_pp* epp)
     eval->source_pp_srange = sr;
     eval->source_pp_expr = expr;
     eval->paste_str = ps;
-
+    p->ppl = ppl;
     int r = lx_open_paste(&p->lx, ps);
     if (r) return PE_LX_ERROR;
     tprintf("parsing a paste expression\n");
@@ -2204,6 +2218,7 @@ parse_error parser_parse_paste_stmt(
     p->paste_block = &eval->body;
     p->paste_parent_symtab = st;
     p->paste_parent_owns_st = owned_st;
+    p->ppl = (**st).ppl;
     parse_error pe =
         parse_delimited_body(p, &eval->body, (ast_node*)eval, 0, 0, 1, TK_EOF);
     p->paste_block = false;

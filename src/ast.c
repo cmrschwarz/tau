@@ -197,6 +197,7 @@ ast_body* ast_elem_get_body(ast_elem* s)
         case EXPR_BLOCK: return &((expr_block*)s)->body;
         case EXPR_MATCH: return &((expr_match*)s)->body;
         case EXPR_LOOP: return &((expr_loop*)s)->body;
+        case STMT_PASTE_EVALUATION: return &((stmt_paste_evaluation*)s)->body;
         default: panic("tried to get body from ast node without body");
     }
     return NULL;

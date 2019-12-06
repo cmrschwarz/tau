@@ -128,6 +128,7 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->parent = NULL;
     pprn->run_when_done = run_when_done;
     pprn->block_pos_reachable = true;
+    pprn->first_unresolved_child = NULL;
     if (aseglist_init(&pprn->required_by)) return NULL;
     return pprn;
 }
@@ -1380,7 +1381,7 @@ static inline resolve_error resolve_expr_pp(
         *ppe->result_buffer.paste_result.last_next = NULL;
         parse_error pe;
         if (!is_stmt) {
-            pe = parser_parse_paste_expr(&r->tc->p, ppe);
+            pe = parser_parse_paste_expr(&r->tc->p, ppe, ppl);
         }
         else {
             ast_body* b = ast_elem_get_body((ast_elem*)r->curr_block_owner);
@@ -2263,15 +2264,9 @@ pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
             sbuffer_remove_back(
                 &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node**));
         }
-        if (pprn->parent) {
-            if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
-                return RE_FATAL;
-            }
-        }
-        else {
-            if (ptrlist_append(&r->pp_resolve_nodes_ready, pprn)) {
-                return RE_FATAL;
-            }
+        assert(!pprn->parent);
+        if (ptrlist_append(&r->pp_resolve_nodes_ready, pprn)) {
+            return RE_FATAL;
         }
     }
     return RE_OK;
@@ -2359,6 +2354,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 }
                 pli_prev(&it);
                 ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+                pprn_fin(r, rn);
                 progress = true;
             }
         }

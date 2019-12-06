@@ -1,6 +1,7 @@
 #include "plattform.h"
 #include "stdio.h"
 #include "stdlib.h"
+#include <assert.h>
 void panic(char* message)
 {
     // exit with an error to indicate something went horribly wrong
@@ -9,5 +10,6 @@ void panic(char* message)
     fputs(message, stderr);
     fputc('\n', stderr);
     fflush(stderr);
+    assert(false);
     exit(-1);
 }
