@@ -1077,9 +1077,12 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case EXPR_PASTE_EVALUATION:
             return genAstNode(((expr_paste_evaluation*)n)->expr, vl, vl_loaded);
         case STMT_PASTE_EVALUATION: {
-            return genAstBody(
-                &((stmt_paste_evaluation*)n)->body,
-                _control_flow_ctx.back().continues_afterwards, NULL);
+            for (ast_node** n = ((stmt_paste_evaluation*)n)->body.elements; *n;
+                 n++) {
+                llvm_error lle = genAstNode(*n, NULL, NULL);
+                if (lle) return lle;
+            }
+            return LLE_OK;
         }
         case EXPR_LITERAL: {
             expr_literal* l = (expr_literal*)n;

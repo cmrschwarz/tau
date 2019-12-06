@@ -475,6 +475,8 @@ static resolve_error add_ast_node_decls(
                 pp_resolve_node* pprn =
                     pp_resolve_node_create(r, n, st, false, true, ppl);
                 if (!pprn) return RE_FATAL;
+                re = pp_resolve_node_activate(r, pprn, false);
+                if (re) return re;
                 r->curr_pp_node = pprn;
                 epp->result_buffer.state.pprn = pprn;
             }
@@ -1381,7 +1383,10 @@ static inline resolve_error resolve_expr_pp(
             pe = parser_parse_paste_expr(&r->tc->p, ppe);
         }
         else {
-            pe = parser_parse_paste_stmt(&r->tc->p, ppe, st);
+            ast_body* b = ast_elem_get_body((ast_elem*)r->curr_block_owner);
+            pe = parser_parse_paste_stmt(
+                &r->tc->p, ppe, &b->symtab,
+                b->symtab->owning_node == (ast_elem*)r->curr_block_owner);
         }
         if (pe) return RE_ERROR;
         return resolve_ast_node_raw(r, (ast_node*)ppe, st, ppl, value, ctype);
@@ -1707,6 +1712,12 @@ static inline resolve_error resolve_ast_node_raw(
             if (!l->ctype) l->ctype = UNREACHABLE_ELEM;
             ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, value, l->ctype);
+        }
+        case EXPR_PASTE_EVALUATION: {
+            expr_paste_evaluation* epe = (expr_paste_evaluation*)n;
+            re = resolve_ast_node_raw(r, epe->expr, st, ppl, value, ctype);
+            if (!resolved && !re) ast_flags_set_resolved(&epe->node.flags);
+            return re;
         }
         case STMT_PASTE_EVALUATION: {
             stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
@@ -2144,6 +2155,10 @@ resolve_error resolver_add_osc_decls(resolver* r)
             resolve_error re = add_body_decls(
                 r, (**i).symtab, (**i).symtab, 0, &osc->sc.body, true);
             if (re) return re;
+            if (r->curr_pp_node) {
+                re = pp_resolve_node_activate(r, r->curr_pp_node, false);
+                if (re) return re;
+            }
         }
     }
     return RE_OK;
@@ -2207,6 +2222,12 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
     }
     if (pprn->continue_block) {
         *progress = true;
+        if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) return RE_FATAL;
+        return RE_OK;
+    }
+    if (pprn->pending_pastes && pprn->node->kind == EXPR_PP) {
+        pprn->pending_pastes = 0;
+        pprn->run_when_done = false;
         if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) return RE_FATAL;
         return RE_OK;
     }
@@ -2298,6 +2319,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
         for (pp_resolve_node* rn = pli_next(&it); rn; rn = pli_next(&it)) {
             if (rn->continue_block) {
                 if (rn->node->kind == SC_FUNC) {
+                    pli_prev(&it);
                     ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
                     re = resolve_func(
                         r, (sc_func*)rn->node, rn->ppl, rn->continue_block);
@@ -2309,13 +2331,31 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 }
                 continue;
             }
+            if (rn->parent) {
+                r->curr_pp_node = rn->parent;
+                r->curr_block_owner = rn->parent->node;
+            }
+            else {
+                r->curr_pp_node = NULL;
+                // can't be the an mdg because of "declaring" st --> node
+                assert(rn->node->kind != ELEM_MDG_NODE);
+                r->curr_block_owner = (ast_node*)rn->declaring_st->owning_node;
+            }
             re = resolve_ast_node(
                 r, rn->node, rn->declaring_st, rn->ppl, NULL, NULL);
+            if (re == RE_UNREALIZED_PASTE) {
+                pli_prev(&it);
+                ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+                progress = true;
+                continue;
+            }
             if (re == RE_SYMBOL_NOT_FOUND_YET) continue;
             if (re) return re;
             if (ast_flags_get_resolved(rn->node->flags)) {
-                if (ptrlist_append(&r->pp_resolve_nodes_ready, rn)) {
-                    return RE_FATAL;
+                if (rn->run_when_done) {
+                    if (ptrlist_append(&r->pp_resolve_nodes_ready, rn)) {
+                        return RE_FATAL;
+                    }
                 }
                 pli_prev(&it);
                 ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
@@ -2326,40 +2366,6 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
     return RE_OK;
 }
 
-resolve_error resolver_handle_osc_level_pp(resolver* r)
-{
-    resolve_error re;
-    // at this point the initial add_decls has run and added
-    // all top level pp exprs as pp_resolve_nodes
-    // now we run through all of these to create a list of all
-    // pp_resolve_nodes that require unique evaluation
-    r->pp_generation = 0;
-    r->multi_evaluation_ctx = false;
-    pli it = pli_rbegin(&r->pp_resolve_nodes_pending);
-    for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
-        r->curr_pp_node = rn;
-        re = resolve_ast_node(
-            r, ((expr_pp*)rn->node)->pp_expr, rn->declaring_st, rn->ppl + 1,
-            NULL, &((expr_pp*)rn->node)->ctype);
-        if (re == RE_SYMBOL_NOT_FOUND_YET) continue;
-        if (re) return re;
-        if (rn->dep_count == 0) {
-            ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
-            if (ptrlist_append(&r->pp_resolve_nodes_ready, rn)) return RE_FATAL;
-        }
-    }
-    re = resolver_run_pp_resolve_nodes(r);
-    if (re) return re;
-    // we rerun remaining pp nodes to generate unknown symbol errors
-    it = pli_rbegin(&r->pp_resolve_nodes_pending);
-    for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
-        re = resolve_ast_node(
-            r, ((expr_pp*)rn->node)->pp_expr, rn->declaring_st, rn->ppl + 1,
-            NULL, NULL);
-        if (re) return re;
-    }
-    return RE_OK;
-}
 resolve_error resolver_handle_post_pp(resolver* r)
 {
     resolve_error re;
@@ -2372,8 +2378,8 @@ resolve_error resolver_handle_post_pp(resolver* r)
             r->curr_osc = osc;
             r->curr_block_owner = (ast_node*)osc;
             re = resolve_body(r, (ast_node*)osc, &osc->sc.body, 0);
-            ast_flags_set_resolved(&osc->sc.sym.node.flags);
             if (re) return re;
+            ast_flags_set_resolved(&osc->sc.sym.node.flags);
         }
     }
     re = resolver_run_pp_resolve_nodes(r);
@@ -2400,7 +2406,7 @@ int resolver_resolve(
     if (re) return re;
     re = resolver_add_osc_decls(r);
     if (re) return re;
-    re = resolver_handle_osc_level_pp(r);
+    re = resolver_run_pp_resolve_nodes(r);
     if (re) return re;
     re = resolver_handle_post_pp(r);
     if (re) return re;

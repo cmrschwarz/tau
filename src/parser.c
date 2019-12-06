@@ -334,7 +334,7 @@ static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
         sbuffer_append(&p->body_stack, sizeof(body_parse_data));
     if (bpd == NULL) return ERR;
     // make sure the symtab is NULL to prevent it from being freed
-    if (b && b != p->paste_block) b->symtab = NULL;
+    b->symtab = NULL;
     init_bpd(bpd, n, b);
     return OK;
 }
@@ -391,6 +391,26 @@ static inline int pop_bpd_pp(parser* p, parse_error pe)
     bpd->shared_usings_count += bpd_popped.shared_usings_count;
     return OK;
 }
+static inline int handle_paste_bpd(parser* p, body_parse_data* bpd, ureg ppl)
+{
+    if (bpd->decl_count || bpd->usings_count) {
+        if (p->paste_parent_owns_st) {
+            if (symbol_table_amend(
+                    *p->paste_parent_symtab, bpd->decl_count,
+                    bpd->usings_count)) {
+                return ERR;
+            }
+        }
+        else {
+            assert(false);
+        }
+    }
+    if (symbol_table_init(
+            &bpd->body->symtab, 0, 0, true, (ast_elem*)bpd->node, ppl)) {
+        return ERR;
+    }
+    return OK;
+}
 static inline int pop_bpd(parser* p, parse_error pe)
 {
     sbuffer_iterator i = sbuffer_iterator_begin_at_end(&p->body_stack);
@@ -406,7 +426,6 @@ static inline int pop_bpd(parser* p, parse_error pe)
             &p->current_module->using_count, bpd.shared_usings_count);
     }
     ast_body* bd = bpd.body;
-    symbol_table* paste_parent_st = bpd.body->symtab;
     symbol_table** st = &bd->symtab;
     symbol_table* postp_st = NULL;
     ureg ppl = p->ppl;
@@ -416,20 +435,8 @@ static inline int pop_bpd(parser* p, parse_error pe)
             &i, sizeof(body_parse_data));
         bool has_pp = (bpd2 && bpd2->node == NULL);
         if (bpd.body == p->paste_block) {
-            assert(paste_parent_st); // TODO: init if necessary
-            if (symbol_table_amend(
-                    paste_parent_st, bpd.decl_count, bpd.usings_count)) {
-                return ERR;
-            }
-            bpd.body->symtab = NULL; // to avoid the assertion in init
-            if (symbol_table_init(
-                    &bpd.body->symtab, 0, 0, true, bpd.node, ppl)) {
-                return ERR;
-            }
-            bpd.body->symtab->parent = paste_parent_st;
-            st = &bpd.body->symtab->pp_symtab;
-            postp_st = bpd.body->symtab;
-            paste_parent_st = paste_parent_st->pp_symtab;
+            if (handle_paste_bpd(p, &bpd, ppl)) return ERR;
+            st = &bpd.body->symtab;
         }
         else {
             if (!pe) {
@@ -444,11 +451,11 @@ static inline int pop_bpd(parser* p, parse_error pe)
             else {
                 *st = NULL;
             }
-            if (*st) {
-                (*st)->parent = postp_st;
-                postp_st = *st;
-                st = &(**st).pp_symtab;
-            }
+        }
+        if (*st) {
+            (*st)->parent = postp_st;
+            postp_st = *st;
+            st = &(**st).pp_symtab;
         }
         if (!has_pp) break;
         ppl++;
@@ -2177,7 +2184,8 @@ parse_error parser_parse_paste_expr(parser* p, expr_pp* epp)
     }
     return PE_OK;
 }
-parse_error parser_parse_paste_stmt(parser* p, expr_pp* epp, symbol_table* st)
+parse_error parser_parse_paste_stmt(
+    parser* p, expr_pp* epp, symbol_table** st, bool owned_st)
 {
     assert(sizeof(expr_pp) >= sizeof(stmt_paste_evaluation));
     stmt_paste_evaluation* eval = (stmt_paste_evaluation*)epp;
@@ -2190,11 +2198,12 @@ parse_error parser_parse_paste_stmt(parser* p, expr_pp* epp, symbol_table* st)
     eval->source_pp_srange = sr;
     eval->source_pp_expr = expr;
     eval->paste_str = ps;
-    eval->body.symtab = st;
     int r = lx_open_paste(&p->lx, ps);
     if (r) return PE_LX_ERROR;
     tprintf("parsing a paste statement\n");
     p->paste_block = &eval->body;
+    p->paste_parent_symtab = st;
+    p->paste_parent_owns_st = owned_st;
     parse_error pe =
         parse_delimited_body(p, &eval->body, (ast_node*)eval, 0, 0, 1, TK_EOF);
     p->paste_block = false;

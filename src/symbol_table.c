@@ -26,7 +26,7 @@ int symbol_table_init(
     symbol_table* st = tmalloc(sizeof(symbol_table));
     if (!st) return ERR;
     st->pp_symtab = NULL;
-    st->decl_count = 0;
+    st->decl_count = decl_count;
     if (decl_count) {
         ureg table_capacity = (decl_count == 1) ? 2 : ceil_to_pow2(decl_count);
         st->hash_mask = table_capacity - 1;
@@ -213,9 +213,9 @@ symbol** symbol_table_lookup(
 }
 void symbol_table_inc_decl_count(symbol_table* st)
 {
-    while (st->decl_count == UREG_MAX) st = st->parent;
-    st->decl_count++;
-    assert(st->decl_count <= symbol_table_get_capacity(st));
+    // while (st->decl_count == UREG_MAX) st = st->parent;
+    // st->decl_count++;
+    // assert(st->decl_count <= symbol_table_get_capacity(st));
 }
 src_file* symbol_table_get_file(symbol_table* st)
 {
