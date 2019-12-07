@@ -411,7 +411,7 @@ int print_src_line(
     pec(mel, ANSICOLOR_CLEAR);
     static char buffer[LINE_BUFFER_SIZE];
     ureg start, length;
-    src_pos_get_line_bounds(&file->src_map, line, &start, &length);
+    src_pos_get_line_bounds(&file->smap, line, &start, &length);
     bool has_newline = true;
     if (fseek(file->file_stream, start, SEEK_SET)) return ERR;
     bool end_of_line = false;
@@ -675,7 +675,7 @@ ureg extend_em(
 {
     if (end.column == 0 && end.line != pos.line) {
         ureg lstart, llength;
-        src_pos_get_line_bounds(&file->src_map, pos.line, &lstart, &llength);
+        src_pos_get_line_bounds(&file->smap, pos.line, &lstart, &llength);
         end.line--;
         end.column = llength - 1;
     }
@@ -686,7 +686,7 @@ ureg extend_em(
     }
     err_points[0].message = "";
     ureg lstart, llength;
-    src_pos_get_line_bounds(&file->src_map, pos.line, &lstart, &llength);
+    src_pos_get_line_bounds(&file->smap, pos.line, &lstart, &llength);
     err_points[0].col_end = llength - 1;
     err_points[1].message_color = err_points[0].message_color;
     err_points[1].squigly_color = err_points[0].squigly_color;
@@ -699,14 +699,12 @@ ureg extend_em(
         return 2;
     }
     if (pos.line + 2 == end.line) {
-        src_pos_get_line_bounds(
-            &file->src_map, pos.line + 1, &lstart, &llength);
+        src_pos_get_line_bounds(&file->smap, pos.line + 1, &lstart, &llength);
         err_points[1].message = "";
         err_points[1].col_start = 0;
         err_points[1].col_end = llength - 1;
         err_points[1].line = pos.line + 1;
-        src_pos_get_line_bounds(
-            &file->src_map, pos.line + 2, &lstart, &llength);
+        src_pos_get_line_bounds(&file->smap, pos.line + 2, &lstart, &llength);
         err_points[2].message_color = err_points[0].message_color;
         err_points[2].squigly_color = err_points[0].squigly_color;
         err_points[2].col_start = 0;
@@ -750,7 +748,7 @@ int report_error(master_error_log* mel, error* e)
     }
     if (e->file->file_stream != (void*)NULL_PTR_PTR) {
         ureg err_point_count;
-        src_pos pos = src_map_get_pos(&e->file->src_map, e->position);
+        src_pos pos = src_map_get_pos(&e->file->smap, e->position);
 
         // TODO: multiline errors
         switch (e->kind) {
@@ -761,7 +759,7 @@ int report_error(master_error_log* mel, error* e)
                 err_points[0].col_start = pos.column;
                 err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
                 err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
-                src_pos end = src_map_get_pos(&e->file->src_map, ea->end);
+                src_pos end = src_map_get_pos(&e->file->smap, ea->end);
                 err_point_count =
                     extend_em(e->file, err_points, ea->annotation, pos, end);
             } break;
@@ -783,7 +781,7 @@ int report_error(master_error_log* mel, error* e)
                 err_points[0].message_color = msg_colors[0];
                 err_points[0].squigly_color = msg_colors[0];
                 src_pos end =
-                    src_map_get_pos(&e->file->src_map, ema->err_annot.end);
+                    src_map_get_pos(&e->file->smap, ema->err_annot.end);
                 err_point_count = extend_em(
                     e->file, err_points, ema->err_annot.annotation, pos, end);
                 error_annotation* ea = (error_annotation*)(ema + 1);
@@ -794,8 +792,7 @@ int report_error(master_error_log* mel, error* e)
                         if (r == IO_ERR) return OK;
                         if (r != OK) return ERR;
                     }
-                    src_pos posi =
-                        src_map_get_pos(&ea->file->src_map, ea->start);
+                    src_pos posi = src_map_get_pos(&ea->file->smap, ea->start);
                     err_points[err_point_count].file = ea->file;
                     err_points[err_point_count].line = posi.line;
                     err_points[err_point_count].col_start = posi.column;
@@ -806,7 +803,7 @@ int report_error(master_error_log* mel, error* e)
                         (msg_colors[(i + 1) % msg_color_count]);
                     err_points[err_point_count].squigly_color =
                         (msg_colors[(i + 1) % msg_color_count]);
-                    end = src_map_get_pos(&ea->file->src_map, ea->end);
+                    end = src_map_get_pos(&ea->file->smap, ea->end);
                     err_point_count += extend_em(
                         ea->file, &err_points[err_point_count], ea->annotation,
                         posi, end);
@@ -868,8 +865,7 @@ int report_error(master_error_log* mel, error* e)
     }
     else {
         if (print_filepath(
-                mel, 1, src_map_get_pos(&e->file->src_map, e->position),
-                e->file))
+                mel, 1, src_map_get_pos(&e->file->smap, e->position), e->file))
             return ERR;
     }
     return OK;

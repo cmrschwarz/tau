@@ -16,7 +16,7 @@ static const ureg SRC_RANGE_MAX_START = (((ureg)1) << SRC_RANGE_START_BITS) - 1;
 static const ureg SRC_RANGE_NEW_MAP_BIT = ((ureg)1) << (REG_BITS - 2);
 static const ureg SRC_RANGE_EXTERN_BIT = ((ureg)1) << (REG_BITS - 1);
 
-static inline int append_line_store(source_map* m, ureg size, ureg first_line)
+static inline int append_line_store(src_map* m, ureg size, ureg first_line)
 {
     line_store* s = (line_store*)tmalloc(size);
     if (!s) return -1;
@@ -27,17 +27,18 @@ static inline int append_line_store(source_map* m, ureg size, ureg first_line)
     m->last_line = ptradd(s, sizeof(line_store));
     return 0;
 }
-int src_map_init(source_map* m, thread_context* tc)
+int src_map_init(src_map* m, ast_elem* source, thread_context* tc)
 {
     m->last_line_store = NULL;
     int r = append_line_store(m, LINE_STORE_MIN_SIZE, 0);
     if (r) return r;
     *m->last_line = 0;
     m->last_line++;
+    m->source = source;
     return 0;
 }
 
-void src_map_fin(source_map* m)
+void src_map_fin(src_map* m)
 {
     line_store* ls = m->last_line_store;
     while (ls) {
@@ -47,7 +48,7 @@ void src_map_fin(source_map* m)
     }
 }
 
-int src_map_add_line(source_map* m, ureg line_start)
+int src_map_add_line(src_map* m, ureg line_start)
 {
     if (m->last_line == m->last_line_store->end) {
         ureg last_size = ptrdiff(m->last_line_store->end, m->last_line_store);
@@ -63,7 +64,7 @@ int src_map_add_line(source_map* m, ureg line_start)
 }
 
 int src_pos_get_line_bounds(
-    source_map* m, ureg line_nr, ureg* start_pos, ureg* length)
+    src_map* m, ureg line_nr, ureg* start_pos, ureg* length)
 {
     line_store* ls = m->last_line_store;
     line_store* next_ls = NULL;
@@ -93,7 +94,7 @@ int src_pos_get_line_bounds(
     }
     return OK;
 }
-src_pos src_map_get_pos(source_map* m, ureg pos)
+src_pos src_map_get_pos(src_map* m, ureg pos)
 {
     line_store* ls = m->last_line_store;
     ureg* first = ptradd(ls, sizeof(line_store));

@@ -14,6 +14,7 @@ typedef ureg src_range;
 #define SRC_RANGE_INVALID (((ureg)0x1) << (REG_BITS - 1))
 
 typedef struct src_file_s src_file;
+typedef struct ast_elem_s ast_elem;
 typedef struct thread_context_s thread_context;
 
 typedef struct line_store_s {
@@ -22,10 +23,11 @@ typedef struct line_store_s {
     ureg first_line;
 } line_store;
 
-typedef struct source_map_s {
+typedef struct src_map_s {
+    ast_elem* source;
     ureg* last_line;
     line_store* last_line_store;
-} source_map;
+} src_map;
 
 typedef struct src_range_large_s {
     src_file* file;
@@ -34,7 +36,7 @@ typedef struct src_range_large_s {
 } src_range_large;
 
 typedef struct paste_area_s {
-    source_map src_map;
+    src_map smap;
     src_range_large pasted_from;
 } paste_area;
 
@@ -43,14 +45,14 @@ typedef struct src_pos_s {
     ureg column;
 } src_pos;
 
-int src_map_init(source_map* m, thread_context* tc);
-void src_map_fin(source_map* m);
-int src_map_add_line(source_map* m, ureg line_start);
+int src_map_init(src_map* m, ast_elem* source, thread_context* tc);
+void src_map_fin(src_map* m);
+int src_map_add_line(src_map* m, ureg line_start);
 // this can't fail without programmer's error as the storage is already
 // allocated
-src_pos src_map_get_pos(source_map* m, ureg pos);
+src_pos src_map_get_pos(src_map* m, ureg pos);
 int src_pos_get_line_bounds(
-    source_map* m, ureg line, ureg* start_pos, ureg* length);
+    src_map* m, ureg line, ureg* start_pos, ureg* length);
 
 // TODO: find a better name for this
 src_range src_range_pack_lines(thread_context* tc, ureg start, ureg end);

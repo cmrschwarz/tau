@@ -356,7 +356,7 @@ static token* lx_load(lexer* lx)
             case '\n': {
                 curr = lx_peek_char(lx);
                 tok->start++;
-                src_map_add_line(&lx->file->src_map, tok->start);
+                src_map_add_line(&lx->file->smap, tok->start);
                 continue;
             }
             case ':': {
@@ -505,7 +505,7 @@ static token* lx_load(lexer* lx)
                         tok->start++;
                     } while (curr != '\n' && curr != '\0');
                     if (curr == '\n') {
-                        src_map_add_line(&lx->file->src_map, tok->start);
+                        src_map_add_line(&lx->file->smap, tok->start);
                         curr = lx_peek_char(lx);
                         continue;
                     }
@@ -532,8 +532,7 @@ static token* lx_load(lexer* lx)
                         tok->start++;
                         switch (curr) {
                             case '\n': {
-                                src_map_add_line(
-                                    &lx->file->src_map, tok->start);
+                                src_map_add_line(&lx->file->smap, tok->start);
                             } break;
                             case '\t': break;
                             case '*': {
@@ -650,7 +649,7 @@ static token* lx_load(lexer* lx)
                     }
                     if (curr == '\n') {
                         src_map_add_line(
-                            &lx->file->src_map,
+                            &lx->file->smap,
                             tok->start +
                                 ptrdiff(lx->file_buffer_pos, str_start));
                     }
@@ -681,7 +680,7 @@ static token* lx_load(lexer* lx)
                     }
                     if (curr == '\n') {
                         src_map_add_line(
-                            &lx->file->src_map,
+                            &lx->file->smap,
                             tok->start +
                                 ptrdiff(lx->file_buffer_pos, str_start));
                     }

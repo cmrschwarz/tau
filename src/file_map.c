@@ -131,7 +131,7 @@ int src_file_require(
 static inline void src_file_fin(src_file* f)
 {
     if (f->stage >= SFS_PARSING) {
-        src_map_fin(&f->src_map);
+        src_map_fin(&f->smap);
     }
     file_map_head_fin(&f->head);
     aseglist_fin(&f->requiring_modules);
@@ -194,7 +194,7 @@ int src_file_start_parse(src_file* f, thread_context* tc)
     rwslock_write(&f->stage_lock);
     f->stage = SFS_PARSING;
     rwslock_end_write(&f->stage_lock);
-    return src_map_init(&f->src_map, tc);
+    return src_map_init(&f->smap, tc, (ast_elem*)f);
 }
 int src_file_done_parsing(src_file* f, thread_context* tc)
 {

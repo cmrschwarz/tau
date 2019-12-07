@@ -42,7 +42,7 @@ typedef struct src_file_s {
     aseglist requiring_modules;
     rwslock stage_lock;
     src_file_stage stage;
-    source_map src_map;
+    src_map smap;
     osc_extend root;
     FILE* file_stream;
 } src_file;
