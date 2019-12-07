@@ -33,7 +33,7 @@ typedef struct tauc_s {
 
 // THREADSAFE
 int tauc_request_parse(
-    tauc* t, src_file* f, src_file* requiring_file, src_range requiring_stmt);
+    tauc* t, src_file* f, src_map* requiring_smap, src_range requiring_stmt);
 int tauc_request_resolve_single(tauc* t, mdg_node* node);
 int tauc_request_resolve_multiple(tauc* t, mdg_node** start, mdg_node** end);
 int tauc_request_finalize(tauc* t);

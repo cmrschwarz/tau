@@ -48,7 +48,6 @@ static const unsigned char op_precedence[] = {
     [OP_ACCESS] = 15,
     [OP_SCOPE_ACCESS] = 15,
     [OP_MEMBER_ACCESS] = 15,
-
     [OP_PRE_INCREMENT] = 14,
     [OP_PRE_DECREMENT] = 14,
     [OP_UNARY_PLUS] = 14,
@@ -291,7 +290,7 @@ static inline parse_error
 parser_error_1a(parser* p, char* msg, ureg start, ureg end, char* annot)
 {
     error_log_report_annotated(
-        p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.file, start, end,
+        p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.smap, start, end,
         annot);
     return PE_ERROR;
 }
@@ -300,8 +299,8 @@ static inline parse_error parser_error_2a(
     ureg end2, char* annot2)
 {
     error_log_report_annotated_twice(
-        p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.file, start, end, annot,
-        p->lx.file, start2, end2, annot2);
+        p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.smap, start, end, annot,
+        p->lx.smap, start2, end2, annot2);
     return PE_ERROR;
 }
 static inline parse_error parser_error_3a(
@@ -309,8 +308,8 @@ static inline parse_error parser_error_3a(
     ureg end2, char* annot2, ureg start3, ureg end3, char* annot3)
 {
     error_log_report_annotated_thrice(
-        p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.file, start, end, annot,
-        p->lx.file, start2, end2, annot2, p->lx.file, start3, end3, annot3);
+        p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.smap, start, end, annot,
+        p->lx.smap, start2, end2, annot2, p->lx.smap, start3, end3, annot3);
     return PE_ERROR;
 }
 static inline body_parse_data* get_bpd(parser* p)
@@ -559,7 +558,7 @@ static inline void
 parser_error_1a_pc(parser* p, char* msg, ureg start, ureg end, char* annot)
 {
     ast_node* parent = get_bpd(p)->node;
-    if (parent != (ast_node*)&p->lx.file->root) {
+    if (parent != (ast_node*)p->file_root) {
         char* bpmmsg = get_context_msg(p, parent);
         if (bpmmsg != NULL) {
             src_range_large sr;
@@ -576,7 +575,7 @@ static inline void parser_error_2a_pc(
     ureg end2, char* annot2)
 {
     ast_node* parent = get_bpd(p)->node;
-    if (parent != (ast_node*)&p->lx.file->root) {
+    if (parent != (ast_node*)p->file_root) {
         char* bpmmsg = get_context_msg(p, parent);
         if (bpmmsg != NULL) {
             src_range_large sr;
@@ -666,10 +665,10 @@ sym_fill_srange(parser* p, symbol* s, ureg start, ureg end)
     src_range_large srl;
     srl.start = start;
     srl.end = end;
-    srl.file = NULL;
+    srl.smap = NULL;
     if (ast_flags_get_access_mod(s->node.flags) != AM_DEFAULT) {
         if (ast_elem_is_open_scope((ast_elem*)get_bpd(p)->node)) {
-            srl.file = p->lx.file;
+            srl.smap = p->lx.smap;
         }
     }
     s->node.srange = src_range_large_pack(p->lx.tc, &srl);
@@ -1578,7 +1577,7 @@ parse_error parse_match(parser* p, ast_node** tgt)
             *tgt = (ast_node*)em;
             lx_void(&p->lx);
             em->body.srange =
-                src_range_pack(p->lx.tc, body_start, t->end, p->lx.file);
+                src_range_pack(p->lx.tc, body_start, t->end, p->lx.smap);
             pop_bpd(p, PE_OK);
             return PE_OK;
         }
@@ -2121,7 +2120,7 @@ static inline parse_error parse_delimited_open_scope(
     src_range_large srl;
     srl.start = start;
     srl.end = t->end;
-    srl.file = p->lx.file;
+    srl.smap = p->lx.smap;
     osc->sc.sym.node.srange = src_range_large_pack(p->lx.tc, &srl);
     if (osc->sc.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     return PE_OK;
@@ -2133,16 +2132,17 @@ parse_error parse_eof_delimited_open_scope(parser* p, open_scope* osc)
 parse_error parser_parse_file(parser* p, job_parse* j)
 {
     int r = lx_open_file(&p->lx, j->file);
+    p->current_file = j->file;
     tprintf("parsing ");
     tprintn(j->file->head.name.start, string_len(j->file->head.name));
     tputchar(' ');
     if (r) {
-        if (j->requiring_file != NULL) {
+        if (j->requiring_smap != NULL) {
             src_range_large srl;
             src_range_unpack(j->requiring_srange, &srl);
             error_log_report_annotated(
                 p->lx.tc->err_log, ES_TOKENIZER, false,
-                "required file doesn't exist", j->requiring_file, srl.start,
+                "required file doesn't exist", j->requiring_smap, srl.start,
                 srl.end, "required here");
         }
         else {
@@ -2158,7 +2158,8 @@ parse_error parser_parse_file(parser* p, job_parse* j)
         return PE_LX_ERROR;
     }
     p->current_module = p->lx.tc->t->mdg.root_node;
-    j->file->root.oscope.sc.sym.name = p->lx.tc->t->mdg.root_node->name;
+    p->file_root = &j->file->root;
+    p->file_root->oscope.sc.sym.name = p->lx.tc->t->mdg.root_node->name;
     p->ppl = 0;
     ast_node_init((ast_node*)&j->file->root, OSC_EXTEND);
     parse_error pe = parse_eof_delimited_open_scope(p, &j->file->root.oscope);
@@ -2173,55 +2174,68 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     }
     return pe;
 }
-parse_error parser_parse_paste_expr(parser* p, expr_pp* epp, ureg ppl)
+parse_error init_paste_evaluation_parse(
+    parser* p, expr_pp* epp, ureg ppl, ast_node_kind kind, symbol_table* st,
+    paste_evaluation** eval)
 {
-    assert(sizeof(expr_pp) >= sizeof(expr_paste_evaluation));
-    expr_paste_evaluation* eval = (expr_paste_evaluation*)epp;
+    paste_evaluation* pe = (paste_evaluation*)epp;
     src_range sr = epp->node.srange;
     ast_node* expr = epp->pp_expr;
     pasted_str* ps = epp->result_buffer.paste_result.first;
-    eval->node.kind = EXPR_PASTE_EVALUATION;
-    eval->node.flags = AST_NODE_FLAGS_DEFAULT;
-    eval->node.srange = SRC_RANGE_INVALID; // TODO
-    eval->source_pp_srange = sr;
-    eval->source_pp_expr = expr;
-    eval->paste_str = ps;
-    p->ppl = ppl;
-    int r = lx_open_paste(&p->lx, ps);
+    src_map* smap = symbol_table_get_smap(st);
+    pe->node.kind = kind;
+    pe->node.flags = AST_NODE_FLAGS_DEFAULT;
+    // we only care about the file here
+    src_range_set_smap(p->lx.tc, &sr, smap);
+    pe->source_pp_srange = sr;
+    pe->source_pp_expr = expr;
+    pe->paste_str = ps;
+    pe->read_str = NULL;
+    // eval->read_pos = NULL; //unnecessary
+
+    int r = lx_open_paste(&p->lx, pe, smap);
     if (r) return PE_LX_ERROR;
+    pe->node.srange = src_range_pack(p->lx.tc, 0, 0, p->lx.smap);
+
+    p->ppl = ppl;
+    *eval = pe;
+    p->file_root = NULL;
+    return PE_OK;
+}
+parse_error
+parser_parse_paste_expr(parser* p, expr_pp* epp, symbol_table* st, ureg ppl)
+{
+    assert(sizeof(expr_pp) >= sizeof(expr_paste_evaluation));
+    expr_paste_evaluation* eval;
+    parse_error pe = init_paste_evaluation_parse(
+        p, epp, ppl, EXPR_PASTE_EVALUATION, st, (paste_evaluation**)&eval);
+    if (pe) return pe;
     tprintf("parsing a paste expression\n");
-    parse_error pe = parse_expression(p, &eval->expr);
+    pe = parse_expression(p, &eval->expr);
     if (pe) return pe;
     token* t = lx_peek(&p->lx);
     if (t->kind != TK_EOF) {
         assert(false); // TODO
     }
+    lx_close_paste(&p->lx);
     return PE_OK;
 }
 parse_error parser_parse_paste_stmt(
     parser* p, expr_pp* epp, symbol_table** st, bool owned_st)
 {
     assert(sizeof(expr_pp) >= sizeof(stmt_paste_evaluation));
-    stmt_paste_evaluation* eval = (stmt_paste_evaluation*)epp;
-    src_range sr = epp->node.srange;
-    ast_node* expr = epp->pp_expr;
-    pasted_str* ps = epp->result_buffer.paste_result.first;
-    eval->node.kind = STMT_PASTE_EVALUATION;
-    eval->node.flags = AST_NODE_FLAGS_DEFAULT;
-    eval->node.srange = SRC_RANGE_INVALID; // TODO
-    eval->source_pp_srange = sr;
-    eval->source_pp_expr = expr;
-    eval->paste_str = ps;
-    int r = lx_open_paste(&p->lx, ps);
-    if (r) return PE_LX_ERROR;
+    stmt_paste_evaluation* eval;
+    parse_error pe = init_paste_evaluation_parse(
+        p, epp, (**st).ppl, STMT_PASTE_EVALUATION, *st,
+        (paste_evaluation**)&eval);
+    if (pe) return pe;
     tprintf("parsing a paste statement\n");
     p->paste_block = &eval->body;
     p->paste_parent_symtab = st;
     p->paste_parent_owns_st = owned_st;
-    p->ppl = (**st).ppl;
-    parse_error pe =
-        parse_delimited_body(p, &eval->body, (ast_node*)eval, 0, 0, 1, TK_EOF);
+    pe = parse_delimited_body(p, &eval->body, (ast_node*)eval, 0, 0, 1, TK_EOF);
     p->paste_block = false;
+    lx_close_paste(&p->lx);
     return pe;
 }
 static inline const char* access_modifier_string(access_modifier am)
@@ -2262,7 +2276,7 @@ static inline parse_error ast_flags_from_kw_set_access_mod(
             if (!msg) return PE_FATAL;
             error_log_report_annotated(
                 p->lx.tc->err_log, ES_PARSER, false,
-                "conflicting access modifiers specified", p->lx.file, start,
+                "conflicting access modifiers specified", p->lx.smap, start,
                 end, msg);
         }
         return PE_ERROR;
@@ -2386,8 +2400,8 @@ parse_error parse_param_list(
             char* e2 = generic ? "expected ',' or ']' in generic parameter list"
                                : "expected ',' or ')' in parameter list";
             error_log_report_annotated_twice(
-                p->lx.tc->err_log, ES_PARSER, false, e1, p->lx.file, t->start,
-                t->end, e2, p->lx.file, ctx_start, ctx_end, msg);
+                p->lx.tc->err_log, ES_PARSER, false, e1, p->lx.smap, t->start,
+                t->end, e2, p->lx.smap, ctx_start, ctx_end, msg);
             pe = PE_ERROR;
             break;
         }
@@ -2616,7 +2630,7 @@ parse_error check_if_first_stmt(
     return PE_OK;
     // TODO: use extend bool to be more precise than "scope" in the err msg
     scope* curr_scope = (scope*)get_bpd(p)->node;
-    if (curr_scope != &p->lx.file->root.oscope.sc) {
+    if (curr_scope != (scope*)p->file_root) {
         parser_error_1a_pc(
             p, "block free scope statement not allowed here", start, end,
             "this statement type is only allowed at file scope");
@@ -2691,7 +2705,7 @@ parse_error parse_module_frame_decl(
     }
     ast_node_init_with_flags((ast_node*)md, kind, flags);
     md->sc.sym.node.srange =
-        src_range_pack(p->lx.tc, start, decl_end, p->lx.file);
+        src_range_pack(p->lx.tc, start, decl_end, p->lx.smap);
     if (md->sc.sym.node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     md->sc.sym.name = mdgn->name;
     PEEK(p, t);
@@ -3212,7 +3226,7 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
         return PE_ERROR;
     }
     src_file* f = file_map_get_file_from_relative_path(
-        &p->lx.tc->t->filemap, p->lx.file->head.parent, t->str);
+        &p->lx.tc->t->filemap, p->current_file, t->str);
     lx_void(&p->lx);
     PEEK(p, t);
     if (t->kind != TK_SEMICOLON) {
@@ -3230,7 +3244,7 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     rwslock_end_read(&p->current_module->stage_lock);
     if (needed) {
         int r = src_file_require(
-            f, p->lx.tc->t, p->lx.file, rq.srange, p->current_module);
+            f, p->lx.tc->t, p->current_file, rq.srange, p->current_module);
         if (r == ERR) return PE_FATAL;
     }
     rq.handled = needed;

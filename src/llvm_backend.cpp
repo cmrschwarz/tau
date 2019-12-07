@@ -72,8 +72,13 @@ llvm_backend* llvm_backend_new(thread_context* tc)
 void llvm_backend_run_paste(LLVMBackend* llvmb, expr_pp* tgt, char* str)
 {
     // TODO: proper allocation
-    auto pstr = (pasted_str*)malloc(sizeof(pasted_str));
-    pstr->str = str;
+    auto pstr = (pasted_str*)pool_alloc(
+        &llvmb->_tc->t->filemap.string_mem_pool, sizeof(pasted_str));
+    ureg pastelen = strlen(str);
+    auto paste_str = (char*)pool_alloc(
+        &llvmb->_tc->t->filemap.string_mem_pool, pastelen + 1);
+    strcpy(paste_str, str);
+    pstr->str = paste_str;
     *tgt->result_buffer.paste_result.last_next = pstr;
     tgt->result_buffer.paste_result.last_next = &pstr->next;
     printf("pasted '%s'\n", str);

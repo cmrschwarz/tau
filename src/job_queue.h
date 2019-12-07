@@ -1,7 +1,7 @@
 #ifndef TAUC_JOB_QUEUE_H
 #define TAUC_JOB_QUEUE_H
 
-#include "file_map.h"
+#include "src_map.h"
 #include "mdg.h"
 #include "utils/c_extensions.h"
 #include "utils/error.h"
@@ -15,7 +15,7 @@ typedef enum PACK_ENUM job_kind_s {
 
 typedef struct job_parse_s {
     src_file* file;
-    src_file* requiring_file;
+    src_map* requiring_smap;
     src_range requiring_srange;
 } job_parse;
 

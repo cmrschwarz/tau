@@ -101,8 +101,10 @@ llvm_error processEscapeSymbols(char** str_ptr);
 
 struct LLVMBackend {
 
-  private:
+  public:
     thread_context* _tc;
+
+  private:
     llvm::LLVMContext _context;
     llvm::IRBuilder<> _builder;
     // must be void* because there is no common ancestor between

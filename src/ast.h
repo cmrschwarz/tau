@@ -13,6 +13,7 @@
 
 typedef struct mdg_node_s mdg_node;
 typedef struct pp_resolve_node_s pp_resolve_node;
+typedef struct src_file_s src_file;
 
 typedef enum PACK_ENUM ast_node_kind_e {
     OSC_MODULE,
@@ -350,7 +351,7 @@ typedef struct expr_pp_s {
     union result_buffer_u {
         // this must be big enough that
         // sizeof(expr_paste_evaluation) >= sizeof(expr_pp)
-        ureg data[3];
+        ureg data[5];
         struct state_s {
             struct pp_resolve_node_s* pprn;
             void* true_res_buffer;
@@ -370,20 +371,23 @@ typedef struct expr_paste_str_s {
     ast_node* value; // ctype shall always be string
 } expr_paste_str;
 
-typedef struct expr_paste_evaluation_s {
+typedef struct paste_evaluation_s {
     ast_node node;
-    ast_node* expr;
     pasted_str* paste_str;
+    pasted_str* read_str;
+    char* read_pos;
     ast_node* source_pp_expr;
     src_range source_pp_srange;
+} paste_evaluation;
+
+typedef struct expr_paste_evaluation_s {
+    paste_evaluation pe;
+    ast_node* expr;
 } expr_paste_evaluation;
 
 typedef struct stmt_paste_evaluation_s {
-    ast_node node;
+    paste_evaluation pe;
     ast_body body;
-    pasted_str* paste_str;
-    ast_node* source_pp_expr;
-    src_range source_pp_srange;
 } stmt_paste_evaluation;
 
 // ASSERT: sizeof(stmt_paste_evaluation) < sizeof(expr_pp)
@@ -625,10 +629,11 @@ bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
 bool ast_elem_is_expr(ast_elem* s);
 bool ast_elem_is_stmt(ast_elem* s);
+bool ast_elem_is_paste_evaluation(ast_elem* s);
 ast_body* ast_elem_get_body(ast_elem* s);
 char* ast_elem_get_label(ast_elem* n, bool* lbl);
-src_file* open_scope_get_file(open_scope* s);
-src_file* ast_node_get_file(ast_node* n, symbol_table* st);
+src_map* open_scope_get_smap(open_scope* s);
+src_map* ast_node_get_smap(ast_node* n, symbol_table* st);
 void ast_node_fill_src_range(
     ast_node* n, symbol_table* st, src_range_large* srl);
 bool ast_body_is_braced(ast_body* b);

@@ -121,36 +121,36 @@ error_log* error_log_create(master_error_log* mel)
 
 static inline void error_fill(
     error* e, error_stage stage, bool warn, error_kind type,
-    const char* message, src_file* file, ureg position)
+    const char* message, src_map* smap, ureg position)
 {
     e->stage = stage;
     e->warn = warn;
     e->kind = type;
-    e->file = file;
+    e->smap = smap;
     e->position = position;
     e->message = message;
 }
 
 void error_log_report_simple(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg position)
+    src_map* smap, ureg position)
 {
     error* e = (error*)error_log_alloc(el, sizeof(error));
     if (!e) return;
-    error_fill(e, stage, warn, ET_ERROR, message, file, position);
+    error_fill(e, stage, warn, ET_ERROR, message, smap, position);
     error_log_report(el, e);
 }
 
 error* error_log_create_error(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start, ureg end, const char* annot,
+    src_map* smap, ureg start, ureg end, const char* annot,
     ureg extra_annot_count)
 {
     if (extra_annot_count == 0) {
         error_annotated* e =
             (error_annotated*)error_log_alloc(el, sizeof(error_annotated));
         if (!e) return NULL; // TODO: report this
-        error_fill((error*)e, stage, warn, ET_1_ANNOT, message, file, start);
+        error_fill((error*)e, stage, warn, ET_1_ANNOT, message, smap, start);
         e->end = end;
         e->annotation = annot;
         return (error*)e;
@@ -160,14 +160,14 @@ error* error_log_create_error(
                 sizeof(error_annotation) * extra_annot_count);
     if (!e) return NULL; // TODO: report this
     error_fill(
-        &e->err_annot.err, stage, warn, ET_MULTI_ANNOT, message, file, start);
+        &e->err_annot.err, stage, warn, ET_MULTI_ANNOT, message, smap, start);
     e->annot_count = 0; // will increase with each annotation added
     e->err_annot.annotation = annot;
     e->err_annot.end = end;
     return (error*)e;
 }
 void error_add_annotation(
-    error* e, src_file* file, ureg start, ureg end, const char* message)
+    error* e, src_map* smap, ureg start, ureg end, const char* message)
 {
     if (!e) return; // save the user the hassle of checking for this
     assert(e->kind == ET_MULTI_ANNOT);
@@ -175,7 +175,7 @@ void error_add_annotation(
     error_annotation* ea = (error_annotation*)ptradd(
         e, sizeof(error_multi_annotated) +
                sizeof(error_annotation) * ema->annot_count);
-    ea->file = file;
+    ea->smap = smap;
     ea->start = start;
     ea->end = end;
     ea->annotation = message;
@@ -184,32 +184,32 @@ void error_add_annotation(
 
 void error_log_report_annotated(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start, ureg end, const char* annotation)
+    src_map* smap, ureg start, ureg end, const char* annotation)
 {
     error* e = error_log_create_error(
-        el, stage, warn, message, file, start, end, annotation, 0);
+        el, stage, warn, message, smap, start, end, annotation, 0);
     error_log_report(el, e);
 }
 void error_log_report_annotated_twice(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start, ureg end, const char* annotation,
-    src_file* file2, ureg start2, ureg end2, const char* annotation2)
+    src_map* smap, ureg start, ureg end, const char* annotation, src_map* smap2,
+    ureg start2, ureg end2, const char* annotation2)
 {
     error* e = error_log_create_error(
-        el, stage, warn, message, file, start, end, annotation, 1);
-    error_add_annotation(e, file2, start2, end2, annotation2);
+        el, stage, warn, message, smap, start, end, annotation, 1);
+    error_add_annotation(e, smap2, start2, end2, annotation2);
     error_log_report(el, e);
 }
 void error_log_report_annotated_thrice(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start, ureg end, const char* annotation,
-    src_file* file2, ureg start2, ureg end2, const char* annotation2,
-    src_file* file3, ureg start3, ureg end3, const char* annotation3)
+    src_map* smap, ureg start, ureg end, const char* annotation, src_map* smap2,
+    ureg start2, ureg end2, const char* annotation2, src_map* smap3,
+    ureg start3, ureg end3, const char* annotation3)
 {
     error* e = error_log_create_error(
-        el, stage, warn, message, file, start, end, annotation, 2);
-    error_add_annotation(e, file2, start2, end2, annotation2);
-    error_add_annotation(e, file3, start3, end3, annotation3);
+        el, stage, warn, message, smap, start, end, annotation, 2);
+    error_add_annotation(e, smap2, start2, end2, annotation2);
+    error_add_annotation(e, smap3, start3, end3, annotation3);
     error_log_report(el, e);
 }
 
@@ -253,12 +253,13 @@ ureg get_line_nr_offset(ureg max_line)
     }
     return 1;
 }
+
 int print_filepath(
-    master_error_log* mel, ureg line_nr_offset, src_pos pos, src_file* file)
+    master_error_log* mel, ureg line_nr_offset, src_pos pos, src_map* smap)
 {
     for (ureg r = 0; r < line_nr_offset; r++) pe(" ");
     pectc(mel, ANSICOLOR_BLUE, "==> ", ANSICOLOR_CLEAR);
-    src_file_print_path(file, true);
+    src_map_print_path(smap, true);
     // TODO: the column index is currently based on the number of byte,
     // not the number of unicode code points, but tools expect the latter
     fprintf(
@@ -271,7 +272,7 @@ int print_filepath(
 // TODO: somehow ensure this doesn't get overrun
 #define ERR_POINT_BUFFER_SIZE 16
 typedef struct err_point {
-    src_file* file;
+    src_map* smap;
     ureg line;
     ureg col_start;
     ureg col_end;
@@ -364,35 +365,16 @@ void printAllocationError(master_error_log* mel)
         mel, "memory allocation failiure during error reporting");
 }
 #define IO_ERR STATUS_1
-int open_src_file(master_error_log* mel, src_file* file)
+int open_src_map(master_error_log* mel, src_map* smap)
 {
-    char pathbuff[256];
-    ureg pathlen = src_file_get_path_len(file);
-    char* path;
-    if (pathlen < 256) {
-        src_file_write_path(file, pathbuff);
-        path = pathbuff;
-    }
-    else {
-        path = tmalloc(pathlen + 1);
-        if (!path) {
-            printAllocationError(mel);
-            return ERR;
-        }
-        src_file_write_path(file, pathbuff);
-    }
-    file->file_stream = fopen(path, "r");
-    if (file->file_stream == NULL) {
-        file->file_stream = (void*)NULL_PTR_PTR;
-        printFileIOError(mel, file);
-        return IO_ERR;
-    }
-    return OK;
+    // TODO: error handling
+    if (src_map_is_opened(smap)) return OK;
+    return src_map_open(smap);
 }
 // TODO: allow putting annotation above with  vvv/,,, error here or
 // TODO: redo this mess
 int print_src_line(
-    master_error_log* mel, src_file* file, ureg line, ureg max_line_length,
+    master_error_log* mel, src_map* smap, ureg line, ureg max_line_length,
     err_point* ep_start, err_point* ep_end)
 {
     while (ep_start && ep_end - 1 >= ep_start) {
@@ -411,9 +393,9 @@ int print_src_line(
     pec(mel, ANSICOLOR_CLEAR);
     static char buffer[LINE_BUFFER_SIZE];
     ureg start, length;
-    src_pos_get_line_bounds(&file->smap, line, &start, &length);
+    src_pos_get_line_bounds(smap, line, &start, &length);
     bool has_newline = true;
-    if (fseek(file->file_stream, start, SEEK_SET)) return ERR;
+    if (src_map_seek_set(smap, start)) return ERR;
     bool end_of_line = false;
     ureg pos = 0;
     err_point* ep_pos = ep_start;
@@ -430,8 +412,8 @@ int print_src_line(
             else {
                 end_of_line = true;
             }
-            buff_len = fread(buffer, 1, tgt, file->file_stream);
-            if (buff_len != tgt) {
+            int r = src_map_read(smap, tgt, &buff_len, buffer);
+            if (r || buff_len != tgt) {
                 pe("\n");
                 return ERR;
             }
@@ -439,7 +421,8 @@ int print_src_line(
         else {
             has_newline = false;
             ureg tgt = LINE_BUFFER_SIZE - 1;
-            buff_len = fread(buffer, 1, tgt, file->file_stream);
+            int r = src_map_read(smap, tgt, &buff_len, buffer);
+            if (r) return ERR; // TODO: report
             if (buff_len == 0) {
                 length = pos;
                 break;
@@ -652,13 +635,13 @@ int print_src_line(
     }
     return OK;
 }
-static src_file* error_main_file = NULL;
+static src_map* error_main_smap = NULL;
 int cmp_err_point(const err_point* l, const err_point* r)
 {
-    if (l->file != r->file) {
-        if (l->file == error_main_file) return -1;
-        if (r->file == error_main_file) return 1;
-        return ((ureg)l->file > (ureg)r->file) ? 1 : -1;
+    if (l->smap != r->smap) {
+        if (l->smap == error_main_smap) return -1;
+        if (r->smap == error_main_smap) return 1;
+        return ((ureg)l->smap > (ureg)r->smap) ? 1 : -1;
     }
     if (l->line != r->line) return (l->line > r->line) ? 1 : -1;
     if (r->message == NULL) return -1;
@@ -670,12 +653,12 @@ int cmp_err_point(const err_point* l, const err_point* r)
 #define SORT_CMP(x, y) cmp_err_point(&(x), &(y))
 #include "sort.h"
 ureg extend_em(
-    src_file* file, err_point* err_points, const char* annot, src_pos pos,
+    src_map* smap, err_point* err_points, const char* annot, src_pos pos,
     src_pos end)
 {
     if (end.column == 0 && end.line != pos.line) {
         ureg lstart, llength;
-        src_pos_get_line_bounds(&file->smap, pos.line, &lstart, &llength);
+        src_pos_get_line_bounds(smap, pos.line, &lstart, &llength);
         end.line--;
         end.column = llength - 1;
     }
@@ -686,11 +669,11 @@ ureg extend_em(
     }
     err_points[0].message = "";
     ureg lstart, llength;
-    src_pos_get_line_bounds(&file->smap, pos.line, &lstart, &llength);
+    src_pos_get_line_bounds(smap, pos.line, &lstart, &llength);
     err_points[0].col_end = llength - 1;
     err_points[1].message_color = err_points[0].message_color;
     err_points[1].squigly_color = err_points[0].squigly_color;
-    err_points[1].file = err_points[0].file;
+    err_points[1].smap = err_points[0].smap;
     if (pos.line + 1 == end.line) {
         err_points[1].line = end.line;
         err_points[1].col_start = 0;
@@ -699,19 +682,19 @@ ureg extend_em(
         return 2;
     }
     if (pos.line + 2 == end.line) {
-        src_pos_get_line_bounds(&file->smap, pos.line + 1, &lstart, &llength);
+        src_pos_get_line_bounds(smap, pos.line + 1, &lstart, &llength);
         err_points[1].message = "";
         err_points[1].col_start = 0;
         err_points[1].col_end = llength - 1;
         err_points[1].line = pos.line + 1;
-        src_pos_get_line_bounds(&file->smap, pos.line + 2, &lstart, &llength);
+        src_pos_get_line_bounds(smap, pos.line + 2, &lstart, &llength);
         err_points[2].message_color = err_points[0].message_color;
         err_points[2].squigly_color = err_points[0].squigly_color;
         err_points[2].col_start = 0;
         err_points[2].col_end = end.column;
         err_points[2].message = annot;
         err_points[2].line = end.line;
-        err_points[2].file = err_points[1].file;
+        err_points[2].smap = err_points[1].smap;
         return 3;
     }
     err_points[1].message = annot;
@@ -740,133 +723,120 @@ int report_error(master_error_log* mel, error* e)
     }
     pe(e->message);
     pect(mel, ANSICOLOR_CLEAR, "\n");
-    if (!e->file) return OK;
-    if (e->file->file_stream == NULL) {
-        int r = open_src_file(mel, e->file);
-        if (r == IO_ERR) return OK;
-        if (r != OK) return ERR;
-    }
-    if (e->file->file_stream != (void*)NULL_PTR_PTR) {
-        ureg err_point_count;
-        src_pos pos = src_map_get_pos(&e->file->smap, e->position);
+    if (!e->smap) return OK;
 
-        // TODO: multiline errors
-        switch (e->kind) {
-            case ET_1_ANNOT: {
-                error_annotated* ea = (error_annotated*)e;
-                err_points[0].file = e->file;
-                err_points[0].line = pos.line;
-                err_points[0].col_start = pos.column;
-                err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
-                err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
-                src_pos end = src_map_get_pos(&e->file->smap, ea->end);
-                err_point_count =
-                    extend_em(e->file, err_points, ea->annotation, pos, end);
-            } break;
-            case ET_MULTI_ANNOT: {
-                // TODO: cap at index 3
-                static char* msg_colors[] = {
-                    ANSICOLOR_BOLD ANSICOLOR_RED,
-                    ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
-                    ANSICOLOR_BOLD ANSICOLOR_CYAN,
-                    ANSICOLOR_BOLD ANSICOLOR_GREEN,
-                    ANSICOLOR_BOLD ANSICOLOR_YELLOW,
-                };
-                static ureg msg_color_count =
-                    sizeof(msg_colors) / sizeof(char*);
-                error_multi_annotated* ema = (error_multi_annotated*)e;
-                err_points[0].line = pos.line;
-                err_points[0].file = e->file;
-                err_points[0].col_start = pos.column;
-                err_points[0].message_color = msg_colors[0];
-                err_points[0].squigly_color = msg_colors[0];
-                src_pos end =
-                    src_map_get_pos(&e->file->smap, ema->err_annot.end);
-                err_point_count = extend_em(
-                    e->file, err_points, ema->err_annot.annotation, pos, end);
-                error_annotation* ea = (error_annotation*)(ema + 1);
-                for (ureg i = 0; i < ema->annot_count; i++) {
-                    if (ea->file->file_stream == (void*)NULL_PTR_PTR) return OK;
-                    if (ea->file->file_stream == NULL) {
-                        int r = open_src_file(mel, ea->file);
-                        if (r == IO_ERR) return OK;
-                        if (r != OK) return ERR;
-                    }
-                    src_pos posi = src_map_get_pos(&ea->file->smap, ea->start);
-                    err_points[err_point_count].file = ea->file;
-                    err_points[err_point_count].line = posi.line;
-                    err_points[err_point_count].col_start = posi.column;
-                    err_points[err_point_count].col_end =
-                        (posi.column + (ea->end - ea->start));
-                    err_points[err_point_count].message = ea->annotation;
-                    err_points[err_point_count].message_color =
-                        (msg_colors[(i + 1) % msg_color_count]);
-                    err_points[err_point_count].squigly_color =
-                        (msg_colors[(i + 1) % msg_color_count]);
-                    end = src_map_get_pos(&ea->file->smap, ea->end);
-                    err_point_count += extend_em(
-                        ea->file, &err_points[err_point_count], ea->annotation,
-                        posi, end);
-                    ea++;
-                }
-            } break;
-            default: {
-                if (print_filepath(
-                        mel, get_line_nr_offset(pos.line), pos, e->file))
-                    return ERR;
-                return OK;
-            } break;
-        }
-        ureg max_line = err_points[0].line;
-        for (ureg i = 1; i < err_point_count; i++) {
-            if (err_points[i].line > max_line) max_line = err_points[i].line;
-        }
+    int r = open_src_map(mel, e->smap);
+    if (r == IO_ERR) return OK;
+    if (r != OK) return ERR;
 
-        ureg line_nr_offset = get_line_nr_offset(max_line);
-        if (print_filepath(mel, line_nr_offset, pos, e->file)) return ERR;
-        error_main_file = e->file;
-        err_points_grail_sort(err_points, err_point_count);
+    ureg err_point_count;
+    src_pos pos = src_map_get_pos(e->smap, e->position);
 
-        ureg start = 0;
-        ureg i = 1;
-        src_file* file = e->file;
-        while (true) {
-            ureg line = err_points[start].line;
-            while (i < err_point_count && err_points[i].line == line &&
-                   err_points[i].file == file) {
-                i++;
+    // TODO: multiline errors
+    switch (e->kind) {
+        case ET_1_ANNOT: {
+            error_annotated* ea = (error_annotated*)e;
+            err_points[0].smap = e->smap;
+            err_points[0].line = pos.line;
+            err_points[0].col_start = pos.column;
+            err_points[0].message_color = ANSICOLOR_BOLD ANSICOLOR_RED;
+            err_points[0].squigly_color = ANSICOLOR_BOLD ANSICOLOR_RED;
+            src_pos end = src_map_get_pos(e->smap, ea->end);
+            err_point_count =
+                extend_em(e->smap, err_points, ea->annotation, pos, end);
+        } break;
+        case ET_MULTI_ANNOT: {
+            // TODO: cap at index 3
+            static char* msg_colors[] = {
+                ANSICOLOR_BOLD ANSICOLOR_RED,
+                ANSICOLOR_BOLD ANSICOLOR_MAGENTA,
+                ANSICOLOR_BOLD ANSICOLOR_CYAN,
+                ANSICOLOR_BOLD ANSICOLOR_GREEN,
+                ANSICOLOR_BOLD ANSICOLOR_YELLOW,
+            };
+            static ureg msg_color_count = sizeof(msg_colors) / sizeof(char*);
+            error_multi_annotated* ema = (error_multi_annotated*)e;
+            err_points[0].line = pos.line;
+            err_points[0].smap = e->smap;
+            err_points[0].col_start = pos.column;
+            err_points[0].message_color = msg_colors[0];
+            err_points[0].squigly_color = msg_colors[0];
+            src_pos end = src_map_get_pos(e->smap, ema->err_annot.end);
+            err_point_count = extend_em(
+                e->smap, err_points, ema->err_annot.annotation, pos, end);
+            error_annotation* ea = (error_annotation*)(ema + 1);
+            for (ureg i = 0; i < ema->annot_count; i++) {
+                int r = open_src_map(mel, ea->smap);
+                if (r == IO_ERR) return OK;
+                if (r != OK) return ERR;
+                src_pos posi = src_map_get_pos(ea->smap, ea->start);
+                err_points[err_point_count].smap = ea->smap;
+                err_points[err_point_count].line = posi.line;
+                err_points[err_point_count].col_start = posi.column;
+                err_points[err_point_count].col_end =
+                    (posi.column + (ea->end - ea->start));
+                err_points[err_point_count].message = ea->annotation;
+                err_points[err_point_count].message_color =
+                    (msg_colors[(i + 1) % msg_color_count]);
+                err_points[err_point_count].squigly_color =
+                    (msg_colors[(i + 1) % msg_color_count]);
+                end = src_map_get_pos(ea->smap, ea->end);
+                err_point_count += extend_em(
+                    ea->smap, &err_points[err_point_count], ea->annotation,
+                    posi, end);
+                ea++;
             }
-            if (print_src_line(
-                    mel, file, line, line_nr_offset, &err_points[start],
-                    &err_points[i]))
+        } break;
+        default: {
+            if (print_filepath(mel, get_line_nr_offset(pos.line), pos, e->smap))
                 return ERR;
-            start = i;
-            if (start == err_point_count) break;
-            if (err_points[start].file != file) {
-                file = err_points[start].file;
-                src_pos sp;
-                sp.line = err_points[start].line;
-                sp.column = err_points[start].col_start;
-                print_filepath(mel, 1, sp, file);
+            return OK;
+        } break;
+    }
+    ureg max_line = err_points[0].line;
+    for (ureg i = 1; i < err_point_count; i++) {
+        if (err_points[i].line > max_line) max_line = err_points[i].line;
+    }
+
+    ureg line_nr_offset = get_line_nr_offset(max_line);
+    if (print_filepath(mel, line_nr_offset, pos, e->smap)) return ERR;
+    error_main_smap = e->smap;
+    err_points_grail_sort(err_points, err_point_count);
+
+    ureg start = 0;
+    ureg i = 1;
+    src_map* smap = e->smap;
+    while (true) {
+        ureg line = err_points[start].line;
+        while (i < err_point_count && err_points[i].line == line &&
+               err_points[i].smap == smap) {
+            i++;
+        }
+        if (print_src_line(
+                mel, smap, line, line_nr_offset, &err_points[start],
+                &err_points[i]))
+            return ERR;
+        start = i;
+        if (start == err_point_count) break;
+        if (err_points[start].smap != smap) {
+            smap = err_points[start].smap;
+            src_pos sp;
+            sp.line = err_points[start].line;
+            sp.column = err_points[start].col_start;
+            print_filepath(mel, 1, sp, smap);
+        }
+        else {
+            if (err_points[start].line > line + 2) {
+                pectct(
+                    mel, ANSICOLOR_BOLD ANSICOLOR_BLUE, "...", ANSICOLOR_CLEAR,
+                    "\n");
             }
-            else {
-                if (err_points[start].line > line + 2) {
-                    pectct(
-                        mel, ANSICOLOR_BOLD ANSICOLOR_BLUE, "...",
-                        ANSICOLOR_CLEAR, "\n");
-                }
-                else if (err_points[start].line == line + 2) {
-                    if (print_src_line(
-                            mel, file, line + 1, line_nr_offset, NULL, NULL))
-                        return ERR;
-                }
+            else if (err_points[start].line == line + 2) {
+                if (print_src_line(
+                        mel, smap, line + 1, line_nr_offset, NULL, NULL))
+                    return ERR;
             }
         }
-    }
-    else {
-        if (print_filepath(
-                mel, 1, src_map_get_pos(&e->file->smap, e->position), e->file))
-            return ERR;
     }
     return OK;
 }
@@ -878,8 +848,8 @@ int compare_errs(const error* a, const error* b)
     // this is a really hacky way of sorting by file,
     // abusing the pointer value as an ordering
     // TODO: find a better way to sort these, maybe by include order
-    if (a->file < b->file) return (a->file == NULL) ? 1 : -1;
-    if (a->file > b->file) return (b->file == NULL) ? -1 : 1;
+    if (a->smap < b->smap) return (a->smap == NULL) ? 1 : -1;
+    if (a->smap > b->smap) return (b->smap == NULL) ? -1 : 1;
     if (a->position > b->position) return 1;
     if (b->position > a->position) return -1;
     return 0;

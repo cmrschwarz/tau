@@ -4,6 +4,7 @@
 #include "../../math_utils.h"
 
 #include <memory.h>
+#define PRINT_ALLOCS 0
 #if DEBUG
 #include "../../panic.h"
 #include "../../threading.h"
@@ -14,14 +15,18 @@ static inline void count_alloc(void* v)
 {
 #if DEBUG
     atomic_sreg_inc(&allocations);
-    // printf("alloc: %zx\n", v);
+#if PRINT_ALLOCS
+    printf("alloc: %zx\n", v);
+#endif
 #endif
 }
 static inline void count_free(void* v)
 {
 #if DEBUG
     atomic_sreg_dec(&allocations);
-    // printf("free: %zx\n", v);
+#if PRINT_ALLOCS
+    printf("free: %zx\n", v);
+#endif
 #endif
 }
 int talloc_init()

@@ -302,12 +302,12 @@ int tauc_add_job(tauc* t, job* j, bool prevent_thread_spawn)
 }
 
 int tauc_request_parse(
-    tauc* t, src_file* f, src_file* requiring_file, src_range requiring_srange)
+    tauc* t, src_file* f, src_map* requiring_smap, src_range requiring_srange)
 {
     job j;
     j.kind = JOB_PARSE;
     j.concrete.parse.file = f;
-    j.concrete.parse.requiring_file = requiring_file;
+    j.concrete.parse.requiring_smap = requiring_smap;
     j.concrete.parse.requiring_srange = requiring_srange;
     return tauc_add_job(t, &j, false);
 }

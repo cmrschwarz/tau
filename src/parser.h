@@ -19,8 +19,11 @@ typedef enum parse_error_e {
 typedef struct parser_s {
     ureg ppl;
     lexer lx;
+    // ! when parsing a paste, this is the file that contained the paste expr
+    src_file* current_file;
     mdg_node* current_module;
     bool disable_macro_body_call;
+    osc_extend* file_root;
     bool paste_parent_owns_st;
     ast_body* paste_block;
     symbol_table** paste_parent_symtab;
@@ -41,7 +44,8 @@ typedef struct body_parse_data_s {
 int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
 parse_error parser_parse_file(parser* p, job_parse* j);
-parse_error parser_parse_paste_expr(parser* p, expr_pp* epp, ureg ppl);
+parse_error
+parser_parse_paste_expr(parser* p, expr_pp* epp, symbol_table* st, ureg ppl);
 parse_error parser_parse_paste_stmt(
     parser* p, expr_pp* epp, symbol_table** st, bool owned_st);
 

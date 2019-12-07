@@ -34,7 +34,7 @@ typedef struct error_s {
     bool warn;
     error_stage stage;
     error_kind kind;
-    src_file* file;
+    src_map* smap;
     ureg position;
     const char* message;
 } error;
@@ -60,7 +60,7 @@ typedef struct error_annotation_s {
     // NULL means just make sure that this range is shown,
     // don't underline it
     const char* annotation;
-    src_file* file;
+    src_map* smap;
 } error_annotation;
 
 typedef struct master_error_log_s master_error_log;
@@ -99,29 +99,29 @@ error_log* error_log_create(
 bool error_log_sane_state(error_log* el);
 void error_log_report_simple(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg position);
+    src_map* smap, ureg position);
 
 error* error_log_create_error(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start, ureg end, const char* annot,
+    src_map* smap, ureg start, ureg end, const char* annot,
     ureg extra_annot_count);
 void error_add_annotation(
-    error* e, src_file* file, ureg start, ureg end, const char* message);
+    error* e, src_map* smap, ureg start, ureg end, const char* message);
 
 void error_log_report(error_log* el, error* e);
 
 void error_log_report_annotated(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start, ureg end, const char* annotation);
+    src_map* smap, ureg start, ureg end, const char* annotation);
 void error_log_report_annotated_twice(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start, ureg end, const char* annotation,
-    src_file* file2, ureg start2, ureg end2, const char* annotation2);
+    src_map* smap, ureg start, ureg end, const char* annotation, src_map* smap2,
+    ureg start2, ureg end2, const char* annotation2);
 void error_log_report_annotated_thrice(
     error_log* el, error_stage stage, bool warn, const char* message,
-    src_file* file, ureg start, ureg end, const char* annotation,
-    src_file* file2, ureg start2, ureg end2, const char* annotation2,
-    src_file* file3, ureg start3, ureg end3, const char* annotation3);
+    src_map* smap, ureg start, ureg end, const char* annotation, src_map* smap2,
+    ureg start2, ureg end2, const char* annotation2, src_map* smap3,
+    ureg start3, ureg end3, const char* annotation3);
 
 // create a concatenated string stored inside the error memory pool
 char* error_log_cat_strings_2(error_log* e, const char* s1, const char* s2);

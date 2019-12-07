@@ -217,16 +217,16 @@ void symbol_table_inc_decl_count(symbol_table* st)
     // st->decl_count++;
     // assert(st->decl_count <= symbol_table_get_capacity(st));
 }
-src_file* symbol_table_get_file(symbol_table* st)
+src_map* symbol_table_get_smap(symbol_table* st)
 {
     // TODO: this can happen if neither the func nor the osc have a single
     // symbol
     assert(st->owning_node->kind != ELEM_MDG_NODE);
-    src_file* f = src_range_get_file(((ast_node*)st->owning_node)->srange);
-    if (f) return f;
+    src_map* smap = src_range_get_smap(((ast_node*)st->owning_node)->srange);
+    if (smap) return smap;
     // because pp tables parent the postprocessing table
     // we naturally transition out of pp levels
-    if (st->parent) return symbol_table_get_file(st->parent);
+    if (st->parent) return symbol_table_get_smap(st->parent);
     return NULL;
 }
 

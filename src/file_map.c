@@ -98,7 +98,7 @@ src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
 }
 
 int src_file_require(
-    src_file* f, tauc* t, src_file* requiring_file, src_range requiring_srange,
+    src_file* f, tauc* t, src_map* requiring_smap, src_range requiring_srange,
     mdg_node* n)
 {
     src_file_stage prev_stage;
@@ -119,7 +119,7 @@ int src_file_require(
         case SFS_UNNEEDED: {
             aseglist_add(&f->requiring_modules, n);
             atomic_ureg_inc(&n->unparsed_files);
-            return tauc_request_parse(t, f, requiring_file, requiring_srange);
+            return tauc_request_parse(t, f, requiring_smap, requiring_srange);
         }
         default: {
             panic("unkown file stage");
@@ -194,7 +194,7 @@ int src_file_start_parse(src_file* f, thread_context* tc)
     rwslock_write(&f->stage_lock);
     f->stage = SFS_PARSING;
     rwslock_end_write(&f->stage_lock);
-    return src_map_init(&f->smap, tc, (ast_elem*)f);
+    return src_map_init(&f->smap, (ast_elem*)f, tc);
 }
 int src_file_done_parsing(src_file* f, thread_context* tc)
 {

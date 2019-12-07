@@ -56,7 +56,7 @@ int src_file_done_parsing(src_file* f, thread_context* tc);
 
 // requiring file and srange are purely for error reporting
 int src_file_require(
-    src_file* f, tauc* t, src_file* requiring_file, src_range requiring_srange,
+    src_file* f, tauc* t, src_map* requiring_smap, src_range requiring_srange,
     mdg_node* n);
 
 typedef struct file_map_s {

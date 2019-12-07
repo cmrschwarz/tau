@@ -236,7 +236,7 @@ static void free_astn_symtabs(ast_node* n)
         case EXPR_PASTE_EVALUATION: {
             expr_paste_evaluation* epe = (expr_paste_evaluation*)n;
             free_astn_symtabs(epe->expr);
-            free_astn_symtabs(epe->source_pp_expr);
+            free_astn_symtabs(epe->pe.source_pp_expr);
         } break;
         case STMT_PASTE_EVALUATION: {
             stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
@@ -483,7 +483,7 @@ bool scope_find_import(
 }
 void mdg_node_find_import(
     mdg_node* m, mdg_node* import, sym_import_group** tgt_group,
-    sym_import_module** tgt_sym, src_file** file)
+    sym_import_module** tgt_sym, src_map** smap)
 {
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &m->open_scopes);
@@ -491,7 +491,7 @@ void mdg_node_find_import(
         open_scope* osc = aseglist_iterator_next(&it);
         if (!osc) break;
         if (scope_find_import(&osc->sc, import, tgt_group, tgt_sym)) {
-            *file = open_scope_get_file(osc);
+            *smap = open_scope_get_smap(osc);
             return;
         }
         osc = (open_scope*)osc->sc.sym.next;
@@ -503,14 +503,14 @@ void mdg_node_report_missing_import(
 {
     sym_import_module* tgt_sym;
     sym_import_group* tgt_group;
-    src_file* f;
-    mdg_node_find_import(m, import, &tgt_group, &tgt_sym, &f);
+    src_map* smap;
+    mdg_node_find_import(m, import, &tgt_group, &tgt_sym, &smap);
     src_range_large tgt_sym_srl;
     src_range_unpack(tgt_sym->sym.node.srange, &tgt_sym_srl);
     if (!tgt_group) {
         error_log_report_annotated(
             tc->err_log, ES_RESOLVER, false,
-            "missing definition for imported module", f, tgt_sym_srl.start,
+            "missing definition for imported module", smap, tgt_sym_srl.start,
             tgt_sym_srl.end, "imported here");
         return;
     }
@@ -518,8 +518,8 @@ void mdg_node_report_missing_import(
     src_range_unpack(tgt_group->sym.node.srange, &tgt_group_srl);
     error_log_report_annotated_twice(
         tc->err_log, ES_RESOLVER, false,
-        "missing definition for imported module", f, tgt_sym_srl.start,
-        tgt_sym_srl.end, "imported here", f, tgt_group_srl.start,
+        "missing definition for imported module", smap, tgt_sym_srl.start,
+        tgt_sym_srl.end, "imported here", smap, tgt_group_srl.start,
         tgt_group_srl.end, NULL);
 }
 int scc_detector_strongconnect(
@@ -761,7 +761,7 @@ int mdg_node_add_osc(mdg_node* n, open_scope* osc, tauc* t)
         file_require* r = osc->requires;
         while (*(void**)r && !r->handled) {
             src_file_require(
-                r->file, t, open_scope_get_file(osc), r->srange, n);
+                r->file, t, open_scope_get_smap(osc), r->srange, n);
             r++;
         }
     }
@@ -831,7 +831,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
                 file_require* r = osc->requires;
                 while (*(void**)r) {
                     src_file_require(
-                        r->file, tc->t, open_scope_get_file(osc), r->srange, n);
+                        r->file, tc->t, open_scope_get_smap(osc), r->srange, n);
                     r++;
                 }
             }
@@ -889,14 +889,15 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
                         src_range_unpack(i->sc.sym.node.srange, &srl);
                         src_range_large srl_mod;
                         src_range_unpack(mod->sc.sym.node.srange, &srl_mod);
+                        // these should always have a smap
+                        assert(srl.smap && srl_mod.smap);
                         // since aseglist iterates backwards we reverse, so
-                        // if
-                        // it's in the same file the redeclaration is always
+                        // if it's in the same file the redeclaration is always
                         // below
                         error_log_report_annotated_twice(
                             tc->err_log, ES_RESOLVER, false,
-                            "module redeclared", srl_mod.file, srl_mod.start,
-                            srl_mod.end, "redeclaration here", srl.file,
+                            "module redeclared", srl_mod.smap, srl_mod.start,
+                            srl_mod.end, "redeclaration here", srl.smap,
                             srl.start, srl.end, "already declared here");
                         res = ERR;
                         break;
@@ -911,7 +912,7 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
                 // THINK: maybe report extend count here or report all
                 error_log_report_annotated(
                     tc->err_log, ES_RESOLVER, false,
-                    "extend without module declaration", srl.file, srl.start,
+                    "extend without module declaration", srl.smap, srl.start,
                     srl.end, "extend here");
                 res = ERR;
             }

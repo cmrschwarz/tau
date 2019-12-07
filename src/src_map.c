@@ -35,7 +35,21 @@ int src_map_init(src_map* m, ast_elem* source, thread_context* tc)
     *m->last_line = 0;
     m->last_line++;
     m->source = source;
+    m->next = NULL;
     return 0;
+}
+
+src_map* src_map_create_child(src_map* m, ast_elem* source, thread_context* tc)
+{
+    src_map* smap = pool_alloc(&tc->permmem, sizeof(src_map));
+    if (!smap) return NULL;
+    if (src_map_init(smap, source, tc)) {
+        src_map_fin(smap);
+        return NULL;
+    }
+    smap->next = m->next;
+    m->next = smap;
+    return smap;
 }
 
 void src_map_fin(src_map* m)
@@ -46,6 +60,7 @@ void src_map_fin(src_map* m)
         tfree(ls);
         ls = prev;
     }
+    if (m->next) src_map_fin(m->next);
 }
 
 int src_map_add_line(src_map* m, ureg line_start)
@@ -131,12 +146,24 @@ src_pos src_map_get_pos(src_map* m, ureg pos)
     p.column = pos - *pivot;
     return p;
 }
+void src_range_set_smap(thread_context* tc, src_range* old, src_map* smap)
+{
+    src_range r = *old;
+    if (r & SRC_RANGE_EXTERN_BIT && r & SRC_RANGE_NEW_MAP_BIT) {
+        *(src_map**)(void*)(r << 2) = smap;
+    }
+    else {
+        src_range_large srl;
+        src_range_unpack(*old, &srl);
+        *old = src_range_pack(tc, srl.start, srl.end, smap);
+    }
+}
 void src_range_set_end(thread_context* tc, src_range* old, ureg end)
 {
     src_range r = *old;
     if (r & SRC_RANGE_EXTERN_BIT) {
         if (r & SRC_RANGE_NEW_MAP_BIT) {
-            *(ureg*)ptradd((void*)(r << 2), sizeof(src_file*) + sizeof(ureg)) =
+            *(ureg*)ptradd((void*)(r << 2), sizeof(src_map*) + sizeof(ureg)) =
                 end;
         }
         else {
@@ -152,7 +179,7 @@ void src_range_set_end(thread_context* tc, src_range* old, ureg end)
 src_range src_range_large_pack(thread_context* tc, src_range_large* d)
 {
     // PERF: maybe allocate these somewhere else
-    if (!d->file) {
+    if (!d->smap) {
         ureg len = d->end - d->start;
         if (len > SRC_RANGE_MAX_LENGTH || d->start > SRC_RANGE_MAX_START) {
             ureg* tgt = pool_alloc(&tc->permmem, sizeof(ureg) * 2);
@@ -163,18 +190,19 @@ src_range src_range_large_pack(thread_context* tc, src_range_large* d)
         }
         return (d->start << SRC_RANGE_LENGTH_BITS) | len;
     }
-    src_file** tgt = (src_file**)pool_alloc(&tc->permmem, sizeof(ureg) * 3);
+    src_map** tgt = (src_map**)pool_alloc(&tc->permmem, sizeof(ureg) * 3);
     if (!tgt) return SRC_RANGE_INVALID;
-    *tgt = d->file;
+    *tgt = d->smap;
     ureg* range = (void*)(tgt + 1);
     *range = d->start;
     range++;
     *range = d->end;
     return SRC_RANGE_EXTERN_BIT | SRC_RANGE_NEW_MAP_BIT | (((ureg)tgt) >> 2);
 }
-src_range src_range_pack(thread_context* tc, ureg start, ureg end, src_file* f)
+src_range
+src_range_pack(thread_context* tc, ureg start, ureg end, src_map* smap)
 {
-    src_range_large srl = {f, start, end};
+    src_range_large srl = {smap, start, end};
     return src_range_large_pack(tc, &srl);
 }
 src_range src_range_pack_lines(thread_context* tc, ureg start, ureg end)
@@ -184,17 +212,18 @@ src_range src_range_pack_lines(thread_context* tc, ureg start, ureg end)
 }
 void src_range_unpack(src_range r, src_range_large* d)
 {
+    assert(r != SRC_RANGE_INVALID);
     if (r & SRC_RANGE_EXTERN_BIT) {
         if (r & SRC_RANGE_NEW_MAP_BIT) {
-            src_file** tgt = (void*)(r << 2);
-            d->file = *tgt;
+            src_map** tgt = (void*)(r << 2);
+            d->smap = *tgt;
             ureg* range = (ureg*)(tgt + 1);
             d->start = *range;
             range++;
             d->end = *range;
         }
         else {
-            d->file = NULL;
+            d->smap = NULL;
             ureg* tgt = (ureg*)(r << 2);
             d->start = *tgt;
             tgt++;
@@ -202,17 +231,17 @@ void src_range_unpack(src_range r, src_range_large* d)
         }
     }
     else {
-        d->file = NULL;
+        d->smap = NULL;
         d->start = r >> SRC_RANGE_LENGTH_BITS;
         ureg len = (r & SRC_RANGE_MAX_LENGTH);
         d->end = d->start + len;
     }
 }
-src_file* src_range_get_file(src_range r)
+src_map* src_range_get_smap(src_range r)
 {
     src_range_large l;
     src_range_unpack(r, &l);
-    return l.file;
+    return l.smap;
 }
 ureg src_range_get_start(src_range r)
 {
@@ -232,4 +261,127 @@ void src_range_unpack_lines(src_range r, ureg* start, ureg* end)
     src_range_unpack(r, &l);
     *start = l.start;
     *end = l.end;
+}
+void src_map_print_path(src_map* smap, bool to_stderr)
+{
+    if (smap->source->kind == ELEM_SRC_FILE) {
+        src_file_print_path(((src_file*)smap->source), to_stderr);
+        return;
+    }
+    assert(ast_elem_is_paste_evaluation(smap->source));
+    src_range_large srl;
+    src_range_unpack(((paste_evaluation*)smap->source)->source_pp_srange, &srl);
+    assert(srl.smap); // we ensure that this is always present in the resolver
+    fprintf(to_stderr ? stderr : stdout, "<pasted: ");
+    src_map_print_path(srl.smap, to_stderr);
+    src_pos p = src_map_get_pos(srl.smap, srl.start);
+    fprintf(to_stderr ? stderr : stdout, ":%zi:%zi>", p.line + 1, p.column + 1);
+}
+bool src_map_is_opened(src_map* smap)
+{
+    if (smap->source->kind == ELEM_SRC_FILE) {
+        return ((src_file*)smap->source)->file_stream != NULL;
+    }
+    assert(ast_elem_is_paste_evaluation(smap->source));
+    return ((paste_evaluation*)smap->source)->read_str != NULL;
+}
+int src_map_open(src_map* smap)
+{
+    if (smap->source->kind == ELEM_SRC_FILE) {
+        src_file* f = (src_file*)smap->source;
+        assert(!f->file_stream);
+        char pathbuff[256];
+        ureg pathlen = src_file_get_path_len(f);
+        char* path;
+        if (pathlen < 256) {
+            src_file_write_path(f, pathbuff);
+            path = pathbuff;
+        }
+        else {
+            path = tmalloc(pathlen + 1);
+            src_file_write_path(f, pathbuff);
+        }
+        f->file_stream = fopen(path, "r");
+        if (path != pathbuff) tfree(path);
+        if (f->file_stream == NULL) return ERR;
+        return OK;
+    }
+    assert(ast_elem_is_paste_evaluation(smap->source));
+    paste_evaluation* pe = (paste_evaluation*)smap->source;
+    assert(pe->read_str == NULL);
+    pe->read_str = pe->paste_str;
+    pe->read_pos = pe->read_str->str;
+    return OK;
+}
+int paste_eval_read(paste_evaluation* pe, ureg size, ureg* read_size, char* tgt)
+{
+    if (!pe->read_str) {
+        *read_size = 0;
+        return OK;
+    }
+    char* s = pe->read_pos;
+    ureg i = 0;
+    while (i < size) {
+        if (*s == '\0') {
+            pe->read_str = pe->read_str->next;
+            if (!pe->read_str) break;
+            s = pe->read_str->str;
+            continue;
+        }
+        if (tgt) {
+            *tgt = *s;
+            tgt++;
+        }
+        s++;
+        i++;
+        if (i == size) break;
+    }
+    pe->read_pos = s;
+    *read_size = i;
+    return OK;
+}
+int src_map_seek_set(src_map* smap, ureg pos)
+{
+    if (smap->source->kind == ELEM_SRC_FILE) {
+        src_file* f = (src_file*)smap->source;
+        assert(f->file_stream);
+        return fseek(f->file_stream, pos, SEEK_SET);
+    }
+    assert(ast_elem_is_paste_evaluation(smap->source));
+    paste_evaluation* pe = (paste_evaluation*)smap->source;
+    assert(pe->read_str);
+    pe->read_str = pe->paste_str;
+    pe->read_pos = pe->read_str->str;
+    ureg read_size;
+    paste_eval_read(pe, pos, &read_size, NULL);
+    if (read_size != pos) return ERR;
+    return OK;
+}
+int src_map_read(src_map* smap, ureg size, ureg* read_size, char* tgt)
+{
+    if (smap->source->kind == ELEM_SRC_FILE) {
+        src_file* f = (src_file*)smap->source;
+        assert(f->file_stream);
+        size = fread(tgt, 1, size, f->file_stream);
+        int e = ferror(f->file_stream);
+        if (e) return e;
+        *read_size = size;
+        return OK;
+    }
+    assert(ast_elem_is_paste_evaluation(smap->source));
+    paste_evaluation* pe = (paste_evaluation*)smap->source;
+    return paste_eval_read(pe, size, read_size, tgt);
+}
+void src_map_close(src_map* smap)
+{
+    if (smap->source->kind == ELEM_SRC_FILE) {
+        src_file* f = (src_file*)smap->source;
+        assert(f->file_stream);
+        fclose(f->file_stream);
+        f->file_stream = NULL;
+        return;
+    }
+    assert(ast_elem_is_paste_evaluation(smap->source));
+    paste_evaluation* pe = (paste_evaluation*)smap->source;
+    pe->read_str = NULL;
 }

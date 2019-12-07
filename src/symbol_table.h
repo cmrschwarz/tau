@@ -8,7 +8,7 @@ typedef struct stmt_s stmt;
 typedef struct symbol_table_s symbol_table;
 typedef struct ast_elem_s ast_elem;
 typedef struct ast_node_s ast_node;
-typedef struct src_file_s src_file;
+typedef struct src_map_s src_map;
 
 typedef struct usings_table_s {
     ureg usings_count;
@@ -50,7 +50,7 @@ symbol** symbol_table_lookup_limited(
     symbol_table* st, ureg ppl, access_modifier am, symbol_table* stop_at,
     const char* s);
 // might return NULL, for example for mdg_node symbol tables
-src_file* symbol_table_get_file(symbol_table* st);
+src_map* symbol_table_get_smap(symbol_table* st);
 
 int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings);
 

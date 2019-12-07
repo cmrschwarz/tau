@@ -24,23 +24,23 @@ primitive PRIMITIVES[] = {
     mk_prim(PT_TYPE, "type"),
 };
 
-src_file* open_scope_get_file(open_scope* s)
+src_map* open_scope_get_smap(open_scope* s)
 {
-    return src_range_get_file(s->sc.sym.node.srange);
+    return src_range_get_smap(s->sc.sym.node.srange);
 }
-src_file* ast_node_get_file(ast_node* n, symbol_table* st)
+src_map* ast_node_get_smap(ast_node* n, symbol_table* st)
 {
-    src_file* f = src_range_get_file(n->srange);
-    if (f) return f;
-    f = symbol_table_get_file(st);
-    assert(f);
-    return f;
+    src_map* smap = src_range_get_smap(n->srange);
+    if (smap) return smap;
+    smap = symbol_table_get_smap(st);
+    assert(smap);
+    return smap;
 }
 void ast_node_fill_src_range(
     ast_node* n, symbol_table* st, src_range_large* srl)
 {
     src_range_unpack(n->srange, srl);
-    if (!srl->file) srl->file = ast_node_get_file(n, st);
+    if (!srl->smap) srl->smap = ast_node_get_smap(n, st);
 }
 char* ast_elem_get_label(ast_elem* n, bool* lbl)
 {
@@ -84,6 +84,10 @@ bool ast_elem_is_stmt(ast_elem* s)
 bool ast_elem_is_expr(ast_elem* s)
 {
     return (s->kind > STMT_LAST_STMT_ID);
+}
+bool ast_elem_is_paste_evaluation(ast_elem* s)
+{
+    return s->kind == EXPR_PASTE_EVALUATION || s->kind == STMT_PASTE_EVALUATION;
 }
 bool ast_body_is_braced(ast_body* b)
 {

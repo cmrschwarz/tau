@@ -12,6 +12,7 @@
 typedef struct thread_context_s thread_context;
 typedef struct src_file_s src_file;
 typedef struct pasted_str_s pasted_str;
+typedef struct paste_evaluation_s paste_evaluation;
 
 typedef enum PACK_ENUM lx_status {
     LX_STATUS_OK,
@@ -23,7 +24,7 @@ typedef enum PACK_ENUM lx_status {
 #define LX_TOKEN_BUFFER_SIZE 32
 #define LX_MIN_FILE_READ_SIZE 4096
 typedef struct lexer_s {
-    src_file* file;
+    src_map* smap;
     char* pasted_str_pos;
     pasted_str* paste_str;
     token token_buffer[LX_TOKEN_BUFFER_SIZE];
@@ -41,10 +42,9 @@ typedef struct lexer_s {
 int lx_init(lexer* lx, thread_context* tc);
 void lx_fin(lexer* lx);
 
-int lx_open_paste(lexer* lx, pasted_str* str);
+int lx_open_paste(lexer* lx, paste_evaluation* pe, src_map* parent_smap);
 void lx_close_paste(lexer* lx);
 
-int lx_open_stream(lexer* lx, src_file* f, FILE* stream);
 int lx_open_file(lexer* lx, src_file* f);
 void lx_close_file(lexer* lx);
 

@@ -58,23 +58,24 @@ report_unknown_symbol(resolver* r, ast_node* n, symbol_table* st)
     }
     error_log_report_annotated(
         r->tc->err_log, ES_RESOLVER, false, "unknown symbol",
-        ast_node_get_file(n, st), srl.start, srl.end,
+        ast_node_get_smap(n, st), srl.start, srl.end,
         "use of an undefined symbol");
     return RE_UNKNOWN_SYMBOL;
 }
 static resolve_error report_redeclaration_error(
     resolver* r, symbol* redecl, symbol* prev, symbol_table* st)
 {
+    src_range_large prev_st, redecl_st;
+    ast_node_fill_src_range(
+        (ast_node*)redecl, redecl->declaring_st, &redecl_st);
+    ast_node_fill_src_range((ast_node*)prev, prev->declaring_st, &prev_st);
     error_log_report_annotated_twice(
         r->tc->err_log, ES_RESOLVER, false, "symbol redeclaration",
-        ast_node_get_file((ast_node*)redecl, st),
-        src_range_get_start(redecl->node.srange),
-        src_range_get_end(redecl->node.srange),
+        prev_st.smap, prev_st.start, prev_st.end,
         "a symbol of this name is already defined in this "
         "scope",
-        ast_node_get_file((ast_node*)prev, st),
-        src_range_get_start(prev->node.srange),
-        src_range_get_end(prev->node.srange), "previous definition here");
+        redecl_st.smap, redecl_st.start, redecl_st.end,
+        "previous definition here");
     return RE_SYMBOL_REDECLARATION;
 }
 
@@ -1167,16 +1168,16 @@ static inline resolve_error resolve_var(
                     r, vi->initial_value, st, ppl, NULL, &val_type);
                 if (!re) {
                     if (!ctypes_unifiable(vi->var.ctype, val_type)) {
+                        src_range_large vi_type_srl, vi_val_srl;
+                        ast_node_fill_src_range(vi->var.type, st, &vi_type_srl);
+                        ast_node_fill_src_range(
+                            vi->initial_value, st, &vi_val_srl);
                         error_log_report_annotated_twice(
                             r->tc->err_log, ES_RESOLVER, false,
                             "type missmatch in variable declaration",
-                            ast_node_get_file(vi->var.type, st),
-                            src_range_get_start(vi->var.type->srange),
-                            src_range_get_end(vi->var.type->srange),
-                            "declared type here",
-                            ast_node_get_file(vi->initial_value, st),
-                            src_range_get_start(vi->initial_value->srange),
-                            src_range_get_end(vi->initial_value->srange),
+                            vi_type_srl.smap, vi_type_srl.start,
+                            vi_type_srl.end, "declared type here",
+                            vi_val_srl.smap, vi_val_srl.start, vi_val_srl.end,
                             "doesn' t match type of the initial value");
                         re = RE_TYPE_MISSMATCH;
                     }
@@ -1268,11 +1269,11 @@ resolve_return_or_break(resolver* r, symbol_table* st, ureg ppl, expr_break* b)
         ast_node_get_bounds(b->value, &vstart, &vend);
         error_log_report_annotated_twice(
             r->tc->err_log, ES_RESOLVER, false, "type missmatch",
-            ast_node_get_file((ast_node*)b, st), vstart, vend,
+            ast_node_get_smap((ast_node*)b, st), vstart, vend,
             "the type returned from here doesn't match the target "
             "scope's",
             // TODO: st is kinda wrong here
-            ast_node_get_file((ast_node*)b->target, st),
+            ast_node_get_smap((ast_node*)b->target, st),
             src_range_get_start(b->target->srange),
             src_range_get_end(b->target->srange), "target scope here");
         return RE_TYPE_MISSMATCH;
@@ -1292,15 +1293,13 @@ static inline resolve_error resolve_identifier(
         sym = stack_pop(&r->error_stack);
         assert(ast_elem_is_symbol((ast_elem*)sym));
         src_range_large id_sr, sym_sr;
-        src_range_unpack(e->node.srange, &id_sr);
-        id_sr.file = ast_node_get_file((ast_node*)e, st);
-        src_range_unpack(sym->node.srange, &sym_sr);
-        sym_sr.file = ast_node_get_file((ast_node*)sym, sym->declaring_st);
+        ast_node_fill_src_range((ast_node*)e, st, &id_sr);
+        ast_node_fill_src_range(sym->node.srange, sym->declaring_st, &sym_sr);
         error_log_report_annotated_twice(
             r->tc->err_log, ES_RESOLVER, false,
             "cannot access variable of a different preprocessing "
             "level",
-            id_sr.file, id_sr.start, id_sr.end, "usage here", sym_sr.file,
+            id_sr.smap, id_sr.start, id_sr.end, "usage here", sym_sr.smap,
             sym_sr.start, sym_sr.end, "variable defined here");
         return RE_ERROR;
     }
@@ -1349,11 +1348,11 @@ static inline resolve_error resolve_if(
         ei->ctype = ctype_if;
     }
     else if (!ctypes_unifiable(ctype_if, ctype_else)) {
+        src_range_large srl;
+        ast_node_fill_src_range((ast_node*)ei, st, &srl);
         error_log_report_annotated(
-            r->tc->err_log, ES_RESOLVER, false, "type missmatch",
-            ast_node_get_file((ast_node*)ei, st),
-            src_range_get_start(ei->node.srange),
-            src_range_get_end(ei->node.srange),
+            r->tc->err_log, ES_RESOLVER, false, "type missmatch", srl.smap,
+            srl.start, srl.end,
             "if body and else body evaluate to differently typed "
             "values");
         return RE_TYPE_MISSMATCH;
@@ -1381,7 +1380,7 @@ static inline resolve_error resolve_expr_pp(
         *ppe->result_buffer.paste_result.last_next = NULL;
         parse_error pe;
         if (!is_stmt) {
-            pe = parser_parse_paste_expr(&r->tc->p, ppe, ppl);
+            pe = parser_parse_paste_expr(&r->tc->p, ppe, st, ppl);
         }
         else {
             ast_body* b = ast_elem_get_body((ast_elem*)r->curr_block_owner);
@@ -1418,7 +1417,7 @@ static inline resolve_error resolve_expr_pp(
                 error_log_report_annotated(
                     r->tc->err_log, ES_RESOLVER, false,
                     "pasting preprocessor expression can't return a value",
-                    pp_srl.file, pp_srl.start, pp_srl.end,
+                    pp_srl.smap, pp_srl.start, pp_srl.end,
                     "in this pp expression");
                 return RE_TYPE_MISSMATCH;
             }
@@ -1454,9 +1453,9 @@ static inline resolve_error resolve_expr_paste_str(
         ast_node_fill_src_range(eps->value, st, &val_srl);
         error_log_report_annotated_twice(
             r->tc->err_log, ES_RESOLVER, false,
-            "incompatible type in paste argument", val_srl.file, val_srl.start,
+            "incompatible type in paste argument", val_srl.smap, val_srl.start,
             val_srl.end, "paste expects a string as an argument",
-            paste_srl.file, paste_srl.start, paste_srl.end, NULL);
+            paste_srl.smap, paste_srl.start, paste_srl.end, NULL);
         return RE_TYPE_MISSMATCH;
     }
     r->curr_pp_node->pending_pastes++;
@@ -1717,7 +1716,7 @@ static inline resolve_error resolve_ast_node_raw(
         case EXPR_PASTE_EVALUATION: {
             expr_paste_evaluation* epe = (expr_paste_evaluation*)n;
             re = resolve_ast_node_raw(r, epe->expr, st, ppl, value, ctype);
-            if (!resolved && !re) ast_flags_set_resolved(&epe->node.flags);
+            if (!resolved && !re) ast_flags_set_resolved(&epe->pe.node.flags);
             return re;
         }
         case STMT_PASTE_EVALUATION: {
@@ -1811,12 +1810,11 @@ report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl)
         stack_s = stack_size(&r->error_stack);
     }
     src_range_large srl;
-    src_range_unpack(n->srange, &srl);
-    if (!srl.file) srl.file = ast_node_get_file(n, st);
+    ast_node_fill_src_range(n, st, &srl);
     ureg annot_count = stack_s / 2;
     annot_count--; // the starting type is on the stack too
     error* e = error_log_create_error(
-        r->tc->err_log, ES_RESOLVER, false, "type inference cycle", srl.file,
+        r->tc->err_log, ES_RESOLVER, false, "type inference cycle", srl.smap,
         srl.start, srl.end, "type definition depends on itself", annot_count);
     for (ureg i = 0; i < annot_count; i++) {
         n = (ast_node*)stack_pop(&r->error_stack);
@@ -1826,9 +1824,8 @@ report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl)
             n->kind == EXPR_MEMBER_ACCESS) {
             continue; // skip stuff that isn't helpful in the report
         }
-        src_range_unpack(n->srange, &srl);
-        if (!srl.file) srl.file = ast_node_get_file(n, st);
-        error_add_annotation(e, srl.file, srl.start, srl.end, "");
+        ast_node_fill_src_range(n, st, &srl);
+        error_add_annotation(e, srl.smap, srl.start, srl.end, "");
     }
     stack_pop(&r->error_stack);
     stack_pop(&r->error_stack);
@@ -2015,7 +2012,7 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, ast_node** continue_block)
             ast_node_fill_src_range(*n, st, &srl);
             error_log_report_annotated(
                 r->tc->err_log, ES_RESOLVER, false,
-                "unreachable statement in function", srl.file, srl.start,
+                "unreachable statement in function", srl.smap, srl.start,
                 srl.end, "after return statement");
             return RE_ERROR;
         }
@@ -2059,14 +2056,15 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, ast_node** continue_block)
     if (re) return re;
     if (stmt_ctype_ptr && fn->return_ctype != VOID_ELEM) {
         ureg brace_end = src_range_get_end(fn->sc.body.srange);
-        src_file* f = ast_node_get_file((ast_node*)fn, fn->sc.sym.declaring_st);
+        src_map* smap =
+            ast_node_get_smap((ast_node*)fn, fn->sc.sym.declaring_st);
         error_log_report_annotated_thrice(
             r->tc->err_log, ES_RESOLVER, false,
-            "reachable end of non void function", f, brace_end - 1, brace_end,
-            "missing return statement (or unreachable) ", f,
+            "reachable end of non void function", smap, brace_end - 1,
+            brace_end, "missing return statement (or unreachable) ", smap,
             src_range_get_start(fn->return_type->srange),
             src_range_get_end(fn->return_type->srange),
-            "function returns non void type", f,
+            "function returns non void type", smap,
             src_range_get_start(fn->sc.sym.node.srange),
             src_range_get_end(fn->sc.sym.node.srange), NULL);
         return RE_TYPE_MISSMATCH;
@@ -2284,7 +2282,7 @@ resolve_error report_cyclic_pp_deps(resolver* r)
         error_log_report_annotated(
             r->tc->err_log, ES_RESOLVER, false,
             "encountered cyclic dependency during preprocessor execution",
-            srl.file, srl.start, srl.end, "loop contains this element");
+            srl.smap, srl.start, srl.end, "loop contains this element");
         rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
     } while (rn);
     return RE_PP_DEPS_LOOP;
@@ -2382,6 +2380,15 @@ resolve_error resolver_handle_post_pp(resolver* r)
     if (re) return re;
     return report_cyclic_pp_deps(r);
 }
+void free_pprnlist(resolver* r, sbuffer* buff)
+{
+    sbuffer_iterator sbi = sbuffer_iterator_begin(buff);
+    for (pp_resolve_node** rn =
+             sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
+         rn; rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*))) {
+        pprn_fin(r, *rn);
+    }
+}
 int resolver_resolve(
     resolver* r, mdg_node** start, mdg_node** end, ureg* startid)
 {
@@ -2433,7 +2440,12 @@ int resolver_resolve_and_emit(
     res = llvm_backend_init_module(r->backend, start, end, module);
     if (res) return ERR;
     TIME(res = resolver_resolve(r, start, end, &startid););
-    if (res) return res;
+    if (res) {
+        free_pprnlist(r, &r->pp_resolve_nodes_pending);
+        free_pprnlist(r, &r->pp_resolve_nodes_ready);
+        free_pprnlist(r, &r->pp_resolve_nodes_waiting);
+        return res;
+    }
     return resolver_emit(r, startid, module);
 }
 int resolver_partial_fin(resolver* r, int i, int res)

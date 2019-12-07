@@ -95,30 +95,9 @@ token* lx_consume(lexer* lx)
 static inline size_t
 lx_stream_read(lexer* lx, char* tgt, size_t size, int* error)
 {
-    if (lx->file) {
-        size = fread(tgt, 1, size, lx->file->file_stream);
-        *error = ferror(lx->file->file_stream);
-        return size;
-    }
-    if (!lx->paste_str) return 0;
-    char* s = lx->pasted_str_pos;
-    ureg i = 0;
-    while (i < size) {
-        if (*s == '\0') {
-            lx->paste_str = lx->paste_str->next;
-            if (!lx->paste_str) break;
-            s = lx->paste_str->str;
-            continue;
-        }
-        *tgt = *s;
-        tgt++;
-        s++;
-        i++;
-        if (i == size) break;
-    }
-    lx->pasted_str_pos = s;
-    *error = 0;
-    return i;
+    ureg read_size;
+    *error = src_map_read(lx->smap, size, &read_size, tgt);
+    return read_size;
 }
 static inline int lx_load_file_buffer(lexer* lx, char** holding)
 {
@@ -170,7 +149,7 @@ static inline int lx_load_file_buffer(lexer* lx, char** holding)
         if (error) {
             lx->status = LX_STATUS_IO_ERROR;
             error_log_report_simple(
-                lx->tc->err_log, ES_TOKENIZER, false, "file io error", lx->file,
+                lx->tc->err_log, ES_TOKENIZER, false, "file io error", lx->smap,
                 lx->loaded_tokens_head->start);
             return ERR;
         }
@@ -215,7 +194,7 @@ int lx_init(lexer* lx, thread_context* tc)
 {
     lx->tc = tc;
     ureg size = plattform_get_page_size() * 8;
-    lx->file = NULL;
+    lx->smap = NULL;
     lx->file_buffer_start = tmalloc(size);
     if (!lx->file_buffer_start) return -1;
     lx->file_buffer_end = ptradd(lx->file_buffer_start, size);
@@ -235,34 +214,36 @@ void lx_reset_buffer(lexer* lx)
     lx->loaded_tokens_start->start = 0;
     lx->loaded_tokens_head = lx->loaded_tokens_start;
 }
-int lx_open_stream(lexer* lx, src_file* f, FILE* stream)
+
+int lx_open_smap(lexer* lx, src_map* smap)
 {
-    lx->file = f;
-    lx->file->file_stream = stream;
+    assert(lx->smap == NULL);
+    lx->smap = smap;
+    int r = src_map_open(lx->smap);
+    if (r) return ERR;
     lx_reset_buffer(lx);
     if (lx_load_file_buffer(lx, NULL)) {
-        lx_close_file(lx);
+        src_map_close(lx->smap);
         return ERR;
     }
     lx->status = LX_STATUS_OK;
     return OK;
 }
-int lx_open_paste(lexer* lx, pasted_str* str)
+void lx_close_smap(lexer* lx)
 {
-    assert(lx->file == NULL);
-    lx->paste_str = str;
-    lx->pasted_str_pos = str->str;
-    lx_reset_buffer(lx);
-    if (lx_load_file_buffer(lx, NULL)) {
-        lx_close_paste(lx);
-        return ERR;
-    }
-    lx->status = LX_STATUS_OK;
-    return OK;
+    assert(lx->smap);
+    src_map_close(lx->smap);
+    lx->smap = NULL;
+}
+int lx_open_paste(lexer* lx, paste_evaluation* pe, src_map* parent_smap)
+{
+    src_map* smap = src_map_create_child(parent_smap, (ast_elem*)pe, lx->tc);
+    if (!smap) return ERR;
+    return lx_open_smap(lx, smap);
 }
 void lx_close_paste(lexer* lx)
 {
-    lx->paste_str = NULL;
+    lx_close_smap(lx);
 }
 
 int lx_open_file(lexer* lx, src_file* f)
@@ -270,30 +251,11 @@ int lx_open_file(lexer* lx, src_file* f)
     if (src_file_start_parse(f, lx->tc)) {
         return ERR;
     }
-    char pathbuff[256];
-    ureg pathlen = src_file_get_path_len(f);
-    char* path;
-    if (pathlen < 256) {
-        src_file_write_path(f, pathbuff);
-        path = pathbuff;
-    }
-    else {
-        path = tmalloc(pathlen + 1);
-        src_file_write_path(f, pathbuff);
-    }
-    FILE* fs = fopen(path, "r");
-    if (path != pathbuff) tfree(path);
-    if (fs == NULL) {
-        return ERR;
-    }
-    return lx_open_stream(lx, f, fs);
+    return lx_open_smap(lx, &f->smap);
 }
 void lx_close_file(lexer* lx)
 {
-    int r = fclose(lx->file->file_stream);
-    assert(r == 0);
-    lx->file->file_stream = NULL;
-    lx->file = NULL;
+    lx_close_smap(lx);
 }
 
 static inline token* lx_return_head(lexer* lx, ureg tok_length)
@@ -311,9 +273,9 @@ lx_unterminated_string_error(lexer* lx, char* string_start, ureg tok_pos)
     ureg start1 = tok_pos + ptrdiff(lx->file_buffer_pos, string_start) - 1;
     ureg start2 = tok_pos;
     error_log_report_annotated_twice(
-        lx->tc->err_log, ES_TOKENIZER, false, "unterminated string", lx->file,
+        lx->tc->err_log, ES_TOKENIZER, false, "unterminated string", lx->smap,
         start1, start1 + 1, "reached eof before the string was closed",
-        lx->file, start2, start2 + 1, "string starts here");
+        lx->smap, start2, start2 + 1, "string starts here");
     lx->status = LX_STATUS_TOKENIZATION_ERROR;
     return NULL;
 }
@@ -356,7 +318,7 @@ static token* lx_load(lexer* lx)
             case '\n': {
                 curr = lx_peek_char(lx);
                 tok->start++;
-                src_map_add_line(&lx->file->smap, tok->start);
+                src_map_add_line(lx->smap, tok->start);
                 continue;
             }
             case ':': {
@@ -505,7 +467,7 @@ static token* lx_load(lexer* lx)
                         tok->start++;
                     } while (curr != '\n' && curr != '\0');
                     if (curr == '\n') {
-                        src_map_add_line(&lx->file->smap, tok->start);
+                        src_map_add_line(lx->smap, tok->start);
                         curr = lx_peek_char(lx);
                         continue;
                     }
@@ -532,7 +494,7 @@ static token* lx_load(lexer* lx)
                         tok->start++;
                         switch (curr) {
                             case '\n': {
-                                src_map_add_line(&lx->file->smap, tok->start);
+                                src_map_add_line(lx->smap, tok->start);
                             } break;
                             case '\t': break;
                             case '*': {
@@ -555,10 +517,10 @@ static token* lx_load(lexer* lx)
                                 tok->start--;
                                 error_log_report_annotated_twice(
                                     lx->tc->err_log, ES_TOKENIZER, false,
-                                    "unterminated block comment", lx->file,
+                                    "unterminated block comment", lx->smap,
                                     tok->start, tok->start + 1,
                                     "reached eof before the comment was closed",
-                                    lx->file, comment_start, comment_start + 2,
+                                    lx->smap, comment_start, comment_start + 2,
                                     "comment starts here");
                                 lx->status = LX_STATUS_TOKENIZATION_ERROR;
                                 return NULL;
@@ -649,7 +611,7 @@ static token* lx_load(lexer* lx)
                     }
                     if (curr == '\n') {
                         src_map_add_line(
-                            &lx->file->smap,
+                            lx->smap,
                             tok->start +
                                 ptrdiff(lx->file_buffer_pos, str_start));
                     }
@@ -680,7 +642,7 @@ static token* lx_load(lexer* lx)
                     }
                     if (curr == '\n') {
                         src_map_add_line(
-                            &lx->file->smap,
+                            lx->smap,
                             tok->start +
                                 ptrdiff(lx->file_buffer_pos, str_start));
                     }
@@ -796,7 +758,7 @@ static token* lx_load(lexer* lx)
                 */
                 error_log_report_annotated(
                     lx->tc->err_log, ES_TOKENIZER, false, "unknown token",
-                    lx->file, tok->start, tok->start + 1,
+                    lx->smap, tok->start, tok->start + 1,
                     "not the start for any valid token");
                 return NULL;
             }
