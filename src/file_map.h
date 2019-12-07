@@ -18,10 +18,10 @@ typedef struct file_require_s file_require;
 typedef struct mdg_node_s mdg_node;
 
 typedef struct file_map_head_s {
+    ast_elem elem;
     src_dir* parent;
     string name;
     struct file_map_head_s* next;
-    bool is_directory;
 } file_map_head;
 
 typedef struct src_dir_s {

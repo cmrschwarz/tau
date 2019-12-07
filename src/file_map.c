@@ -5,7 +5,8 @@
 #include "utils/math_utils.h"
 #include "utils/panic.h"
 static inline int file_map_head_init(
-    file_map_head* h, file_map* fm, src_dir* parent, string name, bool is_dir)
+    file_map_head* h, file_map* fm, src_dir* parent, string name,
+    ast_node_kind kind)
 {
     ureg name_len = string_len(name);
     h->name.start = pool_alloc(&fm->string_mem_pool, name_len);
@@ -14,10 +15,16 @@ static inline int file_map_head_init(
     memcpy(h->name.start, name.start, name_len);
     h->parent = parent;
     h->next = NULL;
-    h->is_directory = is_dir;
+    assert(kind == ELEM_SRC_FILE || kind == ELEM_SRC_DIR);
+    h->elem.kind = kind;
     return OK;
 }
 
+static inline bool file_map_head_is_dir(file_map_head* h)
+{
+    assert(h->elem.kind == ELEM_SRC_FILE || h->elem.kind == ELEM_SRC_DIR);
+    return h->elem.kind == ELEM_SRC_DIR;
+}
 static inline void file_map_head_fin(file_map_head* h)
 {
 }
@@ -31,7 +38,7 @@ src_file* file_map_iterator_next_file(file_map_iterator* it)
 {
     while (it->head != it->end) {
         if (*it->head) {
-            if ((**it->head).is_directory == false) {
+            if (file_map_head_is_dir((*it->head)) == false) {
                 src_file* f = (src_file*)*it->head;
                 it->head++;
                 return f;
@@ -45,7 +52,7 @@ src_dir* file_map_iterator_next_dir(file_map_iterator* it)
 {
     while (it->head != it->end) {
         if (*it->head) {
-            if ((**it->head).is_directory == true) {
+            if (file_map_head_is_dir(*it->head) == true) {
                 src_dir* d = (src_dir*)*it->head;
                 it->head++;
                 return d;
@@ -79,7 +86,7 @@ src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
         rwslock_fin(&f->stage_lock);
         return ERR;
     }
-    r = file_map_head_init(&f->head, fm, parent, name, false);
+    r = file_map_head_init(&f->head, fm, parent, name, ELEM_SRC_FILE);
     if (r) {
         aseglist_fin(&f->requiring_modules);
         rwslock_fin(&f->stage_lock);
@@ -134,7 +141,7 @@ static inline void src_file_fin(src_file* f)
 static inline int
 src_dir_init(src_dir* d, file_map* fm, src_dir* parent, string name)
 {
-    return file_map_head_init(&d->head, fm, parent, name, true);
+    return file_map_head_init(&d->head, fm, parent, name, ELEM_SRC_DIR);
 }
 
 static inline void src_dir_fin(src_dir* d)
@@ -246,7 +253,7 @@ void file_map_fin(file_map* fm)
         file_map_head* h = *i;
         while (h) {
             file_map_head* next = h->next;
-            if (h->is_directory) {
+            if (file_map_head_is_dir(h)) {
                 src_dir_fin((src_dir*)h);
             }
             else {

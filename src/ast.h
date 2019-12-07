@@ -86,7 +86,8 @@ typedef enum PACK_ENUM ast_node_kind_e {
     TYPE_ARRAY,
     TYPE_TUPLE,
     ELEM_MDG_NODE,
-
+    ELEM_SRC_FILE,
+    ELEM_SRC_DIR,
 } ast_node_kind;
 
 typedef enum PACK_ENUM operator_kind_e {
