@@ -2193,6 +2193,7 @@ parse_error init_paste_evaluation_parse(
     pe->read_str = NULL;
     // eval->read_pos = NULL; //unnecessary
 
+    p->current_file = src_map_get_file(smap);
     int r = lx_open_paste(&p->lx, pe, smap);
     if (r) return PE_LX_ERROR;
     pe->node.srange = src_range_pack(p->lx.tc, 0, 0, p->lx.smap);
@@ -3226,7 +3227,7 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
         return PE_ERROR;
     }
     src_file* f = file_map_get_file_from_relative_path(
-        &p->lx.tc->t->filemap, p->current_file, t->str);
+        &p->lx.tc->t->filemap, p->current_file->head.parent, t->str);
     lx_void(&p->lx);
     PEEK(p, t);
     if (t->kind != TK_SEMICOLON) {
@@ -3244,7 +3245,7 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     rwslock_end_read(&p->current_module->stage_lock);
     if (needed) {
         int r = src_file_require(
-            f, p->lx.tc->t, p->current_file, rq.srange, p->current_module);
+            f, p->lx.tc->t, p->lx.smap, rq.srange, p->current_module);
         if (r == ERR) return PE_FATAL;
     }
     rq.handled = needed;

@@ -277,6 +277,15 @@ void src_map_print_path(src_map* smap, bool to_stderr)
     src_pos p = src_map_get_pos(srl.smap, srl.start);
     fprintf(to_stderr ? stderr : stdout, ":%zi:%zi>", p.line + 1, p.column + 1);
 }
+src_file* src_map_get_file(src_map* smap)
+{
+    if (smap->source->kind == ELEM_SRC_FILE) return (src_file*)smap->source;
+    assert(ast_elem_is_paste_evaluation(smap->source));
+    smap =
+        src_range_get_smap(((paste_evaluation*)smap->source)->source_pp_srange);
+    assert(smap);
+    return src_map_get_file(smap);
+}
 bool src_map_is_opened(src_map* smap)
 {
     if (smap->source->kind == ELEM_SRC_FILE) {

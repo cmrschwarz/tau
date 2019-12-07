@@ -1294,7 +1294,7 @@ static inline resolve_error resolve_identifier(
         assert(ast_elem_is_symbol((ast_elem*)sym));
         src_range_large id_sr, sym_sr;
         ast_node_fill_src_range((ast_node*)e, st, &id_sr);
-        ast_node_fill_src_range(sym->node.srange, sym->declaring_st, &sym_sr);
+        ast_node_fill_src_range((ast_node*)sym, sym->declaring_st, &sym_sr);
         error_log_report_annotated_twice(
             r->tc->err_log, ES_RESOLVER, false,
             "cannot access variable of a different preprocessing "

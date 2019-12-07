@@ -15,6 +15,7 @@ typedef ureg src_range;
 
 typedef struct ast_elem_s ast_elem;
 typedef struct thread_context_s thread_context;
+typedef struct src_file_s src_file;
 
 typedef struct line_store_s {
     struct line_store_s* prev;
@@ -48,6 +49,7 @@ typedef struct src_pos_s {
 int src_map_init(src_map* m, ast_elem* source, thread_context* tc);
 src_map* src_map_create_child(src_map* m, ast_elem* source, thread_context* tc);
 void src_map_fin(src_map* m);
+src_file* src_map_get_file(src_map* smap);
 int src_map_add_line(src_map* m, ureg line_start);
 // this can't fail without programmer's error as the storage is already
 // allocated
