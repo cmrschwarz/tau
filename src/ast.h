@@ -14,6 +14,7 @@
 typedef struct mdg_node_s mdg_node;
 typedef struct pp_resolve_node_s pp_resolve_node;
 typedef struct src_file_s src_file;
+typedef struct type_array_s type_array;
 
 typedef enum PACK_ENUM ast_node_kind_e {
     OSC_MODULE,
@@ -81,7 +82,10 @@ typedef enum PACK_ENUM ast_node_kind_e {
     EXPR_MEMBER_ACCESS,
     EXPR_OP_UNARY,
     EXPR_OP_BINARY,
-    EXPR_LAST_EXPR_ID = EXPR_OP_BINARY,
+    EXPR_OP_INFIX_FUNC,
+    ARRAY_DECL,
+    SLICE_DECL,
+    EXPR_LAST_EXPR_ID = SLICE_DECL,
 
     TYPE_POINTER,
     TYPE_ARRAY,
@@ -496,6 +500,32 @@ typedef struct expr_op_binary_s {
     ast_elem* op;
 } expr_op_binary;
 
+// TODO
+typedef struct array_decl_s {
+    ast_node node;
+    ast_node* length_spec; // TODO: NULL in case of [-]
+    ast_node* base_type;
+} array_decl;
+
+// TODO
+typedef struct slice_decl_s {
+    ast_node node;
+    ast_node* base_type;
+} slice_decl;
+
+// TODO
+typedef struct expr_op_infix_func_s {
+    ast_node node;
+    ast_node* lhs;
+    ast_node* rhs;
+    // points to a primitive (for inbuilt ops) or a sc_func (for overloaded ops)
+    union {
+        char* name;
+        sc_func* fn;
+        expr_block* macro_block;
+    } target;
+} expr_op_infix_func;
+
 typedef struct expr_scope_access_s {
     ast_node node;
     ast_node* lhs;
@@ -565,6 +595,8 @@ typedef struct expr_array_s {
     ast_node node;
     ast_node** elements;
     ureg elem_count;
+    array_decl* explicit_decl;
+    type_array* ctype;
 } expr_array;
 
 typedef struct expr_type_array_s {
@@ -623,7 +655,6 @@ typedef struct primitive_s {
 
 extern primitive PRIMITIVES[];
 
-src_range ast_node_get_src_range(ast_node* s);
 bool ast_elem_is_open_scope(ast_elem* s);
 bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
@@ -634,7 +665,7 @@ ast_body* ast_elem_get_body(ast_elem* s);
 char* ast_elem_get_label(ast_elem* n, bool* lbl);
 src_map* open_scope_get_smap(open_scope* s);
 src_map* ast_node_get_smap(ast_node* n, symbol_table* st);
-void ast_node_fill_src_range(
+void ast_node_get_src_range(
     ast_node* n, symbol_table* st, src_range_large* srl);
 bool ast_body_is_braced(ast_body* b);
 

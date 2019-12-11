@@ -66,9 +66,8 @@ static resolve_error report_redeclaration_error(
     resolver* r, symbol* redecl, symbol* prev, symbol_table* st)
 {
     src_range_large prev_st, redecl_st;
-    ast_node_fill_src_range(
-        (ast_node*)redecl, redecl->declaring_st, &redecl_st);
-    ast_node_fill_src_range((ast_node*)prev, prev->declaring_st, &prev_st);
+    ast_node_get_src_range((ast_node*)redecl, redecl->declaring_st, &redecl_st);
+    ast_node_get_src_range((ast_node*)prev, prev->declaring_st, &prev_st);
     error_log_report_annotated_twice(
         r->tc->err_log, ES_RESOLVER, false, "symbol redeclaration",
         prev_st.smap, prev_st.start, prev_st.end,
@@ -1169,8 +1168,8 @@ static inline resolve_error resolve_var(
                 if (!re) {
                     if (!ctypes_unifiable(vi->var.ctype, val_type)) {
                         src_range_large vi_type_srl, vi_val_srl;
-                        ast_node_fill_src_range(vi->var.type, st, &vi_type_srl);
-                        ast_node_fill_src_range(
+                        ast_node_get_src_range(vi->var.type, st, &vi_type_srl);
+                        ast_node_get_src_range(
                             vi->initial_value, st, &vi_val_srl);
                         error_log_report_annotated_twice(
                             r->tc->err_log, ES_RESOLVER, false,
@@ -1293,8 +1292,8 @@ static inline resolve_error resolve_identifier(
         sym = stack_pop(&r->error_stack);
         assert(ast_elem_is_symbol((ast_elem*)sym));
         src_range_large id_sr, sym_sr;
-        ast_node_fill_src_range((ast_node*)e, st, &id_sr);
-        ast_node_fill_src_range((ast_node*)sym, sym->declaring_st, &sym_sr);
+        ast_node_get_src_range((ast_node*)e, st, &id_sr);
+        ast_node_get_src_range((ast_node*)sym, sym->declaring_st, &sym_sr);
         error_log_report_annotated_twice(
             r->tc->err_log, ES_RESOLVER, false,
             "cannot access variable of a different preprocessing "
@@ -1349,7 +1348,7 @@ static inline resolve_error resolve_if(
     }
     else if (!ctypes_unifiable(ctype_if, ctype_else)) {
         src_range_large srl;
-        ast_node_fill_src_range((ast_node*)ei, st, &srl);
+        ast_node_get_src_range((ast_node*)ei, st, &srl);
         error_log_report_annotated(
             r->tc->err_log, ES_RESOLVER, false, "type missmatch", srl.smap,
             srl.start, srl.end,
@@ -1412,7 +1411,7 @@ static inline resolve_error resolve_expr_pp(
         if (pprn->pending_pastes) {
             if (ppe->ctype != VOID_ELEM) {
                 src_range_large pp_srl;
-                ast_node_fill_src_range((ast_node*)ppe, st, &pp_srl);
+                ast_node_get_src_range((ast_node*)ppe, st, &pp_srl);
                 // TODO: report where the value is coming from
                 error_log_report_annotated(
                     r->tc->err_log, ES_RESOLVER, false,
@@ -1449,8 +1448,8 @@ static inline resolve_error resolve_expr_paste_str(
 
     if (!ctypes_unifiable(val_type, (ast_elem*)&PRIMITIVES[PT_STRING])) {
         src_range_large paste_srl, val_srl;
-        ast_node_fill_src_range((ast_node*)eps, st, &paste_srl);
-        ast_node_fill_src_range(eps->value, st, &val_srl);
+        ast_node_get_src_range((ast_node*)eps, st, &paste_srl);
+        ast_node_get_src_range(eps->value, st, &val_srl);
         error_log_report_annotated_twice(
             r->tc->err_log, ES_RESOLVER, false,
             "incompatible type in paste argument", val_srl.smap, val_srl.start,
@@ -1791,6 +1790,9 @@ static inline resolve_error resolve_ast_node_raw(
             if (resolved) RETURN_RESOLVED(value, ctype, p, p->ctype);
             return resolve_param(r, p, ppl, ctype);
         }
+        case ARRAY_DECL: {
+            array_decl* ad = (array_decl*)n;
+        }
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
@@ -1810,7 +1812,7 @@ report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl)
         stack_s = stack_size(&r->error_stack);
     }
     src_range_large srl;
-    ast_node_fill_src_range(n, st, &srl);
+    ast_node_get_src_range(n, st, &srl);
     ureg annot_count = stack_s / 2;
     annot_count--; // the starting type is on the stack too
     error* e = error_log_create_error(
@@ -1824,7 +1826,7 @@ report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl)
             n->kind == EXPR_MEMBER_ACCESS) {
             continue; // skip stuff that isn't helpful in the report
         }
-        ast_node_fill_src_range(n, st, &srl);
+        ast_node_get_src_range(n, st, &srl);
         error_add_annotation(e, srl.smap, srl.start, srl.end, "");
     }
     stack_pop(&r->error_stack);
@@ -2009,7 +2011,7 @@ resolve_func(resolver* r, sc_func* fn, ureg ppl, ast_node** continue_block)
     while (*n) {
         if (stmt_ctype_ptr == NULL && n != continue_block) {
             src_range_large srl;
-            ast_node_fill_src_range(*n, st, &srl);
+            ast_node_get_src_range(*n, st, &srl);
             error_log_report_annotated(
                 r->tc->err_log, ES_RESOLVER, false,
                 "unreachable statement in function", srl.smap, srl.start,
@@ -2278,7 +2280,7 @@ resolve_error report_cyclic_pp_deps(resolver* r)
     // TODO: create a nice cycle display instead of dumping out everything
     do {
         src_range_large srl;
-        ast_node_fill_src_range((**rn).node, (**rn).declaring_st, &srl);
+        ast_node_get_src_range((**rn).node, (**rn).declaring_st, &srl);
         error_log_report_annotated(
             r->tc->err_log, ES_RESOLVER, false,
             "encountered cyclic dependency during preprocessor execution",

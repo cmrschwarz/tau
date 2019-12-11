@@ -512,9 +512,16 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         }
         case EXPR_ARRAY: {
             expr_array* a = (expr_array*)n;
-            pc('[');
+            pc('{');
             print_expr_list(a->elements, a->elem_count, cmdg, indent);
+            pc('}');
+        } break;
+        case ARRAY_DECL: {
+            array_decl* a = (array_decl*)n;
+            pc('[');
+            print_ast_node(a->length_spec, cmdg, indent);
             pc(']');
+            print_ast_node(a->base_type, cmdg, indent);
         } break;
         case EXPR_TUPLE: {
             expr_tuple* t = (expr_tuple*)n;
