@@ -65,6 +65,11 @@ int symbol_table_init(
 
     return OK;
 }
+symbol_table* symbol_table_skip_metatables(symbol_table* st)
+{
+    while (st->decl_count == UREG_MAX) st = st->parent;
+    return st;
+}
 static inline ureg symbol_table_get_capacity(symbol_table* st)
 {
     return st->hash_mask ? st->hash_mask + 1 : 0;
@@ -73,8 +78,9 @@ void symbol_table_insert_using(
     symbol_table* st, access_modifier am, ast_node* used_node,
     symbol_table* used_symtab)
 {
-    while (st->decl_count == UREG_MAX) st = st->parent;
-    // reverse the am so it goes from public to unspecified upwars in memory
+    st = symbol_table_skip_metatables(st);
+    // reverse the am so it goes from public to unspecified upwars in
+    // memory
     am = AM_ENUM_ELEMENT_COUNT - am;
     usings_table* ut = st->usings;
     ureg usings_size = st->usings->usings_count * sizeof(symbol_table*);
@@ -103,7 +109,7 @@ void symbol_table_fin(symbol_table* st)
 }
 int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings)
 {
-    while (st->decl_count == UREG_MAX) st = st->parent;
+    st = symbol_table_skip_metatables(st);
     st->decl_count += decl_count;
     if (st->decl_count > symbol_table_get_capacity(st)) {
         ureg cap_new = (st->decl_count == 1) ? 2 : ceil_to_pow2(st->decl_count);
@@ -130,7 +136,7 @@ int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings)
 }
 symbol** symbol_table_find_insert_position(symbol_table* st, char* name)
 {
-    while (st->decl_count == UREG_MAX) st = st->parent;
+    st = symbol_table_skip_metatables(st);
     ureg hash = fnv_hash_str(FNV_START_HASH, name) & st->hash_mask;
     symbol** tgt = ptradd(st->table, hash * sizeof(symbol*));
     while (*tgt) {
@@ -141,7 +147,7 @@ symbol** symbol_table_find_insert_position(symbol_table* st, char* name)
 }
 symbol** symbol_table_insert(symbol_table* st, symbol* s)
 {
-    while (st->decl_count == UREG_MAX) st = st->parent;
+    st = symbol_table_skip_metatables(st);
     ureg hash = fnv_hash_str(FNV_START_HASH, s->name) & st->hash_mask;
     symbol** tgt = ptradd(st->table, hash * sizeof(symbol*));
     while (*tgt) {

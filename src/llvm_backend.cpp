@@ -981,7 +981,8 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         default: assert(false);
     }
     if (generate) {
-        ast_node_kind k = var->sym.declaring_st->owning_node->kind;
+        ast_node_kind k = symbol_table_skip_metatables(var->sym.declaring_st)
+                              ->owning_node->kind;
         llvm::Value* var_val;
         if (k == ELEM_MDG_NODE || k == OSC_MODULE || k == OSC_EXTEND) {
             // global var
