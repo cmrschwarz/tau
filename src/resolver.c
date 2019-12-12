@@ -629,27 +629,82 @@ static resolve_error add_ast_node_decls(
     assert(false);
     return RE_FATAL;
 }
+static inline resolve_error parse_int_literal(
+    resolver* r, expr_literal* lit, symbol_table* st, ureg* result,
+    bool* negative)
+{
+    char* str = lit->value.str;
+    if (*str == '-') {
+        *negative = true;
+        str++;
+    }
+    else {
+        if (*str == '+') str++;
+        *negative = false;
+    }
+    ureg res = 0;
+    ureg digit_val = 1;
+    bool overflow = false;
+    while (*str) {
+        if (*str < '0' || *str > '9') {
+            assert(false); // should have ben caught by the lexer
+            return PE_ERROR;
+        }
+        ureg digit = (*str - '0') * digit_val;
+        if (UREG_MAX - res < digit) {
+            overflow = true;
+            break;
+        }
+        res += digit;
+        digit_val *= 10;
+        str++;
+    }
+    if (!overflow) {
+        if (*negative) {
+            if (res > SREG_MAX) {
+                overflow = true;
+            }
+            else {
+                *(sreg*)result = -(sreg)res;
+            }
+        }
+        else {
+            *result = res;
+        }
+        if (!overflow) return PE_OK;
+    }
+    src_range_large srl;
+    ast_node_get_src_range((ast_node*)lit, st, &srl);
+    error_log_report_annotated(
+        r->tc->err_log, ES_RESOLVER, false, "integer literal overflow",
+        srl.smap, srl.start, srl.end, "in this integer literal");
+    return PE_ERROR;
+}
 static resolve_error
 evaluate_array_bounds(resolver* r, array_decl* ad, symbol_table* st, ureg* res)
 {
-    bool negative = false;
-    switch (ad->length_spec->kind) {
-        case EXPR_LITERAL: {
-            expr_literal* lit = (expr_literal*)ad->length_spec;
-            switch (lit->node.pt_kind) {
-                case PT_INT:
-                    if ((sreg)lit->value.val_ureg < 0) {
-                        negative = true;
-                        break;
-                    }
-                    *res = lit->value.val_ureg;
-                    return PE_OK;
-                case PT_UINT: *res = lit->value.val_ureg; return PE_OK;
-                default: break;
+    if (ad->length_spec->kind == EXPR_LITERAL) {
+        expr_literal* lit = (expr_literal*)ad->length_spec;
+        if (lit->node.pt_kind == PT_UINT || lit->node.pt_kind == PT_INT) {
+            bool negative;
+            resolve_error re = parse_int_literal(r, lit, st, res, &negative);
+            if (re) return re;
+            if (negative) {
+                src_range_large bounds_srl;
+                src_range_large array_srl;
+                ast_node_get_src_range(ad->length_spec, st, &bounds_srl);
+                ast_node_get_src_range((ast_node*)ad, st, &array_srl);
+                error_log_report_annotated_twice(
+                    r->tc->err_log, ES_RESOLVER, false,
+                    "array length can't be negative", bounds_srl.smap,
+                    bounds_srl.start, bounds_srl.end,
+                    "expected positive integer", array_srl.smap,
+                    array_srl.start, array_srl.end,
+                    "in the array bounds for this array");
+                return RE_ERROR;
             }
-            break;
+            return RE_OK;
         }
-        default: break;
     }
     src_range_large bounds_srl;
     src_range_large array_srl;
@@ -693,6 +748,12 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
     if (a->kind == TYPE_POINTER && b->kind == TYPE_POINTER) {
         return ctypes_unifiable(
             ((type_pointer*)a)->base, ((type_pointer*)b)->base);
+    }
+    if (a->kind == TYPE_ARRAY && b->kind == TYPE_ARRAY) {
+        type_array* aa = (type_array*)a;
+        type_array* ab = (type_array*)b;
+        return (aa->length == ab->length) &&
+               ctypes_unifiable(aa->ctype_members, ab->ctype_members);
     }
     return false; // TODO
     /*
@@ -1846,8 +1907,9 @@ static inline resolve_error resolve_ast_node_raw(
             if (!ta) return RE_FATAL;
             ta->ctype_members = base_type;
             ta->kind = TYPE_ARRAY;
-            re = evaluate_array_bounds(r, ad, st, &ta->size);
+            re = evaluate_array_bounds(r, ad, st, &ta->length);
             if (re) return re;
+            ast_flags_set_resolved(&ad->node.flags);
             RETURN_RESOLVED(value, ctype, ta, TYPE_ELEM);
         }
         case EXPR_ARRAY: {
@@ -1860,7 +1922,7 @@ static inline resolve_error resolve_ast_node_raw(
                     (ast_elem**)&ea->ctype);
                 if (re) return re;
                 assert(ea->ctype->kind == TYPE_ARRAY);
-                if (ea->ctype->size != ea->elem_count) {
+                if (ea->ctype->length != ea->elem_count) {
                     assert(false); // TODO: error msg
                 }
             }
@@ -1878,7 +1940,7 @@ static inline resolve_error resolve_ast_node_raw(
                     if (!ta) return RE_FATAL;
                     ta->ctype_members = elem_ctype;
                     ta->kind = TYPE_ARRAY;
-                    ta->size = ea->elem_count;
+                    ta->length = ea->elem_count;
                     ea->ctype = ta;
                 }
                 else {

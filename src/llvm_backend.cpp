@@ -717,7 +717,7 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             llvm_error lle =
                 lookupCType(ta->ctype_members, &elem_type, NULL, NULL);
             if (lle) return lle;
-            auto arr = llvm::ArrayType::get(elem_type, ta->size);
+            auto arr = llvm::ArrayType::get(elem_type, ta->length);
             if (!arr) return LLE_FATAL;
             *t = arr;
             if (align) *align = _data_layout->getPrefTypeAlignment(arr);

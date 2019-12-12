@@ -640,7 +640,7 @@ typedef struct type_pointer_s {
 typedef struct type_array_s {
     ast_node_kind kind;
     ast_elem* ctype_members;
-    ureg size;
+    ureg length;
 } type_array;
 
 typedef struct type_tuple_s {
