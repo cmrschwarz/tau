@@ -172,3 +172,12 @@ bool ast_flags_get_used_in_pp(ast_flags f)
 {
     return bitmask_get_bit(f, ASTF_USED_IN_PP_OFFSET);
 }
+
+void ast_flags_set_comptime_known(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_COMPTIME_KNOWN);
+}
+bool ast_flags_get_comptime_known(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_COMPTIME_KNOWN);
+}

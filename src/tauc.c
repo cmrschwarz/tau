@@ -63,6 +63,7 @@ int tauc_core_init(tauc* t)
     t->explicit_exe = false;
     t->emit_ast = false;
     t->emit_exe = true;
+    t->assert_on_error = false;
     return OK;
 }
 void tauc_core_fin(tauc* t)
@@ -138,6 +139,9 @@ int handle_cmd_args(
         else if (!strcmp(arg, "-E")) {
             t->emit_exe = true;
             t->explicit_exe = true;
+        }
+        else if (!strcmp(arg, "-R")) { // short for REEEEEEE
+            t->assert_on_error = true;
         }
 #if DEBUG
         else if (!strcmp(arg, "-U")) {
@@ -379,6 +383,7 @@ int tauc_link(tauc* t)
 }
 void tauc_error_occured(tauc* t, int ec)
 {
+    assert(!t->assert_on_error);
     sreg ov = 0;
     while (ov == 0) {
         if (atomic_sreg_cas(&t->error_code, &ov, (sreg)ec)) break;

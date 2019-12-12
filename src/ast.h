@@ -51,6 +51,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     STMT_LAST_STMT_ID = STMT_COMPOUND_ASSIGN,
 
     EXPR_BLOCK,
+    EXPR_CAST,
     EXPR_PP,
     EXPR_PASTE_EVALUATION,
     EXPR_RETURN,
@@ -583,6 +584,7 @@ typedef struct expr_cast_s {
     ast_node node;
     ast_node* value;
     ast_node* target_type;
+    ast_elem* target_ctype;
 } expr_cast;
 
 typedef struct expr_tuple_s {

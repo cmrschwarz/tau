@@ -1865,11 +1865,13 @@ static inline resolve_error resolve_ast_node_raw(
                 }
             }
             ast_node** e = ea->elements;
-
+            bool comptime_known = true;
             ast_elem* elem_ctype;
             for (ureg i = 0; i < ea->elem_count; i++) {
                 re = resolve_ast_node(r, *e, st, ppl, NULL, &elem_ctype);
                 if (re) return re;
+                comptime_known =
+                    comptime_known && ast_flags_get_comptime_known((**e).flags);
                 if (!ea->ctype) {
                     type_array* ta = (type_array*)pool_alloc(
                         &r->tc->permmem, sizeof(type_array));
@@ -1899,6 +1901,7 @@ static inline resolve_error resolve_ast_node_raw(
                 e++;
             }
             ast_flags_set_resolved(&ea->node.flags);
+            if (comptime_known) ast_flags_set_comptime_known(&ea->node.flags);
             RETURN_RESOLVED(value, ctype, NULL, ea->ctype);
         }
         default: assert(false); return RE_UNKNOWN_SYMBOL;

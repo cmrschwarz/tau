@@ -7,6 +7,7 @@ static PPRunner* PP_RUNNER;
 extern "C" {
 #include "utils/ptrlist.h"
 #include "thread_context.h"
+#include "ast_flags.h"
 #include "utils/pool.h"
 #include "tauc.h"
 #include <utils/debug_utils.h>
@@ -710,6 +711,19 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             if (lle) return lle;
             *t = (**t).getPointerTo();
         } break;
+        case TYPE_ARRAY: {
+            auto ta = (type_array*)e;
+            llvm::Type* elem_type;
+            llvm_error lle =
+                lookupCType(ta->ctype_members, &elem_type, NULL, NULL);
+            if (lle) return lle;
+            auto arr = llvm::ArrayType::get(elem_type, ta->size);
+            if (!arr) return LLE_FATAL;
+            *t = arr;
+            if (align) *align = _data_layout->getPrefTypeAlignment(arr);
+            if (size) *size = _data_layout->getTypeAllocSize(arr);
+            return LLE_OK;
+        }
         default: {
             assert(false); // TODO
             if (t)
@@ -1386,6 +1400,35 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             _builder.CreateCall(_paste_func_ptr, args_array);
             assert(!vl && !vl_loaded);
             return LLE_OK;
+        }
+        case EXPR_ARRAY: {
+            auto arr = (expr_array*)n;
+            llvm::Type* arr_type;
+            ureg align;
+            lle = lookupCType((ast_elem*)arr->ctype, &arr_type, &align, NULL);
+            if (lle) return lle;
+            if (ast_flags_get_comptime_known(arr->node.flags)) {
+                auto& elements = *new std::vector<llvm::Constant*>();
+                ast_node** e = arr->elements;
+                for (ureg i = 0; i < arr->elem_count; i++) {
+                    llvm::Value* vl;
+                    lle = genAstNode(*e, NULL, &vl);
+                    if (lle) return lle;
+                    assert(llvm::isa<llvm::Constant>(vl));
+                    elements.push_back((llvm::Constant*)vl);
+                }
+                llvm::ArrayRef<llvm::Constant*> elems_array_ref{
+                    &elements[0], &elements[elements.size() - 1] + 1};
+                assert(llvm::isa<llvm::ArrayType>(arr_type));
+                auto llarr = llvm::ConstantArray::get(
+                    (llvm::ArrayType*)arr_type, elems_array_ref);
+                if (vl) *vl = llarr;
+                if (vl_loaded) *vl_loaded = llarr;
+                return LLE_OK;
+            }
+            else {
+                assert(false); // TODO
+            }
         }
         default: assert(false);
     }

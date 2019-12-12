@@ -38,7 +38,9 @@ typedef enum PACK_ENUM access_modifier_e {
 
 #define ASTF_OVERLOADED_IN_PP_OFFSET 9
 #define ASTF_USED_IN_PP_OFFSET 10
-// we have space for 3 more here
+
+#define ASTF_COMPTIME_KNOWN 11
+// we have space for 2 more here
 #define ASTF_ACCESS_MODIFIER_OFFSET 13
 #define ASTF_ACCESS_MODIFIER_MASK (0x7 << ASTF_ACCESS_MODIFIER_OFFSET)
 
@@ -108,5 +110,8 @@ bool ast_flags_get_used_in_pp(ast_flags f);
 
 void ast_flags_set_error(ast_flags* f);
 bool ast_flags_get_error(ast_flags f);
+
+void ast_flags_set_comptime_known(ast_flags* f);
+bool ast_flags_get_comptime_known(ast_flags f);
 
 #endif

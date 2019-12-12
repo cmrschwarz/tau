@@ -173,11 +173,6 @@ static void free_astn_symtabs(ast_node* n)
             free_astn_symtabs(ei->if_body);
             free_astn_symtabs(ei->else_body);
         } break;
-        case ARRAY_DECL: {
-            array_decl* ad = (array_decl*)n;
-            free_astn_symtabs(ad->length_spec);
-            free_astn_symtabs(ad->base_type);
-        } break;
         case EXPR_LOOP: free_body_symtabs(n, &((expr_loop*)n)->body); break;
 
         case EXPR_MACRO_CALL: {
@@ -245,6 +240,18 @@ static void free_astn_symtabs(ast_node* n)
         case STMT_PASTE_EVALUATION: {
             stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
             free_body_symtabs(n, &spe->body);
+        } break;
+        case ARRAY_DECL: {
+            array_decl* ad = (array_decl*)n;
+            free_astn_symtabs(ad->length_spec);
+            free_astn_symtabs(ad->base_type);
+        } break;
+        case EXPR_ARRAY: {
+            expr_array* ea = (expr_array*)n;
+            for (ureg i = 0; i < ea->elem_count; i++) {
+                free_astn_symtabs(ea->elements[i]);
+            }
+            free_astn_symtabs((ast_node*)ea->explicit_decl);
         } break;
         default: assert(false);
     }

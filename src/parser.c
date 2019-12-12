@@ -177,6 +177,8 @@ static inline operator_kind token_to_binary_op(token* t)
         case TK_TILDE_EQUALS: return OP_BITWISE_NOT_ASSIGN;
         case TK_DOT: return OP_MEMBER_ACCESS;
         case TK_DOUBLE_COLON: return OP_SCOPE_ACCESS;
+
+        case TK_KW_AS: return OP_CAST;
         default: return OP_NOOP;
     }
 }
@@ -687,6 +689,7 @@ parse_literal(parser* p, ast_node_kind nk, primitive_kind pk, ast_node** tgt)
     expr_literal* l = (expr_literal*)alloc_perm(p, sizeof(expr_literal));
     if (!l) return PE_FATAL;
     ast_node_init_with_pk(&l->node, nk, pk);
+    ast_flags_set_comptime_known(&l->node.flags);
     l->value.str = alloc_string_temp(p, t->str);
     if (!l->value.str) return PE_FATAL;
     if (ast_node_fill_srange(p, &l->node, t->start, t->end)) return PE_FATAL;
@@ -1784,6 +1787,7 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     sp->result = NULL;
     if (!sp) return PE_FATAL;
     ast_node_init(&sp->node, EXPR_PP);
+    ast_flags_set_comptime_known(&sp->node.flags);
     sp->result_buffer.state.pprn = NULL;
     sp->result_buffer.paste_result.last_next =
         &sp->result_buffer.paste_result.first;
@@ -1993,14 +1997,48 @@ parse_scope_access(parser* p, ast_node** ex, ast_node* lhs, bool member)
     return PE_OK;
 }
 static inline parse_error
+parse_expr_cast(parser* p, ast_node** ex, ast_node* lhs)
+{
+    token* t = lx_aquire(&p->lx);
+    lx_void(&p->lx);
+
+    expr_cast* ec = (expr_cast*)alloc_perm(p, sizeof(expr_cast));
+    if (!ec) return PE_FATAL;
+    if (ast_node_fill_srange(p, &ec->node, t->start, t->end)) return PE_FATAL;
+    ast_node_init((ast_node*)ec, EXPR_CAST);
+    ec->value = lhs;
+    parse_error pe = parse_expression_of_prec(
+        p, &ec->target_type,
+        op_precedence[OP_CAST] + is_left_associative(OP_CAST));
+    if (pe) {
+        if (pe == PE_EOEX) {
+            PEEK(p, t);
+            src_range_large sr;
+            src_range_unpack(ec->node.srange, &sr);
+            parser_error_2a(
+                p, "missing target type for cast operator", t->start, t->end,
+                "reached end of expression", sr.start, sr.end,
+                "missing type for this cast");
+            return PE_ERROR;
+        }
+        return pe;
+    }
+    *ex = (ast_node*)ec;
+    return PE_OK;
+}
+static inline parse_error
 parse_binary_op(parser* p, operator_kind op, ast_node** ex, ast_node* lhs)
 {
 
     if (op == OP_SCOPE_ACCESS || op == OP_MEMBER_ACCESS) {
         return parse_scope_access(p, ex, lhs, (op == OP_MEMBER_ACCESS));
     }
+    if (op == OP_CAST) {
+        return parse_expr_cast(p, ex, lhs);
+    }
     token* t = lx_aquire(&p->lx);
     lx_void(&p->lx);
+
     expr_op_binary* ob = (expr_op_binary*)alloc_perm(p, sizeof(expr_op_binary));
     if (!ob) return PE_FATAL;
     if (ast_node_fill_srange(p, &ob->node, t->start, t->end)) return PE_FATAL;
@@ -3383,6 +3421,7 @@ static inline parse_error parse_pp_stmt(
     expr_pp* sp = alloc_perm(p, sizeof(expr_pp));
     if (!sp) return PE_FATAL;
     ast_node_init(&sp->node, EXPR_PP);
+    ast_flags_set_comptime_known(&sp->node.flags);
     ast_flags_set_pp_stmt(&sp->node.flags);
     sp->result_buffer.state.pprn = NULL;
     sp->result_buffer.paste_result.last_next =

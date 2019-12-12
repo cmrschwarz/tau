@@ -29,6 +29,7 @@ typedef struct tauc_s {
     bool emit_ast;
     bool needs_emit_stage;
     bool explicit_exe;
+    bool assert_on_error;
 } tauc;
 
 // THREADSAFE
