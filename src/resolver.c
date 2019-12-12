@@ -1894,6 +1894,7 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case ARRAY_DECL: {
             array_decl* ad = (array_decl*)n;
+            if (resolved) RETURN_RESOLVED(value, ctype, ad->ctype, TYPE_ELEM);
             ast_elem* base_type;
             ast_elem* len_ctype;
             re = resolve_ast_node(r, ad->base_type, st, ppl, &base_type, NULL);
@@ -1910,6 +1911,7 @@ static inline resolve_error resolve_ast_node_raw(
             re = evaluate_array_bounds(r, ad, st, &ta->length);
             if (re) return re;
             ast_flags_set_resolved(&ad->node.flags);
+            ad->ctype = (ast_elem*)ta;
             RETURN_RESOLVED(value, ctype, ta, TYPE_ELEM);
         }
         case EXPR_ARRAY: {
@@ -1965,6 +1967,20 @@ static inline resolve_error resolve_ast_node_raw(
             ast_flags_set_resolved(&ea->node.flags);
             if (comptime_known) ast_flags_set_comptime_known(&ea->node.flags);
             RETURN_RESOLVED(value, ctype, NULL, ea->ctype);
+        }
+        case EXPR_CAST: {
+            // TODO: check whether convertible, for now we just allow everything
+            expr_cast* ec = (expr_cast*)n;
+            if (resolved) {
+                RETURN_RESOLVED(value, ctype, NULL, ec->target_ctype);
+            }
+            re = resolve_ast_node(
+                r, ec->target_type, st, ppl, &ec->target_ctype, NULL);
+            if (re) return re;
+            re = resolve_ast_node(r, ec->value, st, ppl, NULL, NULL);
+            if (re) return re;
+            ast_flags_set_resolved(&ec->node.flags);
+            RETURN_RESOLVED(value, ctype, NULL, ec->target_ctype);
         }
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }

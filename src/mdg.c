@@ -253,6 +253,11 @@ static void free_astn_symtabs(ast_node* n)
             }
             free_astn_symtabs((ast_node*)ea->explicit_decl);
         } break;
+        case EXPR_CAST: {
+            expr_cast* ec = (expr_cast*)n;
+            free_astn_symtabs(ec->value);
+            free_astn_symtabs(ec->target_type);
+        } break;
         default: assert(false);
     }
 }

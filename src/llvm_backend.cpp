@@ -1416,6 +1416,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     if (lle) return lle;
                     assert(llvm::isa<llvm::Constant>(vl));
                     elements.push_back((llvm::Constant*)vl);
+                    e++;
                 }
                 llvm::ArrayRef<llvm::Constant*> elems_array_ref{
                     &elements[0], &elements[elements.size() - 1] + 1};
@@ -1429,6 +1430,21 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             else {
                 assert(false); // TODO
             }
+        }
+        case EXPR_CAST: {
+            auto ec = (expr_cast*)n;
+            llvm::Value* value;
+            lle = genAstNode(ec->value, &value, NULL);
+            if (lle) return lle;
+            llvm::Type* type;
+            ureg align;
+            lle = lookupCType(ec->target_ctype, &type, &align, NULL);
+            if (lle) return lle;
+            auto cast_value = _builder.CreateBitCast(value, type);
+            if (!cast_value) return LLE_FATAL;
+            if (vl) *vl = cast_value;
+            if (vl_loaded) *vl_loaded = cast_value;
+            return LLE_OK;
         }
         default: assert(false);
     }
@@ -1542,7 +1558,7 @@ llvm_error LLVMBackend::genBinaryOp(
         default: assert(false); return LLE_FATAL;
     }
     if (vl_loaded) *vl_loaded = v;
-    assert(!vl);
+    if (vl) *vl = v;
     return LLE_OK;
 }
 // TODO: do this properly

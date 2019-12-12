@@ -107,7 +107,8 @@ static const unsigned char op_precedence[] = {
     [OP_BITWISE_NOT_ASSIGN] = 1,
 };
 
-#define PREC_BASELINE 0
+#define OP_PREC_BASELINE 0
+#define OP_PREC_MAX 15
 
 static inline bool is_left_associative(ast_node_kind t)
 {
@@ -178,7 +179,6 @@ static inline operator_kind token_to_binary_op(token* t)
         case TK_DOT: return OP_MEMBER_ACCESS;
         case TK_DOUBLE_COLON: return OP_SCOPE_ACCESS;
 
-        case TK_KW_AS: return OP_CAST;
         default: return OP_NOOP;
     }
 }
@@ -235,6 +235,7 @@ static inline operator_kind token_to_prefix_unary_op(token* t)
 static inline operator_kind token_to_postfix_unary_op(parser* p, token* t)
 {
     switch (t->kind) {
+        case TK_KW_AS: return OP_CAST;
         case TK_DOUBLE_PLUS: return OP_POST_INCREMENT;
         case TK_DOUBLE_MINUS: return OP_POST_DECREMENT;
         case TK_PAREN_OPEN: return OP_CALL;
@@ -987,7 +988,7 @@ parse_paren_group_or_tuple(parser* p, token* t, ast_node** ex)
     }
     bool disable_mbc = p->disable_macro_body_call;
     p->disable_macro_body_call = false;
-    parse_error pe = parse_expression_of_prec(p, ex, PREC_BASELINE);
+    parse_error pe = parse_expression_of_prec(p, ex, OP_PREC_BASELINE);
     if (pe != PE_OK && pe != PE_EOEX) {
         p->disable_macro_body_call = disable_mbc;
         return pe;
@@ -1945,6 +1946,34 @@ static inline parse_error parse_access(parser* p, ast_node** ex, ast_node* lhs)
     *ex = (ast_node*)acc;
     return PE_OK;
 }
+static inline parse_error
+parse_expr_cast(parser* p, ast_node** ex, ast_node* lhs)
+{
+    token* t = lx_aquire(&p->lx);
+    lx_void(&p->lx);
+
+    expr_cast* ec = (expr_cast*)alloc_perm(p, sizeof(expr_cast));
+    if (!ec) return PE_FATAL;
+    if (ast_node_fill_srange(p, &ec->node, t->start, t->end)) return PE_FATAL;
+    ast_node_init((ast_node*)ec, EXPR_CAST);
+    ec->value = lhs;
+    parse_error pe = parse_expression_of_prec(p, &ec->target_type, OP_PREC_MAX + 1);
+    if (pe) {
+        if (pe == PE_EOEX) {
+            PEEK(p, t);
+            src_range_large sr;
+            src_range_unpack(ec->node.srange, &sr);
+            parser_error_2a(
+                p, "missing target type for cast operator", t->start, t->end,
+                "reached end of expression", sr.start, sr.end,
+                "missing type for this cast");
+            return PE_ERROR;
+        }
+        return pe;
+    }
+    *ex = (ast_node*)ec;
+    return PE_OK;
+}
 static inline parse_error parse_postfix_unary_op(
     parser* p, operator_kind op, ast_node** ex, ast_node* lhs)
 {
@@ -1956,6 +1985,9 @@ static inline parse_error parse_postfix_unary_op(
     }
     else if (op == OP_MACRO_CALL) {
         return parse_macro_block_call(p, ex, lhs);
+    }
+    else if (op == OP_CAST) {
+        return parse_expr_cast(p, ex, lhs);
     }
     token* t = lx_aquire(&p->lx);
     lx_void(&p->lx);
@@ -1997,44 +2029,11 @@ parse_scope_access(parser* p, ast_node** ex, ast_node* lhs, bool member)
     return PE_OK;
 }
 static inline parse_error
-parse_expr_cast(parser* p, ast_node** ex, ast_node* lhs)
-{
-    token* t = lx_aquire(&p->lx);
-    lx_void(&p->lx);
-
-    expr_cast* ec = (expr_cast*)alloc_perm(p, sizeof(expr_cast));
-    if (!ec) return PE_FATAL;
-    if (ast_node_fill_srange(p, &ec->node, t->start, t->end)) return PE_FATAL;
-    ast_node_init((ast_node*)ec, EXPR_CAST);
-    ec->value = lhs;
-    parse_error pe = parse_expression_of_prec(
-        p, &ec->target_type,
-        op_precedence[OP_CAST] + is_left_associative(OP_CAST));
-    if (pe) {
-        if (pe == PE_EOEX) {
-            PEEK(p, t);
-            src_range_large sr;
-            src_range_unpack(ec->node.srange, &sr);
-            parser_error_2a(
-                p, "missing target type for cast operator", t->start, t->end,
-                "reached end of expression", sr.start, sr.end,
-                "missing type for this cast");
-            return PE_ERROR;
-        }
-        return pe;
-    }
-    *ex = (ast_node*)ec;
-    return PE_OK;
-}
-static inline parse_error
 parse_binary_op(parser* p, operator_kind op, ast_node** ex, ast_node* lhs)
 {
 
     if (op == OP_SCOPE_ACCESS || op == OP_MEMBER_ACCESS) {
         return parse_scope_access(p, ex, lhs, (op == OP_MEMBER_ACCESS));
-    }
-    if (op == OP_CAST) {
-        return parse_expr_cast(p, ex, lhs);
     }
     token* t = lx_aquire(&p->lx);
     lx_void(&p->lx);
@@ -2145,7 +2144,7 @@ parse_error parse_expr_in_parens(
 }
 parse_error parse_expression(parser* p, ast_node** ex)
 {
-    return parse_expression_of_prec(p, ex, PREC_BASELINE);
+    return parse_expression_of_prec(p, ex, OP_PREC_BASELINE);
 }
 void report_missing_semicolon(parser* p, ureg start, ureg end)
 {
@@ -2990,20 +2989,21 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
         // "missing semicolon for expression" error down the line which is
         // not
         // ideal
-        pe = parse_expression_of_prec_post_value(p, &ex, PREC_BASELINE);
+        pe = parse_expression_of_prec_post_value(p, &ex, OP_PREC_BASELINE);
     }
     else {
         operator_kind op = token_to_prefix_unary_op(t);
         if (op != OP_NOOP) {
             pe = parse_prefix_unary_op(p, op, &ex);
             if (pe) return pe;
-            pe = parse_expression_of_prec_post_value(p, &ex, PREC_BASELINE);
+            pe = parse_expression_of_prec_post_value(p, &ex, OP_PREC_BASELINE);
         }
         else {
             pe = parse_value_expr(p, &ex);
             if (pe) return pe;
             if (!ast_node_may_drop_semicolon(ex)) {
-                pe = parse_expression_of_prec_post_value(p, &ex, PREC_BASELINE);
+                pe = parse_expression_of_prec_post_value(
+                    p, &ex, OP_PREC_BASELINE);
             }
         }
     }

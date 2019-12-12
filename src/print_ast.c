@@ -498,6 +498,15 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             print_ast_node(b->rhs, cmdg, indent);
             break;
         }
+        case EXPR_CAST: {
+            expr_cast* ec = (expr_cast*)n;
+            pc('(');
+            print_ast_node(ec->value, cmdg, indent);
+            p(" as ");
+            print_ast_node(ec->target_type, cmdg, indent);
+            pc(')');
+            break;
+        }
         case EXPR_OP_UNARY: {
             expr_op_unary* u = (expr_op_unary*)n;
             if (is_unary_op_postfix(u->node.op_kind)) {

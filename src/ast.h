@@ -506,6 +506,7 @@ typedef struct array_decl_s {
     ast_node node;
     ast_node* length_spec; // TODO: NULL in case of [-]
     ast_node* base_type;
+    ast_elem* ctype;
 } array_decl;
 
 // TODO
