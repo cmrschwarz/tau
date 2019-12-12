@@ -235,7 +235,6 @@ src_map* symbol_table_get_smap(symbol_table* st)
     if (st->parent) return symbol_table_get_smap(st->parent);
     return NULL;
 }
-
 int init_root_symtab(symbol_table** root_symtab)
 {
     // to avoid an assertion (which makes sense for all other cases)

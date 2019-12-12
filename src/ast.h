@@ -203,7 +203,7 @@ typedef struct symbol_s {
 } symbol;
 
 typedef struct ast_body_s {
-    ast_node** elements;
+    ast_node** elements; // zero terminated
     symbol_table* symtab;
     src_range srange;
 } ast_body;

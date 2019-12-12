@@ -1509,6 +1509,8 @@ static inline parse_error parse_expr_block_or_array(parser* p, ast_node** ex)
     }
     drop_bpd(p);
     expr_array* arr = alloc_perm(p, sizeof(expr_array));
+    ast_node_init((ast_node*)arr, EXPR_ARRAY);
+    arr->ctype = NULL;
     if (!arr) return PE_FATAL;
     pe = parse_expr_node_list(
         p, first_expr, &arr->elements, &arr->elem_count, "array",

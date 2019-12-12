@@ -596,7 +596,9 @@ static resolve_error add_ast_node_decls(
             re = add_symbol(r, st, sst, (symbol*)n);
             if (re) return re;
             sym_var* v = (sym_var*)n;
-            ast_node_kind owning_kind = v->sym.declaring_st->owning_node->kind;
+            ast_node_kind owning_kind =
+                symbol_table_skip_metatables(v->sym.declaring_st)
+                    ->owning_node->kind;
             if (!ast_flags_get_static(n->flags) &&
                 (owning_kind == SC_STRUCT || owning_kind == SC_TRAIT)) {
                 assert(owning_kind == SC_STRUCT); // TODO: generics, traits, etc
@@ -605,6 +607,15 @@ static resolve_error add_ast_node_decls(
             }
             else {
                 v->var_id = ast_node_claim_id(r, n, public_st);
+            }
+            return RE_OK;
+        }
+        case STMT_PASTE_EVALUATION: {
+            stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
+            for (ast_node** e = spe->body.elements; *e; e++) {
+                re = add_ast_node_decls(
+                    r, spe->body.symtab, sst, ppl, *e, public_st);
+                if (re) return re;
             }
             return RE_OK;
         }
@@ -618,7 +629,40 @@ static resolve_error add_ast_node_decls(
     assert(false);
     return RE_FATAL;
 }
-
+static resolve_error
+evaluate_array_bounds(resolver* r, array_decl* ad, symbol_table* st, ureg* res)
+{
+    bool negative = false;
+    switch (ad->length_spec->kind) {
+        case EXPR_LITERAL: {
+            expr_literal* lit = (expr_literal*)ad->length_spec;
+            switch (lit->node.pt_kind) {
+                case PT_INT:
+                    if ((sreg)lit->value.val_ureg < 0) {
+                        negative = true;
+                        break;
+                    }
+                    *res = lit->value.val_ureg;
+                    return PE_OK;
+                case PT_UINT: *res = lit->value.val_ureg; return PE_OK;
+                default: break;
+            }
+            break;
+        }
+        default: break;
+    }
+    src_range_large bounds_srl;
+    src_range_large array_srl;
+    ast_node_get_src_range(ad->length_spec, st, &bounds_srl);
+    ast_node_get_src_range((ast_node*)ad, st, &array_srl);
+    // TODO: different error for negative values
+    error_log_report_annotated_twice(
+        r->tc->err_log, ES_RESOLVER, false, "invalid type for array bounds",
+        bounds_srl.smap, bounds_srl.start, bounds_srl.end, "expected uint",
+        array_srl.smap, array_srl.start, array_srl.end,
+        "in the array bounds for this array");
+    return RE_ERROR;
+}
 static resolve_error add_body_decls(
     resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
     ast_body* b, bool public_st)
@@ -1371,9 +1415,6 @@ static inline resolve_error resolve_expr_pp(
     resolver* r, symbol_table* st, ureg ppl, expr_pp* ppe, ast_elem** value,
     ast_elem** ctype)
 {
-    // TODO: find a better way to determine this,
-    // since lots of places use the ctype to determine
-    // reachability despite not needing the value
     bool is_stmt = ast_flags_get_pp_stmt(ppe->node.flags);
     if (ppe->ctype == PASTED_EXPR_ELEM) {
         *ppe->result_buffer.paste_result.last_next = NULL;
@@ -1792,6 +1833,73 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case ARRAY_DECL: {
             array_decl* ad = (array_decl*)n;
+            ast_elem* base_type;
+            ast_elem* len_ctype;
+            re = resolve_ast_node(r, ad->base_type, st, ppl, &base_type, NULL);
+            if (re) return re;
+            re =
+                resolve_ast_node(r, ad->length_spec, st, ppl, NULL, &len_ctype);
+            if (re) return re;
+
+            type_array* ta =
+                (type_array*)pool_alloc(&r->tc->permmem, sizeof(type_array));
+            if (!ta) return RE_FATAL;
+            ta->ctype_members = base_type;
+            ta->kind = TYPE_ARRAY;
+            re = evaluate_array_bounds(r, ad, st, &ta->size);
+            if (re) return re;
+            RETURN_RESOLVED(value, ctype, ta, TYPE_ELEM);
+        }
+        case EXPR_ARRAY: {
+            expr_array* ea = (expr_array*)n;
+            assert(!value);
+            if (resolved) RETURN_RESOLVED(value, ctype, NULL, ea->ctype);
+            if (ea->explicit_decl && !ea->ctype) {
+                re = resolve_ast_node(
+                    r, (ast_node*)ea->explicit_decl, st, ppl, NULL,
+                    (ast_elem**)&ea->ctype);
+                if (re) return re;
+                assert(ea->ctype->kind == TYPE_ARRAY);
+                if (ea->ctype->size != ea->elem_count) {
+                    assert(false); // TODO: error msg
+                }
+            }
+            ast_node** e = ea->elements;
+
+            ast_elem* elem_ctype;
+            for (ureg i = 0; i < ea->elem_count; i++) {
+                re = resolve_ast_node(r, *e, st, ppl, NULL, &elem_ctype);
+                if (re) return re;
+                if (!ea->ctype) {
+                    type_array* ta = (type_array*)pool_alloc(
+                        &r->tc->permmem, sizeof(type_array));
+                    if (!ta) return RE_FATAL;
+                    ta->ctype_members = elem_ctype;
+                    ta->kind = TYPE_ARRAY;
+                    ta->size = ea->elem_count;
+                    ea->ctype = ta;
+                }
+                else {
+                    if (!ctypes_unifiable(
+                            (ast_elem*)ea->ctype->ctype_members, elem_ctype)) {
+                        src_range_large elem_srl;
+                        src_range_large array_srl;
+                        ast_node_get_src_range(*e, st, &elem_srl);
+                        ast_node_get_src_range((ast_node*)ea, st, &array_srl);
+                        // TODO: different error for negative values
+                        error_log_report_annotated_twice(
+                            r->tc->err_log, ES_RESOLVER, false,
+                            "invalid array element type", elem_srl.smap,
+                            elem_srl.start, elem_srl.end,
+                            "element type not convertible to array type",
+                            array_srl.smap, array_srl.start, array_srl.end,
+                            NULL);
+                    }
+                }
+                e++;
+            }
+            ast_flags_set_resolved(&ea->node.flags);
+            RETURN_RESOLVED(value, ctype, NULL, ea->ctype);
         }
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
