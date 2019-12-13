@@ -1957,7 +1957,8 @@ parse_expr_cast(parser* p, ast_node** ex, ast_node* lhs)
     if (ast_node_fill_srange(p, &ec->node, t->start, t->end)) return PE_FATAL;
     ast_node_init((ast_node*)ec, EXPR_CAST);
     ec->value = lhs;
-    parse_error pe = parse_expression_of_prec(p, &ec->target_type, OP_PREC_MAX + 1);
+    parse_error pe =
+        parse_expression_of_prec(p, &ec->target_type, OP_PREC_MAX + 1);
     if (pe) {
         if (pe == PE_EOEX) {
             PEEK(p, t);
@@ -2270,9 +2271,11 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     lx_close_file(&p->lx);
     if (!pe) {
         pe = thread_context_preorder_job(p->lx.tc);
-        if (!pe && src_file_done_parsing(j->file, p->lx.tc)) pe = PE_FATAL;
+        if (!pe) {
+            if (src_file_done_parsing(j->file, p->lx.tc)) pe = PE_FATAL;
+        }
     }
-    if (pe) {
+    else {
         free_body_symtabs(
             (ast_node*)&j->file->root.oscope.sc, &j->file->root.oscope.sc.body);
     }
@@ -3103,8 +3106,8 @@ parse_error parse_braced_imports(
     }
 }
 parse_error parse_symbol_imports(
-    parser* p, ast_flags flags, ureg start, ureg kw_end, ureg* end,
-    ureg* decl_cnt, symbol** tgt)
+    parser* p, sym_import_group* group, ast_flags flags, ureg start,
+    ureg kw_end, ureg* end, ureg* decl_cnt, symbol** tgt)
 {
     lx_void(&p->lx);
     token* t;
@@ -3153,6 +3156,7 @@ parse_error parse_symbol_imports(
             if (!im) return PE_FATAL;
             ast_node_init_with_flags((ast_node*)im, SYM_IMPORT_SYMBOL, flags);
             ast_node_fill_srange(p, (ast_node*)im, symstart, symend);
+            im->import_group = group;
             im->sym.name = id1_str;
             im->target.name = symname;
             *tgt = (symbol*)im;
@@ -3243,7 +3247,6 @@ parse_error parse_import_with_parent(
     // for better ast printing
     if (t->kind == TK_PAREN_OPEN || t->kind == TK_BRACE_OPEN) {
         sym_import_group* ig;
-        // if (name) { // we even create unnamed groups for better printing
         ig = alloc_perm(p, sizeof(sym_import_group));
         if (!ig) return PE_FATAL;
         ast_node_init_with_flags((ast_node*)ig, SYM_IMPORT_GROUP, flags);
@@ -3251,7 +3254,6 @@ parse_error parse_import_with_parent(
         ig->sym.name = name;
         *tgt = (symbol*)ig;
         tgt = &ig->children.symbols;
-        // }
 
         ureg ndecl_cnt = 0;
         if (name) {
@@ -3264,16 +3266,14 @@ parse_error parse_import_with_parent(
                 return PE_FATAL;
             }
             re = parse_symbol_imports(
-                p, flags, start, kw_end, &end, decl_cnt, tgt);
+                p, ig, flags, start, kw_end, &end, decl_cnt, tgt);
         }
         else {
             re = parse_braced_imports(
                 p, flags, start, kw_end, parent, &end, decl_cnt, tgt);
         }
         if (re) return re;
-        if (ig) {
-            ast_node_fill_srange(p, (ast_node*)ig, start, end);
-        }
+        ast_node_fill_srange(p, (ast_node*)ig, istart, end);
         if (name) {
             symbol_table* st;
             if (symbol_table_init(&st, ndecl_cnt, 0, false, (ast_elem*)ig, 0)) {

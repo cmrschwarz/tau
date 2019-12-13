@@ -233,18 +233,6 @@ typedef struct stmt_using_s {
     ast_node* target;
 } stmt_using;
 
-struct mdg_node_s;
-typedef struct sym_import_symbol_s {
-    symbol sym;
-    // PERF: this member is kinda uneccessary since the group already knows,
-    // but this connection gets lost during the insertion into tht target st
-    symbol_table* target_st;
-    union {
-        char* name;
-        symbol* sym;
-    } target;
-} sym_import_symbol;
-
 typedef struct sym_import_parent_s {
     symbol sym;
     union {
@@ -256,6 +244,7 @@ typedef struct sym_import_parent_s {
 typedef struct sym_import_module_s {
     symbol sym;
     mdg_node* target;
+    pp_resolve_node* pprn;
 } sym_import_module;
 
 typedef struct sym_import_group_s {
@@ -268,6 +257,18 @@ typedef struct sym_import_group_s {
         symbol* symbols; // used for unnamed groups
     } children;
 } sym_import_group;
+
+struct mdg_node_s;
+typedef struct sym_import_symbol_s {
+    symbol sym;
+    // PERF: this member is kinda uneccessary since the group already knows,
+    // but this connection gets lost during the insertion into tht target st
+    sym_import_group* import_group;
+    union {
+        char* name;
+        symbol* sym;
+    } target;
+} sym_import_symbol;
 
 // expr_return also uses this struct
 typedef struct expr_break_s {

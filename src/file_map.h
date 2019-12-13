@@ -35,6 +35,7 @@ typedef enum src_file_stage_s {
     // because only once parsing the src_map is initialized
     SFS_PARSING,
     SFS_PARSED,
+
 } src_file_stage;
 
 typedef struct src_file_s {

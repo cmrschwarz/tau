@@ -259,12 +259,14 @@ void fin_root_symtab(symbol_table* root_symtab)
 void symtab_it_begin(symtab_it* stit, symbol_table* st)
 {
     stit->pos = st->table;
-    stit->subpos = *stit->pos;
-    stit->end = stit->pos + symbol_table_get_capacity(st);
-    if (stit->pos == stit->end) {
-        stit->pos--;
+    ureg cap = symbol_table_get_capacity(st);
+    if (cap == 0) {
+        stit->end = stit->pos;
         stit->subpos = NULL;
+        return;
     }
+    stit->end = stit->pos + cap - 1;
+    stit->subpos = *stit->pos;
 }
 symtab_it symtab_it_make(symbol_table* st)
 {
@@ -280,11 +282,10 @@ symbol* symtab_it_next(symtab_it* stit)
             stit->subpos = stit->subpos->next;
             return res;
         }
-        stit->pos++;
         if (stit->pos == stit->end) {
-            stit->pos--;
             return NULL;
         }
+        stit->pos++;
         stit->subpos = *stit->pos;
     }
 }

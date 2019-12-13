@@ -457,20 +457,27 @@ int compare_mdg_nodes(const mdg_node* fst, const mdg_node* snd)
 #define SCCD_HANDLED STATUS_3
 
 bool module_import_group_find_import(
-    sym_import_group* ig, mdg_node* import, sym_import_module** tgt_sym)
+    sym_import_group* ig, mdg_node* import, sym_import_group** tgt_group,
+    symbol** tgt_sym)
 {
+    if (ig->parent_mdgn == import) {
+        *tgt_sym = (symbol*)ig;
+        *tgt_group = ig;
+        return true;
+    }
     for (symbol* c = ig->children.symbols; c != NULL; c = c->next) {
         if (c->node.kind == SYM_IMPORT_SYMBOL) continue;
         if (c->node.kind == SYM_IMPORT_GROUP) {
             if (module_import_group_find_import(
-                    (sym_import_group*)c, import, tgt_sym)) {
+                    (sym_import_group*)c, import, tgt_group, tgt_sym)) {
                 return true;
             }
         }
         else {
             assert(c->node.kind == SYM_IMPORT_MODULE);
             if (((sym_import_module*)c)->target == import) {
-                *tgt_sym = (sym_import_module*)c;
+                *tgt_sym = (symbol*)c;
+                *tgt_group = ig;
                 return true;
             }
         }
@@ -478,8 +485,7 @@ bool module_import_group_find_import(
     return false;
 }
 bool scope_find_import(
-    scope* s, mdg_node* import, sym_import_group** tgt_group,
-    sym_import_module** tgt_sym)
+    scope* s, mdg_node* import, sym_import_group** tgt_group, symbol** tgt_sym)
 {
     for (ast_node** n = s->body.elements; *n; n++) {
         if (ast_elem_is_scope((ast_elem*)*n)) {
@@ -489,15 +495,15 @@ bool scope_find_import(
         }
         else if ((**n).kind == SYM_IMPORT_GROUP) {
             sym_import_group* ig = (sym_import_group*)*n;
-            if (module_import_group_find_import(ig, import, tgt_sym)) {
-                *tgt_group = ig;
+            if (module_import_group_find_import(
+                    ig, import, tgt_group, tgt_sym)) {
                 return true;
             }
         }
         else if ((**n).kind == SYM_IMPORT_MODULE) {
             if (((sym_import_module*)*n)->target == import) {
                 *tgt_group = NULL;
-                *tgt_sym = (sym_import_module*)*n;
+                *tgt_sym = (symbol*)*n;
                 return true;
             }
         }
@@ -506,7 +512,7 @@ bool scope_find_import(
 }
 void mdg_node_find_import(
     mdg_node* m, mdg_node* import, sym_import_group** tgt_group,
-    sym_import_module** tgt_sym, src_map** smap)
+    symbol** tgt_sym, src_map** smap)
 {
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &m->open_scopes);
@@ -524,12 +530,12 @@ void mdg_node_find_import(
 void mdg_node_report_missing_import(
     thread_context* tc, mdg_node* m, mdg_node* import)
 {
-    sym_import_module* tgt_sym;
-    sym_import_group* tgt_group;
+    symbol* tgt_sym;
+    sym_import_group* tgt_group = NULL;
     src_map* smap;
     mdg_node_find_import(m, import, &tgt_group, &tgt_sym, &smap);
     src_range_large tgt_sym_srl;
-    src_range_unpack(tgt_sym->sym.node.srange, &tgt_sym_srl);
+    src_range_unpack(tgt_sym->node.srange, &tgt_sym_srl);
     if (!tgt_group) {
         error_log_report_annotated(
             tc->err_log, ES_RESOLVER, false,

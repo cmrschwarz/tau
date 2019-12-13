@@ -368,7 +368,6 @@ resolve_error add_import_group_decls(
             symbol** cf = symbol_table_insert(st, s);
             symbol_table_inc_decl_count(st);
             s->declaring_st = st;
-            ((sym_import_symbol*)s)->target_st = ig->parent_mdgn->symtab;
             if (cf) {
                 return report_redeclaration_error(r, s, *cf, st);
             }
@@ -859,13 +858,13 @@ resolve_error resolve_func_call(
             break;
         }
         symbol* sym = *s;
-        ureg fn_ppl = (**s).declaring_st->ppl;
+        ureg fn_ppl = sym->declaring_st->ppl;
         bool applicable;
         while (sym->node.kind == SYM_IMPORT_SYMBOL) {
-            re = resolve_ast_node(r, (ast_node*)*s, lt, ppl, NULL, NULL);
+            re = resolve_ast_node(r, (ast_node*)sym, lt, ppl, NULL, NULL);
             if (re) return re;
-            sym = ((sym_import_symbol*)*s)->target.sym;
-            lt = ((sym_import_symbol*)*s)->target_st;
+            sym = ((sym_import_symbol*)sym)->target.sym;
+            lt = ((sym_import_symbol*)sym)->import_group->parent_mdgn->symtab;
         }
         if (sym->node.kind == SYM_FUNC_OVERLOADED) {
             sym_func_overloaded* sfo = (sym_func_overloaded*)sym;
@@ -1718,8 +1717,11 @@ static inline resolve_error resolve_ast_node_raw(
             RETURN_RESOLVED(value, ctype, n, NULL);
         }
         case SYM_IMPORT_GROUP: {
-            if (!resolved) ast_flags_set_resolved(&n->flags);
-            RETURN_RESOLVED(value, ctype, n, NULL);
+            if (resolved) {
+                RETURN_RESOLVED(value, ctype, n, NULL);
+            }
+            sym_import_group* ig = (sym_import_group*)n;
+            ast_flags_set_resolved(&n->flags);
         }
         case SYM_IMPORT_MODULE: {
             if (!resolved) ast_flags_set_resolved(&n->flags);
@@ -1732,9 +1734,14 @@ static inline resolve_error resolve_ast_node_raw(
                     value, ctype, is->target.sym,
                     get_resolved_symbol_ctype(is->target.sym));
             }
-
+            if (is->import_group->sym.name == NULL) {
+                re = resolve_ast_node_raw(
+                    r, (ast_node*)is->import_group, st, ppl, NULL, NULL);
+                if (re) return re;
+            }
             symbol** s = symbol_table_lookup(
-                is->target_st, ppl, AM_PROTECTED, is->target.name);
+                is->import_group->parent_mdgn->symtab, ppl, AM_PROTECTED,
+                is->target.name);
             if (!s) return report_unknown_symbol(r, n, st);
             is->sym.declaring_st = st; // change the
             is->target.sym = *s;
@@ -1916,7 +1923,7 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_ARRAY: {
             expr_array* ea = (expr_array*)n;
-            if (resolved) RETURN_RESOLVED(value, ctype, NULL, ea->ctype);
+            if (resolved) RETURN_RESOLVED(value, ctype, ea, ea->ctype);
             if (ea->explicit_decl && !ea->ctype) {
                 re = resolve_ast_node(
                     r, (ast_node*)ea->explicit_decl, st, ppl, NULL,
@@ -1965,7 +1972,7 @@ static inline resolve_error resolve_ast_node_raw(
             }
             ast_flags_set_resolved(&ea->node.flags);
             if (comptime_known) ast_flags_set_comptime_known(&ea->node.flags);
-            RETURN_RESOLVED(value, ctype, NULL, ea->ctype);
+            RETURN_RESOLVED(value, ctype, ea, ea->ctype);
         }
         case EXPR_CAST: {
             // TODO: check whether convertible, for now we just allow everything
