@@ -68,6 +68,11 @@ bool ast_elem_is_open_scope(ast_elem* s)
 {
     return s->kind <= OSC_LAST_OSC_ID;
 }
+bool ast_elem_is_any_import_symbol(ast_elem* s)
+{
+    return s->kind == SYM_IMPORT_GROUP || s->kind == SYM_IMPORT_MODULE ||
+           s->kind == SYM_IMPORT_PARENT;
+}
 bool ast_elem_is_scope(ast_elem* s)
 {
     return s->kind <= SC_LAST_SC_ID;

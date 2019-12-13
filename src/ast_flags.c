@@ -53,6 +53,15 @@ bool ast_flags_get_pp_stmt(ast_flags f)
     return bitmask_get_bit(f, ASTF_PP_STMT);
 }
 
+void ast_flags_set_import_group_module_used(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_IMPORT_GROUP_MODULE_USED);
+}
+bool ast_flags_get_import_group_module_used(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_IMPORT_GROUP_MODULE_USED);
+}
+
 void ast_flags_set_sealed(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_SEALED_OFFSET);

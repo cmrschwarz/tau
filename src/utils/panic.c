@@ -2,6 +2,7 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include <assert.h>
+#include <signal.h>
 void panic(char* message)
 {
     // exit with an error to indicate something went horribly wrong
@@ -12,4 +13,9 @@ void panic(char* message)
     fflush(stderr);
     assert(false);
     exit(-1);
+}
+
+void debugbreak()
+{
+    raise(SIGTRAP);
 }

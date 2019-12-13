@@ -197,59 +197,62 @@ void print_import_group(
 {
     // TODO: improve this mess, we can't even preserve import order right now
     if (print_mdg_node_until(g->parent_mdgn, block_parents_parent)) p("::");
-    symbol** c;
-    symbol** cend;
+    symtab_it stit;
+    symbol* c;
+    bool use_stit = false;
     if (ast_flags_get_resolved(g->sym.node.flags)) {
-        c = (symbol**)(g->children.symtab + 1);
-        cend = c + g->children.symtab->decl_count;
-        while (c != cend && !*c) c++; // skip initial blanks
+        use_stit = true;
+        stit = symtab_it_make(g->children.symtab);
+        c = symtab_it_next(&stit);
     }
     else {
-        c = &g->children.symbols;
-        cend = NULL;
+        c = g->children.symbols;
     }
-    bool syms = ((**c).node.kind == SYM_IMPORT_SYMBOL);
+    bool syms = (c->node.kind == SYM_IMPORT_SYMBOL);
     p(syms ? "(" : "{\n");
-    while (true) {
-        if (c == cend) break;
-        if (*c == NULL) {
-            if (!cend) break;
-            c++;
-            continue;
-        }
+    while (c) {
+        char* tgt_str = c->name;
         if (!syms) print_indent(indent + 1);
-        if ((**c).node.kind == SYM_IMPORT_GROUP) {
+        if (c->node.kind == SYM_IMPORT_GROUP) {
             print_import_group(
-                (sym_import_group*)*c, g->parent_mdgn->parent, indent + 1);
+                (sym_import_group*)c, g->parent_mdgn->parent, indent + 1);
         }
-        else if ((**c).node.kind == SYM_IMPORT_MODULE) {
+        else if (c->node.kind == SYM_IMPORT_MODULE) {
             print_mdg_node_until(
-                ((sym_import_module*)*c)->target, g->parent_mdgn->parent);
+                ((sym_import_module*)c)->target, g->parent_mdgn->parent);
         }
-        else if ((**c).node.kind == SYM_IMPORT_SYMBOL) {
+        else if (c->node.kind == SYM_IMPORT_SYMBOL) {
+            char* name = NULL;
             // TODO: remove if aboce by fixing unnamed group containing parent
             // st
-            assert((**c).node.kind == SYM_IMPORT_SYMBOL);
-            sym_import_symbol* sym = (sym_import_symbol*)*c;
-            // equals is fine here since we alloc only once
-            if (sym->sym.name != sym->target.name) {
-                p(sym->sym.name);
+            assert(c->node.kind == SYM_IMPORT_SYMBOL);
+            sym_import_symbol* sym = (sym_import_symbol*)c;
+
+            if (ast_flags_get_resolved(sym->sym.node.flags)) {
+                if (!cstr_eq(sym->target.sym->name, sym->sym.name)) {
+                    tgt_str = sym->target.sym->name;
+                    name = sym->sym.name;
+                }
+            }
+            // not comparing the string is fine here since we alloc only
+            // once
+            else if (sym->sym.name != sym->target.name) {
+                tgt_str = sym->target.name;
+                name = sym->sym.name;
+            }
+            if (name) {
+                p(name);
                 p(" = ");
             }
-            p(sym->target.name);
+        }
+        p(tgt_str);
+        if (use_stit) {
+            c = symtab_it_next(&stit);
         }
         else {
-            c++;
-            continue;
+            c = c->next;
         }
-        if (cend) {
-            c++;
-            if (c != cend) p(", ");
-        }
-        else {
-            c = &(**c).next;
-            if (*c) p(", ");
-        }
+        if (c) p(", ");
         if (!syms) pc('\n');
     }
     if (!syms) {

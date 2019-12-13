@@ -4,6 +4,7 @@
 #include "src_map.h"
 #include "ast_flags.h"
 #include "symbol_table.h"
+#include "utils/threading.h"
 #include "utils/c_extensions.h"
 
 #define VOID_ELEM ((ast_elem*)&PRIMITIVES[PT_VOID])
@@ -244,6 +245,7 @@ typedef struct sym_import_parent_s {
 typedef struct sym_import_module_s {
     symbol sym;
     mdg_node* target;
+    atomic_boolean done;
     pp_resolve_node* pprn;
 } sym_import_module;
 
@@ -256,6 +258,8 @@ typedef struct sym_import_group_s {
         symbol_table* symtab;
         symbol* symbols; // used for unnamed groups
     } children;
+    atomic_boolean done;
+    pp_resolve_node* pprn;
 } sym_import_group;
 
 struct mdg_node_s;
@@ -662,6 +666,7 @@ typedef struct primitive_s {
 extern primitive PRIMITIVES[];
 
 bool ast_elem_is_open_scope(ast_elem* s);
+bool ast_elem_is_any_import_symbol(ast_elem* s);
 bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
 bool ast_elem_is_expr(ast_elem* s);

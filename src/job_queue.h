@@ -11,6 +11,7 @@ typedef enum PACK_ENUM job_kind_s {
     JOB_PARSE,
     JOB_RESOLVE,
     JOB_FINALIZE,
+    JOB_LOAD_PP,
 } job_kind;
 
 typedef struct job_parse_s {
@@ -19,17 +20,22 @@ typedef struct job_parse_s {
     src_range requiring_srange;
 } job_parse;
 
-typedef struct job_resolve {
+typedef struct job_resolve_s {
     mdg_node** start;
     mdg_node** end;
     mdg_node* single_store;
 } job_resolve;
+
+typedef struct job_load_pp_s {
+    mdg_node* node;
+} job_load_pp;
 
 typedef struct job_s {
     job_kind kind;
     union {
         job_parse parse;
         job_resolve resolve;
+        job_load_pp load_pp;
     } concrete;
 } job;
 

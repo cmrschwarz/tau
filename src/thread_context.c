@@ -127,8 +127,13 @@ int thread_context_do_job(thread_context* tc, job* j)
                 r = tauc_link(tc->t);
             }
         }
-        tauc_error_occured(tc->t, r);
+        else {
+            tauc_error_occured(tc->t, r);
+        }
         return r;
+    }
+    if (j->kind == JOB_LOAD_PP) {
+        assert(false); // TODO: lazy pp loading. for now it's gonna be eager
     }
     assert(false); // unknown job type
     return ERR;

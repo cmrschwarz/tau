@@ -132,6 +132,7 @@ mdg_node* mdg_node_create(
     if (r) return mdg_node_partial_fin(n, 6);
     n->stage = initial_stage;
     n->symtab = NULL;
+    n->ppe_stage = PPES_UNNEEDED;
     return n;
 }
 void free_body_symtabs(ast_node* node, ast_body* b);
@@ -769,6 +770,39 @@ int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc)
             mdg_node* dep = aseglist_iterator_next(&it);
             if (!dep) break;
             if (scc_detector_run(tc, dep)) return ERR;
+        }
+    }
+    return OK;
+}
+int mdg_node_generated(mdg_node* n, thread_context* tc, bool pp_generated)
+{
+    rwslock_write(&n->stage_lock);
+    n->stage = MS_DONE;
+    n->ppe_stage = pp_generated ? PPES_DONE : PPES_SKIPPED;
+    rwslock_end_write(&n->stage_lock);
+    assert(pp_generated || n->parent == NULL); // TODO
+    // TODO: clear notify before actually notifying, since necessary
+    // notifications will be readded and we don't want this to explode
+    aseglist_iterator it;
+    aseglist_iterator_begin(&it, &n->notify);
+    while (true) {
+        ast_elem* dep = aseglist_iterator_next(&it);
+        if (!dep) break;
+        if (dep->kind == ELEM_MDG_NODE) {
+            if (scc_detector_run(tc, (mdg_node*)dep)) return ERR;
+        }
+        else if (dep->kind == SYM_IMPORT_GROUP) {
+            sym_import_group* ig = (sym_import_group*)dep;
+            atomic_boolean_store(&ig->done, true);
+        }
+        else if (dep->kind == SYM_IMPORT_MODULE) {
+            sym_import_module* im = (sym_import_module*)dep;
+            atomic_boolean_store(&im->done, true);
+            // TODO: maybe some condition variable or similar to avoid
+            // busy waiting here
+        }
+        else {
+            assert(false);
         }
     }
     return OK;

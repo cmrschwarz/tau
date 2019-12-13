@@ -25,7 +25,18 @@ typedef enum module_stage_e {
     // since linking must be done in single threadedly we don't
     // update the stage to done_generating or smth but track a single
     // atomic in TAUC.linking_holdups
+    MS_DONE,
+    // can happen e.g. when host int is out of bounds for arch int
+    MS_GENERATION_ERROR, // TODO: actually integrate this
 } module_stage;
+
+typedef enum pp_emission_stage_e {
+    PPES_UNNEEDED,
+    PPES_SKIPPED,
+    PPES_REQUESTED,
+    PPES_RUNNING,
+    PPES_DONE,
+} pp_emission_stage;
 
 static inline bool module_stage_needed(module_stage ms)
 {
@@ -40,7 +51,6 @@ typedef struct mdg_node_s {
     atomic_ureg unparsed_files;
     aseglist dependencies;
     aseglist open_scopes;
-    aseglist notify;
     // these are used in the scc detector. don't confuse these with
     // the symbol ids used in the llvm backend, they don't share an "id space"
     ureg id;
@@ -48,8 +58,10 @@ typedef struct mdg_node_s {
     atomic_ureg decl_count;
     atomic_ureg using_count;
     symbol_table* symtab;
-    rwslock stage_lock;
+    rwslock stage_lock; // everything below here is under the stage lock
     module_stage stage;
+    aseglist notify;
+    pp_emission_stage ppe_stage;
 } mdg_node;
 
 typedef struct mdg_new_node_s {
@@ -113,6 +125,7 @@ int mdg_node_parsed(
 int mdg_node_file_parsed(
     module_dependency_graph* m, mdg_node* n, thread_context* tc);
 int mdg_node_resolved(mdg_node* n, thread_context* tc);
+int mdg_node_generated(mdg_node* n, thread_context* tc, bool pp_generated);
 int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc);
 int mdg_node_add_dependency(
     mdg_node* n, mdg_node* dependency, thread_context* tc);

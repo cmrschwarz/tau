@@ -8,5 +8,5 @@
 #define assert(cond)
 #endif
 void panic(char* message);
-
+void debugbreak();
 #endif

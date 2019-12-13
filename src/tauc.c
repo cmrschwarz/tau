@@ -6,6 +6,7 @@
 #include "symbol_table.h"
 #include "assert.h"
 #include "utils/debug_utils.h"
+#include "utils/panic.h"
 #if DEBUG
 #include "../test/unit_tests.h"
 #endif
@@ -63,7 +64,7 @@ int tauc_core_init(tauc* t)
     t->explicit_exe = false;
     t->emit_ast = false;
     t->emit_exe = true;
-    t->assert_on_error = false;
+    t->trap_on_error = false;
     return OK;
 }
 void tauc_core_fin(tauc* t)
@@ -141,7 +142,7 @@ int handle_cmd_args(
             t->explicit_exe = true;
         }
         else if (!strcmp(arg, "-R")) { // short for REEEEEEE
-            t->assert_on_error = true;
+            t->trap_on_error = true;
         }
 #if DEBUG
         else if (!strcmp(arg, "-U")) {
@@ -324,6 +325,15 @@ int tauc_request_resolve_multiple(tauc* t, mdg_node** start, mdg_node** end)
     j.concrete.resolve.end = end;
     return tauc_add_job(t, &j, false);
 }
+int tauc_request_pp_module(tauc* t, mdg_node* mdg)
+{
+    // TODO: also load dependencies
+    assert(false);
+    job j;
+    j.kind = JOB_LOAD_PP;
+    j.concrete.load_pp.node = mdg;
+    return tauc_add_job(t, &j, false);
+}
 int tauc_request_resolve_single(tauc* t, mdg_node* node)
 {
     job j;
@@ -383,7 +393,7 @@ int tauc_link(tauc* t)
 }
 void tauc_error_occured(tauc* t, int ec)
 {
-    assert(!t->assert_on_error);
+    if (t->trap_on_error) debugbreak();
     sreg ov = 0;
     while (ov == 0) {
         if (atomic_sreg_cas(&t->error_code, &ov, (sreg)ec)) break;

@@ -27,6 +27,7 @@ typedef enum PACK_ENUM access_modifier_e {
 
 // shared bit since applied to different nodes
 #define ASTF_PP_STMT 6
+#define ASTF_IMPORT_GROUP_MODULE_USED 6
 #define ASTF_CONST_OFFSET 6
 
 #define ASTF_ERROR_OFFSET 7
@@ -70,6 +71,9 @@ bool ast_flags_get_const(ast_flags f);
 
 void ast_flags_set_pp_stmt(ast_flags* f);
 bool ast_flags_get_pp_stmt(ast_flags f);
+
+void ast_flags_set_import_group_module_used(ast_flags* f);
+bool ast_flags_get_import_group_module_used(ast_flags f);
 
 void ast_flags_set_sealed(ast_flags* f);
 bool ast_flags_get_sealed(ast_flags f);

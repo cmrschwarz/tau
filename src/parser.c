@@ -3225,6 +3225,7 @@ parse_error parse_import_with_parent(
         else {
             sym_import_module* im = alloc_perm(p, sizeof(sym_import_module));
             if (!im) return PE_FATAL;
+            im->pprn = NULL;
             ast_node_init_with_flags((ast_node*)im, SYM_IMPORT_MODULE, flags);
             ast_node_fill_srange(p, (ast_node*)im, istart, end);
             im->target = parent;
@@ -3249,6 +3250,7 @@ parse_error parse_import_with_parent(
         sym_import_group* ig;
         ig = alloc_perm(p, sizeof(sym_import_group));
         if (!ig) return PE_FATAL;
+        ig->pprn = NULL;
         ast_node_init_with_flags((ast_node*)ig, SYM_IMPORT_GROUP, flags);
         ig->parent_mdgn = parent;
         ig->sym.name = name;
@@ -3265,6 +3267,7 @@ parse_error parse_import_with_parent(
             if (mdg_node_add_dependency(p->current_module, parent, p->lx.tc)) {
                 return PE_FATAL;
             }
+            ast_flags_set_import_group_module_used(&ig->sym.node.flags);
             re = parse_symbol_imports(
                 p, ig, flags, start, kw_end, &end, decl_cnt, tgt);
         }

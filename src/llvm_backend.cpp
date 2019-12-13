@@ -406,7 +406,9 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     _mod_startid = 0;
     _mod_endid = 0;
     _private_sym_count = private_sym_count;
-    if (reserveSymbols(private_sym_count, 0)) return LLE_FATAL;
+    // TODO: find a lower upper bound for this
+    ureg max_pub_symbols = atomic_ureg_load(&_tc->t->node_ids);
+    if (reserveSymbols(private_sym_count, max_pub_symbols)) return LLE_FATAL;
     // create name
     std::string num =
         std::to_string(_pp_count.fetch_add(1, std::memory_order_relaxed));
@@ -1069,7 +1071,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
     assert(
         ast_flags_get_resolved(n->flags) ||
-        ast_elem_is_open_scope((ast_elem*)n));
+        ast_elem_is_open_scope((ast_elem*)n) ||
+        ast_elem_is_any_import_symbol((ast_elem*)n));
     // TODO: proper error handling
     llvm_error lle;
     switch (n->kind) {
@@ -1883,12 +1886,26 @@ llvm_error LLVMBackend::emitModule()
     if (!_pp_mode) {
         if (!lle && _tc->t->emit_exe) lle = emitModuleToFile(TLII.get(), false);
     }
+    bool emit_to_pp = false;
+    ;
     if (!lle) {
+        emit_to_pp = _pp_mode;
         // no need to add the root module to the pp,
         // we're done with preprocessing at that point
-        if (_pp_mode || *_mods_start != _tc->t->mdg.root_node) {
-            lle = emitModuleToPP(TLII.get(), false);
+        // since we sort modules root node will be first
+        if (!emit_to_pp && *_mods_start != _tc->t->mdg.root_node) {
+
+            emit_to_pp = true;
+            // TODO: lazyly evaluate this, only emit pp when we are
+            // cross compiling or it's requested in mdg->pp emmission stage
         }
+        if (emit_to_pp) {
+            lle = emitModuleToPP(TLII.get(), false);
+            if (lle) emit_to_pp = false;
+        }
+    }
+    for (mdg_node** n = _mods_start; n != _mods_end; n++) {
+        if (mdg_node_generated(*n, _tc, emit_to_pp)) return LLE_FATAL;
     }
     return lle;
 }

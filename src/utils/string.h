@@ -105,6 +105,10 @@ static inline bool string_eq(string l, string r)
     return !memcmp(l.start, r.start, len);
 }
 
+static inline bool cstr_eq(const char* l, const char* r)
+{
+    return strcmp(l, r) == 0;
+}
 static inline bool string_eq_cstr(string l, const char* r)
 {
     while (l.start != l.end) {

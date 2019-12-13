@@ -29,7 +29,7 @@ typedef struct tauc_s {
     bool emit_ast;
     bool needs_emit_stage;
     bool explicit_exe;
-    bool assert_on_error;
+    bool trap_on_error;
 } tauc;
 
 // THREADSAFE
@@ -37,6 +37,7 @@ int tauc_request_parse(
     tauc* t, src_file* f, src_map* requiring_smap, src_range requiring_stmt);
 int tauc_request_resolve_single(tauc* t, mdg_node* node);
 int tauc_request_resolve_multiple(tauc* t, mdg_node** start, mdg_node** end);
+int tauc_request_pp_module(tauc* t, mdg_node* mdg);
 int tauc_request_finalize(tauc* t);
 bool tauc_success_so_far(tauc* t);
 void tauc_error_occured(tauc* t, int ec);
