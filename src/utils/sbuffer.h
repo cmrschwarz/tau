@@ -31,6 +31,7 @@ void* sbuffer_append(sbuffer* sb, ureg size);
 void* sbuffer_front(sbuffer* sb, ureg size);
 void* sbuffer_back(sbuffer* sb, ureg size);
 ureg sbuffer_get_used_size(sbuffer* sb);
+bool sbuffer_is_empty(sbuffer* sb);
 
 // the following methods invalidate all iterators, except for the passed one
 void sbuffer_remove(sbuffer* sb, sbuffer_iterator* sbi, ureg size);

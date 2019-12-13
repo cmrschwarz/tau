@@ -943,10 +943,13 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         // there are no "no longer pp" worries
         // since that would have been reset to GENERATED
         case IMPL_ADDED:
-        case STUB_ADDED:
+        case STUB_ADDED: break;
         case PP_IMPL_ADDED:
-        case PP_STUB_ADDED: break;
-
+        case PP_STUB_ADDED: {
+            if (_pp_mode) break;
+            *state = IMPL_ADDED;
+            generate = true;
+        } break;
         case PP_STUB_GENERATED: {
             if (_pp_mode) {
                 assert(isLocalID(var->var_id));
@@ -1038,9 +1041,9 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             var_val = gv;
         }
         else {
+            // local var, no need to reset after emit
             // These should be handled by member access
             assert(k != SC_STRUCT);
-            // local var
             auto all = new llvm::AllocaInst(
                 t, 0, nullptr, align, "" /* var->sym.name*/);
             if (!all) return LLE_FATAL;
@@ -1651,6 +1654,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         if (llfn) *llfn = fnptr;
         *res = fnptr;
         *state = PP_STUB_ADDED;
+        _reset_after_emit.push_back(fn->id);
         return LLE_OK;
     }
     else if (*state == PP_STUB_ADDED) {

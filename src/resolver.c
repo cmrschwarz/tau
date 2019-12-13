@@ -256,14 +256,17 @@ pp_resolve_node_activate(resolver* r, pp_resolve_node* pprn, bool resolved)
             return RE_OK;
         }
     }
-    else if (pprn->run_when_ready) {
+    else if (!pprn->parent) {
         pp_resolve_node** res = sbuffer_append(
             &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*));
         if (!res) return RE_FATAL;
         *res = pprn;
         pprn->waiting_list_entry = res;
     }
-    else if (pprn->parent) {
+    else {
+        pprn->waiting_list_entry = NULL;
+    }
+    if (pprn->parent) {
         if (aseglist_add(&pprn->notify_when_ready, pprn->parent)) {
             return RE_FATAL;
         }
@@ -1612,7 +1615,7 @@ static inline resolve_error require_module_in_pp(
     bool pp_done;
     bool diy = false;
     atomic_boolean_init(done, false);
-    rwslock_read(&mdg->stage_lock);
+    rwslock_write(&mdg->stage_lock);
     pp_done = (mdg->stage == MS_DONE);
     if (pp_done) {
         if (mdg->ppe_stage == PPES_DONE) {
@@ -1634,7 +1637,7 @@ static inline resolve_error require_module_in_pp(
             aseglist_add(&mdg->notify, n);
         }
     }
-    rwslock_end_read(&mdg->stage_lock);
+    rwslock_end_write(&mdg->stage_lock);
     if (!pp_done || diy) {
         pp_resolve_node* pprn =
             pp_resolve_node_create(r, n, st, false, false, ppl);
@@ -2308,6 +2311,7 @@ resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl, ast_elem** ctype)
         if (re) return re;
         if (ctype) *ctype = fn->return_ctype;
     }
+    // TODO: optimize to run with in some cases
     re = curr_pprn_run_after(r, fn->pprn);
     if (re) return re;
     return RE_OK;
@@ -2539,7 +2543,14 @@ void print_pprnlist(resolver* r, sbuffer* buff, char* msg)
              sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
          rn; rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*))) {
         assert((**rn).node != NULL);
-        printf("    dep count: %zu\n", (**rn).dep_count);
+        aseglist_iterator it;
+        aseglist_iterator_begin(&it, &(**rn).notify_when_done);
+        ureg done_nots = aseglist_iterator_get_remaining_count(&it);
+        aseglist_iterator_begin(&it, &(**rn).notify_when_ready);
+        ureg ready_nots = aseglist_iterator_get_remaining_count(&it);
+        printf("    dependencies: %zu\n", (**rn).dep_count);
+        printf("    nofify ready: %zu\n", ready_nots);
+        printf("    notify done:  %zu\n", done_nots);
 
         pp_resolve_node* child = (**rn).first_unresolved_child;
 
@@ -2657,21 +2668,47 @@ pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
 }
 resolve_error report_cyclic_pp_deps(resolver* r)
 {
+    bool err = false;
+    pp_resolve_node** rn;
+    pli pit = pli_begin(&r->pp_resolve_nodes_pending);
+    for (pp_resolve_node* pprn = pli_next(&pit); pprn; pprn = pli_next(&pit)) {
+        rn = (pp_resolve_node**)sbuffer_append(
+            &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*));
+        if (!rn) return RE_FATAL;
+        *rn = pprn;
+    }
+    sbuffer_clear(&r->pp_resolve_nodes_pending);
+    pit = pli_begin(&r->pp_resolve_nodes_ready);
+    for (pp_resolve_node* pprn = pli_next(&pit); pprn; pprn = pli_next(&pit)) {
+        rn = (pp_resolve_node**)sbuffer_append(
+            &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*));
+        if (!rn) return RE_FATAL;
+        *rn = pprn;
+    }
+    sbuffer_clear(&r->pp_resolve_nodes_ready);
     sbuffer_iterator sbi = sbuffer_iterator_begin(&r->pp_resolve_nodes_waiting);
-    pp_resolve_node** rn =
-        sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
+    rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
     if (!rn) return RE_OK;
     // TODO: create a nice cycle display instead of dumping out everything
+    resolve_error re = RE_OK;
     do {
-        src_range_large srl;
-        ast_node_get_src_range((**rn).node, (**rn).declaring_st, &srl);
-        error_log_report_annotated(
-            r->tc->err_log, ES_RESOLVER, false,
-            "encountered cyclic dependency during preprocessor execution",
-            srl.smap, srl.start, srl.end, "loop contains this element");
+        if (!ast_elem_is_any_import_symbol((ast_elem*)(**rn).node)) {
+            if (err == false) {
+                err = true;
+                puts("error:");
+                print_pprns(r);
+            }
+            src_range_large srl;
+            ast_node_get_src_range((**rn).node, (**rn).declaring_st, &srl);
+            error_log_report_annotated(
+                r->tc->err_log, ES_RESOLVER, false,
+                "encountered cyclic dependency during preprocessor execution",
+                srl.smap, srl.start, srl.end, "loop contains this element");
+            re = RE_PP_DEPS_LOOP;
+        }
         rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
     } while (rn);
-    return RE_PP_DEPS_LOOP;
+    return re;
 }
 resolve_error resolver_run_pp_resolve_nodes(resolver* r)
 {
@@ -2679,8 +2716,12 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
     pli it;
     resolve_error re;
     bool progress;
+    bool import_pprns;
+    bool non_import_pprns;
     do {
         progress = false;
+        import_pprns = false;
+        non_import_pprns = false;
         print_pprns(r);
         if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
             lle = llvm_backend_run_pp(
@@ -2727,17 +2768,28 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 pli_prev(&it);
                 ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
                 progress = true;
+                non_import_pprns = true;
                 continue;
             }
-            if (re == RE_SYMBOL_NOT_FOUND_YET) continue;
+            if (re == RE_SYMBOL_NOT_FOUND_YET) {
+                non_import_pprns = true;
+                continue;
+            }
             if (re) return re;
-            progress = true;
+            if (ast_elem_is_any_import_symbol((ast_elem*)astn)) {
+                import_pprns = true;
+            }
+            else {
+                non_import_pprns = true;
+            }
             if (ast_flags_get_resolved(astn->flags)) {
+                progress = true;
                 pli_prev(&it);
                 ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
             }
         }
-    } while (progress);
+    } while (progress || (import_pprns && non_import_pprns) ||
+             !sbuffer_is_empty(&r->pp_resolve_nodes_waiting));
     return RE_OK;
 }
 
@@ -2821,12 +2873,10 @@ int resolver_resolve_and_emit(
     res = llvm_backend_init_module(r->backend, start, end, module);
     if (res) return ERR;
     TIME(res = resolver_resolve(r, start, end, &startid););
-    if (res) {
-        free_pprnlist(r, &r->pp_resolve_nodes_pending);
-        free_pprnlist(r, &r->pp_resolve_nodes_ready);
-        free_pprnlist(r, &r->pp_resolve_nodes_waiting);
-        return res;
-    }
+    free_pprnlist(r, &r->pp_resolve_nodes_pending);
+    free_pprnlist(r, &r->pp_resolve_nodes_ready);
+    free_pprnlist(r, &r->pp_resolve_nodes_waiting);
+    if (res) return ERR;
     return resolver_emit(r, startid, module);
 }
 int resolver_partial_fin(resolver* r, int i, int res)

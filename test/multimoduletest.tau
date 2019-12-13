@@ -36,5 +36,6 @@ func collect()->int{
 }
 public func main() -> int{
     printf("foo: %i%c", collect(), 10);
+    #printf("foo: %i%c", collect(), 10);
     return 0;
 }

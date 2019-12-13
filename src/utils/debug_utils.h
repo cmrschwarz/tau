@@ -16,25 +16,27 @@ void debug_utils_free_res();
 
 #if DEBUG
 
-#define TIME(code)                                                             \
+#define TIME_MSG(msg, after_msg, code)                                         \
     do {                                                                       \
         timer ____timer_reserved_name_for_bench_macro;                         \
         timer_init(&____timer_reserved_name_for_bench_macro);                  \
-        {code} timer_stop(&____timer_reserved_name_for_bench_macro);           \
+        code;                                                                  \
+        timer_stop(&____timer_reserved_name_for_bench_macro);                  \
         timespan ____timespan_reserved_name_for_bench_macro;                   \
         timer_get_elapsed(                                                     \
             &____timer_reserved_name_for_bench_macro,                          \
             &____timespan_reserved_name_for_bench_macro);                      \
-        tprintf("[");                                                          \
+        tprintf("%s[", msg);                                                   \
         pretty_print_timespan(&____timespan_reserved_name_for_bench_macro);    \
-        tputs("]");                                                            \
+        tprintf("]%s", after_msg);                                             \
     } while (false)
 #else
 
-#define TIME(code)                                                             \
+#define TIME_MSG(msg, code)                                                    \
     do {                                                                       \
         code                                                                   \
     } while (false)
 #endif
+#define TIME(code) TIME_MSG("", "\n", code)
 
 #endif

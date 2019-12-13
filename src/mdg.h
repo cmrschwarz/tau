@@ -49,19 +49,18 @@ typedef struct mdg_node_s {
     struct mdg_node_s* parent;
     char* name;
     atomic_ureg unparsed_files;
-    aseglist dependencies;
-    aseglist open_scopes;
     // these are used in the scc detector. don't confuse these with
     // the symbol ids used in the llvm backend, they don't share an "id space"
     ureg id;
-
     atomic_ureg decl_count;
     atomic_ureg using_count;
     symbol_table* symtab;
     rwslock stage_lock; // everything below here is under the stage lock
     module_stage stage;
-    aseglist notify;
     pp_emission_stage ppe_stage;
+    aseglist notify; // only requires stage read lock
+    aseglist dependencies; // only requires stage read lock
+    aseglist open_scopes; // only requires stage read lock
 } mdg_node;
 
 typedef struct mdg_new_node_s {

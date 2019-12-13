@@ -16,6 +16,7 @@ static void init_buffers()
 void debug_utils_free_res()
 {
     if (!buff.start) return;
+    tflush();
     dbuffer_fin(&buff);
     buff.start = NULL;
 }

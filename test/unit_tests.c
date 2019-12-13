@@ -22,15 +22,10 @@ static void print_dash_padded(char* msg, bool err)
 
 #define TEST_IMPL(res, test_name, test_call)                                   \
     do {                                                                       \
-        char* msg = STRINGIFY(test_name);                                      \
+        char* msg_succ = STR_CAT(STRINGIFY(test_name), " PASSED ");            \
+        char* msg_fail = STR_CAT(STRINGIFY(test_name), " FAILED ");            \
         int r;                                                                 \
-        TIME(r = test_call; if (r) {                                           \
-            tput(msg);                                                         \
-            tput(" FAILED");                                                   \
-        } else {                                                               \
-            tput(msg);                                                         \
-            tput(" passed ");                                                  \
-        };);                                                                   \
+        TIME_MSG((r ? msg_succ : msg_fail), "\n", r = test_call;);             \
         res |= r;                                                              \
         tflush();                                                              \
     } while (false)

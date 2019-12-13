@@ -51,6 +51,10 @@ ureg sbuffer_get_used_size(sbuffer* sb)
     }
     return res;
 }
+bool sbuffer_is_empty(sbuffer* sb)
+{
+    return sbuffer_get_used_size(sb) == 0; // TODO: optimize
+}
 void* sbuffer_front(sbuffer* sb, ureg size)
 {
     assert(ptrdiff(sb->first_seg->tail, sb->first_seg + 1) >= size);

@@ -216,29 +216,33 @@ int tauc_run_jobs(tauc* t)
 int tauc_run(int argc, char** argv)
 {
     tauc t;
-    int r = tauc_scaffolding_init(&t);
-    if (r) return r;
-    bool files_found = false;
-    r = tauc_core_init(&t);
-    if (!r) {
-        thread_context_preorder_job(&t.main_thread_context);
-        r = handle_cmd_args(
-            &t, t.main_thread_context.err_log, argc, argv, &files_found);
+    int r;
+    TIME_MSG("total ", "\n", {
+        r = tauc_scaffolding_init(&t);
+        if (r) return r;
+        bool files_found = false;
+        r = tauc_core_init(&t);
         if (!r) {
-            if (files_found) {
-                r = tauc_run_jobs(&t);
-                tauc_core_fin(&t);
+            thread_context_preorder_job(&t.main_thread_context);
+            r = handle_cmd_args(
+                &t, t.main_thread_context.err_log, argc, argv, &files_found);
+            if (!r) {
+                if (files_found) {
+                    r = tauc_run_jobs(&t);
+                    tauc_core_fin(&t);
+                }
+                else {
+                    tauc_core_fin_no_run(&t);
+                }
             }
             else {
                 tauc_core_fin_no_run(&t);
             }
         }
-        else {
-            tauc_core_fin_no_run(&t);
-        }
-    }
-    master_error_log_unwind(&t.mel);
-    tauc_scaffolding_fin(&t);
+        master_error_log_unwind(&t.mel);
+        tauc_scaffolding_fin(&t);
+    });
+    debug_utils_free_res();
     return r;
 }
 
