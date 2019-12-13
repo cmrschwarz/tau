@@ -6,6 +6,7 @@
 static PPRunner* PP_RUNNER;
 extern "C" {
 #include "utils/ptrlist.h"
+#include "utils/panic.h"
 #include "thread_context.h"
 #include "ast_flags.h"
 #include "utils/pool.h"
@@ -170,7 +171,7 @@ static inline void link_lib(PPRunner* pp, const char* path)
     }
 }
 PPRunner::PPRunner()
-    : exec_session(), obj_link_layer(exec_session, []() {
+    : exec_session(), pp_count(0), obj_link_layer(exec_session, []() {
           return llvm::make_unique<llvm::SectionMemoryManager>();
       })
 {
@@ -410,8 +411,8 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     ureg max_pub_symbols = atomic_ureg_load(&_tc->t->node_ids);
     if (reserveSymbols(private_sym_count, max_pub_symbols)) return LLE_FATAL;
     // create name
-    std::string num =
-        std::to_string(_pp_count.fetch_add(1, std::memory_order_relaxed));
+    std::string num = std::to_string(
+        PP_RUNNER->pp_count.fetch_add(1, std::memory_order_relaxed));
     std::string pp_func_name = "__pp_func_" + num;
     std::string pp_mod_name = "__pp_mod_" + num;
     // create actual module
@@ -425,13 +426,14 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     // emit
     lle = emitModule();
     if (lle) return lle;
-
+    PP_RUNNER->mtx.lock();
     auto mainfn = PP_RUNNER->exec_session.lookup(
         llvm::orc::JITDylibSearchList(
             {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
         PP_RUNNER->exec_session.intern(pp_func_name));
-
+    PP_RUNNER->mtx.unlock();
     if (!mainfn) {
+        debugbreak();
         llvm::errs() << mainfn.takeError() << "\n";
         assert(false);
     }
@@ -1638,10 +1640,12 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         // we disabled this in favor of using stubs (-->
         // PP_IMPL_GENERATED)
         assert(false);
+        PP_RUNNER->mtx.lock();
         auto fun = PP_RUNNER->exec_session.lookup(
             llvm::orc::JITDylibSearchList(
                 {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
             PP_RUNNER->exec_session.intern(name_mangle(fn, *_data_layout)));
+        PP_RUNNER->mtx.unlock();
         if (!fun) {
             llvm::errs() << fun.takeError() << "\n";
             assert(false);
@@ -1826,9 +1830,15 @@ llvm_error LLVMBackend::emitModuleToPP(
     std::unique_ptr<llvm::MemoryBuffer> obj_svmb{
         new llvm::SmallVectorMemoryBuffer{std::move(obj_sv)}};
     // link that mem buffer file
-    PP_RUNNER->obj_link_layer.add(
+    PP_RUNNER->mtx.lock();
+    auto res = PP_RUNNER->obj_link_layer.add(
         PP_RUNNER->exec_session.getMainJITDylib(), std::move(obj_svmb),
         PP_RUNNER->exec_session.allocateVModule());
+    PP_RUNNER->mtx.unlock();
+    if (res.dynamicClassID() != NULL) {
+        llvm::errs() << res;
+        assert(false);
+    }
     return LLE_OK;
 }
 
@@ -1908,8 +1918,10 @@ llvm_error LLVMBackend::emitModule()
             if (lle) emit_to_pp = false;
         }
     }
-    for (mdg_node** n = _mods_start; n != _mods_end; n++) {
-        if (mdg_node_generated(*n, _tc, emit_to_pp)) return LLE_FATAL;
+    if (!_pp_mode && lle == LLE_OK) {
+        for (mdg_node** n = _mods_start; n != _mods_end; n++) {
+            if (mdg_node_generated(*n, _tc, emit_to_pp)) return LLE_FATAL;
+        }
     }
     return lle;
 }

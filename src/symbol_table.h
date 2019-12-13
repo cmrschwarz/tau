@@ -57,6 +57,7 @@ int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings);
 int init_root_symtab(symbol_table** root_st);
 void fin_root_symtab(symbol_table* root_st);
 symbol_table* symbol_table_skip_metatables(symbol_table* st);
+symbol_table* symbol_table_get_module_table(symbol_table* st);
 
 typedef struct symtab_it {
     symbol** pos;

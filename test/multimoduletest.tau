@@ -16,9 +16,13 @@ module e{public func foo()->int{
 module f{public func foo()->int{
     return 1;
 };}
-module g{public func foo()->int{
-    return 1;
-};}
+module g{
+    import f;
+    public func foo()->int{
+        x := #f::foo();  
+        return x;
+    };
+}
 
 import {a, b, c, d, e, f, g};
 
@@ -36,6 +40,6 @@ func collect()->int{
 }
 public func main() -> int{
     printf("foo: %i%c", collect(), 10);
-    #printf("foo: %i%c", collect(), 10);
+    #printf("foo: %i%c", #collect(), 10);
     return 0;
 }

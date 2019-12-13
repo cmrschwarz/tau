@@ -69,6 +69,8 @@ extern "C" {
 struct PPRunner {
     llvm::orc::ExecutionSession exec_session;
     llvm::orc::RTDyldObjectLinkingLayer obj_link_layer;
+    std::mutex mtx;
+    std::atomic<ureg> pp_count;
     PPRunner();
     ~PPRunner();
 };
@@ -134,7 +136,7 @@ struct LLVMBackend {
     ureg _private_sym_count;
     LLVMModule* _mod_handle;
     llvm::orc::JITDylib* _mod_dylib;
-    std::atomic<ureg> _pp_count;
+
     bool _pp_mode;
 
   public:

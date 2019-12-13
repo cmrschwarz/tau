@@ -70,6 +70,11 @@ symbol_table* symbol_table_skip_metatables(symbol_table* st)
     while (st->decl_count == UREG_MAX) st = st->parent;
     return st;
 }
+symbol_table* symbol_table_get_module_table(symbol_table* st)
+{
+    while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
+    return st;
+}
 static inline ureg symbol_table_get_capacity(symbol_table* st)
 {
     return st->hash_mask ? st->hash_mask + 1 : 0;
