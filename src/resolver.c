@@ -1916,7 +1916,6 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_ARRAY: {
             expr_array* ea = (expr_array*)n;
-            assert(!value);
             if (resolved) RETURN_RESOLVED(value, ctype, NULL, ea->ctype);
             if (ea->explicit_decl && !ea->ctype) {
                 re = resolve_ast_node(
@@ -1981,6 +1980,40 @@ static inline resolve_error resolve_ast_node_raw(
             if (re) return re;
             ast_flags_set_resolved(&ec->node.flags);
             RETURN_RESOLVED(value, ctype, NULL, ec->target_ctype);
+        }
+        case EXPR_ACCESS: {
+            expr_access* ea = (expr_access*)n;
+            ast_elem* lhs_ctype;
+            ast_elem* lhs_val;
+            re = resolve_ast_node(r, ea->lhs, st, ppl, &lhs_val, &lhs_ctype);
+            if (re) return re;
+            if (ea->arg_count == 1 && lhs_ctype->kind == TYPE_ARRAY) {
+                ast_elem* rhs_ctype;
+                re =
+                    resolve_ast_node(r, ea->args[0], st, ppl, NULL, &rhs_ctype);
+                if (!ctypes_unifiable(
+                        (ast_elem*)&PRIMITIVES[PT_INT], rhs_ctype)) {
+                    src_range_large array_srl;
+                    src_range_large index_srl;
+                    ast_node_get_src_range(ea->lhs, st, &array_srl);
+                    ast_node_get_src_range(ea->args[0], st, &index_srl);
+                    // TODO: different error for negative values
+                    error_log_report_annotated_twice(
+                        r->tc->err_log, ES_RESOLVER, false,
+                        "invalid array index type", index_srl.smap,
+                        index_srl.start, index_srl.end,
+                        "index type is not convertible to integer",
+                        array_srl.smap, array_srl.start, array_srl.end,
+                        "in the element access of this array");
+                    return RE_ERROR;
+                }
+                ea->node.op_kind = OP_ARRAY_ACCESS;
+                ast_flags_set_resolved(&ea->node.flags);
+                RETURN_RESOLVED(
+                    value, ctype, NULL,
+                    ((type_array*)lhs_ctype)->ctype_members);
+            }
+            assert(false); // TODO operator overloading / generics
         }
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }

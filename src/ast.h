@@ -106,6 +106,8 @@ typedef enum PACK_ENUM operator_kind_e {
     OP_MEMBER_ACCESS,
     OP_SCOPE_ACCESS,
     OP_CAST,
+    OP_ARRAY_ACCESS, // used to differentiate between different access ops
+    OP_GENERIC_ACCESS, // in the resolver and onwards
 
     // binary ops
     OP_ASSIGN,

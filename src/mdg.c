@@ -258,6 +258,13 @@ static void free_astn_symtabs(ast_node* n)
             free_astn_symtabs(ec->value);
             free_astn_symtabs(ec->target_type);
         } break;
+        case EXPR_ACCESS: {
+            expr_access* ea = (expr_access*)n;
+            free_astn_symtabs(ea->lhs);
+            for (ureg i = 0; i < ea->arg_count; i++) {
+                free_astn_symtabs(ea->args[i]);
+            }
+        } break;
         default: assert(false);
     }
 }

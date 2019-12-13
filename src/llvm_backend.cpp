@@ -1446,6 +1446,30 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (vl_loaded) *vl_loaded = cast_value;
             return LLE_OK;
         }
+        case EXPR_ACCESS: {
+            auto ea = (expr_access*)n;
+            assert(ea->node.op_kind == OP_ARRAY_ACCESS); // TODO
+            llvm::Value *arr, *index;
+            lle = genAstNode(ea->lhs, &arr, NULL);
+            if (lle) return lle;
+            lle = genAstNode(ea->args[0], NULL, &index);
+            if (lle) return lle;
+            auto arr_type = arr->getType();
+            assert(llvm::isa<llvm::PointerType>(arr_type));
+            arr_type = ((llvm::PointerType*)arr_type)->getElementType();
+            assert(llvm::isa<llvm::ArrayType>(arr_type));
+            auto& indexList = *new std::array<llvm::Value*, 2>{
+                llvm::ConstantInt::get(_primitive_types[PT_UINT], 0), index};
+            auto res = _builder.CreateInBoundsGEP(arr, indexList);
+            if (!res) return LLE_FATAL;
+            if (vl) *vl = res;
+            if (vl_loaded) {
+                *vl_loaded = _builder.CreateAlignedLoad(
+                    res, _data_layout->getPrefTypeAlignment(arr_type));
+                if (!*vl_loaded) return LLE_FATAL;
+            }
+            return LLE_OK;
+        }
         default: assert(false);
     }
     assert(false);
