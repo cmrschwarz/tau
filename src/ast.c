@@ -100,6 +100,10 @@ bool ast_body_is_braced(ast_body* b)
     }
     return true;
 }
+bool ast_elem_is_expr_block_base(ast_elem* n)
+{
+    return n->kind == EXPR_BLOCK || n->kind == EXPR_IF || n->kind == EXPR_LOOP;
+}
 bool is_unary_op_postfix(operator_kind t)
 {
     switch (t) {
@@ -202,9 +206,9 @@ ast_body* ast_elem_get_body(ast_elem* s)
         return &((scope*)s)->body;
     }
     switch (s->kind) {
-        case EXPR_BLOCK: return &((expr_block*)s)->ebb.body;
+        case EXPR_BLOCK: return &((expr_block*)s)->body;
         case EXPR_MATCH: return &((expr_match*)s)->body;
-        case EXPR_LOOP: return &((expr_loop*)s)->ebb.body;
+        case EXPR_LOOP: return &((expr_loop*)s)->body;
         case STMT_PASTE_EVALUATION: return &((stmt_paste_evaluation*)s)->body;
         default: panic("tried to get body from ast node without body");
     }

@@ -16,6 +16,7 @@ typedef struct mdg_node_s mdg_node;
 typedef struct pp_resolve_node_s pp_resolve_node;
 typedef struct src_file_s src_file;
 typedef struct type_array_s type_array;
+typedef struct sc_func_s sc_func;
 
 typedef enum PACK_ENUM ast_node_kind_e {
     OSC_MODULE,
@@ -274,29 +275,41 @@ typedef struct sym_import_symbol_s {
     } target;
 } sym_import_symbol;
 
+typedef struct expr_block_base_s {
+    ast_node node;
+    struct expr_block_base_s* parent;
+    char* name;
+} expr_block_base;
+
 // expr_return also uses this struct
 typedef struct expr_break_s {
     ast_node node;
-    ast_node* target;
+    union {
+        expr_block_base* ebb;
+        char* label;
+    } target;
     ast_node* value; // NULL if no value provided
     ast_elem* value_ctype; // void if value not provided
 } expr_break;
-typedef struct expr_break_s expr_return;
+
+typedef struct expr_return_s {
+    ast_node node;
+    ast_node* target; // func or lambda(TODO)
+    ast_node* value; // NULL if no value provided
+    ast_elem* value_ctype; // void if value not provided
+} expr_return;
 
 typedef struct expr_continue_s {
     ast_node node;
-    ast_node* target;
+    union {
+        expr_block_base* ebb;
+        char* label;
+    } target;
 } expr_continue;
-
-typedef struct expr_block_base_s {
-    ast_node node;
-    ast_node* parent_block;
-    char* name;
-    ast_body body;
-} expr_block_base;
 
 typedef struct expr_block_s {
     expr_block_base ebb;
+    ast_body body;
     ast_elem* ctype;
     ANONYMOUS_UNION_START
     void* control_flow_ctx;
@@ -305,7 +318,7 @@ typedef struct expr_block_s {
 } expr_block;
 
 typedef struct expr_if_s {
-    ast_node node;
+    expr_block_base ebb;
     ast_node* condition;
     ast_node* if_body;
     ast_node* else_body;
@@ -314,6 +327,7 @@ typedef struct expr_if_s {
 
 typedef struct expr_loop_s {
     expr_block_base ebb;
+    ast_body body;
     ast_elem* ctype;
     void* control_flow_ctx;
 } expr_loop;
@@ -674,6 +688,7 @@ bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
 bool ast_elem_is_expr(ast_elem* s);
 bool ast_elem_is_stmt(ast_elem* s);
+bool ast_elem_is_expr_block_base(ast_elem* n);
 bool ast_elem_is_paste_evaluation(ast_elem* s);
 ast_body* ast_elem_get_body(ast_elem* s);
 char* ast_elem_get_label(ast_elem* n, bool* lbl);

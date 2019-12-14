@@ -816,7 +816,7 @@ llvm_error LLVMBackend::genIfBranch(ast_node* branch)
         auto eb = (expr_block*)branch;
         eb->control_flow_ctx = &ctx;
         ret = (eb->ctype != UNREACHABLE_ELEM);
-        lle = genAstBody(&eb->ebb.body, ret);
+        lle = genAstBody(&eb->body, ret);
         if (lle) return lle;
     }
     else if (ctx.value) {
@@ -1168,15 +1168,18 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         }
         case EXPR_BREAK:
         case EXPR_RETURN: {
-            auto eb = (expr_break*)n;
             ControlFlowContext* tgt_ctx;
             bool continues = _control_flow_ctx.back().continues_afterwards;
-            auto ast_val = eb->value;
             llvm::Value* v;
+            ast_node* ast_val;
             if (n->kind == EXPR_BREAK) {
-                tgt_ctx = getTartetCFC(eb->target);
+                auto eb = (expr_break*)n;
+                ast_val = eb->value;
+                tgt_ctx = getTartetCFC((ast_node*)eb->target.ebb);
             }
             else {
+                auto er = (expr_return*)n;
+                ast_val = er->value;
                 tgt_ctx = _curr_fn_control_flow_ctx;
                 if (tgt_ctx->following_block == NULL) {
                     if (!continues && tgt_ctx == &_control_flow_ctx.back()) {
@@ -1250,7 +1253,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (!ctx->first_block) return LLE_FATAL;
             if (!_builder.CreateBr(ctx->first_block)) return LLE_FATAL;
             _builder.SetInsertPoint(ctx->first_block);
-            lle = genAstBody(&l->ebb.body, true);
+            lle = genAstBody(&l->body, true);
             if (lle) return lle;
             if (!_builder.CreateBr(ctx->first_block)) return LLE_FATAL;
             _builder.SetInsertPoint(following_block);
@@ -1275,7 +1278,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             lle = genScopeValue(b->ctype, *ctx);
             if (lle) return lle;
             ctx->first_block = _builder.GetInsertBlock();
-            lle = genAstBody(&b->ebb.body, true);
+            lle = genAstBody(&b->body, true);
             if (lle) return lle;
             if (!_builder.CreateBr(following_block)) return LLE_FATAL;
             _builder.SetInsertPoint(following_block);

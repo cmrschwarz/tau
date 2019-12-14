@@ -32,6 +32,7 @@ typedef struct thread_context_s thread_context;
 typedef struct pp_resolve_node_s {
     ast_node* node; // either expr_pp, stmt_using or func
     symbol_table* declaring_st;
+    expr_block_base* parent_ebb;
     ureg ppl;
     // PERF: use a non threadsafe list here
     aseglist notify_when_done;
@@ -70,6 +71,7 @@ typedef struct resolver_s {
     ureg id_space;
     ureg public_sym_count;
     ureg private_sym_count;
+
     // dealing with the preprocessor
     freelist pp_resolve_nodes;
 

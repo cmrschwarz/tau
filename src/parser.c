@@ -33,12 +33,15 @@ parse_error parse_expression_of_prec(parser* p, ast_node** ex, ureg prec);
 parse_error parse_brace_delimited_body(
     parser* p, ast_body* b, ast_node* parent, ureg param_count);
 parse_error parse_braced_namable_body(
-    parser* p, ast_node* parent, ast_body* b, char** name);
+    parser* p, ast_node* parent, expr_block_base** parent_ebb, ast_body* b,
+    char** name);
 parse_error parse_expr_in_parens(
     parser* p, ast_node* parent, ureg start, ureg end, ast_node** tgt);
-parse_error parse_delimited_body(
+static inline parse_error parse_delimited_body(
     parser* p, ast_body* b, ast_node* parent, ureg param_count,
     ast_node* first_stmt, ureg bstart, ureg bend, token_kind delimiter);
+static inline void init_expr_block_base(
+    parser* p, expr_block_base* ebb, bool already_has_bpd, char* name);
 parse_error handle_semicolon_after_statement(parser* p, ast_node* s);
 
 static const unsigned char op_precedence[] = {
@@ -1291,54 +1294,16 @@ parse_error get_pasting_target(
     }
 }
 parse_error get_breaking_target(
-    parser* p, ast_node* requiring, ureg req_start, ureg req_end,
-    ast_node** target, ureg* lbl_end, ast_node_kind break_kind)
+    parser* p, ast_node* requiring, ureg req_start, ureg req_end, char** label,
+    ureg* lbl_end)
 {
     // TODO: break targets might be hidden due to macros
     token* t;
     PEEK(p, t);
-    sbuffer_iterator it = sbuffer_iterator_begin_at_end(&p->body_stack);
-    body_parse_data* bpd =
-        sbuffer_iterator_previous(&it, sizeof(body_parse_data));
     if (t->kind == TK_AT) {
         token* t2;
         PEEK_SND(p, t2);
-        if (t2->kind == TK_IDENTIFIER) {
-            while (true) {
-                if (!bpd) {
-                    parser_error_2a(
-                        p, "invalid break label", t->start, t2->end,
-                        "no parent expression with this label", req_start,
-                        req_end, get_context_msg(p, (ast_node*)requiring));
-                    return PE_ERROR;
-                }
-                char* n = ast_elem_get_label((ast_elem*)bpd->node, NULL);
-                if (n && string_eq_cstr(t2->str, n)) {
-                    *target = bpd->node;
-                    break;
-                }
-                bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
-            }
-        }
-        else if (is_kw_valid_label(t->kind)) {
-            while (true) {
-                if (!bpd) {
-                    parser_error_2a(
-                        p, "invalid break target", t->start, t2->end,
-                        "no parent expression of this kind", req_start, req_end,
-                        get_context_msg(p, (ast_node*)requiring));
-                    return PE_ERROR;
-                }
-                if (strcmp(
-                        token_strings[t->kind],
-                        ast_elem_get_label((ast_elem*)bpd->node, NULL)) == 0) {
-                    *target = bpd->node;
-                    break;
-                }
-                bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
-            }
-        }
-        else {
+        if (t2->kind != TK_IDENTIFIER) {
             parser_error_3a(
                 p, "expected label identifier", t2->start, t2->end,
                 "expected label identifier", t->start, t->end,
@@ -1346,33 +1311,14 @@ parse_error get_breaking_target(
                 get_context_msg(p, (ast_node*)requiring));
             return PE_ERROR;
         }
+        char* lbl = alloc_string_perm(p, t2->str);
+        if (!lbl) return PE_FATAL;
+        *label = lbl;
         lx_void_n(&p->lx, 2);
         *lbl_end = t2->end;
     }
     else {
-        while (true) {
-            if (!bpd) {
-                parser_error_1a(
-                    p, "invalid break", req_start, req_end,
-                    "no suitable parent expression");
-                return PE_ERROR;
-            }
-            ast_node_kind k = bpd->node->kind;
-            if (break_kind == EXPR_CONTINUE) {
-                if (k == EXPR_LOOP || k == EXPR_MATCH) {
-                    *target = bpd->node;
-                    break;
-                }
-            }
-            else {
-                if (k == EXPR_LOOP || k == EXPR_MATCH || k == EXPR_BLOCK ||
-                    k == EXPR_IF) {
-                    *target = bpd->node;
-                    break;
-                }
-            }
-            bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
-        }
+        *label = NULL;
     }
     return PE_OK;
 }
@@ -1386,7 +1332,7 @@ parse_error parse_continue(parser* p, ast_node** tgt)
     if (!c) return PE_FATAL;
     ast_node_init((ast_node*)c, EXPR_CONTINUE);
     parse_error pe = get_breaking_target(
-        p, (ast_node*)c, start, end, &c->target, &end, EXPR_CONTINUE);
+        p, (ast_node*)c, start, end, &c->target.label, &end);
     if (pe) return pe;
     if (ast_node_fill_srange(p, (ast_node*)c, start, end)) return PE_FATAL;
     *tgt = (ast_node*)c;
@@ -1398,7 +1344,7 @@ parse_error parse_return(parser* p, ast_node** tgt)
     ureg start = t->start;
     ureg end = t->end;
     lx_void(&p->lx);
-    expr_break* r = alloc_perm(p, sizeof(expr_break));
+    expr_return* r = alloc_perm(p, sizeof(expr_return));
     if (!r) return PE_FATAL;
     ast_node_init((ast_node*)r, EXPR_RETURN);
     PEEK(p, t);
@@ -1457,7 +1403,7 @@ parse_error parse_break(parser* p, ast_node** tgt)
     if (!g) return PE_FATAL;
     ast_node_init((ast_node*)g, EXPR_BREAK);
     parse_error pe = get_breaking_target(
-        p, (ast_node*)g, start, end, &g->target, &end, EXPR_BREAK);
+        p, (ast_node*)g, start, end, &g->target.label, &end);
     if (pe) return pe;
     pe = parse_expression(p, &g->value);
     if (pe == PE_EOEX) {
@@ -1480,14 +1426,13 @@ static inline parse_error parse_expr_block(
     if (!b) return PE_FATAL;
     b->pprn = NULL;
     ast_node_init((ast_node*)b, EXPR_BLOCK);
-    b->ebb.name = label;
     *ex = (ast_node*)b;
+    init_expr_block_base(p, (expr_block_base*)b, false, label);
     parse_error pe = parse_delimited_body(
-        p, &b->ebb.body, (ast_node*)b, 0, first_stmt, bstart, bend,
-        TK_BRACE_CLOSE);
+        p, &b->body, (ast_node*)b, 0, first_stmt, bstart, bend, TK_BRACE_CLOSE);
     if (pe) return pe;
     pe = ast_node_fill_srange(
-        p, (ast_node*)b, bstart, src_range_get_end(b->ebb.body.srange));
+        p, (ast_node*)b, bstart, src_range_get_end(b->body.srange));
     b->ctype = NULL;
     return pe;
 }
@@ -1543,7 +1488,7 @@ parse_error parse_loop(parser* p, ast_node** tgt)
     ast_node_init((ast_node*)l, EXPR_LOOP);
     *tgt = (ast_node*)l;
     return parse_braced_namable_body(
-        p, (ast_node*)l, &l->ebb.body, &l->ebb.name);
+        p, (ast_node*)l, &l->ebb.parent, &l->body, &l->ebb.name);
 }
 parse_error parse_paste(parser* p, ast_node** tgt)
 {
@@ -1762,6 +1707,7 @@ parse_error parse_if(parser* p, ast_node** tgt)
     lx_void(&p->lx);
     expr_if* i = alloc_perm(p, sizeof(expr_if));
     if (!i) return PE_FATAL;
+    init_expr_block_base(p, (expr_block_base*)i, false, NULL);
     i->ctype = NULL;
     parse_error pe =
         parse_expr_in_parens(p, (ast_node*)i, start, end, &i->condition);
@@ -1854,8 +1800,8 @@ parse_macro_block_call(parser* p, ast_node** ex, ast_node* lhs)
     emc->args = (ast_node**)NULL_PTR_PTR;
     ast_node_init((ast_node*)emc, EXPR_MACRO_CALL);
     emc->lhs = lhs;
-    parse_error pe =
-        parse_braced_namable_body(p, (ast_node*)emc, &emc->body, &emc->name);
+    parse_error pe = parse_braced_namable_body(
+        p, (ast_node*)emc, NULL, &emc->body, &emc->name);
     if (pe) return pe;
     if (ast_node_fill_srange(
             p, &emc->node, src_range_get_start(lhs->srange),
@@ -1896,7 +1842,7 @@ static inline parse_error parse_call(parser* p, ast_node** ex, ast_node* lhs)
         ast_node_init((ast_node*)emc, EXPR_MACRO_CALL);
         emc->lhs = lhs;
         pe = parse_braced_namable_body(
-            p, (ast_node*)emc, &emc->body, &emc->name);
+            p, (ast_node*)emc, NULL, &emc->body, &emc->name);
         if (pe) return pe;
         if (ast_node_fill_srange(
                 p, &emc->node, src_range_get_start(lhs->srange),
@@ -3519,14 +3465,36 @@ parse_error parse_statement(parser* p, ast_node** tgt)
         }
     }
 }
-parse_error parse_delimited_body(
+static inline void init_expr_block_base(
+    parser* p, expr_block_base* ebb, bool already_has_bpd, char* name)
+{
+    sbuffer_iterator it = sbuffer_iterator_begin_at_end(&p->body_stack);
+    if (already_has_bpd)
+        sbuffer_iterator_previous(&it, sizeof(body_parse_data));
+    ebb->name = name;
+    body_parse_data* bpd;
+    while (true) {
+        bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
+        if (!bpd) break;
+        if (!bpd->node) continue;
+        if (ast_elem_is_expr_block_base((ast_elem*)bpd->node)) {
+            ebb->parent = (expr_block_base*)bpd->node;
+            return;
+        }
+        if (bpd->node->kind == SC_FUNC || bpd->node->kind == SC_FUNC_GENERIC) {
+            ebb->parent = NULL;
+            return;
+        }
+    }
+    assert(false);
+}
+static inline parse_error parse_delimited_body(
     parser* p, ast_body* b, ast_node* parent, ureg param_count,
     ast_node* first_stmt, ureg bstart, ureg bend, token_kind delimiter)
 {
     token* t;
     parse_error pe = PE_OK;
     PEEK(p, t);
-
     ast_node* target;
     if (!first_stmt) {
         if (push_bpd(p, parent, b)) return PE_FATAL;
@@ -3540,6 +3508,10 @@ parse_error parse_delimited_body(
         if (list_builder_add(&p->lx.tc->listb2, first_stmt)) {
             pop_bpd(p, PE_FATAL);
             return PE_FATAL;
+        }
+        if (ast_elem_is_expr_block_base((ast_elem*)first_stmt)) {
+            assert(ast_elem_is_expr_block_base((ast_elem*)parent));
+            ((expr_block_base*)first_stmt)->parent = (expr_block_base*)parent;
         }
     }
     curr_scope_add_decls(p, AM_DEFAULT, param_count);
@@ -3569,9 +3541,9 @@ parse_error parse_delimited_body(
         }
         else {
             parser_error_2a_pc(
-                p, "unterminated scope", t->start, t->end,
-                "reached EOF before scope was closed", bstart, bend,
-                "scope starts here");
+                p, "unterminated block", t->start, t->end,
+                "reached EOF before block was closed", bstart, bend,
+                "block starts here");
             pe = PE_ERROR;
             break;
         }
@@ -3622,8 +3594,9 @@ parse_open_scope_body(parser* p, open_scope* s, mdg_node* m, ureg param_count)
     p->current_module = parent;
     return pe;
 }
-parse_error
-parse_braced_namable_body(parser* p, ast_node* parent, ast_body* b, char** name)
+parse_error parse_braced_namable_body(
+    parser* p, ast_node* parent, expr_block_base** parent_ebb, ast_body* b,
+    char** name)
 {
     token* t;
     PEEK(p, t);
@@ -3647,6 +3620,7 @@ parse_braced_namable_body(parser* p, ast_node* parent, ast_body* b, char** name)
         *name = NULL;
     }
     if (t->kind == TK_BRACE_OPEN) {
+        init_expr_block_base(p, (expr_block_base*)b, false, *name);
         return parse_brace_delimited_body(p, b, (ast_node*)parent, 0);
     }
     src_range_large srl;

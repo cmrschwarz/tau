@@ -464,7 +464,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
-            print_namable_braced_body(&b->ebb.body, b->ebb.name, cmdg, indent);
+            print_namable_braced_body(&b->body, b->ebb.name, cmdg, indent);
         } break;
         case SYM_VAR: {
             sym_var* v = (sym_var*)n;
@@ -565,13 +565,17 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case EXPR_BREAK: {
             expr_break* b = (expr_break*)n;
             p("break");
-            if (b->target) {
-                char* n = get_expr_name(b->target);
-                if (n) {
-                    pc(' ');
-                    pc('@');
-                    p(n);
-                }
+            char* n = NULL;
+            if (ast_flags_get_resolved(b->node.flags)) {
+                n = b->target.ebb->name;
+            }
+            else {
+                n = b->target.label;
+            }
+            if (n) {
+                pc(' ');
+                pc('@');
+                p(n);
             }
             if (b->value) {
                 pc(' ');
@@ -581,10 +585,17 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case EXPR_CONTINUE: {
             expr_continue* c = (expr_continue*)n;
             p("continue");
-            if (c->target) {
+            char* n = NULL;
+            if (ast_flags_get_resolved(c->node.flags)) {
+                n = c->target.ebb->name;
+            }
+            else {
+                n = c->target.label;
+            }
+            if (n) {
                 pc(' ');
                 pc('@');
-                p(get_expr_name(c->target));
+                p(n);
             }
         } break;
         case EXPR_RETURN: {
@@ -598,7 +609,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)n;
             p("loop ");
-            print_namable_braced_body(&l->ebb.body, l->ebb.name, cmdg, indent);
+            print_namable_braced_body(&l->body, l->ebb.name, cmdg, indent);
         } break;
         case EXPR_MATCH: {
             expr_match* m = (expr_match*)n;
