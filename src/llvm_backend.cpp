@@ -816,7 +816,7 @@ llvm_error LLVMBackend::genIfBranch(ast_node* branch)
         auto eb = (expr_block*)branch;
         eb->control_flow_ctx = &ctx;
         ret = (eb->ctype != UNREACHABLE_ELEM);
-        lle = genAstBody(&eb->body, ret);
+        lle = genAstBody(&eb->ebb.body, ret);
         if (lle) return lle;
     }
     else if (ctx.value) {
@@ -1250,7 +1250,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (!ctx->first_block) return LLE_FATAL;
             if (!_builder.CreateBr(ctx->first_block)) return LLE_FATAL;
             _builder.SetInsertPoint(ctx->first_block);
-            lle = genAstBody(&l->body, true);
+            lle = genAstBody(&l->ebb.body, true);
             if (lle) return lle;
             if (!_builder.CreateBr(ctx->first_block)) return LLE_FATAL;
             _builder.SetInsertPoint(following_block);
@@ -1275,7 +1275,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             lle = genScopeValue(b->ctype, *ctx);
             if (lle) return lle;
             ctx->first_block = _builder.GetInsertBlock();
-            lle = genAstBody(&b->body, true);
+            lle = genAstBody(&b->ebb.body, true);
             if (lle) return lle;
             if (!_builder.CreateBr(following_block)) return LLE_FATAL;
             _builder.SetInsertPoint(following_block);

@@ -1908,7 +1908,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (!resolved) {
                 bool end_reachable;
                 re = resolve_expr_body(
-                    r, st, (ast_node*)b, &b->body, ppl, &end_reachable);
+                    r, st, (ast_node*)b, &b->ebb.body, ppl, &end_reachable);
                 if (ctype) *ctype = b->ctype;
                 if (re) return re;
                 if (end_reachable) {
@@ -1937,7 +1937,7 @@ static inline resolve_error resolve_ast_node_raw(
                 RETURN_RESOLVED(value, ctype, NULL, l->ctype);
             }
             bool end_reachable;
-            re = resolve_expr_body(r, st, n, &l->body, ppl, &end_reachable);
+            re = resolve_expr_body(r, st, n, &l->ebb.body, ppl, &end_reachable);
             if (ctype) *ctype = l->ctype;
             if (re) return re;
             assert(end_reachable); // TODO: error: why loop then?

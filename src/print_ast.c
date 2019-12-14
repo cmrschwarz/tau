@@ -173,10 +173,10 @@ void print_expr_in_parens(ast_node* ex, mdg_node* cmdg, ureg indent)
 char* get_expr_name(ast_node* n)
 {
     switch (n->kind) {
-        case EXPR_BLOCK: return ((expr_block*)n)->name;
+        case EXPR_BLOCK: return ((expr_block*)n)->ebb.name;
         case EXPR_MACRO: return ((expr_macro_call*)n)->name;
         case EXPR_MATCH: return ((expr_match*)n)->name;
-        case EXPR_LOOP: return ((expr_loop*)n)->name;
+        case EXPR_LOOP: return ((expr_loop*)n)->ebb.name;
         default: assert(false); return NULL;
     }
 }
@@ -464,7 +464,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
-            print_namable_braced_body(&b->body, b->name, cmdg, indent);
+            print_namable_braced_body(&b->ebb.body, b->ebb.name, cmdg, indent);
         } break;
         case SYM_VAR: {
             sym_var* v = (sym_var*)n;
@@ -598,7 +598,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)n;
             p("loop ");
-            print_namable_braced_body(&l->body, l->name, cmdg, indent);
+            print_namable_braced_body(&l->ebb.body, l->ebb.name, cmdg, indent);
         } break;
         case EXPR_MATCH: {
             expr_match* m = (expr_match*)n;

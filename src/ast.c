@@ -46,7 +46,7 @@ char* ast_elem_get_label(ast_elem* n, bool* lbl)
     char* name;
     switch (n->kind) {
         case EXPR_BLOCK: {
-            name = ((expr_block*)n)->name;
+            name = ((expr_block*)n)->ebb.name;
             if (lbl) *lbl = true;
         } break;
         case EXPR_MATCH: {
@@ -54,7 +54,7 @@ char* ast_elem_get_label(ast_elem* n, bool* lbl)
             if (lbl) *lbl = true;
         } break;
         case EXPR_LOOP: {
-            name = ((expr_loop*)n)->name;
+            name = ((expr_loop*)n)->ebb.name;
             if (lbl) *lbl = true;
         } break;
         default: {
@@ -202,9 +202,9 @@ ast_body* ast_elem_get_body(ast_elem* s)
         return &((scope*)s)->body;
     }
     switch (s->kind) {
-        case EXPR_BLOCK: return &((expr_block*)s)->body;
+        case EXPR_BLOCK: return &((expr_block*)s)->ebb.body;
         case EXPR_MATCH: return &((expr_match*)s)->body;
-        case EXPR_LOOP: return &((expr_loop*)s)->body;
+        case EXPR_LOOP: return &((expr_loop*)s)->ebb.body;
         case STMT_PASTE_EVALUATION: return &((stmt_paste_evaluation*)s)->body;
         default: panic("tried to get body from ast node without body");
     }

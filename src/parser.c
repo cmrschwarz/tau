@@ -1480,13 +1480,14 @@ static inline parse_error parse_expr_block(
     if (!b) return PE_FATAL;
     b->pprn = NULL;
     ast_node_init((ast_node*)b, EXPR_BLOCK);
-    b->name = label;
+    b->ebb.name = label;
     *ex = (ast_node*)b;
     parse_error pe = parse_delimited_body(
-        p, &b->body, (ast_node*)b, 0, first_stmt, bstart, bend, TK_BRACE_CLOSE);
+        p, &b->ebb.body, (ast_node*)b, 0, first_stmt, bstart, bend,
+        TK_BRACE_CLOSE);
     if (pe) return pe;
     pe = ast_node_fill_srange(
-        p, (ast_node*)b, bstart, src_range_get_end(b->body.srange));
+        p, (ast_node*)b, bstart, src_range_get_end(b->ebb.body.srange));
     b->ctype = NULL;
     return pe;
 }
@@ -1541,7 +1542,8 @@ parse_error parse_loop(parser* p, ast_node** tgt)
     if (ast_node_fill_srange(p, (ast_node*)l, start, t->end)) return PE_FATAL;
     ast_node_init((ast_node*)l, EXPR_LOOP);
     *tgt = (ast_node*)l;
-    return parse_braced_namable_body(p, (ast_node*)l, &l->body, &l->name);
+    return parse_braced_namable_body(
+        p, (ast_node*)l, &l->ebb.body, &l->ebb.name);
 }
 parse_error parse_paste(parser* p, ast_node** tgt)
 {

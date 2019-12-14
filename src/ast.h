@@ -288,10 +288,15 @@ typedef struct expr_continue_s {
     ast_node* target;
 } expr_continue;
 
-typedef struct expr_block_s {
+typedef struct expr_block_base_s {
     ast_node node;
-    char* name; // NULL if no label provided and not in if/else/etc.
+    ast_node* parent_block;
+    char* name;
     ast_body body;
+} expr_block_base;
+
+typedef struct expr_block_s {
+    expr_block_base ebb;
     ast_elem* ctype;
     ANONYMOUS_UNION_START
     void* control_flow_ctx;
@@ -308,9 +313,7 @@ typedef struct expr_if_s {
 } expr_if;
 
 typedef struct expr_loop_s {
-    ast_node node;
-    char* name;
-    ast_body body;
+    expr_block_base ebb;
     ast_elem* ctype;
     void* control_flow_ctx;
 } expr_loop;
