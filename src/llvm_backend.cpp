@@ -1445,16 +1445,28 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case EXPR_CAST: {
             auto ec = (expr_cast*)n;
             llvm::Value* value;
-            lle = genAstNode(ec->value, &value, NULL);
-            if (lle) return lle;
             llvm::Type* type;
             ureg align;
             lle = lookupCType(ec->target_ctype, &type, &align, NULL);
             if (lle) return lle;
-            auto cast_value = _builder.CreateBitCast(value, type);
-            if (!cast_value) return LLE_FATAL;
-            if (vl) *vl = cast_value;
-            if (vl_loaded) *vl_loaded = cast_value;
+
+            lle = genAstNode(ec->value, vl, vl_loaded);
+            if (lle) return lle;
+
+            if (vl) {
+                value = _builder.CreateBitCast(*vl, type);
+                if (!value) return LLE_FATAL;
+            }
+            if (vl_loaded) {
+                if (vl && *vl == *vl_loaded) {
+                    *vl_loaded = value;
+                }
+                else {
+                    *vl_loaded = _builder.CreateBitCast(*vl_loaded, type);
+                    if (!*vl_loaded) return LLE_FATAL;
+                }
+            }
+            if (vl) *vl = value;
             return LLE_OK;
         }
         case EXPR_ACCESS: {

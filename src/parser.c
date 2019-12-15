@@ -3500,7 +3500,7 @@ static inline parse_error parse_delimited_body(
         }
         if (ast_elem_is_expr_block_base((ast_elem*)first_stmt)) {
             assert(ast_elem_is_expr_block_base((ast_elem*)parent));
-            ((expr_block_base*)first_stmt)->parent = (expr_block_base*)parent;
+            ((expr_block_base*)first_stmt)->parent = parent;
         }
     }
     curr_scope_add_decls(p, AM_DEFAULT, param_count);

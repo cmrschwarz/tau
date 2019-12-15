@@ -1,15 +1,21 @@
 require "support/libc.tau";
 import libc::(printf, puts, malloc, free);
-public func main() -> int{
+
+public func foo() -> int{
     printf("printf with no args\n");
     printf("printf arg1: %i\n", 1);
     printf("printf arg1: %i arg2: %i\n", 1, 2);
     puts("puts");
-    x := malloc(16) as [2]int;
-    x[0] = 42;
-    x[1] = 17;
-    printf("malloced array: {%i,%i}\n", x[0], x[1]);
+    x := malloc(16) as *[2]int;
+    printf("alloced: %x\n", x as int);
+    (*x)[0] = 42;
+    (*x)[1] = 17;  
+    printf("malloced array: {%i, %i}\n", (*x)[0], (*x)[1]);
     free(x as *void);
-    #main();
     return 0;
+}
+
+public func main() -> int{
+    foo();
+    return #foo();
 }

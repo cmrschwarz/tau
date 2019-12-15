@@ -593,6 +593,7 @@ typedef struct expr_access_s {
     ast_node node;
     ast_node* lhs;
     ast_node** args;
+    ast_elem* ctype;
     ureg arg_count;
 } expr_access;
 

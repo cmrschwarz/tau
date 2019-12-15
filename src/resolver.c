@@ -579,7 +579,7 @@ static resolve_error add_ast_node_decls(
                     *conflict = (symbol*)sfo;
                 }
                 else if ((**conflict).node.kind == SYM_FUNC_OVERLOADED) {
-                    sfo = (sym_func_overloaded*)conflict;
+                    sfo = (sym_func_overloaded*)*conflict;
                     sym->next = (symbol*)sfo->overloads;
                     sfo->overloads = (scope*)n;
                 }
@@ -904,10 +904,11 @@ resolve_error resolve_func_call(
         ureg fn_ppl = sym->declaring_st->ppl;
         bool applicable;
         while (sym->node.kind == SYM_IMPORT_SYMBOL) {
-            re = resolve_ast_node(r, (ast_node*)sym, lt, ppl, NULL, NULL);
+            symbol* import_symbol;
+            re = resolve_ast_node(
+                r, (ast_node*)sym, lt, ppl, (ast_elem**)&import_symbol, NULL);
+            sym = import_symbol;
             if (re) return re;
-            lt = ((sym_import_symbol*)sym)->import_group->parent_mdgn->symtab;
-            sym = ((sym_import_symbol*)sym)->target.sym;
         }
         if (sym->node.kind == SYM_FUNC_OVERLOADED) {
             sym_func_overloaded* sfo = (sym_func_overloaded*)sym;
@@ -950,7 +951,9 @@ resolve_error resolve_func_call(
     }
     return re;
 }
-resolve_error resolve_call(
+resolve_error
+
+resolve_call(
     resolver* r, expr_call* c, symbol_table* st, ureg ppl, ast_elem** ctype)
 {
     if (c->lhs->kind == EXPR_IDENTIFIER) {
@@ -1841,19 +1844,21 @@ static inline resolve_error resolve_ast_node_raw(
             assert(resolved); // otherwise this would still be a EXPR_CALL
             RETURN_RESOLVED(value, ctype, c, c->target.macro_block->ctype);
         }
-
+        case SYM_FUNC_OVERLOADED: { // used during import resolution
+            assert(!ctype);
+            RETURN_RESOLVED(value, ctype, n, NULL);
+        }
         case EXPR_CONTINUE:
         case EXPR_OP_UNARY: {
             expr_op_unary* ou = (expr_op_unary*)n;
             if (resolved) {
-                if (ou->op->kind == PRIMITIVE || ou->op->kind == TYPE_POINTER) {
-                    if (value) *value = ou->op;
-                    if (ctype) *ctype = TYPE_ELEM;
-                }
-                else {
-                    assert(ou->op->kind == SC_FUNC);
+                if (ou->op->kind == SC_FUNC) {
                     assert(!value);
                     if (ctype) *ctype = ((sc_func*)ou->op)->return_ctype;
+                }
+                else {
+                    if (value) *value = ou->op;
+                    if (ctype) *ctype = TYPE_ELEM;
                 }
                 return RE_OK;
             }
@@ -1920,7 +1925,7 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
-            assert(!value);
+            if (value) *value = (ast_elem*)n;
             if (ctype) *ctype = VOID_ELEM;
             if (resolved) return RE_OK;
             return resolve_func(r, (sc_func*)n, ppl, NULL);
@@ -1988,10 +1993,13 @@ static inline resolve_error resolve_ast_node_raw(
                 is->import_group->parent_mdgn->symtab, ppl, AM_PROTECTED,
                 is->target.name);
             if (!s) return report_unknown_symbol(r, n, st);
-            is->sym.declaring_st = st; // change the
-            is->target.sym = *s;
+            // change the declaring st fom the group to the actual one
+            is->sym.declaring_st = st;
+            re = resolve_ast_node(
+                r, (ast_node*)*s, st, ppl, (ast_elem**)&is->target.sym, NULL);
+            assert(ast_elem_is_symbol((ast_elem*)is->target.sym));
             ast_flags_set_resolved(&n->flags);
-            return RE_OK;
+            RETURN_RESOLVED(value, ctype, is->target.sym, NULL);
         }
         case STMT_USING:
         case SYM_NAMED_USING:
@@ -2232,6 +2240,9 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_ACCESS: {
             expr_access* ea = (expr_access*)n;
+            if (resolved) {
+                RETURN_RESOLVED(value, ctype, NULL, ea->ctype);
+            }
             ast_elem* lhs_ctype;
             ast_elem* lhs_val;
             re = resolve_ast_node(r, ea->lhs, st, ppl, &lhs_val, &lhs_ctype);
@@ -2258,9 +2269,8 @@ static inline resolve_error resolve_ast_node_raw(
                 }
                 ea->node.op_kind = OP_ARRAY_ACCESS;
                 ast_flags_set_resolved(&ea->node.flags);
-                RETURN_RESOLVED(
-                    value, ctype, NULL,
-                    ((type_array*)lhs_ctype)->ctype_members);
+                ea->ctype = ((type_array*)lhs_ctype)->ctype_members;
+                RETURN_RESOLVED(value, ctype, NULL, ea->ctype);
             }
             assert(false); // TODO operator overloading / generics
         }
