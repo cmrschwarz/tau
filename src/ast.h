@@ -313,6 +313,9 @@ typedef struct expr_block_s {
     ast_elem* ctype;
     ANONYMOUS_UNION_START
     void* control_flow_ctx;
+    // this works, since the block ITSELF (not its children)
+    // won't be touched by the backend until its fully resolved
+    // and then we don't need the pprn anymore
     pp_resolve_node* pprn;
     ANONYMOUS_UNION_END
 } expr_block;
@@ -329,7 +332,10 @@ typedef struct expr_loop_s {
     expr_block_base ebb;
     ast_body body;
     ast_elem* ctype;
+    ANONYMOUS_UNION_START
     void* control_flow_ctx;
+    pp_resolve_node* pprn; // see expr_block on why this works
+    ANONYMOUS_UNION_END
 } expr_loop;
 
 typedef struct sym_param_s {
@@ -380,7 +386,7 @@ typedef struct expr_pp_s {
     union result_buffer_u {
         // this must be big enough that
         // sizeof(expr_paste_evaluation) >= sizeof(expr_pp)
-        ureg data[5];
+        ureg data[6];
         struct state_s {
             struct pp_resolve_node_s* pprn;
             void* true_res_buffer;
@@ -402,6 +408,7 @@ typedef struct expr_paste_str_s {
 
 typedef struct paste_evaluation_s {
     ast_node node;
+    expr_block_base* parent_ebb;
     pasted_str* paste_str;
     pasted_str* read_str;
     char* read_pos;

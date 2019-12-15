@@ -538,8 +538,6 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
              cn = cn->next) {
             prepareForPPRNResult(cn);
         }
-        // lle = genAstNode(n->node, NULL, NULL);
-        // if (lle) return lle;
     }
     return LLE_OK;
 }

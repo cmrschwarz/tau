@@ -1425,6 +1425,7 @@ static inline parse_error parse_expr_block(
     expr_block* b = alloc_perm(p, sizeof(expr_block));
     if (!b) return PE_FATAL;
     b->pprn = NULL;
+    b->ctype = NULL;
     ast_node_init((ast_node*)b, EXPR_BLOCK);
     *ex = (ast_node*)b;
     init_expr_block_base(p, (expr_block_base*)b, false, label);
@@ -1433,7 +1434,6 @@ static inline parse_error parse_expr_block(
     if (pe) return pe;
     pe = ast_node_fill_srange(
         p, (ast_node*)b, bstart, src_range_get_end(b->body.srange));
-    b->ctype = NULL;
     return pe;
 }
 
@@ -1484,9 +1484,11 @@ parse_error parse_loop(parser* p, ast_node** tgt)
     expr_loop* l = alloc_perm(p, sizeof(expr_loop));
     if (!l) return PE_FATAL;
     l->ctype = NULL;
+    l->pprn = NULL;
     if (ast_node_fill_srange(p, (ast_node*)l, start, t->end)) return PE_FATAL;
     ast_node_init((ast_node*)l, EXPR_LOOP);
     *tgt = (ast_node*)l;
+    init_expr_block_base(p, (expr_block_base*)l, false, NULL);
     return parse_braced_namable_body(
         p, (ast_node*)l, &l->ebb.parent, &l->body, &l->ebb.name);
 }
@@ -2231,7 +2233,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
 }
 parse_error init_paste_evaluation_parse(
     parser* p, expr_pp* epp, ureg ppl, ast_node_kind kind, symbol_table* st,
-    paste_evaluation** eval)
+    expr_block_base* parent_ebb, paste_evaluation** eval)
 {
     paste_evaluation* pe = (paste_evaluation*)epp;
     src_range sr = epp->node.srange;
@@ -2246,6 +2248,7 @@ parse_error init_paste_evaluation_parse(
     pe->source_pp_expr = expr;
     pe->paste_str = ps;
     pe->read_str = NULL;
+    pe->parent_ebb = parent_ebb;
     // eval->read_pos = NULL; //unnecessary
 
     p->current_file = src_map_get_file(smap);
@@ -2258,13 +2261,15 @@ parse_error init_paste_evaluation_parse(
     p->file_root = NULL;
     return PE_OK;
 }
-parse_error
-parser_parse_paste_expr(parser* p, expr_pp* epp, symbol_table* st, ureg ppl)
+parse_error parser_parse_paste_expr(
+    parser* p, expr_pp* epp, symbol_table* st, ureg ppl,
+    expr_block_base* parent_ebb)
 {
     assert(sizeof(expr_pp) >= sizeof(expr_paste_evaluation));
     expr_paste_evaluation* eval;
     parse_error pe = init_paste_evaluation_parse(
-        p, epp, ppl, EXPR_PASTE_EVALUATION, st, (paste_evaluation**)&eval);
+        p, epp, ppl, EXPR_PASTE_EVALUATION, st, parent_ebb,
+        (paste_evaluation**)&eval);
     if (pe) return pe;
     tprintf("parsing a paste expression\n");
     pe = parse_expression(p, &eval->expr);
@@ -2277,12 +2282,13 @@ parser_parse_paste_expr(parser* p, expr_pp* epp, symbol_table* st, ureg ppl)
     return PE_OK;
 }
 parse_error parser_parse_paste_stmt(
-    parser* p, expr_pp* epp, symbol_table** st, bool owned_st)
+    parser* p, expr_pp* epp, symbol_table** st, expr_block_base* parent_ebb,
+    bool owned_st)
 {
     assert(sizeof(expr_pp) >= sizeof(stmt_paste_evaluation));
     stmt_paste_evaluation* eval;
     parse_error pe = init_paste_evaluation_parse(
-        p, epp, (**st).ppl, STMT_PASTE_EVALUATION, *st,
+        p, epp, (**st).ppl, STMT_PASTE_EVALUATION, *st, parent_ebb,
         (paste_evaluation**)&eval);
     if (pe) return pe;
     tprintf("parsing a paste statement\n");
@@ -3620,7 +3626,6 @@ parse_error parse_braced_namable_body(
         *name = NULL;
     }
     if (t->kind == TK_BRACE_OPEN) {
-        init_expr_block_base(p, (expr_block_base*)b, false, *name);
         return parse_brace_delimited_body(p, b, (ast_node*)parent, 0);
     }
     src_range_large srl;
