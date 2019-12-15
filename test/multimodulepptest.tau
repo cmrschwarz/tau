@@ -1,0 +1,68 @@
+module a{
+    public func foo()->int{
+        x := 1;  
+        return x;
+    };
+};
+module b{
+    import a;
+    public func foo()->int{
+        x := #a::foo();  
+        return x;
+    };
+};
+module c{
+    import b;
+    public func foo()->int{
+        x := #b::foo();  
+        return x;
+    };
+};
+module d{
+    import c;
+    public func foo()->int{
+        return #c::foo();  
+    };
+};
+module e{
+    import d;
+    public func foo()->int{
+        return #{
+            break d::foo();
+        };
+    };
+};
+module f{
+    import e;
+    public func foo()->int{
+        x := #e::foo();  
+        return x;
+    };
+};
+module g{
+    import f;
+    public func foo()->int{
+        x := #f::foo();  
+        return x;
+    };
+}
+
+import {a, b, c, d, e, f, g};
+
+public func printf(s: string, i: int, j: int);
+func collect()->int{
+    x: int = 0;
+    x = x + a::foo();
+    x = x + b::foo();
+    x = x + c::foo();
+    x = x + d::foo();
+    x = x + e::foo();
+    x = x + f::foo();
+    x = x + g::foo();
+    return x;
+}
+public func main() -> int{
+    printf("foo: %i%c", collect(), 10);
+    #printf("foo: %i%c", #collect(), 10);
+    return 0;
+}

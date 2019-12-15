@@ -1103,7 +1103,7 @@ ast_elem** get_break_target_ctype(ast_node* n)
 resolve_error resolve_break_target(
     resolver* r, char* name, expr_block_base** tgt_ebb, ast_elem*** ctype)
 {
-    // otherwise we will complain abount an invalid break location
+    // TODO: error
     assert(ast_elem_is_expr_block_base((ast_elem*)r->curr_block_owner));
     expr_block_base* ebb = (expr_block_base*)r->curr_block_owner;
     while (ebb) {
@@ -1115,8 +1115,7 @@ resolve_error resolve_break_target(
         }
         ebb = ebb->parent;
     }
-
-    assert(false);
+    assert(false); // TODO: error
     return RE_ERROR;
 }
 resolve_error get_resolved_symbol_symtab(
@@ -1496,6 +1495,7 @@ static inline resolve_error resolve_if(
     ast_elem** ctype)
 {
     ast_elem *ctype_if, *ctype_else;
+    ei->ctype = NULL; // a break might test for that
     bool cond_type_loop = false;
     bool if_branch_type_loop = false;
     bool else_branch_type_loop = false;
@@ -1980,6 +1980,7 @@ static inline resolve_error resolve_ast_node_raw(
                 assert(!value);
                 RETURN_RESOLVED(value, ctype, NULL, l->ctype);
             }
+            l->ctype = NULL; // a break might test for that
             bool end_reachable;
             re = resolve_expr_body(r, st, n, &l->body, ppl, &end_reachable);
             if (ctype) *ctype = l->ctype;

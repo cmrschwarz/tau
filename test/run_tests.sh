@@ -18,6 +18,9 @@ $TAUC ./test/bigtest/footest.tau
 $TAUC ./test/multimoduletest.tau
 ./a.out
 
+$TAUC ./test/multimodulepptest.tau
+./a.out
+
 $TAUC ./test/structtest.tau 
 ./a.out
 
