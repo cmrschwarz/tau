@@ -33,8 +33,7 @@ parse_error parse_expression_of_prec(parser* p, ast_node** ex, ureg prec);
 parse_error parse_brace_delimited_body(
     parser* p, ast_body* b, ast_node* parent, ureg param_count);
 parse_error parse_braced_namable_body(
-    parser* p, ast_node* parent, expr_block_base** parent_ebb, ast_body* b,
-    char** name);
+    parser* p, ast_node* parent, ast_body* b, char** name);
 parse_error parse_expr_in_parens(
     parser* p, ast_node* parent, ureg start, ureg end, ast_node** tgt);
 static inline parse_error parse_delimited_body(
@@ -1371,25 +1370,7 @@ parse_error parse_return(parser* p, ast_node** tgt)
     }
     if (r->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     *tgt = (ast_node*)r;
-    sbuffer_iterator it = sbuffer_iterator_begin_at_end(&p->body_stack);
     r->target = NULL;
-    for (body_parse_data* bpd =
-             sbuffer_iterator_previous(&it, sizeof(body_parse_data));
-         bpd != NULL;
-         bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data))) {
-        if (bpd->node && (bpd->node->kind == SC_FUNC ||
-                          bpd->node->kind == SC_FUNC_GENERIC)) {
-            r->target = bpd->node;
-            break;
-        }
-    }
-    if (!r->target) {
-        parser_error_1a(
-            p, "can't return when not in a function", start,
-            src_range_get_end(r->node.srange),
-            "this return statement is not in a function");
-        return PE_ERROR;
-    }
     return PE_OK;
 }
 parse_error parse_break(parser* p, ast_node** tgt)
@@ -1428,7 +1409,8 @@ static inline parse_error parse_expr_block(
     b->ctype = NULL;
     ast_node_init((ast_node*)b, EXPR_BLOCK);
     *ex = (ast_node*)b;
-    init_expr_block_base(p, (expr_block_base*)b, false, label);
+    init_expr_block_base(
+        p, (expr_block_base*)b, first_stmt ? true : false, label);
     parse_error pe = parse_delimited_body(
         p, &b->body, (ast_node*)b, 0, first_stmt, bstart, bend, TK_BRACE_CLOSE);
     if (pe) return pe;
@@ -1489,8 +1471,7 @@ parse_error parse_loop(parser* p, ast_node** tgt)
     ast_node_init((ast_node*)l, EXPR_LOOP);
     *tgt = (ast_node*)l;
     init_expr_block_base(p, (expr_block_base*)l, false, NULL);
-    return parse_braced_namable_body(
-        p, (ast_node*)l, &l->ebb.parent, &l->body, &l->ebb.name);
+    return parse_braced_namable_body(p, (ast_node*)l, &l->body, &l->ebb.name);
 }
 parse_error parse_paste(parser* p, ast_node** tgt)
 {
@@ -1802,8 +1783,8 @@ parse_macro_block_call(parser* p, ast_node** ex, ast_node* lhs)
     emc->args = (ast_node**)NULL_PTR_PTR;
     ast_node_init((ast_node*)emc, EXPR_MACRO_CALL);
     emc->lhs = lhs;
-    parse_error pe = parse_braced_namable_body(
-        p, (ast_node*)emc, NULL, &emc->body, &emc->name);
+    parse_error pe =
+        parse_braced_namable_body(p, (ast_node*)emc, &emc->body, &emc->name);
     if (pe) return pe;
     if (ast_node_fill_srange(
             p, &emc->node, src_range_get_start(lhs->srange),
@@ -1844,7 +1825,7 @@ static inline parse_error parse_call(parser* p, ast_node** ex, ast_node* lhs)
         ast_node_init((ast_node*)emc, EXPR_MACRO_CALL);
         emc->lhs = lhs;
         pe = parse_braced_namable_body(
-            p, (ast_node*)emc, NULL, &emc->body, &emc->name);
+            p, (ast_node*)emc, &emc->body, &emc->name);
         if (pe) return pe;
         if (ast_node_fill_srange(
                 p, &emc->node, src_range_get_start(lhs->srange),
@@ -2233,7 +2214,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
 }
 parse_error init_paste_evaluation_parse(
     parser* p, expr_pp* epp, ureg ppl, ast_node_kind kind, symbol_table* st,
-    expr_block_base* parent_ebb, paste_evaluation** eval)
+    ast_node* parent_ebb, paste_evaluation** eval)
 {
     paste_evaluation* pe = (paste_evaluation*)epp;
     src_range sr = epp->node.srange;
@@ -2262,8 +2243,7 @@ parse_error init_paste_evaluation_parse(
     return PE_OK;
 }
 parse_error parser_parse_paste_expr(
-    parser* p, expr_pp* epp, symbol_table* st, ureg ppl,
-    expr_block_base* parent_ebb)
+    parser* p, expr_pp* epp, symbol_table* st, ureg ppl, ast_node* parent_ebb)
 {
     assert(sizeof(expr_pp) >= sizeof(expr_paste_evaluation));
     expr_paste_evaluation* eval;
@@ -2282,7 +2262,7 @@ parse_error parser_parse_paste_expr(
     return PE_OK;
 }
 parse_error parser_parse_paste_stmt(
-    parser* p, expr_pp* epp, symbol_table** st, expr_block_base* parent_ebb,
+    parser* p, expr_pp* epp, symbol_table** st, ast_node* parent_ebb,
     bool owned_st)
 {
     assert(sizeof(expr_pp) >= sizeof(stmt_paste_evaluation));
@@ -2297,7 +2277,6 @@ parse_error parser_parse_paste_stmt(
     p->paste_parent_owns_st = owned_st;
     pe = parse_delimited_body(
         p, &eval->body, (ast_node*)eval, 0, NULL, 0, 1, TK_EOF);
-    p->paste_block = false;
     lx_close_paste(&p->lx);
     return pe;
 }
@@ -3484,11 +3463,15 @@ static inline void init_expr_block_base(
         if (!bpd) break;
         if (!bpd->node) continue;
         if (ast_elem_is_expr_block_base((ast_elem*)bpd->node)) {
-            ebb->parent = (expr_block_base*)bpd->node;
+            ebb->parent = bpd->node;
             return;
         }
         if (bpd->node->kind == SC_FUNC || bpd->node->kind == SC_FUNC_GENERIC) {
-            ebb->parent = NULL;
+            ebb->parent = bpd->node;
+            return;
+        }
+        if (ast_elem_is_paste_evaluation((ast_elem*)bpd->node)) {
+            ebb->parent = ((paste_evaluation*)bpd->node)->parent_ebb;
             return;
         }
     }
@@ -3600,9 +3583,8 @@ parse_open_scope_body(parser* p, open_scope* s, mdg_node* m, ureg param_count)
     p->current_module = parent;
     return pe;
 }
-parse_error parse_braced_namable_body(
-    parser* p, ast_node* parent, expr_block_base** parent_ebb, ast_body* b,
-    char** name)
+parse_error
+parse_braced_namable_body(parser* p, ast_node* parent, ast_body* b, char** name)
 {
     token* t;
     PEEK(p, t);

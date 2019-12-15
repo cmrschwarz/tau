@@ -1117,29 +1117,40 @@ ast_elem** get_break_target_ctype(ast_node* n)
         default: return NULL;
     }
 }
-expr_block_base* get_current_ebb(resolver* r)
+ast_node* get_current_ebb(resolver* r)
 {
     if (ast_elem_is_paste_evaluation((ast_elem*)r->curr_block_owner)) {
         return ((paste_evaluation*)r->curr_block_owner)->parent_ebb;
     }
+    else if (
+        r->curr_block_owner->kind == SC_FUNC ||
+        r->curr_block_owner->kind == SC_FUNC_GENERIC) {
+        return r->curr_block_owner;
+    }
     else {
         assert(ast_elem_is_expr_block_base((ast_elem*)r->curr_block_owner));
-        return (expr_block_base*)r->curr_block_owner;
+        return r->curr_block_owner;
     }
 }
 resolve_error resolve_break_target(
     resolver* r, char* name, expr_block_base** tgt_ebb, ast_elem*** ctype)
 {
     // TODO: error
-    expr_block_base* ebb = get_current_ebb(r);
-    while (ebb) {
+    ast_node* ebb_or_func = get_current_ebb(r);
+    while (ebb_or_func) {
+        if (ebb_or_func->kind == SC_FUNC ||
+            ebb_or_func->kind == SC_FUNC_GENERIC) {
+            assert(false); // TODO error
+        }
+        assert(ast_elem_is_expr_block_base((ast_elem*)ebb_or_func));
+        expr_block_base* ebb = (expr_block_base*)ebb_or_func;
         if ((name && ebb->name && cstr_eq(ebb->name, name)) ||
             (name == ebb->name)) {
             *tgt_ebb = ebb;
             *ctype = get_break_target_ctype((ast_node*)ebb);
             return RE_OK;
         }
-        ebb = ebb->parent;
+        ebb_or_func = ebb->parent;
     }
     assert(false); // TODO: error
     return RE_ERROR;
@@ -1407,6 +1418,22 @@ static inline resolve_error resolve_var(
     ast_flags_set_resolved(&v->sym.node.flags);
     RETURN_RESOLVED(value, ctype, v, v->ctype);
 }
+static inline resolve_error resolve_return_target(resolver* r, ast_node** tgt)
+{
+    ast_node* ebb_or_func = get_current_ebb(r);
+    while (ebb_or_func) {
+        if (ebb_or_func->kind == SC_FUNC ||
+            ebb_or_func->kind == SC_FUNC_GENERIC) {
+            *tgt = ebb_or_func;
+            return RE_OK;
+        }
+        assert(ast_elem_is_expr_block_base((ast_elem*)ebb_or_func));
+        ebb_or_func = ((expr_block_base*)ebb_or_func)->parent;
+    }
+    assert(false); // TODO: error
+    return RE_ERROR;
+}
+
 static inline resolve_error
 resolve_return(resolver* r, symbol_table* st, ureg ppl, expr_return* er)
 {
@@ -1430,6 +1457,8 @@ resolve_return(resolver* r, symbol_table* st, ureg ppl, expr_return* er)
             }
         }
     }
+    re = resolve_return_target(r, &er->target);
+    if (re) return re;
     if (er->target->kind == SC_FUNC) {
         // must already be resolved since parenting function
         tgt_type = ((sc_func*)er->target)->return_ctype;

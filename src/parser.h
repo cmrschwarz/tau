@@ -45,10 +45,9 @@ int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
 parse_error parser_parse_file(parser* p, job_parse* j);
 parse_error parser_parse_paste_expr(
-    parser* p, expr_pp* epp, symbol_table* st, ureg ppl,
-    expr_block_base* parent_ebb);
+    parser* p, expr_pp* epp, symbol_table* st, ureg ppl, ast_node* parent_ebb);
 parse_error parser_parse_paste_stmt(
-    parser* p, expr_pp* epp, symbol_table** st, expr_block_base* parent_ebb,
+    parser* p, expr_pp* epp, symbol_table** st, ast_node* parent_ebb,
     bool owned_st);
 
 bool ast_node_may_drop_semicolon(ast_node* n);

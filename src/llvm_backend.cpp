@@ -171,9 +171,11 @@ static inline void link_lib(PPRunner* pp, const char* path)
     }
 }
 PPRunner::PPRunner()
-    : exec_session(), pp_count(0), obj_link_layer(exec_session, []() {
-          return llvm::make_unique<llvm::SectionMemoryManager>();
-      })
+    : exec_session(),
+      obj_link_layer(
+          exec_session,
+          []() { return llvm::make_unique<llvm::SectionMemoryManager>(); }),
+      pp_count(0)
 {
 
     link_dll(this, "/lib64/ld-linux-x86-64.so.2");

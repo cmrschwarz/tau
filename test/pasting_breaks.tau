@@ -1,0 +1,12 @@
+public func main() -> int{
+    return if(3 > 2) @foo {
+        @bar {
+            #paste("{
+                break @foo 3;
+            }");
+        }
+    }
+    else{
+        #paste("return 3;");
+    };
+}

@@ -277,7 +277,7 @@ typedef struct sym_import_symbol_s {
 
 typedef struct expr_block_base_s {
     ast_node node;
-    struct expr_block_base_s* parent;
+    ast_node* parent;
     char* name;
 } expr_block_base;
 
@@ -408,7 +408,7 @@ typedef struct expr_paste_str_s {
 
 typedef struct paste_evaluation_s {
     ast_node node;
-    expr_block_base* parent_ebb;
+    ast_node* parent_ebb;
     pasted_str* paste_str;
     pasted_str* read_str;
     char* read_pos;
