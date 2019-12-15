@@ -8,7 +8,7 @@
 #include "utils/debug_utils.h"
 #include "utils/panic.h"
 #if DEBUG
-#include "../test/unit_tests.h"
+#include "test/unit_tests.h"
 #endif
 #include <stdlib.h>
 
@@ -243,6 +243,10 @@ int tauc_run(int argc, char** argv)
         tauc_scaffolding_fin(&t);
     });
     debug_utils_free_res();
+    if (!r) {
+        if (tauc_success_so_far(&t)) return OK;
+        return atomic_sreg_load(&t.error_code);
+    }
     return r;
 }
 

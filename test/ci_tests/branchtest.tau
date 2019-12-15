@@ -1,4 +1,6 @@
-require "print.tau";
+require "support/libc.tau";
+import libc::(printf);
+
 
 func foo(i: int)-> int {
     return if(i < 5){

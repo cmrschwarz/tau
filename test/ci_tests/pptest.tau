@@ -1,4 +1,5 @@
-require "print.tau";
+require "support/libc.tau";
+import libc::(printf);
 module quux{
     public func puts(s: string);
     public func quux(){
@@ -18,7 +19,7 @@ public func main() -> int{
     i:= 0;
     bar::foo();
     loop{
-        printfln("foo: %i", i);
+        printf("foo: %i\n", i);
         i++;
         if(i==10)break;
     }

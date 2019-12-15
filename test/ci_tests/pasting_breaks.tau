@@ -7,6 +7,6 @@ public func main() -> int{
         }
     }
     else{
-        #paste("return 3;");
-    };
+        #paste("return 0;");
+    } - 3;
 }

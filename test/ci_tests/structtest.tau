@@ -1,4 +1,6 @@
-require "print.tau";
+require "support/libc.tau";
+import libc::(printf);
+
 struct foo{
     lorem : int;
     ipsum: int;
@@ -12,6 +14,6 @@ public func main() -> int{
     f: foo;
     fp := &f;
     (*fp).ipsum = 17;
-    printfln("ipsum: %i", (*fp).ipsum);
+    printf("ipsum: %i\n", (*fp).ipsum);
     return 0;
 }

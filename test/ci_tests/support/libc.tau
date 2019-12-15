@@ -1,0 +1,12 @@
+module libc{
+    public func puts(s: string);
+    public func printf(fmt: string, arg1: int, arg2: int);
+    public func malloc(size: int) -> *void;
+    public func free(ptr: *void);
+    public func printf(fmt: string, arg1: int){
+        printf(fmt, arg1, 0);
+    }
+    public func printf(fmt: string){
+        printf(fmt, 0, 0);
+    }
+}

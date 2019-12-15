@@ -12,7 +12,7 @@ void panic(char* message)
     fputc('\n', stderr);
     fflush(stderr);
     assert(false);
-    exit(-1);
+    exit(ERR);
 }
 
 void debugbreak()

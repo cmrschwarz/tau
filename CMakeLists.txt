@@ -49,11 +49,9 @@ add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/deps")
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(TAUC_C_TESTS
-        ./test/unit_tests.c
+        ./src/test/unit_tests.c
     )
-    set(TAUC_CPP_TESTS
-        ./test/llvmtest.cpp
-    )
+    set(TAUC_CPP_TESTS)
     # add "-pg -no-pie" for profiling with gprof
     message("Creating Debug Buildfiles")
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g")

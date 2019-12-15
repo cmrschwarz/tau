@@ -1,6 +1,6 @@
-require "bartest.tau";
+require "bigtest/bartest.tau";
 import bar;
-require "baztest.tau";
+require "bigtest/baztest.tau";
 import baz;
 import foo;
 module foo{

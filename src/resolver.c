@@ -120,6 +120,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn)
         case SC_FUNC: ((sc_func*)n)->pprn = NULL; break;
         case SYM_VAR: ((sym_var*)n)->pprn = NULL; break;
         case EXPR_BLOCK: ((expr_block*)n)->pprn = NULL; break;
+        case EXPR_LOOP: ((expr_loop*)n)->pprn = NULL; break;
         case SC_STRUCT: ((sc_struct*)n)->pprn = NULL; break;
         case SYM_IMPORT_GROUP: ((sym_import_group*)n)->pprn = NULL; break;
         case SYM_IMPORT_MODULE: ((sym_import_module*)n)->pprn = NULL; break;
@@ -905,8 +906,8 @@ resolve_error resolve_func_call(
         while (sym->node.kind == SYM_IMPORT_SYMBOL) {
             re = resolve_ast_node(r, (ast_node*)sym, lt, ppl, NULL, NULL);
             if (re) return re;
-            sym = ((sym_import_symbol*)sym)->target.sym;
             lt = ((sym_import_symbol*)sym)->import_group->parent_mdgn->symtab;
+            sym = ((sym_import_symbol*)sym)->target.sym;
         }
         if (sym->node.kind == SYM_FUNC_OVERLOADED) {
             sym_func_overloaded* sfo = (sym_func_overloaded*)sym;
@@ -1047,6 +1048,7 @@ bool is_lvalue(ast_node* expr)
         return (ou->node.op_kind == OP_DEREF);
     }
     if (expr->kind == EXPR_MEMBER_ACCESS) return true;
+    if (expr->kind == EXPR_ACCESS) return true;
     return false;
 }
 resolve_error choose_binary_operator_overload(
@@ -1844,14 +1846,14 @@ static inline resolve_error resolve_ast_node_raw(
         case EXPR_OP_UNARY: {
             expr_op_unary* ou = (expr_op_unary*)n;
             if (resolved) {
-                assert(!value && ctype);
                 if (ou->op->kind == PRIMITIVE || ou->op->kind == TYPE_POINTER) {
-                    *ctype =
-                        (ast_elem*)&PRIMITIVES[((ast_node*)ou->op)->pt_kind];
+                    if (value) *value = ou->op;
+                    if (ctype) *ctype = TYPE_ELEM;
                 }
                 else {
                     assert(ou->op->kind == SC_FUNC);
-                    *ctype = ((sc_func*)ou->op)->return_ctype;
+                    assert(!value);
+                    if (ctype) *ctype = ((sc_func*)ou->op)->return_ctype;
                 }
                 return RE_OK;
             }

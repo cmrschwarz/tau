@@ -1,9 +1,9 @@
-#include "../src/file_map.h"
-#include "../src/job_queue.h"
-#include "../src/mdg.h"
-#include "../src/tauc.h"
-#include "../src/utils/stack.h"
-#include "../src/utils/debug_utils.h"
+#include "../file_map.h"
+#include "../job_queue.h"
+#include "../mdg.h"
+#include "../tauc.h"
+#include "../utils/stack.h"
+#include "../utils/debug_utils.h"
 
 static void print_dash_padded(char* msg, bool err)
 {
@@ -232,14 +232,12 @@ int list_builder_test()
     // TODO
     return OK;
 }
-int llvmtest_main();
 #include <utils/debug_utils.h>
 int run_unit_tests(int argc, char** argv)
 {
     print_dash_padded("Executing Unit Tests", false);
     int res = OK;
 
-    TEST(res, llvmtest_main);
     TEST(res, stack_test);
     TEST(res, list_builder_test);
     TEST(res, file_map_test);
