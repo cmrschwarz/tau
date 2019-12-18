@@ -13,6 +13,7 @@
     }
 primitive PRIMITIVES[] = {
     mk_prim(PT_VOID, "void"),
+    mk_prim(PT_UNBOUND_GENERIC, "unbound_generic"),
     mk_prim(PT_UNREACHABLE, "unreachable"),
     mk_prim(PT_INT, "int"),
     mk_prim(PT_UINT, "uint"),
@@ -67,6 +68,10 @@ char* ast_elem_get_label(ast_elem* n, bool* lbl)
 bool ast_elem_is_open_scope(ast_elem* s)
 {
     return s->kind <= OSC_LAST_OSC_ID;
+}
+bool ast_elem_is_func_base(ast_elem* s)
+{
+    return s->kind == SC_FUNC || s->kind == SC_FUNC_GENERIC;
 }
 bool ast_elem_is_any_import_symbol(ast_elem* s)
 {

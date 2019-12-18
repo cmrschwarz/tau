@@ -313,6 +313,7 @@ void LLVMBackend::addPrimitives()
             case PT_VOID: t = _builder.getVoidTy(); break;
             case PT_TYPE:
             case PT_PASTED_EXPR:
+            case PT_UNBOUND_GENERIC:
             case PT_UNREACHABLE: t = NULL; break;
             default: assert(false); return;
         }
@@ -773,7 +774,7 @@ llvm_error LLVMBackend::getFollowingBlock(llvm::BasicBlock** following_block)
         auto curr_ip = _builder.GetInsertPoint();
         _builder.SetInsertPoint(
             ctx->first_block, ctx->first_block->getInstList().begin());
-        genScopeValue(_curr_fn_ast_node->return_ctype, *ctx);
+        genScopeValue(_curr_fn_ast_node->fnb.return_ctype, *ctx);
         _builder.SetInsertPoint(curr_ib, curr_ip);
         auto c = _control_flow_ctx.end();
         while (true) {
@@ -1133,7 +1134,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case SYM_PARAM: {
             sym_param* p = (sym_param*)n;
             sc_func* f = (sc_func*)p->sym.declaring_st->owning_node;
-            ureg param_nr = p - f->params;
+            ureg param_nr = p - f->fnb.params;
             llvm::Function* fn;
 #if DEBUG
             auto state = *lookupValueState(f->id);
@@ -1190,7 +1191,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                             tgt_ctx->first_block,
                             tgt_ctx->first_block->getInstList().begin());
                         genScopeValue(
-                            _curr_fn_ast_node->return_ctype, *tgt_ctx);
+                            _curr_fn_ast_node->fnb.return_ctype, *tgt_ctx);
                         tgt_ctx->following_block =
                             llvm::BasicBlock::Create(_context, "", _curr_fn);
                         _builder.SetInsertPoint(curr_ib, curr_ip);
@@ -1597,8 +1598,8 @@ llvm_error LLVMBackend::genBinaryOp(
 // TODO: do this properly
 std::string name_mangle(sc_func* fn, const llvm::DataLayout& dl)
 {
-    std::string name = fn->sc.sym.name;
-    symbol_table* st = fn->sc.body.symtab;
+    std::string name = fn->fnb.sc.sym.name;
+    symbol_table* st = fn->fnb.sc.body.symtab;
     while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
     mdg_node* n = (mdg_node*)st->owning_node;
     while (n->parent != NULL) {
@@ -1606,7 +1607,7 @@ std::string name_mangle(sc_func* fn, const llvm::DataLayout& dl)
         n = n->parent;
     }
     if (name != "main") {
-        name = name + "_" + std::to_string(fn->param_count);
+        name = name + "_" + std::to_string(fn->fnb.param_count);
     }
     std::string MangledName;
     {
@@ -1673,19 +1674,19 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     llvm::Function* func;
     llvm::FunctionType* func_sig;
     llvm::Type* ret_type;
-    llvm_error lle = lookupCType(fn->return_ctype, &ret_type, NULL, NULL);
+    llvm_error lle = lookupCType(fn->fnb.return_ctype, &ret_type, NULL, NULL);
     if (lle) return lle;
 
-    if (fn->param_count != 0) {
+    if (fn->fnb.param_count != 0) {
         llvm::Type** params = (llvm::Type**)pool_alloc(
-            &_tc->permmem, sizeof(llvm::Type*) * fn->param_count);
+            &_tc->permmem, sizeof(llvm::Type*) * fn->fnb.param_count);
         if (!params) return LLE_FATAL;
-        for (ureg i = 0; i < fn->param_count; i++) {
-            lle = lookupCType(fn->params[i].ctype, &params[i], NULL, NULL);
+        for (ureg i = 0; i < fn->fnb.param_count; i++) {
+            lle = lookupCType(fn->fnb.params[i].ctype, &params[i], NULL, NULL);
             if (lle) return lle;
         }
         llvm::ArrayRef<llvm::Type*> params_array_ref(
-            params, params + fn->param_count);
+            params, params + fn->fnb.param_count);
         func_sig = llvm::FunctionType::get(ret_type, params_array_ref, false);
         if (!func_sig) return LLE_FATAL;
     }
@@ -1695,8 +1696,8 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     }
     // TODO: ugly hack,  use a proper extern function
     // ast node
-    bool extern_func = (fn->sc.body.srange == SRC_RANGE_INVALID);
-    auto func_name_mangled = extern_func ? std::string(fn->sc.sym.name)
+    bool extern_func = (fn->fnb.sc.body.srange == SRC_RANGE_INVALID);
+    auto func_name_mangled = extern_func ? std::string(fn->fnb.sc.sym.name)
                                          : name_mangle(fn, *_data_layout);
     if (extern_func || !isIDInModule(fn->id)) {
         func = (llvm::Function*)llvm::Function::Create(
@@ -1742,7 +1743,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     _curr_fn_control_flow_ctx = &ctx;
     _builder.SetInsertPoint(func_block);
     bool end_reachable = true;
-    lle = genAstBody(&fn->sc.body, false, &end_reachable);
+    lle = genAstBody(&fn->fnb.sc.body, false, &end_reachable);
     if (ctx.following_block) {
         if (_builder.GetInsertBlock() != ctx.following_block) {
             // _builder.CreateBr(ctx.following_block);

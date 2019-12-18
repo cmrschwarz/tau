@@ -66,6 +66,7 @@ typedef struct resolver_s {
     ast_node* type_loop_start;
     u8 allow_type_loops;
     bool retracing_type_loop;
+    bool generic_context;
     // assigning ids
     ureg id_space;
     ureg public_sym_count;

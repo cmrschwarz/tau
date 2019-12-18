@@ -330,38 +330,32 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             p("= ");
             print_ast_node(ca->value, cmdg, indent);
         } break;
-        case SC_FUNC: {
-            sc_func* f = (sc_func*)n;
+        case SC_FUNC:
+        case SC_FUNC_GENERIC: {
+            sc_func_base* fnb = (sc_func_base*)n;
+            sc_func* fn = (n->kind == SC_FUNC) ? (sc_func*)n : NULL;
+            sc_func_generic* fng =
+                (n->kind == SC_FUNC) ? NULL : (sc_func_generic*)n;
+
             print_ast_node_modifiers(n->flags);
             p("func ");
-            pu(f->sc.sym.name);
+            pu(fnb->sc.sym.name);
+            if (fng) {
+                p("[");
+                print_sym_params(
+                    fng->generic_params, fng->generic_param_count, cmdg,
+                    indent);
+                pc(']');
+            }
             p("(");
-            print_sym_params(f->params, f->param_count, cmdg, indent);
+            print_sym_params(fnb->params, fnb->param_count, cmdg, indent);
             pc(')');
-            if (f->return_type) {
+            if (fnb->return_type) {
                 p(" -> ");
-                print_ast_node(f->return_type, cmdg, indent + 1);
+                print_ast_node(fnb->return_type, cmdg, indent + 1);
                 pc(' ');
             }
-            print_body_braced(&f->sc.body, cmdg, indent);
-        } break;
-        case SC_FUNC_GENERIC: {
-            sc_func_generic* f = (sc_func_generic*)n;
-            p("func ");
-            pu(f->sc.sym.name);
-            p("[");
-            print_sym_params(
-                f->generic_params, f->generic_param_count, cmdg, indent);
-            pc(']');
-            p("(");
-            print_sym_params(f->params, f->param_count, cmdg, indent);
-            pc(')');
-            if (f->return_type) {
-                p(" -> ");
-                print_ast_node(f->return_type, cmdg, indent + 1);
-                pc(' ');
-            }
-            print_body_braced(&f->sc.body, cmdg, indent);
+            print_body_braced(&fnb->sc.body, cmdg, indent);
         } break;
         case SC_STRUCT: {
             sc_struct* s = (sc_struct*)n;

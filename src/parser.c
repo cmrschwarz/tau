@@ -716,7 +716,8 @@ static inline parse_error parse_identifier(parser* p, ast_node** tgt)
     return PE_OK;
 }
 parse_error parse_param_decl(
-    parser* p, sym_param* tgt, ureg ctx_start, ureg ctx_end, char* msg_context)
+    parser* p, sym_param* tgt, ureg ctx_start, ureg ctx_end, bool generic,
+    char* msg_context)
 {
     parse_error pe;
     token* t;
@@ -732,14 +733,20 @@ parse_error parse_param_decl(
     tgt->sym.name = alloc_string_perm(p, t->str);
     if (!tgt->sym.name) return PE_FATAL;
     // TODO: flags parsing
-    ast_node_init((ast_node*)tgt, SYM_PARAM);
+    ast_node_init((ast_node*)tgt, generic ? SYM_GENERIC_PARAM : SYM_PARAM);
     lx_void(&p->lx);
     PEEK(p, t);
     if (t->kind != TK_COLON) {
-        parser_error_2a(
-            p, "invalid parameter syntax", t->start, t->end,
-            "expected ':' after identifier", ctx_start, ctx_end, msg_context);
-        return PE_ERROR;
+        if (!generic) {
+            parser_error_2a(
+                p, "invalid parameter syntax", t->start, t->end,
+                "expected ':' after identifier", ctx_start, ctx_end,
+                msg_context);
+            return PE_ERROR;
+        }
+        tgt->default_value = NULL;
+        tgt->type = NULL;
+        return PE_OK;
     }
     lx_void(&p->lx);
     PEEK(p, t);
@@ -2426,7 +2433,7 @@ parse_error parse_param_list(
     parse_error pe;
     do {
         sym_param param;
-        pe = parse_param_decl(p, &param, ctx_start, ctx_end, msg);
+        pe = parse_param_decl(p, &param, ctx_start, ctx_end, generic, msg);
         if (pe) break;
         list_builder_add_block(&p->lx.tc->listb2, &param, sizeof(sym_param));
         t = lx_peek(&p->lx);
@@ -2478,31 +2485,31 @@ parse_error parse_func_decl(
     if (!name) return PE_FATAL;
     lx_void(&p->lx);
     PEEK(p, t);
-    symbol* f;
+    sc_func_base* fnb;
     sc_func_generic* fng = NULL;
-    sc_func* fnp;
+    sc_func* fn;
     if (t->kind == TK_BRACKET_OPEN) {
         fng = alloc_perm(p, sizeof(sc_func_generic));
         if (!fng) return PE_FATAL;
-        f = (symbol*)fng;
+        fnb = (sc_func_base*)fng;
         lx_void(&p->lx);
         pe = parse_param_list(
-            p, f, &fng->generic_params, &fng->generic_param_count, true, start,
-            decl_end, "in this function declaration");
+            p, (symbol*)fng, &fng->generic_params, &fng->generic_param_count,
+            true, start, decl_end, "in this function declaration");
         if (pe) return pe;
         // TODO: fng->pprn = NULL;
         PEEK(p, t);
     }
     else {
-        fnp = alloc_perm(p, sizeof(sc_func));
-        if (!fnp) return PE_FATAL;
-        fnp->pprn = NULL;
-        f = (symbol*)fnp;
+        fn = alloc_perm(p, sizeof(sc_func));
+        if (!fn) return PE_FATAL;
+        fnb = (sc_func_base*)fn;
     }
-    f->name = name;
+    fnb->pprn = NULL;
+    fnb->sc.sym.name = name;
     ast_node_init_with_flags(
-        (ast_node*)f, fng ? SC_FUNC_GENERIC : SC_FUNC, flags);
-    pe = sym_fill_srange(p, f, start, decl_end);
+        (ast_node*)fnb, fng ? SC_FUNC_GENERIC : SC_FUNC, flags);
+    pe = sym_fill_srange(p, (symbol*)fnb, start, decl_end);
     if (pe) return pe;
     if (t->kind != TK_PAREN_OPEN) {
         parser_error_2a(
@@ -2513,11 +2520,10 @@ parse_error parse_func_decl(
     }
     lx_void(&p->lx);
     pe = parse_param_list(
-        p, f, (fng ? &fng->params : &fnp->params),
-        (fng ? &fng->param_count : &fnp->param_count), false, start, decl_end,
-        "in this function declaration");
+        p, (symbol*)fnb, &fnb->params, &fnb->param_count, false, start,
+        decl_end, "in this function declaration");
     if (pe) return pe;
-    *n = (ast_node*)f;
+    *n = (ast_node*)fnb;
     curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
     PEEK(p, t);
     if (t->kind == TK_ARROW) {
@@ -2534,34 +2540,24 @@ parse_error parse_func_decl(
             return PE_ERROR;
         }
         if (pe) return pe;
-        if (fng) {
-            fng->return_type = ret_type;
-        }
-        else {
-            fnp->return_type = ret_type;
-        }
+        fnb->return_type = ret_type;
     }
     else {
-        if (fng) {
-            fng->return_type = NULL;
-        }
-        else {
-            fnp->return_type = NULL;
-        }
+        fnb->return_type = NULL;
     }
     PEEK(p, t);
-    if (fnp && t->kind == TK_SEMICOLON) {
-        fnp->sc.body.elements = (ast_node**)NULL_PTR_PTR;
-        fnp->sc.body.srange = SRC_RANGE_INVALID;
-        fnp->sc.body.symtab = NULL;
-        if (push_bpd(p, (ast_node*)fnp, &fnp->sc.body)) return PE_FATAL;
-        curr_scope_add_decls(p, AM_DEFAULT, fnp->param_count);
+    if (fn && t->kind == TK_SEMICOLON) {
+        fn->fnb.sc.body.elements = (ast_node**)NULL_PTR_PTR;
+        fn->fnb.sc.body.srange = SRC_RANGE_INVALID;
+        fn->fnb.sc.body.symtab = NULL;
+        if (push_bpd(p, (ast_node*)fn, &fn->fnb.sc.body)) return PE_FATAL;
+        curr_scope_add_decls(p, AM_DEFAULT, fn->fnb.param_count);
         if (pop_bpd(p, PE_OK)) return PE_FATAL;
         return PE_OK;
     }
     return parse_scope_body(
-        p, (scope*)f,
-        fng ? fng->generic_param_count + fng->param_count : fnp->param_count);
+        p, (scope*)fnb,
+        (fng ? fng->generic_param_count : 0) + fnb->param_count);
 }
 parse_error parse_macro_decl(
     parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** n)

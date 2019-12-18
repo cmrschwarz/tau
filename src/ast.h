@@ -10,6 +10,7 @@
 #define VOID_ELEM ((ast_elem*)&PRIMITIVES[PT_VOID])
 #define UNREACHABLE_ELEM ((ast_elem*)&PRIMITIVES[PT_UNREACHABLE])
 #define PASTED_EXPR_ELEM ((ast_elem*)&PRIMITIVES[PT_PASTED_EXPR])
+#define UNBOUND_GENERIC_ELEM ((ast_elem*)&PRIMITIVES[PT_UNBOUND_GENERIC])
 #define TYPE_ELEM ((ast_elem*)&PRIMITIVES[PT_TYPE])
 
 typedef struct mdg_node_s mdg_node;
@@ -37,6 +38,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SYM_VAR,
     SYM_VAR_INITIALIZED,
     SYM_PARAM,
+    SYM_GENERIC_PARAM,
     SYM_NAMED_USING,
     SYM_IMPORT_MODULE,
     SYM_IMPORT_SYMBOL,
@@ -165,6 +167,7 @@ typedef enum PACK_ENUM operator_kind_e {
 typedef enum PACK_ENUM primitive_kind_e {
     PT_VOID,
     PT_UNREACHABLE,
+    PT_UNBOUND_GENERIC,
     PT_INT,
     PT_UINT,
     PT_FLOAT,
@@ -452,30 +455,30 @@ typedef struct osc_module_generic_s {
 } osc_module_generic;
 typedef osc_module_generic osc_extend_generic;
 
-typedef struct sc_func_s {
+typedef struct sc_func_base_s {
     scope sc;
     sym_param* params;
     ureg param_count;
     ast_node* return_type;
     ast_elem* return_ctype;
-    ureg id;
     pp_resolve_node* pprn;
+} sc_func_base;
+
+typedef struct sc_func_s {
+    sc_func_base fnb;
+    ureg id;
 } sc_func;
+
+typedef struct sc_func_generic_s {
+    sc_func_base fnb;
+    sym_param* generic_params;
+    ureg generic_param_count;
+} sc_func_generic;
 
 typedef struct sym_func_overloaded_s {
     symbol sym;
     scope* overloads;
 } sym_func_overloaded;
-
-typedef struct sc_func_generic_s {
-    scope sc;
-    sym_param* generic_params;
-    ureg generic_param_count;
-    sym_param* params;
-    ureg param_count;
-    ast_node* return_type;
-    ast_elem* return_ctype;
-} sc_func_generic;
 
 typedef struct sc_struct_s {
     scope sc;
@@ -691,6 +694,7 @@ typedef struct primitive_s {
 extern primitive PRIMITIVES[];
 
 bool ast_elem_is_open_scope(ast_elem* s);
+bool ast_elem_is_func_base(ast_elem* s);
 bool ast_elem_is_any_import_symbol(ast_elem* s);
 bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
