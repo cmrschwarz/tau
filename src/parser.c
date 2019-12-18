@@ -1719,6 +1719,7 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     sp->result = NULL;
     if (!sp) return PE_FATAL;
     ast_node_init(&sp->node, EXPR_PP);
+    ast_flags_set_pp_expr_res_used(&sp->node.flags);
     ast_flags_set_comptime_known(&sp->node.flags);
     sp->result_buffer.state.pprn = NULL;
     sp->result_buffer.paste_result.last_next =
@@ -3358,7 +3359,6 @@ static inline parse_error parse_pp_stmt(
     if (!sp) return PE_FATAL;
     ast_node_init(&sp->node, EXPR_PP);
     ast_flags_set_comptime_known(&sp->node.flags);
-    ast_flags_set_pp_stmt(&sp->node.flags);
     sp->result_buffer.state.pprn = NULL;
     sp->result_buffer.paste_result.last_next =
         &sp->result_buffer.paste_result.first;

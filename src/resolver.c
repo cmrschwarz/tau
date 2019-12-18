@@ -146,7 +146,6 @@ static pp_resolve_node* pp_resolve_node_create(
         aseglist_fin(&pprn->notify_when_ready);
         return NULL;
     }
-    pprn->result_used = res_used;
     pprn->dep_count = 0;
     pprn->pending_pastes = 0;
     pprn->declaring_st = declaring_st;
@@ -1613,7 +1612,7 @@ static inline resolve_error resolve_expr_pp(
     resolver* r, symbol_table* st, ureg ppl, expr_pp* ppe, ast_elem** value,
     ast_elem** ctype)
 {
-    bool is_stmt = ast_flags_get_pp_stmt(ppe->node.flags);
+    bool is_stmt = !ast_flags_get_pp_expr_res_used(ppe->node.flags);
     if (ppe->ctype == PASTED_EXPR_ELEM) {
         *ppe->result_buffer.paste_result.last_next = NULL;
         parse_error pe;
@@ -1661,7 +1660,6 @@ static inline resolve_error resolve_expr_pp(
                 return RE_TYPE_MISSMATCH;
             }
             ppe->ctype = PASTED_EXPR_ELEM;
-            pprn->result_used = false;
         }
         if (pp_resolve_node_activate(r, pprn, re == RE_OK)) {
             return RE_FATAL;

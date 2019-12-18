@@ -25,7 +25,7 @@ static void print_dash_padded(char* msg, bool err)
         char* msg_succ = STR_CAT(STRINGIFY(test_name), " PASSED ");            \
         char* msg_fail = STR_CAT(STRINGIFY(test_name), " FAILED ");            \
         int r;                                                                 \
-        TIME_MSG((r ? msg_succ : msg_fail), "\n", r = test_call;);             \
+        TIME_MSG((!r ? msg_succ : msg_fail), "\n", r = test_call;);            \
         res |= r;                                                              \
         tflush();                                                              \
     } while (false)

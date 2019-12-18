@@ -499,8 +499,7 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
     llvm_error lle;
     if (n->node->kind == EXPR_PP) {
         auto expr = (expr_pp*)n->node;
-        if (n->result_used && expr->ctype != VOID_ELEM &&
-            expr->ctype != UNREACHABLE_ELEM) {
+        if (ast_flags_get_pp_expr_res_used(expr->node.flags)) {
             llvm::Type* ret_type;
             ureg size;
             ureg align;
@@ -524,8 +523,11 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
             auto resptr =
                 llvm::ConstantExpr::getBitCast(res, ret_type->getPointerTo());
             if (!_builder.CreateStore(val, resptr)) return LLE_FATAL;
+            expr->result = expr->result_buffer.state.true_res_buffer;
         }
         else {
+            // so we don't ever regenerate it in genAstNode
+            expr->result = (void*)1;
             lle = genAstNode(expr->pp_expr, NULL, NULL);
             if (lle) return lle;
         }
@@ -536,22 +538,8 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
             lle = genPPRN(cn);
             if (lle) return lle;
         }
-        for (pp_resolve_node* cn = n->first_unresolved_child; cn;
-             cn = cn->next) {
-            prepareForPPRNResult(cn);
-        }
     }
     return LLE_OK;
-}
-void LLVMBackend::prepareForPPRNResult(pp_resolve_node* pprn)
-{
-    if (pprn->node->kind == EXPR_PP) {
-        auto expr = (expr_pp*)pprn->node;
-        if (pprn->result_used && expr->ctype != VOID_ELEM &&
-            expr->ctype != UNREACHABLE_ELEM) {
-            expr->result = (void*)&expr->result_buffer.state.true_res_buffer;
-        }
-    }
 }
 llvm_error
 LLVMBackend::genPPFunc(const std::string& func_name, ptrlist* resolve_nodes)
@@ -585,12 +573,6 @@ LLVMBackend::genPPFunc(const std::string& func_name, ptrlist* resolve_nodes)
         lle = genPPRN(n);
         if (lle) return lle;
     }
-    it = pli_begin(resolve_nodes);
-    for (auto n = (pp_resolve_node*)pli_next(&it); n;
-         n = (pp_resolve_node*)pli_next(&it)) {
-        prepareForPPRNResult(n);
-    }
-    if (lle) return lle;
     assert(!ctx.following_block && !ctx.value);
     _builder.CreateRetVoid();
     _control_flow_ctx.pop_back();
@@ -1086,8 +1068,11 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             auto epp = (expr_pp*)n;
             if (!epp->result) return genAstNode(epp->pp_expr, vl, vl_loaded);
             assert(!vl);
-            return buildConstant(
-                epp->ctype, epp->result, (llvm::Constant**)vl_loaded);
+            if (vl_loaded) {
+                assert(epp->ctype != VOID_ELEM);
+                return buildConstant(
+                    epp->ctype, epp->result, (llvm::Constant**)vl_loaded);
+            }
         }
         case OSC_MODULE:
         case OSC_EXTEND:

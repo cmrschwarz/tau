@@ -44,13 +44,13 @@ bool ast_flags_get_const(ast_flags f)
     return bitmask_get_bit(f, ASTF_CONST_OFFSET);
 }
 
-void ast_flags_set_pp_stmt(ast_flags* f)
+void ast_flags_set_pp_expr_res_used(ast_flags* f)
 {
-    bitmask_set_bit(f, ASTF_PP_STMT);
+    bitmask_set_bit(f, ASTF_PP_EXPR_RES_USED);
 }
-bool ast_flags_get_pp_stmt(ast_flags f)
+bool ast_flags_get_pp_expr_res_used(ast_flags f)
 {
-    return bitmask_get_bit(f, ASTF_PP_STMT);
+    return bitmask_get_bit(f, ASTF_PP_EXPR_RES_USED);
 }
 
 void ast_flags_set_import_group_module_used(ast_flags* f)

@@ -40,7 +40,6 @@ typedef struct pp_resolve_node_s {
     ast_node** continue_block;
     ureg dep_count;
     ureg pending_pastes;
-    bool result_used;
     bool run_when_ready; // false for exprs in functions
     bool block_pos_reachable;
     struct pp_resolve_node_s* parent; // gets informed once this is pending
