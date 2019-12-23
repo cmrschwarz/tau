@@ -6,6 +6,7 @@
 #include "utils/panic.h"
 #include "utils/threading.h"
 #include "utils/zero.h"
+#include <assert.h>
 
 int mdg_fin_partial(module_dependency_graph* m, int i, int r)
 {
@@ -14,12 +15,14 @@ int mdg_fin_partial(module_dependency_graph* m, int i, int r)
             mdg_node_fin(m->root_node);
             mdght_fin_contained_nodes(mdg_start_write(m));
             mdg_end_write(m);
-        case 1: mdght_fin(&m->mdghts[1]);
-        case 2: mdght_fin(&m->mdghts[0]);
-        case 3: evmap2_fin(&m->evm);
-        case 4: pool_fin(&m->node_pool);
-        case 5: pool_fin(&m->ident_pool);
-        case 6: atomic_ureg_fin(&m->node_ids);
+            // fallthrough
+        case 1: mdght_fin(&m->mdghts[1]); // fallthrough
+        case 2: mdght_fin(&m->mdghts[0]); // fallthrough
+        case 3: evmap2_fin(&m->evm); // fallthrough
+        case 4: pool_fin(&m->node_pool); // fallthrough
+        case 5: pool_fin(&m->ident_pool); // fallthrough
+        case 6: atomic_ureg_fin(&m->node_ids); // fallthrough
+        default: break;
     }
     return r;
 }
@@ -90,13 +93,13 @@ void* mdg_node_partial_fin(mdg_node* n, int i)
 {
     switch (i) {
         default:
-        case 7: atomic_ureg_fin(&n->using_count);
-        case 6: atomic_ureg_fin(&n->decl_count);
-        case 5: atomic_ureg_fin(&n->unparsed_files);
-        case 4: aseglist_fin(&n->notify);
-        case 3: aseglist_fin(&n->dependencies);
-        case 2: rwslock_fin(&n->stage_lock);
-        case 1: aseglist_fin(&n->open_scopes);
+        case 7: atomic_ureg_fin(&n->using_count); // fallthrough
+        case 6: atomic_ureg_fin(&n->decl_count); // fallthrough
+        case 5: atomic_ureg_fin(&n->unparsed_files); // fallthrough
+        case 4: aseglist_fin(&n->notify); // fallthrough
+        case 3: aseglist_fin(&n->dependencies); // fallthrough
+        case 2: rwslock_fin(&n->stage_lock); // fallthrough
+        case 1: aseglist_fin(&n->open_scopes); // fallthrough
     }
     return NULL;
 }

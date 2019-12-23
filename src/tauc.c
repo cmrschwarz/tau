@@ -16,18 +16,18 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
 {
     switch (i) {
         case -1:
-        case 10: mdg_fin(&t->mdg);
+        case 10: mdg_fin(&t->mdg); // fallthrough
         case -2: // skip mdg because we freed that earlier when we still had all
                  // threads and their permmem
-        case 9: thread_context_fin(&t->main_thread_context);
-        case 8: fin_root_symtab(t->root_symtab);
-        case 7: atomic_ureg_fin(&t->linking_holdups);
-        case 6: atomic_sreg_fin(&t->error_code);
-        case 5: atomic_ureg_fin(&t->node_ids);
-        case 4: atomic_ureg_fin(&t->thread_count);
-        case 3: aseglist_fin(&t->worker_threads);
-        case 2: job_queue_fin(&t->jobqueue);
-        case 1: llvm_backend_fin_globals();
+        case 9: thread_context_fin(&t->main_thread_context); // fallthrough
+        case 8: fin_root_symtab(t->root_symtab); // fallthrough
+        case 7: atomic_ureg_fin(&t->linking_holdups); // fallthrough
+        case 6: atomic_sreg_fin(&t->error_code); // fallthrough
+        case 5: atomic_ureg_fin(&t->node_ids); // fallthrough
+        case 4: atomic_ureg_fin(&t->thread_count); // fallthrough
+        case 3: aseglist_fin(&t->worker_threads); // fallthrough
+        case 2: job_queue_fin(&t->jobqueue); // fallthrough
+        case 1: llvm_backend_fin_globals(); // fallthrough
         case 0: break;
     }
     if (r) master_error_log_report(&t->mel, "memory allocation failed");

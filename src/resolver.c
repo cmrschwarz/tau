@@ -8,6 +8,7 @@
 #include "utils/debug_utils.h"
 #include "utils/aseglist.h"
 #include "print_ast.h"
+#include <assert.h>
 
 static resolve_error add_body_decls(
     resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
@@ -879,12 +880,14 @@ static inline resolve_error resolve_macro_call(
     ast_elem** ctype)
 {
     assert(false); // TODO
+    return RE_FATAL;
 }
 static inline resolve_error resolve_no_block_macro_call(
     resolver* r, expr_call* nbmc, symbol_table* st, sc_macro* m,
     ast_elem** ctype)
 {
     assert(false); // TODO
+    return RE_FATAL;
 }
 
 // we need a seperate func_st for cases like foo::bar()
@@ -2293,6 +2296,7 @@ static inline resolve_error resolve_ast_node_raw(
                 RETURN_RESOLVED(value, ctype, NULL, ea->ctype);
             }
             assert(false); // TODO operator overloading / generics
+            return RE_FATAL;
         }
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
@@ -2649,7 +2653,7 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
             if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             update_id(r, &((sc_struct*)n)->id, id_space);
             adjust_body_ids(r, id_space, &((sc_struct*)n)->sc.body);
-        }
+        } break;
         case EXPR_PP: {
             adjust_node_ids(r, id_space, ((expr_pp*)n)->pp_expr);
         }
@@ -3071,13 +3075,13 @@ int resolver_partial_fin(resolver* r, int i, int res)
 {
     switch (i) {
         case -1:
-        case 7: llvm_backend_delete(r->backend);
-        case 6: ptrlist_fin(&r->pp_resolve_nodes_ready);
-        case 5: ptrlist_fin(&r->pp_resolve_nodes_pending);
-        case 4: sbuffer_fin(&r->pp_resolve_nodes_waiting);
-        case 3: freelist_fin(&r->pp_resolve_nodes);
-        case 2: sbuffer_fin(&r->call_types);
-        case 1: stack_fin(&r->error_stack);
+        case 7: llvm_backend_delete(r->backend); // fallthrough
+        case 6: ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
+        case 5: ptrlist_fin(&r->pp_resolve_nodes_pending); // fallthrough
+        case 4: sbuffer_fin(&r->pp_resolve_nodes_waiting); // fallthrough
+        case 3: freelist_fin(&r->pp_resolve_nodes); // fallthrough
+        case 2: sbuffer_fin(&r->call_types); // fallthrough
+        case 1: stack_fin(&r->error_stack); // fallthrough
         case 0: break;
     }
     return res;

@@ -10,6 +10,7 @@
 #include "resolver.h"
 #include "utils/debug_utils.h"
 #include <stddef.h>
+#include <assert.h>
 
 #define PEEK(p, t)                                                             \
     do {                                                                       \

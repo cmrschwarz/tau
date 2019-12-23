@@ -82,7 +82,6 @@ target_include_directories(tauc PUBLIC
     ${TAUC_INCLUDE_DIRS}
     ${TAU_DEPS_INCLUDE_DIRS}
 )
-
 target_link_libraries(tauc LINK_PUBLIC
     ${TAU_DEPS_LIBS}
     #TODO: handle TAU_DEPS_EXTERNAL_LIBS

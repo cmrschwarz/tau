@@ -4,6 +4,8 @@
 #include "utils/fnv_hash.h"
 #include "utils/math_utils.h"
 #include "utils/panic.h"
+#include <assert.h>
+
 static inline int file_map_head_init(
     file_map_head* h, file_map* fm, src_dir* parent, string name,
     ast_node_kind kind)

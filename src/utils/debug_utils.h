@@ -32,7 +32,7 @@ void debug_utils_free_res();
     } while (false)
 #else
 
-#define TIME_MSG(msg, code)                                                    \
+#define TIME_MSG(msg, after_msg, code)                                         \
     do {                                                                       \
         code                                                                   \
     } while (false)

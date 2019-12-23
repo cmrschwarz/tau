@@ -5,11 +5,11 @@
 static inline int evmap2_partial_fin(evmap2* m, int i, int r)
 {
     switch (i) {
-        case 0: atomic_ureg_fin(&m->done_counts[1]);
-        case 1: atomic_ureg_fin(&m->done_counts[0]);
-        case 2: atomic_ureg_fin(&m->counter);
-        case 3: atomic_ureg_fin(&m->pending_writers);
-        case 4: mutex_fin(&m->write_lock);
+        case 0: atomic_ureg_fin(&m->done_counts[1]); // fallthrough
+        case 1: atomic_ureg_fin(&m->done_counts[0]); // fallthrough
+        case 2: atomic_ureg_fin(&m->counter); // fallthrough
+        case 3: atomic_ureg_fin(&m->pending_writers); // fallthrough
+        case 4: mutex_fin(&m->write_lock); // fallthrough
     }
     return r;
 }

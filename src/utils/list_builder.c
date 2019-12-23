@@ -3,6 +3,7 @@
 #include "math_utils.h"
 #include "memory.h"
 #include "panic.h"
+#include <assert.h>
 
 int list_builder_init(list_builder* b, pool* memsrc, ureg initial_capacity)
 {

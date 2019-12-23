@@ -5,6 +5,7 @@
 #include "utils/math_utils.h"
 #include "utils/panic.h"
 #include "thread_context.h"
+#include <assert.h>
 
 static token* lx_load(lexer* lx);
 

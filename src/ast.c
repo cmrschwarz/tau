@@ -1,6 +1,7 @@
 #include "ast.h"
 #include "utils/panic.h"
 #include "utils/c_extensions.h"
+#include <assert.h>
 
 #define mk_prim(prim_kind, prim_name)                                          \
     [prim_kind] = {                                                            \
@@ -142,7 +143,8 @@ void ast_node_get_bounds(ast_node* n, ureg* start, ureg* end)
                 if (end) ast_node_get_bounds(u->child, NULL, end);
                 return;
             }
-        } // fallthrough for postfix unary op
+            // for postfix unary op
+        } // fallthrough
         default: {
             src_range_large r;
             src_range_unpack(n->srange, &r);

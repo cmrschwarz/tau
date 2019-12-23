@@ -9,19 +9,20 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
 {
     switch (i) {
         case -1:
-        case 9: list_builder_fin(&tc->listb2);
-        case 8: list_builder_fin(&tc->listb);
-        case 7: stack_fin(&tc->tempstack);
-        case 6: scc_detector_fin(&tc->sccd);
-        case 5: resolver_fin(&tc->r);
-        case 4: parser_fin(&tc->p);
-        case 3: pool_fin(&tc->tempmem);
-        case 2: sbuffer_fin(&tc->modules);
+        case 9: list_builder_fin(&tc->listb2); // fallthrough
+        case 8: list_builder_fin(&tc->listb); // fallthrough
+        case 7: stack_fin(&tc->tempstack); // fallthrough
+        case 6: scc_detector_fin(&tc->sccd); // fallthrough
+        case 5: resolver_fin(&tc->r); // fallthrough
+        case 4: parser_fin(&tc->p); // fallthrough
+        case 3: pool_fin(&tc->tempmem); // fallthrough
+        case 2: sbuffer_fin(&tc->modules); // fallthrough
         case 1:
             pool_fin(&tc->permmem);
             // these don't need to be initialized and they are thread local,
             // so this seems like the best place to free them
             debug_utils_free_res();
+            // fallthrough
         case 0: break;
     }
     if (r)
