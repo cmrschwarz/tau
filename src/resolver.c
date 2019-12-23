@@ -2494,6 +2494,8 @@ resolve_error resolve_func(
     resolver* r, sc_func_base* fnb, ureg ppl, ast_node** continue_block)
 {
     bool generic = (fnb->sc.sym.node.kind == SC_FUNC);
+    bool generic_parent = r->generic_context;
+    r->generic_context = generic || generic_parent;
     ast_body* b = &fnb->sc.body;
     symbol_table* st = b->symtab;
     resolve_error re;
@@ -2506,6 +2508,7 @@ resolve_error resolve_func(
                 re = resolve_param(r, &fnb->params[i], false, ppl, NULL);
                 if (re) {
                     r->curr_block_owner = parent_block_owner;
+                    r->generic_context  = generic_parent;
                     return re;
                 }
             }
@@ -2514,18 +2517,21 @@ resolve_error resolve_func(
             re = resolve_param(r, &fnb->params[i], false, ppl, NULL);
             if (re) {
                 r->curr_block_owner = parent_block_owner;
+                r->generic_context = generic_parent;
                 return re;
             }
         }
         re = resolve_ast_node(
             r, fnb->return_type, st, ppl, &fnb->return_ctype, NULL);
         if (re) {
-            return re;
             r->curr_block_owner = parent_block_owner;
+            r->generic_context = generic_parent;
+            return re;
         }
         if (b->srange == SRC_RANGE_INVALID) { // hack for external functions
             ast_flags_set_resolved(&fnb->sc.sym.node.flags);
             r->curr_block_owner = parent_block_owner;
+            r->generic_context = generic_parent;
             return RE_OK;
         }
     }
@@ -2570,6 +2576,7 @@ resolve_error resolve_func(
     pp_resolve_node* bpprn = r->curr_block_pp_node;
     fnb->pprn = bpprn;
     r->curr_block_pp_node = prev_block_pprn;
+    r->generic_context  = generic_parent;
     if (re) {
         if (re == RE_UNREALIZED_PASTE) {
             assert(bpprn);
