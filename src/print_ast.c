@@ -360,34 +360,34 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case SC_STRUCT: {
             sc_struct* s = (sc_struct*)n;
             p("struct ");
-            pinn(s->sc.sym.name);
-            print_body_braced(&s->sc.body, cmdg, indent);
+            pinn(s->sb.sc.sym.name);
+            print_body_braced(&s->sb.sc.body, cmdg, indent);
         } break;
         case SC_STRUCT_GENERIC: {
             sc_struct_generic* s = (sc_struct_generic*)n;
             p("struct ");
-            pinn(s->sc.sym.name);
+            pinn(s->sb.sc.sym.name);
             p("[");
             print_sym_params(
                 s->generic_params, s->generic_param_count, cmdg, indent);
             pc(']');
-            print_body_braced(&s->sc.body, cmdg, indent);
+            print_body_braced(&s->sb.sc.body, cmdg, indent);
         } break;
         case SC_TRAIT: {
             sc_trait* t = (sc_trait*)n;
             p("trait ");
-            pinn(t->sc.sym.name);
-            print_body_braced(&t->sc.body, cmdg, indent);
+            pinn(t->sb.sc.sym.name);
+            print_body_braced(&t->sb.sc.body, cmdg, indent);
         } break;
         case SC_TRAIT_GENERIC: {
             sc_trait_generic* t = (sc_trait_generic*)n;
             p("trait ");
-            pinn(t->sc.sym.name);
+            pinn(t->sb.sc.sym.name);
             p("[");
             print_sym_params(
                 t->generic_params, t->generic_param_count, cmdg, indent);
             pc(']');
-            print_body_braced(&t->sc.body, cmdg, indent);
+            print_body_braced(&t->sb.sc.body, cmdg, indent);
         } break;
         case OSC_MODULE:
         case OSC_EXTEND: {

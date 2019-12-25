@@ -147,7 +147,7 @@ void thread_context_run(thread_context* tc)
     while (true) {
         r = job_queue_pop(
             &tc->t->jobqueue, &j, tc->has_preordered,
-            atomic_ureg_load(&tc->t->thread_count));
+            atomic_ureg_load(&tc->t->active_thread_count));
         tc->has_preordered = false;
         if (r == JQ_DONE) {
             r = OK;
@@ -163,6 +163,8 @@ void thread_context_run(thread_context* tc)
         if (r) break;
     }
     debug_utils_free_res();
+    ureg atc = atomic_ureg_dec(&tc->t->active_thread_count) - 1;
+    job_queue_check_waiters(&tc->t->jobqueue, atc);
 }
 int thread_context_preorder_job(thread_context* tc)
 {

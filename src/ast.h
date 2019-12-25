@@ -4,6 +4,7 @@
 #include "src_map.h"
 #include "ast_flags.h"
 #include "symbol_table.h"
+#include "generic_inst_map.h"
 #include "utils/threading.h"
 #include "utils/c_extensions.h"
 
@@ -473,31 +474,47 @@ typedef struct sc_func_generic_s {
     sc_func_base fnb;
     sym_param* generic_params;
     ureg generic_param_count;
+    generic_inst_map gim;
 } sc_func_generic;
+
+typedef struct sc_func_generic_inst_s {
+    sc_func_base fnb;
+    sc_func_generic* generic;
+    ureg id;
+} sc_func_generic_inst;
 
 typedef struct sym_func_overloaded_s {
     symbol sym;
     scope* overloads;
 } sym_func_overloaded;
 
-typedef struct sc_struct_s {
+typedef struct sc_struct_base_s {
     scope sc;
-    ureg id;
     pp_resolve_node* pprn;
+} sc_struct_base;
+
+typedef struct sc_struct_s {
+    sc_struct_base sb;
+    ureg id;
 } sc_struct;
 
 typedef struct sc_struct_generic_s {
-    scope sc;
+    sc_struct_base sb;
     sym_param* generic_params;
     ureg generic_param_count;
 } sc_struct_generic;
 
+typedef struct sc_struct_generic_inst_s {
+    sc_struct_base sb;
+    ureg id;
+} sc_struct_generic_inst;
+
 typedef struct sc_trait_s {
-    scope sc;
+    sc_struct_base sb;
 } sc_trait;
 
 typedef struct sc_trait_generic_s {
-    scope sc;
+    sc_struct_base sb;
     sym_param* generic_params;
     ureg generic_param_count;
 } sc_trait_generic;

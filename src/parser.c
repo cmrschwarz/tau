@@ -2650,7 +2650,7 @@ parse_error parse_struct_decl(
     else {
         sp = alloc_perm(p, sizeof(sc_struct));
         if (!sp) return PE_FATAL;
-        sp->pprn = NULL;
+        sp->sb.pprn = NULL;
         s = (symbol*)sp;
     }
     ast_node_init_with_flags(

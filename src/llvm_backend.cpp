@@ -655,9 +655,9 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
                 // enough
                 auto members = (llvm::Type**)pool_alloc(
                     &_tc->permmem,
-                    sizeof(llvm::Type*) * st->sc.body.symtab->decl_count);
+                    sizeof(llvm::Type*) * st->sb.sc.body.symtab->decl_count);
                 ureg memcnt = 0;
-                for (ast_node** i = st->sc.body.elements; *i; i++) {
+                for (ast_node** i = st->sb.sc.body.elements; *i; i++) {
                     // TODO: usings, static members,
                     // etc.
                     if ((**i).kind == SYM_VAR ||
@@ -851,7 +851,7 @@ LLVMBackend::buildConstant(ast_elem* ctype, void* data, llvm::Constant** res)
             auto struct_layout = _data_layout->getStructLayout(st);
             ureg elem_count = st->getNumElements();
             auto elems = new std::vector<llvm::Constant*>(elem_count);
-            ast_node** st_elem = ((sc_struct*)ctype)->sc.body.elements;
+            ast_node** st_elem = ((sc_struct*)ctype)->sb.sc.body.elements;
             for (ureg i = 0; i < elem_count; i++) {
                 while (true) {
                     if ((**st_elem).kind == SYM_VAR ||

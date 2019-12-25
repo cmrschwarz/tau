@@ -24,7 +24,7 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
         case 7: atomic_ureg_fin(&t->linking_holdups); // fallthrough
         case 6: atomic_sreg_fin(&t->error_code); // fallthrough
         case 5: atomic_ureg_fin(&t->node_ids); // fallthrough
-        case 4: atomic_ureg_fin(&t->thread_count); // fallthrough
+        case 4: atomic_ureg_fin(&t->active_thread_count); // fallthrough
         case 3: aseglist_fin(&t->worker_threads); // fallthrough
         case 2: job_queue_fin(&t->jobqueue); // fallthrough
         case 1: llvm_backend_fin_globals(); // fallthrough
@@ -44,7 +44,7 @@ int tauc_core_init(tauc* t)
     if (r) return tauc_core_partial_fin(t, r, 1);
     r = aseglist_init(&t->worker_threads);
     if (r) return tauc_core_partial_fin(t, r, 2);
-    r = atomic_ureg_init(&t->thread_count, 1);
+    r = atomic_ureg_init(&t->active_thread_count, 1);
     if (r) return tauc_core_partial_fin(t, r, 3);
     r = atomic_ureg_init(&t->node_ids, 0);
     if (r) return tauc_core_partial_fin(t, r, 4);
@@ -300,14 +300,14 @@ int tauc_add_job(tauc* t, job* j, bool prevent_thread_spawn)
     if (r) return r;
     if (jobs > waiters && !prevent_thread_spawn) {
         ureg max_tc = plattform_get_virt_core_count();
-        ureg tc = atomic_ureg_load(&t->thread_count);
+        ureg tc = atomic_ureg_load(&t->active_thread_count);
         if (tc < max_tc) {
-            tc = atomic_ureg_inc(&t->thread_count);
+            tc = atomic_ureg_inc(&t->active_thread_count);
             if (tc < max_tc) {
                 return tauc_add_worker_thread(t);
             }
             else {
-                atomic_ureg_dec(&t->thread_count);
+                atomic_ureg_dec(&t->active_thread_count);
             }
         }
     }

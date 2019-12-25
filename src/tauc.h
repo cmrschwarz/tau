@@ -13,7 +13,7 @@ typedef struct tauc_s {
 
     thread_context main_thread_context;
     aseglist worker_threads;
-    atomic_ureg thread_count;
+    atomic_ureg active_thread_count;
     // number of task that need to be completed before linking can start. the
     // task that changes this to 0 does the linking.
     atomic_ureg linking_holdups;

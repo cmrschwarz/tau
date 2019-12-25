@@ -123,7 +123,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn)
         case SYM_VAR: ((sym_var*)n)->pprn = NULL; break;
         case EXPR_BLOCK: ((expr_block*)n)->pprn = NULL; break;
         case EXPR_LOOP: ((expr_loop*)n)->pprn = NULL; break;
-        case SC_STRUCT: ((sc_struct*)n)->pprn = NULL; break;
+        case SC_STRUCT: ((sc_struct*)n)->sb.pprn = NULL; break;
         case SYM_IMPORT_GROUP: ((sym_import_group*)n)->pprn = NULL; break;
         case SYM_IMPORT_MODULE: ((sym_import_module*)n)->pprn = NULL; break;
         case EXPR_PP: break;
@@ -529,7 +529,7 @@ static resolve_error add_ast_node_decls(
                 public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED;
             str->id = 0; // so members can inc this and we get a member id
             re = add_body_decls(
-                r, st, NULL, ppl, &str->sc.body, members_public_st);
+                r, st, NULL, ppl, &str->sb.sc.body, members_public_st);
             if (re) return re;
             str->id = ast_node_claim_id(r, n, public_st);
             return RE_OK;
@@ -875,6 +875,7 @@ resolve_error overload_applicable(
         return RE_OK;
     }
 }
+
 static inline resolve_error resolve_macro_call(
     resolver* r, expr_macro_call* emc, symbol_table* st, ast_elem** value,
     ast_elem** ctype)
@@ -904,48 +905,48 @@ resolve_error resolve_func_call(
     }
     symbol_table* lt = func_st;
     scope* tgt;
-    while (lt) {
-        symbol** s = symbol_table_lookup(lt, ppl, AM_DEFAULT, func_name);
-        if (!s) {
-            // we use args_st here because thats the scope that the call is
-            // in
-            re = report_unknown_symbol(r, c->lhs, st);
-            break;
+    symbol* sym;
+    bool applicable;
+    symbol** s = symbol_table_lookup(lt, ppl, AM_DEFAULT, func_name);
+    if (s == NULL) {
+        // we use st instead of func_st here because thats the scope that
+        // the call is in
+        sbuffer_remove_back(&r->call_types, c->arg_count * sizeof(ast_elem*));
+        return report_unknown_symbol(r, c->lhs, st);
+    }
+    sym = *s;
+    if (sym->node.kind == SYM_IMPORT_SYMBOL) {
+        re = resolve_ast_node(
+            r, (ast_node*)*s, (**s).declaring_st, (**s).declaring_st->ppl,
+            (ast_elem**)&sym, NULL);
+        if (re) {
+            sbuffer_remove_back(
+                &r->call_types, c->arg_count * sizeof(ast_elem*));
+            return re;
         }
-        symbol* sym = *s;
-        ureg fn_ppl = sym->declaring_st->ppl;
-        bool applicable;
-        while (sym->node.kind == SYM_IMPORT_SYMBOL) {
-            symbol* import_symbol;
-            re = resolve_ast_node(
-                r, (ast_node*)sym, lt, ppl, (ast_elem**)&import_symbol, NULL);
-            sym = import_symbol;
-            if (re) return re;
-        }
-        if (sym->node.kind == SYM_FUNC_OVERLOADED) {
-            sym_func_overloaded* sfo = (sym_func_overloaded*)sym;
-            scope* o = sfo->overloads;
-            while (o) {
-                re = overload_applicable(
-                    r, call_arg_types, c->arg_count, o, ppl, &applicable,
-                    ctype);
-                if (applicable) tgt = o;
-                if (re || applicable) break;
-                o = (scope*)o->sym.next;
-            }
-            if (re || applicable) break;
-        }
-        else if (sym->node.kind == SC_FUNC) {
+    }
+    if (sym->node.kind == SYM_FUNC_OVERLOADED) {
+        sym_func_overloaded* sfo = (sym_func_overloaded*)sym;
+        scope* o = sfo->overloads;
+        while (o) {
             re = overload_applicable(
-                r, call_arg_types, c->arg_count, (scope*)sym, fn_ppl,
-                &applicable, ctype);
-            if (applicable) tgt = (scope*)sym;
+                r, call_arg_types, c->arg_count, o, ppl, &applicable, ctype);
+            if (applicable) tgt = o;
             if (re || applicable) break;
+            o = (scope*)o->sym.next;
         }
-        else {
-            assert(false);
-        }
-        lt = lt->parent;
+    }
+    else if (sym->node.kind == SC_FUNC) {
+        re = overload_applicable(
+            r, call_arg_types, c->arg_count, (scope*)sym, sym->declaring_st,
+            &applicable, ctype);
+        if (applicable) tgt = (scope*)sym;
+    }
+    else {
+        // TODO: generic overload resolution and instantation selection
+        assert(sym->node.kind == SC_FUNC_GENERIC);
+        assert(false);
+        re = RE_FATAL;
     }
     sbuffer_remove_back(&r->call_types, c->arg_count * sizeof(ast_elem*));
     if (!re) {
@@ -963,9 +964,8 @@ resolve_error resolve_func_call(
     }
     return re;
 }
-resolve_error
 
-resolve_call(
+resolve_error resolve_call(
     resolver* r, expr_call* c, symbol_table* st, ureg ppl, ast_elem** ctype)
 {
     if (c->lhs->kind == EXPR_IDENTIFIER) {
@@ -1271,7 +1271,7 @@ resolve_error resolve_param(
     else {
         if (!p->default_value) {
             if (generic) {
-                p->ctype == UNBOUND_GENERIC_ELEM;
+                p->ctype = UNBOUND_GENERIC_ELEM;
             }
             else {
                 assert(false); // would cause a parser error
@@ -1949,7 +1949,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (value) *value = (ast_elem*)n;
             if (ctype) *ctype = VOID_ELEM;
             if (resolved) return RE_OK;
-            return resolve_func(r, (sc_func*)n, ppl, NULL);
+            return resolve_func(r, (sc_func_base*)n, ppl, NULL);
         }
         case SYM_IMPORT_PARENT: {
             if (!resolved) {
@@ -2168,8 +2168,10 @@ static inline resolve_error resolve_ast_node_raw(
         case SYM_GENERIC_PARAM: {
             sym_param* p = (sym_param*)n;
             if (resolved) RETURN_RESOLVED(value, ctype, p, p->ctype);
-            return resolve_param(
-                r, p, (n->kind == SYM_GENERIC_PARAM), ppl, ctype);
+            re =
+                resolve_param(r, p, (n->kind == SYM_GENERIC_PARAM), ppl, ctype);
+            if (value) *value = (ast_elem*)n;
+            return re;
         }
         case ARRAY_DECL: {
             array_decl* ad = (array_decl*)n;
@@ -2508,7 +2510,7 @@ resolve_error resolve_func(
                 re = resolve_param(r, &fnb->params[i], false, ppl, NULL);
                 if (re) {
                     r->curr_block_owner = parent_block_owner;
-                    r->generic_context  = generic_parent;
+                    r->generic_context = generic_parent;
                     return re;
                 }
             }
@@ -2576,7 +2578,7 @@ resolve_error resolve_func(
     pp_resolve_node* bpprn = r->curr_block_pp_node;
     fnb->pprn = bpprn;
     r->curr_block_pp_node = prev_block_pprn;
-    r->generic_context  = generic_parent;
+    r->generic_context = generic_parent;
     if (re) {
         if (re == RE_UNREALIZED_PASTE) {
             assert(bpprn);
@@ -2659,7 +2661,7 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
         case SC_STRUCT: {
             if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             update_id(r, &((sc_struct*)n)->id, id_space);
-            adjust_body_ids(r, id_space, &((sc_struct*)n)->sc.body);
+            adjust_body_ids(r, id_space, &((sc_struct*)n)->sb.sc.body);
         } break;
         case EXPR_PP: {
             adjust_node_ids(r, id_space, ((expr_pp*)n)->pp_expr);
@@ -2925,7 +2927,8 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 progress = true;
                 if (rn->node->kind == SC_FUNC) {
                     re = resolve_func(
-                        r, (sc_func*)rn->node, rn->ppl, rn->continue_block);
+                        r, (sc_func_base*)rn->node, rn->ppl,
+                        rn->continue_block);
                 }
                 else if (rn->node->kind == EXPR_BLOCK) {
                     re = resolve_expr_block(

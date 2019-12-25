@@ -136,6 +136,19 @@ int job_queue_preorder_job(job_queue* jq)
     mutex_unlock(&jq->lock);
     return OK;
 }
+void job_queue_check_waiters(job_queue* jq, ureg break_on_waiter_count)
+{
+    mutex_lock(&jq->lock);
+    if (jq->waiters >= break_on_waiter_count) {
+        jq->jobs = UREG_MAX;
+        mutex_unlock(&jq->lock);
+        cond_var_notify_all(&jq->has_jobs);
+    }
+    else {
+        mutex_unlock(&jq->lock);
+    }
+    return OK;
+}
 void job_queue_stop(job_queue* jq)
 {
     mutex_lock(&jq->lock);
