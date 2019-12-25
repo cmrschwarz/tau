@@ -101,4 +101,10 @@ void resolver_fin(resolver* r);
 int resolver_resolve_and_emit(
     resolver* r, mdg_node** start, mdg_node** end, llvm_module** module);
 ast_elem* get_resolved_ast_node_ctype(ast_node* n);
+
+resolve_error resolve_ast_node(
+    resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
+    ast_elem** ctype);
+ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st);
+ureg claim_symbol_id(resolver* r, symbol* s, bool public_st);
 #endif

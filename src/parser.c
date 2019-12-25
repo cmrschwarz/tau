@@ -2638,6 +2638,7 @@ parse_error parse_struct_decl(
     if (t->kind == TK_BRACKET_OPEN) {
         sg = alloc_perm(p, sizeof(sc_struct_generic));
         if (!sg) return PE_FATAL;
+        sg->instances = NULL;
         // TODO:  sg->pprn = NULL;
         s = (symbol*)sg;
         lx_void(&p->lx);

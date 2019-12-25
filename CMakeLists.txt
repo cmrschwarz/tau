@@ -30,6 +30,7 @@ set(TAUC_C_SRCS
     ./src/ast.c
     ./src/utils/evmap2.c
     ./src/mdg.c
+    ./src/generic_instance_resolution.c
     ./src/mdght.c
     ./src/file_map.c
     ./src/job_queue.c

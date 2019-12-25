@@ -638,15 +638,17 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             if (align) *align = PRIMITIVES[kind].alignment;
             if (size) *size = PRIMITIVES[kind].size;
         } break;
-        case SC_STRUCT: {
-            sc_struct* st = (sc_struct*)e;
-            llvm::Type** tp = lookupTypeRaw(st->id);
+        case SC_STRUCT:
+        case SC_STRUCT_GENERIC_INST: {
+            sc_struct_base* sb = (sc_struct_base*)e;
+            ureg id = id = ((sc_struct*)e)->id;
+            llvm::Type** tp = lookupTypeRaw(id);
             if (*tp) {
                 if (t) *t = *tp;
             }
             else {
-                if (isGlobalID(st->id) && isIDInModule(st->id)) {
-                    _globals_not_to_free.push_back(st->id);
+                if (isGlobalID(id) && isIDInModule(id)) {
+                    _globals_not_to_free.push_back(id);
                 }
                 // PERF: we could steal the array of
                 // elements for our types here this
@@ -655,9 +657,9 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
                 // enough
                 auto members = (llvm::Type**)pool_alloc(
                     &_tc->permmem,
-                    sizeof(llvm::Type*) * st->sb.sc.body.symtab->decl_count);
+                    sizeof(llvm::Type*) * sb->sc.body.symtab->decl_count);
                 ureg memcnt = 0;
-                for (ast_node** i = st->sb.sc.body.elements; *i; i++) {
+                for (ast_node** i = sb->sc.body.elements; *i; i++) {
                     // TODO: usings, static members,
                     // etc.
                     if ((**i).kind == SYM_VAR ||
@@ -1077,9 +1079,10 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         }
         case OSC_MODULE:
         case OSC_EXTEND:
+        case SC_STRUCT_GENERIC:
+            // no codegen required
             assert(!vl);
-            return LLE_OK; // these are handled by the
-                           // osc iterator
+            return LLE_OK;
 
         case SC_STRUCT: return lookupCType((ast_elem*)n, NULL, NULL, NULL);
         case SC_FUNC: return genFunction((sc_func*)n, vl);
@@ -1311,7 +1314,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             lle = genAstNode(ema->lhs, &v, NULL);
             if (lle) return lle;
             auto st = (sc_struct*)ema->target.sym->declaring_st->owning_node;
-            assert(((ast_node*)st)->kind == SC_STRUCT);
+            assert(ast_elem_is_struct((ast_elem*)st));
             ureg align;
             lle = lookupCType((ast_elem*)st, NULL, &align, NULL);
             if (lle) return lle;
@@ -1533,7 +1536,7 @@ llvm_error LLVMBackend::genUnaryOp(
 llvm_error LLVMBackend::genBinaryOp(
     expr_op_binary* b, llvm::Value** vl, llvm::Value** vl_loaded)
 {
-    if (b->op->kind == SC_FUNC) {
+    if (b->op && b->op->kind == SC_FUNC) {
         assert(false); // TODO
     }
     llvm::Value *lhs, *lhs_flat, *rhs;

@@ -8,6 +8,7 @@
 #include "utils/debug_utils.h"
 #include "utils/aseglist.h"
 #include "print_ast.h"
+#include "generic_instance_resolution.h"
 #include <assert.h>
 
 static resolve_error add_body_decls(
@@ -18,9 +19,6 @@ resolve_error resolve_param(
     resolver* r, sym_param* p, bool generic, ureg ppl, ast_elem** ctype);
 resolve_error
 resolve_body(resolver* r, ast_node* block_owner, ast_body* b, ureg ppl);
-static resolve_error resolve_ast_node(
-    resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
-    ast_elem** ctype);
 static inline resolve_error resolve_ast_node_raw(
     resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
     ast_elem** ctype);
@@ -442,7 +440,7 @@ set_parent_symtabs(symbol_table** tgt, symbol_table* parent_st)
         (*tgt)->parent = parent_st;
     }
 }
-static inline ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st)
+ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st)
 {
     if (public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
         r->public_sym_count++;
@@ -452,6 +450,19 @@ static inline ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st)
     }
     return r->id_space++;
 }
+ureg claim_symbol_id(resolver* r, symbol* s, bool public_st)
+{
+    symbol_table* decl_st = symbol_table_skip_metatables(s->declaring_st);
+    ast_elem* on = decl_st->owning_node;
+    if (!ast_flags_get_static(s->node.flags) && ast_elem_is_struct(on)) {
+        // TODO: Traits etc.
+        return ((sc_struct*)decl_st->owning_node)->id++;
+    }
+    else {
+        return ast_node_claim_id(r, (ast_node*)s, public_st);
+    }
+}
+
 static resolve_error add_ast_node_decls(
     resolver* r, symbol_table* st, symbol_table* sst, ureg ppl, ast_node* n,
     bool public_st)
@@ -521,17 +532,29 @@ static resolve_error add_ast_node_decls(
             if (public_st) r->curr_pp_node = NULL;
             return RE_OK;
         }
-        case SC_STRUCT:
-        case SC_TRAIT: {
-            sc_struct* str = (sc_struct*)n;
+        case SC_STRUCT_GENERIC: {
+            sc_struct_generic* sg = (sc_struct_generic*)n;
+            for (ureg i = 0; i < sg->generic_param_count; i++) {
+                re = add_symbol(
+                    r, sg->sb.sc.body.symtab, NULL,
+                    (symbol*)&sg->generic_params[i]);
+                if (re) return re;
+            }
+        } // fallthrough
+        case SC_STRUCT: {
+            sc_struct_base* sb = (sc_struct_base*)n;
             re = add_symbol(r, st, sst, (symbol*)n);
             bool members_public_st =
                 public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED;
-            str->id = 0; // so members can inc this and we get a member id
+            if (n->kind == SC_STRUCT) {
+                sc_struct* s = (sc_struct*)n;
+                s->id = 0; // so members can inc this and we get a member id
+                s->id = ast_node_claim_id(r, n, public_st);
+            }
             re = add_body_decls(
-                r, st, NULL, ppl, &str->sb.sc.body, members_public_st);
+                r, st, NULL, ppl, &sb->sc.body, members_public_st);
             if (re) return re;
-            str->id = ast_node_claim_id(r, n, public_st);
+
             return RE_OK;
         }
         case SC_MACRO:
@@ -647,18 +670,7 @@ static resolve_error add_ast_node_decls(
             re = add_symbol(r, st, sst, (symbol*)n);
             if (re) return re;
             sym_var* v = (sym_var*)n;
-            ast_node_kind owning_kind =
-                symbol_table_skip_metatables(v->sym.declaring_st)
-                    ->owning_node->kind;
-            if (!ast_flags_get_static(n->flags) &&
-                (owning_kind == SC_STRUCT || owning_kind == SC_TRAIT)) {
-                assert(owning_kind == SC_STRUCT); // TODO: generics, traits, etc
-                v->var_id =
-                    ((sc_struct*)v->sym.declaring_st->owning_node)->id++;
-            }
-            else {
-                v->var_id = ast_node_claim_id(r, n, public_st);
-            }
+            v->var_id = claim_symbol_id(r, (symbol*)v, public_st);
             return RE_OK;
         }
         case STMT_PASTE_EVALUATION: {
@@ -1075,10 +1087,13 @@ resolve_error choose_binary_operator_overload(
     if (re) return re;
     re = resolve_ast_node(r, ob->rhs, st, ppl, NULL, &rhs_ctype);
     if (re) return re;
+    if (ob->node.op_kind == OP_ASSIGN) {
+        assert(is_lvalue(ob->lhs)); // TODO: error
+        assert(ctypes_unifiable(lhs_ctype, rhs_ctype)); // TODO: error
+        if (ctype) *ctype = lhs_ctype;
+        return RE_OK;
+    }
     if (lhs_ctype->kind == PRIMITIVE && rhs_ctype->kind == PRIMITIVE) {
-        if (ob->node.op_kind == OP_ASSIGN) {
-            assert(is_lvalue(ob->lhs)); // TODO: error
-        }
         // TODO: proper inbuild operator resolution
         // maybe create a cat_prim_kind and switch over cat'ed lhs and rhs
         ob->op = lhs_ctype;
@@ -1325,7 +1340,7 @@ resolve_error resolve_expr_member_accesss(
     ast_elem* lhs_type;
     resolve_error re = resolve_ast_node(r, ema->lhs, st, ppl, NULL, &lhs_type);
     if (re) return re;
-    if (lhs_type->kind != SC_STRUCT) { // TODO: pointers
+    if (!ast_elem_is_struct_base(lhs_type)) { // TODO: pointers
         // TODO: errror
         assert(false);
         return RE_FATAL;
@@ -1356,9 +1371,7 @@ static inline resolve_error resolve_var(
     ast_elem** ctype)
 {
     resolve_error re;
-    ast_elem* owner = symbol_table_skip_metatables(st)->owning_node;
-    bool public_scope =
-        ast_elem_is_open_scope(owner) || owner->kind == SC_STRUCT;
+    bool public_scope = symbol_table_is_public(st);
     sym_var* prev_var_decl;
     pp_resolve_node* prev_var_pp_node;
     ast_node* prev_var_decl_block_owner;
@@ -2297,6 +2310,10 @@ static inline resolve_error resolve_ast_node_raw(
                 ea->ctype = ((type_array*)lhs_ctype)->ctype_members;
                 RETURN_RESOLVED(value, ctype, NULL, ea->ctype);
             }
+            if (lhs_val->kind == SC_STRUCT_GENERIC) {
+                return resolve_generic_struct(
+                    r, ea, (sc_struct_generic*)lhs_val, st, ppl, value, ctype);
+            }
             assert(false); // TODO operator overloading / generics
             return RE_FATAL;
         }
@@ -2340,7 +2357,7 @@ report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl)
     stack_pop(&r->error_stack);
     error_log_report(r->tc->err_log, e);
 }
-static resolve_error resolve_ast_node(
+resolve_error resolve_ast_node(
     resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
     ast_elem** ctype)
 {
@@ -2658,10 +2675,18 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
             if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             update_id(r, &((sym_var*)n)->var_id, id_space);
         } break;
-        case SC_STRUCT: {
+        case SC_STRUCT:
+        case SC_STRUCT_GENERIC_INST: {
             if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
             update_id(r, &((sc_struct*)n)->id, id_space);
             adjust_body_ids(r, id_space, &((sc_struct*)n)->sb.sc.body);
+        } break;
+        case SC_STRUCT_GENERIC: {
+            sc_struct_generic* sg = (sc_struct_generic*)n;
+            for (sc_struct_generic_inst* sgi = sg->instances; sgi;
+                 sgi = (sc_struct_generic_inst*)sgi->st.sb.sc.sym.next) {
+                adjust_node_ids(r, id_space, (ast_node*)sgi);
+            }
         } break;
         case EXPR_PP: {
             adjust_node_ids(r, id_space, ((expr_pp*)n)->pp_expr);

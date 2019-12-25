@@ -19,7 +19,6 @@ int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
     ast_elem* owning_node, ureg ppl)
 {
-    assert(*tgt == NULL);
     if (!force_unique && decl_count == 0 && using_count == 0) {
         *tgt = NULL;
     }

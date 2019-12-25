@@ -147,7 +147,6 @@ void job_queue_check_waiters(job_queue* jq, ureg break_on_waiter_count)
     else {
         mutex_unlock(&jq->lock);
     }
-    return OK;
 }
 void job_queue_stop(job_queue* jq)
 {

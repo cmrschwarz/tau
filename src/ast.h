@@ -29,6 +29,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
 
     SC_STRUCT,
     SC_STRUCT_GENERIC,
+    SC_STRUCT_GENERIC_INST,
     SC_TRAIT,
     SC_TRAIT_GENERIC,
     SC_FUNC,
@@ -498,15 +499,20 @@ typedef struct sc_struct_s {
     ureg id;
 } sc_struct;
 
+typedef struct sc_struct_generic_inst_s sc_struct_generic_inst;
+
 typedef struct sc_struct_generic_s {
     sc_struct_base sb;
     sym_param* generic_params;
     ureg generic_param_count;
+    sc_struct_generic_inst* instances;
 } sc_struct_generic;
 
 typedef struct sc_struct_generic_inst_s {
-    sc_struct_base sb;
-    ureg id;
+    sc_struct st;
+    ast_elem** generic_vals;
+    ureg generic_val_count;
+    sc_struct_generic* base;
 } sc_struct_generic_inst;
 
 typedef struct sc_trait_s {
@@ -712,6 +718,8 @@ extern primitive PRIMITIVES[];
 
 bool ast_elem_is_open_scope(ast_elem* s);
 bool ast_elem_is_func_base(ast_elem* s);
+bool ast_elem_is_struct_base(ast_elem* s);
+bool ast_elem_is_struct(ast_elem* s);
 bool ast_elem_is_any_import_symbol(ast_elem* s);
 bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
@@ -726,6 +734,7 @@ src_map* ast_node_get_smap(ast_node* n, symbol_table* st);
 void ast_node_get_src_range(
     ast_node* n, symbol_table* st, src_range_large* srl);
 bool ast_body_is_braced(ast_body* b);
+bool symbol_table_is_public(symbol_table* st);
 
 bool is_unary_op_postfix(operator_kind t);
 ast_node* get_parent_body(scope* parent);

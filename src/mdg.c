@@ -146,6 +146,13 @@ static void free_astn_symtabs(ast_node* n)
         // these are parts of a module and therefore already handled
         if (!ast_elem_is_open_scope((ast_elem*)n)) {
             free_body_symtabs(n, &((scope*)n)->body);
+            if (n->kind == SC_STRUCT_GENERIC) {
+                for (sc_struct_generic_inst* sgi =
+                         ((sc_struct_generic*)n)->instances;
+                     sgi; sgi = sgi->st.sb.sc.sym.next) {
+                    free_astn_symtabs(sgi);
+                }
+            }
         }
         return;
     }

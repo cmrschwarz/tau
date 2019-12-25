@@ -74,6 +74,11 @@ bool ast_elem_is_func_base(ast_elem* s)
 {
     return s->kind == SC_FUNC || s->kind == SC_FUNC_GENERIC;
 }
+bool ast_elem_is_struct_base(ast_elem* s)
+{
+    return s->kind == SC_STRUCT || s->kind == SC_STRUCT_GENERIC ||
+           s->kind == SC_STRUCT_GENERIC_INST;
+}
 bool ast_elem_is_any_import_symbol(ast_elem* s)
 {
     return s->kind == SYM_IMPORT_GROUP || s->kind == SYM_IMPORT_MODULE ||
@@ -220,4 +225,13 @@ ast_body* ast_elem_get_body(ast_elem* s)
         default: panic("tried to get body from ast node without body");
     }
     return NULL;
+}
+bool ast_elem_is_struct(ast_elem* s)
+{
+    return s->kind == SC_STRUCT || s->kind == SC_STRUCT_GENERIC_INST;
+}
+bool symbol_table_is_public(symbol_table* st)
+{
+    ast_elem* owner = symbol_table_skip_metatables(st)->owning_node;
+    return ast_elem_is_open_scope(owner) || owner->kind == SC_STRUCT;
 }
