@@ -107,4 +107,5 @@ resolve_error resolve_ast_node(
     ast_elem** ctype);
 ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st);
 ureg claim_symbol_id(resolver* r, symbol* s, bool public_st);
+bool ctypes_unifiable(ast_elem* a, ast_elem* b);
 #endif

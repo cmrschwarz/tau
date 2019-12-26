@@ -94,15 +94,11 @@ resolve_error instantiate_ast_elem(
     }
     return RE_OK;
 }
-
-resolve_error resolve_generic_struct(
+resolve_error instantiate_generic_struct(
     resolver* r, expr_access* ea, sc_struct_generic* sg, symbol_table* st,
     ureg ppl, ast_elem** value, ast_elem** ctype)
 {
     resolve_error re;
-    if (ea->arg_count != sg->generic_param_count) {
-        assert(false); // TODO: error / varargs
-    }
     sc_struct_generic_inst* sgi =
         pool_alloc(&r->tc->permmem, sizeof(sc_struct_generic_inst));
     if (!sgi) return RE_FATAL;
@@ -123,9 +119,36 @@ resolve_error resolve_generic_struct(
     sgi->st.id = claim_symbol_id(
         r, (symbol*)sgi, symbol_table_is_public(sg->sb.sc.sym.declaring_st));
     if (re) return re;
-    sgi->st.sb.sc.sym.next = sg->instances;
+    sgi->st.sb.sc.sym.next = (symbol*)sg->instances;
     sg->instances = sgi;
     if (value) *value = (ast_elem*)sgi;
     if (ctype) *ctype = TYPE_ELEM;
     return RE_OK;
+}
+
+// PERF: create a hashmap for this
+resolve_error resolve_generic_struct(
+    resolver* r, expr_access* ea, sc_struct_generic* sg, symbol_table* st,
+    ureg ppl, ast_elem** value, ast_elem** ctype)
+{
+    if (ea->arg_count != sg->generic_param_count) {
+        assert(false); // TODO: error / varargs
+    }
+    for (sc_struct_generic_inst* sgi = sg->instances; sgi;
+         sgi = (sc_struct_generic_inst*)sgi->st.sb.sc.sym.next) {
+        bool success = true;
+        for (ureg i = 0; i < ea->arg_count; i++) {
+            if (!ctypes_unifiable(
+                    (ast_elem*)ea->args[i], sgi->generic_vals[i])) {
+                success = false;
+                break;
+            }
+        }
+        if (success) {
+            if (value) *value = (ast_elem*)sgi;
+            if (ctype) *ctype = TYPE_ELEM;
+            return RE_OK;
+        }
+    }
+    return instantiate_generic_struct(r, ea, sg, st, ppl, value, ctype);
 }

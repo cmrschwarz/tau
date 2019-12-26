@@ -149,8 +149,9 @@ static void free_astn_symtabs(ast_node* n)
             if (n->kind == SC_STRUCT_GENERIC) {
                 for (sc_struct_generic_inst* sgi =
                          ((sc_struct_generic*)n)->instances;
-                     sgi; sgi = sgi->st.sb.sc.sym.next) {
-                    free_astn_symtabs(sgi);
+                     sgi;
+                     sgi = (sc_struct_generic_inst*)sgi->st.sb.sc.sym.next) {
+                    free_astn_symtabs((ast_node*)sgi);
                 }
             }
         }
