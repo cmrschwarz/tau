@@ -95,8 +95,8 @@ resolve_error instantiate_ast_elem(
     return RE_OK;
 }
 resolve_error instantiate_generic_struct(
-    resolver* r, expr_access* ea, sc_struct_generic* sg, symbol_table* st,
-    ureg ppl, ast_elem** value, ast_elem** ctype)
+    resolver* r, expr_access* ea, ast_elem** args, sc_struct_generic* sg,
+    symbol_table* st, ureg ppl, ast_elem** value, ast_elem** ctype)
 {
     resolve_error re;
     sc_struct_generic_inst* sgi =
@@ -108,11 +108,8 @@ resolve_error instantiate_generic_struct(
         pool_alloc(&r->tc->permmem, sizeof(ast_node*) * ea->arg_count);
     if (!sgi->generic_vals) return RE_FATAL;
     sgi->generic_val_count = ea->arg_count;
-    for (ureg i = 0; i < ea->arg_count; i++) {
-        re = resolve_ast_node(
-            r, ea->args[i], st, ppl, (ast_elem**)&sgi->generic_vals[i], NULL);
-        if (re) return re;
-    }
+    memcpy(sgi->generic_vals, args, sizeof(ast_elem*) * ea->arg_count);
+    sbuffer_remove_back(&r->call_types, sizeof(ast_elem*) * ea->arg_count);
     re = instantiate_body(
         r, (ast_node*)sg, &sg->sb.sc.body, (ast_node*)sgi, &sgi->st.sb.sc.body,
         st, sgi->generic_vals);
@@ -134,12 +131,19 @@ resolve_error resolve_generic_struct(
     if (ea->arg_count != sg->generic_param_count) {
         assert(false); // TODO: error / varargs
     }
+    ast_elem** args =
+        sbuffer_append(&r->call_types, sizeof(ast_elem*) * ea->arg_count);
+    if (!args) return RE_FATAL;
+    resolve_error re;
+    for (ureg i = 0; i < ea->arg_count; i++) {
+        re = resolve_ast_node(r, ea->args[i], st, ppl, &args[i], NULL);
+        if (re) return re;
+    }
     for (sc_struct_generic_inst* sgi = sg->instances; sgi;
          sgi = (sc_struct_generic_inst*)sgi->st.sb.sc.sym.next) {
         bool success = true;
         for (ureg i = 0; i < ea->arg_count; i++) {
-            if (!ctypes_unifiable(
-                    (ast_elem*)ea->args[i], sgi->generic_vals[i])) {
+            if (!ctypes_unifiable(args[i], sgi->generic_vals[i])) {
                 success = false;
                 break;
             }
@@ -150,5 +154,5 @@ resolve_error resolve_generic_struct(
             return RE_OK;
         }
     }
-    return instantiate_generic_struct(r, ea, sg, st, ppl, value, ctype);
+    return instantiate_generic_struct(r, ea, args, sg, st, ppl, value, ctype);
 }

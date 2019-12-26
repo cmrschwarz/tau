@@ -961,6 +961,15 @@ resolve_error resolve_func_call(
         re = RE_FATAL;
     }
     sbuffer_remove_back(&r->call_types, c->arg_count * sizeof(ast_elem*));
+    if (!applicable) {
+        src_range_large srl;
+        ast_node_get_src_range(c->lhs, st, &srl);
+        error_log_report_annotated(
+            r->tc->err_log, ES_RESOLVER, false, "no matching overload",
+            srl.smap, srl.start, srl.end,
+            "no available overload is applicable for the given arguments");
+        return RE_ERROR;
+    }
     if (!re) {
         if (tgt->sym.node.kind == SC_MACRO) {
             c->node.kind = EXPR_NO_BLOCK_MACRO_CALL;
@@ -998,6 +1007,9 @@ resolve_error resolve_call(
         if (re) return re;
         return resolve_func_call(
             r, c, st, ppl, esa->target.name, lhs_st, ctype);
+    }
+    if (c->lhs->kind == EXPR_MEMBER_ACCESS) {
+        // TODO: member functions
     }
     assert(false); // TODO
     return RE_OK;
@@ -1091,6 +1103,7 @@ resolve_error choose_binary_operator_overload(
         assert(is_lvalue(ob->lhs)); // TODO: error
         assert(ctypes_unifiable(lhs_ctype, rhs_ctype)); // TODO: error
         if (ctype) *ctype = lhs_ctype;
+        ob->op = lhs_ctype;
         return RE_OK;
     }
     if (lhs_ctype->kind == PRIMITIVE && rhs_ctype->kind == PRIMITIVE) {

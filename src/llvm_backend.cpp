@@ -50,7 +50,7 @@ int llvm_initialize_primitive_information()
     PRIMITIVES[PT_UINT].size = reg_size;
     PRIMITIVES[PT_INT].size = reg_size;
     PRIMITIVES[PT_FLOAT].size = reg_size;
-    PRIMITIVES[PT_PASTED_EXPR].size = 32;
+    PRIMITIVES[PT_PASTED_EXPR].size = sizeof(pasted_str);
     PRIMITIVES[PT_STRING].size = reg_size;
     PRIMITIVES[PT_BINARY_STRING].size = reg_size;
     PRIMITIVES[PT_VOID].size = 0;
@@ -59,6 +59,7 @@ int llvm_initialize_primitive_information()
         PRIMITIVES[i].alignment = PRIMITIVES[i].size;
     }
     PRIMITIVES[PT_VOID].alignment = 1;
+    PRIMITIVES[PT_PASTED_EXPR].alignment = reg_size;
     return OK;
 }
 
@@ -500,7 +501,8 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
     llvm_error lle;
     if (n->node->kind == EXPR_PP) {
         auto expr = (expr_pp*)n->node;
-        if (ast_flags_get_pp_expr_res_used(expr->node.flags)) {
+        if (ast_flags_get_pp_expr_res_used(expr->node.flags) &&
+            expr->ctype != PASTED_EXPR_ELEM) {
             llvm::Type* ret_type;
             ureg size;
             ureg align;
@@ -1497,18 +1499,28 @@ llvm_error LLVMBackend::genUnaryOp(
     llvm_error lle;
     llvm::Value* child;
     switch (u->node.op_kind) {
-        case OP_POST_INCREMENT: {
+        case OP_POST_INCREMENT:
+        case OP_POST_DECREMENT: {
             llvm::Value* child_loaded;
             lle = genAstNode(u->child, &child, &child_loaded);
             if (lle) return lle;
             if (vl) *vl = child;
             if (vl_loaded) *vl_loaded = child_loaded;
-            llvm::Value* add = _builder.CreateNSWAdd(
-                child_loaded,
-                llvm::ConstantInt::get(_primitive_types[PT_INT], 1));
-            if (!add) return LLE_FATAL;
+            llvm::Value* add_or_sub;
+            if (u->node.op_kind == OP_POST_INCREMENT) {
+                add_or_sub = _builder.CreateNSWAdd(
+                    child_loaded,
+                    llvm::ConstantInt::get(_primitive_types[PT_INT], 1));
+            }
+            else {
+                add_or_sub = _builder.CreateNSWSub(
+                    child_loaded,
+                    llvm::ConstantInt::get(_primitive_types[PT_INT], 1));
+            }
+            if (!add_or_sub) return LLE_FATAL;
             if (!_builder.CreateAlignedStore(
-                    add, child, child->getPointerAlignment(*_data_layout)))
+                    add_or_sub, child,
+                    child->getPointerAlignment(*_data_layout)))
                 return LLE_FATAL;
             return LLE_OK;
         }

@@ -1,0 +1,16 @@
+require "support/libc.tau";
+import libc::(printf);
+
+public func main() -> int{
+    x := #{
+        i := 999;
+        paste("1");
+        loop{
+            if(i == 0)break;
+            paste("+ 1");
+            i--;
+        }
+    };
+    printf("%i\n", x); 
+    return if(x == 1000) 0 else 1;
+}
