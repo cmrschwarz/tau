@@ -21,7 +21,6 @@ typedef void (*thread_function_ptr)(void* context);
 #define THREAD_LOCAL __thread
 #endif
 
-// Threads
 int thread_yield();
 int thread_sleep(ureg microsecs);
 
@@ -29,14 +28,21 @@ int thread_launch(thread* t, thread_function_ptr thread_fn, void* context);
 int thread_join(thread* t);
 int thread_detach(thread* t);
 
-// Mutexes
 int mutex_init(mutex* m);
 bool mutex_try_lock(mutex* m);
 void mutex_lock(mutex* m);
 void mutex_unlock(mutex* m);
 void mutex_fin(mutex* m);
 
-// Condition variables
+int rwlock_init(rwlock* m);
+void rwlock_try_read(rwlock* m);
+void rwlock_begin_read(rwlock* m);
+void rwlock_end_read(mutex* m);
+void rwlock_try_write(rwlock* m);
+void rwlock_begin_write(rwlock* m);
+void rwlock_end_write(rwlock* m);
+void rwlock_fin(mutex* m);
+
 int cond_var_init(cond_var* cv);
 void cond_var_wait(cond_var* cv, mutex* m);
 void cond_var_notify_one(cond_var* cv);

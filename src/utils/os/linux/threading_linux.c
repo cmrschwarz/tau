@@ -27,6 +27,39 @@ void mutex_fin(mutex* m)
     if (pthread_mutex_destroy(m)) panic("mutex deallocation failed");
 }
 
+int rwlock_init(rwlock* m)
+{
+    return pthread_rwlock_init(m, NULL);
+}
+void rwlock_try_read(rwlock* m)
+{
+    return (pthread_rwlock_tryrdlock(m) == 0);
+}
+void rwlock_begin_read(rwlock* m)
+{
+    if (pthread_rwlock_rdlock(m)) panic("rwlock read lock failed");
+}
+void rwlock_end_read(mutex* m)
+{
+    if (pthread_rwlock_unlock(m)) panic("rwlock read unlock failed");
+}
+void rwlock_try_write(rwlock* m)
+{
+    return (pthread_rwlock_trywrlock(m) == 0);
+}
+void rwlock_begin_write(rwlock* m)
+{
+    if (pthread_rwlock_wrlock(m)) panic("rwlock write lock failed");
+}
+void rwlock_end_write(rwlock* m)
+{
+    if (pthread_rwlock_unlock(m)) panic("rwlock write unlock failed");
+}
+void rwlock_fin(mutex* m)
+{
+    if (pthread_mutex_destroy(m)) panic("rwlock deallocation failed");
+}
+
 int cond_var_init(cond_var* cv)
 {
     return pthread_cond_init(cv, NULL);
