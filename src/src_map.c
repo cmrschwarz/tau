@@ -265,7 +265,7 @@ void src_range_unpack_lines(src_range r, ureg* start, ureg* end)
 void src_map_print_path(src_map* smap, bool to_stderr)
 {
     if (smap->source->kind == ELEM_SRC_FILE) {
-        src_file_print_path(((src_file*)smap->source), to_stderr);
+        file_map_head_print_path(((file_map_head*)smap->source), to_stderr);
         return;
     }
     assert(ast_elem_is_paste_evaluation(smap->source));
@@ -300,15 +300,15 @@ int src_map_open(src_map* smap)
         src_file* f = (src_file*)smap->source;
         assert(!f->file_stream);
         char pathbuff[256];
-        ureg pathlen = src_file_get_path_len(f);
+        ureg pathlen = file_map_head_get_path_len(&f->head);
         char* path;
         if (pathlen < 256) {
-            src_file_write_path(f, pathbuff);
+            file_map_head_write_path(&f->head, pathbuff);
             path = pathbuff;
         }
         else {
             path = tmalloc(pathlen + 1);
-            src_file_write_path(f, pathbuff);
+            file_map_head_write_path(&f->head, pathbuff);
         }
         f->file_stream = fopen(path, "r");
         if (path != pathbuff) tfree(path);

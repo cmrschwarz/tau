@@ -356,7 +356,7 @@ void printFileIOError(master_error_log* mel, src_file* f)
         mel, ANSICOLOR_RED ANSICOLOR_BOLD,
         "reporting error: ", ANSICOLOR_CLEAR);
     pe("file IO error prevents giving error context in '");
-    src_file_print_path(f, true);
+    file_map_head_print_path(&f->head, true);
     pe("'\n");
 }
 void printAllocationError(master_error_log* mel)

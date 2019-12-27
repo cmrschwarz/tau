@@ -131,7 +131,9 @@ void llvm_free_module(llvm_module* mod)
 {
     delete (LLVMModule*)mod;
 }
-int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
+int llvm_link_modules(
+    llvm_module** start, llvm_module** end, char** libs_start, char** libs_end,
+    char* output_path)
 {
     tprintf("linking {");
     for (LLVMModule** n = (LLVMModule**)start; !ptreq(n, end); n++) {
@@ -141,13 +143,13 @@ int llvm_link_modules(llvm_module** start, llvm_module** end, char* output_path)
     tput("} ");
     llvm_error lle;
     TIME(lle = linkLLVMModules(
-             (LLVMModule**)start, (LLVMModule**)end, output_path););
+             (LLVMModule**)start, (LLVMModule**)end, libs_start, libs_end,
+             output_path););
     tflush();
     if (lle) return ERR;
     return OK;
 }
-} // CPP
-static inline void link_dll(PPRunner* pp, const char* path)
+static inline llvm_error link_dll(PPRunner* pp, const char* path)
 {
 
     auto l = llvm::orc::DynamicLibrarySearchGenerator::Load(path, '\0');
@@ -159,10 +161,12 @@ static inline void link_dll(PPRunner* pp, const char* path)
     /* exec_session.getMainJITDylib().define(llvm::orc::absoluteSymbols(
         {{"puts", llvm::orc::pointerToJITTargetAddress(&puts)},
          {"printf", llvm::orc::pointerToJITTargetAddress(&printf)}}));*/
+    return LLE_OK;
 }
-static inline void link_lib(PPRunner* pp, const char* path)
+static inline llvm_error link_lib(PPRunner* pp, const char* path)
 {
     auto& dl = pp->exec_session.createJITDylib(path);
+    // TODO: throw am error the file doesnt exist
     auto file{std::move(llvm::MemoryBuffer::getFile(path).get())};
     auto err = pp->obj_link_layer.add(
         dl, std::move(file), pp->exec_session.allocateVModule());
@@ -170,7 +174,19 @@ static inline void link_lib(PPRunner* pp, const char* path)
         llvm::errs() << err << "\n";
         assert(false);
     }
+    return LLE_OK;
 }
+llvm_error llvm_backend_link_for_pp(bool is_dynamic, char* path)
+{
+    if (is_dynamic) {
+        return link_dll(PP_RUNNER, path);
+    }
+    else {
+        return link_lib(PP_RUNNER, path);
+    }
+}
+} // CPP
+
 PPRunner::PPRunner()
     : exec_session(),
       obj_link_layer(
@@ -1914,7 +1930,9 @@ llvm_error LLVMBackend::emitModule()
     if (!lle && _tc->t->emit_ll) lle = emitModuleIR();
     if (!lle && _tc->t->emit_asm) lle = emitModuleToFile(TLII.get(), true);
     if (!_pp_mode) {
-        if (!lle && _tc->t->emit_exe) lle = emitModuleToFile(TLII.get(), false);
+        if (!lle && (_tc->t->emit_exe || _tc->t->emit_objs)) {
+            lle = emitModuleToFile(TLII.get(), false);
+        }
     }
     bool emit_to_pp = false;
     ;
@@ -1941,19 +1959,18 @@ llvm_error LLVMBackend::emitModule()
     }
     return lle;
 }
-llvm_error
-linkLLVMModules(LLVMModule** start, LLVMModule** end, char* output_path)
+llvm_error linkLLVMModules(
+    LLVMModule** start, LLVMModule** end, char** libs_start, char** libs_end,
+    char* output_path)
 {
     // ureg args_count = 10 + (end - start);
     std::vector<const char*> args;
     args.push_back(""); // argv[0] -> programm location, ignored
     args.push_back("--dynamic-linker");
-    args.push_back("/lib64/ld-linux-x86-64.so.2");
-    args.push_back("/usr/lib/x86_64-linux-gnu/crt1.o");
-    args.push_back("/usr/lib/x86_64-linux-gnu/crti.o");
-    args.push_back("/usr/lib/x86_64-linux-gnu/crtn.o");
-    args.push_back("/lib/x86_64-linux-gnu/libc.so.6");
-    args.push_back("/usr/lib/x86_64-linux-gnu/libc_nonshared.a");
+    // TODO: do this properly
+    for (char** i = libs_start; i != libs_end; i++) {
+        args.push_back(*i);
+    }
     for (LLVMModule** i = start; i != end; i++) {
         args.push_back((**i).module_obj.c_str());
     }

@@ -8,6 +8,7 @@
 #include "utils/rwslock.h"
 #include "utils/string.h"
 #include "utils/threading.h"
+#include "utils/ptrlist.h"
 #include <stdio.h>
 
 typedef struct tauc_s tauc;
@@ -53,11 +54,13 @@ typedef struct src_lib_s {
     aseglist requiring_modules;
     atomic_boolean loaded;
     atomic_boolean loaded_for_pp;
+    bool dynamic;
 } src_lib;
 
-void src_file_print_path(src_file* f, bool to_stderr);
-ureg src_file_get_path_len(src_file* f);
-void src_file_write_path(src_file* f, char* tgt);
+void file_map_head_print_path(file_map_head* f, bool to_stderr);
+ureg file_map_head_get_path_len(file_map_head* h);
+void file_map_head_write_path(file_map_head* h, char* tgt);
+char* file_map_head_tmalloc_path(file_map_head* h);
 
 int src_file_start_parse(src_file* f, thread_context* tc);
 int src_file_done_parsing(src_file* f, thread_context* tc);
@@ -66,6 +69,10 @@ int src_file_done_parsing(src_file* f, thread_context* tc);
 int src_file_require(
     src_file* f, tauc* t, src_map* requiring_smap, src_range requiring_srange,
     mdg_node* n);
+
+int src_lib_require(
+    src_lib* l, tauc* t, src_map* requiring_smap, src_range requiring_srange,
+    bool in_pp);
 
 typedef struct file_map_s {
     file_map_head** table_start;
@@ -77,6 +84,7 @@ typedef struct file_map_s {
     mutex lock;
     pool file_mem_pool;
     pool string_mem_pool;
+    ptrlist rt_src_libs;
 } file_map;
 
 typedef struct file_map_iterator_s {
@@ -95,4 +103,6 @@ void file_map_fin(file_map* fm);
 src_file*
 file_map_get_file_from_path(file_map* fm, src_dir* parent, string path);
 src_dir* file_map_get_dir_from_path(file_map* fm, src_dir* parent, string path);
+src_lib* file_map_get_lib_from_path(
+    file_map* fm, src_dir* parent, string path, bool is_dynamic);
 #endif

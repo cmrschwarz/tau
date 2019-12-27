@@ -26,6 +26,7 @@ bool atomic_boolean_load_flat(atomic_boolean* a);
 void atomic_boolean_store(atomic_boolean* a, bool value);
 void atomic_boolean_store_flat(atomic_boolean* a, bool value);
 bool atomic_boolean_cas(atomic_boolean* a, bool* oldval, bool newval);
+bool atomic_boolean_swap(atomic_boolean* a, bool newval);
 void atomic_boolean_fin(atomic_boolean* a);
 
 int atomic_ureg_init(atomic_ureg* a, ureg value);

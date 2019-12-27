@@ -834,8 +834,8 @@ int mdg_node_add_osc(mdg_node* n, open_scope* osc, tauc* t)
     if (needed) {
         file_require* r = osc->requires;
         while (*(void**)r && !r->handled) {
-            src_file_require(
-                r->file, t, open_scope_get_smap(osc), r->srange, n);
+            file_map_head_require(
+                r->fmh, t, open_scope_get_smap(osc), r->srange, n, r->in_ppl);
             r++;
         }
     }
@@ -904,8 +904,9 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
                 if (!osc) break;
                 file_require* r = osc->requires;
                 while (*(void**)r) {
-                    src_file_require(
-                        r->file, tc->t, open_scope_get_smap(osc), r->srange, n);
+                    file_map_head_require(
+                        r->fmh, tc->t, open_scope_get_smap(osc), r->srange, n,
+                        r->in_ppl);
                     r++;
                 }
             }

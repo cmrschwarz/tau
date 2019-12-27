@@ -199,10 +199,11 @@ typedef struct ast_node_s {
 } ast_node;
 
 typedef struct file_require_s {
-    file_map_head* file;
+    file_map_head* fmh;
     src_range srange;
     bool handled;
     bool is_extern;
+    bool in_ppl;
 } file_require;
 
 typedef struct symbol_s {

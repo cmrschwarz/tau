@@ -36,6 +36,8 @@ llvm_error llvm_backend_reserve_symbols(
 llvm_error llvm_backend_run_pp(
     llvm_backend* llvmb, ureg private_sym_count, ptrlist* resolve_nodes);
 
+llvm_error llvm_backend_link_for_pp(bool is_dynamic, char* path);
+
 void llvm_backend_remap_local_id(llvm_backend* llvmb, ureg old_id, ureg new_id);
 
 llvm_error llvm_backend_emit_module(
@@ -44,7 +46,8 @@ llvm_error llvm_backend_emit_module(
 void llvm_free_module(llvm_module* mod);
 
 int llvm_link_modules(
-    llvm_module** start, llvm_module** end, char* output_path);
+    llvm_module** start, llvm_module** end, char** libs_start, char** libs_end,
+    char* output_path);
 
 int llvm_delete_objs(llvm_module** start, llvm_module** end);
 

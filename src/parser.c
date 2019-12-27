@@ -2191,9 +2191,8 @@ parse_error parser_parse_file(parser* p, job_parse* j)
                 srl.end, "required here");
         }
         else {
-            char* file_path = tmalloc(src_file_get_path_len(j->file) + 1);
+            char* file_path = file_map_head_tmalloc_path(&j->file->head);
             if (!file_path) return PE_FATAL;
-            src_file_write_path(j->file, file_path);
             char* msg = error_log_cat_strings_3(
                 p->lx.tc->err_log, "the requirested file \"", file_path,
                 "\" doesn't exist");
@@ -2776,12 +2775,16 @@ parse_error parse_module_frame_decl(
         if (r) return RE_FATAL;
     }
     mdg_node_add_osc(mdgn, (open_scope*)md, p->lx.tc->t);
-    if (*(void**)md->requires == NULL) {
-        if (mdg_node_file_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc))
-            return PE_FATAL;
-        // if (mdg_node_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc)) return
-        // PE_FATAL;
+    rwslock_read(&mdgn->stage_lock);
+    int r = OK;
+    if (atomic_ureg_load(&mdgn->unparsed_files) == 1) {
+        rwslock_end_read(&mdgn->stage_lock);
+        r = mdg_node_file_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc);
     }
+    else {
+        rwslock_end_read(&mdgn->stage_lock);
+    }
+    if (r) return RE_FATAL;
     return PE_OK; // consider PE_NO_STMT
 }
 parse_error parse_trait_decl(
@@ -3261,8 +3264,11 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     }
     PEEK(p, t);
     bool is_extern = false;
-    if (t->kind == TK_KW_EXTERN) {
+    bool is_dynamic = false;
+    if (t->kind == TK_KW_STATIC || t->kind == TK_KW_DYNAMIC) {
         is_extern = true;
+        is_dynamic = t->kind == TK_KW_DYNAMIC;
+        lx_void(&p->lx);
         PEEK(p, t);
     }
     if (t->kind != TK_STRING) {
@@ -3274,6 +3280,8 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     }
     file_require rq;
     rq.is_extern = is_extern;
+    rq.in_ppl = p->ppl != 0;
+    rq.handled = false;
     rq.srange = src_range_pack_lines(p->lx.tc, start, t->end);
     if (rq.srange == SRC_RANGE_INVALID) return PE_FATAL;
     rwslock_read(&p->current_module->stage_lock);
@@ -3282,7 +3290,7 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     if (!is_extern) {
         src_file* f = file_map_get_file_from_path(
             &p->lx.tc->t->filemap, p->current_file->head.parent, t->str);
-        rq.file = f;
+        rq.fmh = (file_map_head*)f;
         if (needed) {
             int r = src_file_require(
                 f, p->lx.tc->t, p->lx.smap, rq.srange, p->current_module);
@@ -3290,7 +3298,15 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
         }
     }
     else {
-        assert(false);
+        src_lib* l = file_map_get_lib_from_path(
+            &p->lx.tc->t->filemap, p->current_file->head.parent, t->str,
+            is_dynamic);
+        rq.fmh = (file_map_head*)l;
+        if (needed) {
+            int r = src_lib_require(
+                l, p->lx.tc->t, p->lx.smap, rq.srange, rq.in_ppl);
+            if (r == ERR) return PE_FATAL;
+        }
     }
     lx_void(&p->lx);
     PEEK(p, t);

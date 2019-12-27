@@ -57,6 +57,10 @@ bool atomic_boolean_cas(atomic_boolean* a, bool* oldval, bool newval)
 {
     return atomic_compare_exchange_weak(&a->val, oldval, newval);
 }
+bool atomic_boolean_swap(atomic_boolean* a, bool newval)
+{
+    return atomic_exchange(&a->val, newval);
+}
 void atomic_boolean_fin(atomic_boolean* a)
 {
 }
