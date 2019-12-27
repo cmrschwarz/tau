@@ -3260,6 +3260,11 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
         return PE_ERROR;
     }
     PEEK(p, t);
+    bool is_extern = false;
+    if (t->kind == TK_KW_EXTERN) {
+        is_extern = true;
+        PEEK(p, t);
+    }
     if (t->kind != TK_STRING) {
         parser_error_2a(
             p, "unexpected token", t->start, t->end,
@@ -3267,28 +3272,33 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
             "in this require statement");
         return PE_ERROR;
     }
-    src_file* f = file_map_get_file_from_relative_path(
-        &p->lx.tc->t->filemap, p->current_file->head.parent, t->str);
+    file_require rq;
+    rq.is_extern = is_extern;
+    rq.srange = src_range_pack_lines(p->lx.tc, start, t->end);
+    if (rq.srange == SRC_RANGE_INVALID) return PE_FATAL;
+    rwslock_read(&p->current_module->stage_lock);
+    bool needed = (p->current_module->stage != MS_UNNEEDED);
+    rwslock_end_read(&p->current_module->stage_lock);
+    if (!is_extern) {
+        src_file* f = file_map_get_file_from_path(
+            &p->lx.tc->t->filemap, p->current_file->head.parent, t->str);
+        rq.file = f;
+        if (needed) {
+            int r = src_file_require(
+                f, p->lx.tc->t, p->lx.smap, rq.srange, p->current_module);
+            if (r == ERR) return PE_FATAL;
+        }
+    }
+    else {
+        assert(false);
+    }
     lx_void(&p->lx);
     PEEK(p, t);
     if (t->kind != TK_SEMICOLON) {
         report_missing_semicolon(p, start, end);
         return PE_ERROR;
     }
-    file_require rq;
-    rq.file = f;
-    rq.srange = src_range_pack_lines(p->lx.tc, start, t->end);
-    if (rq.srange == SRC_RANGE_INVALID) return PE_FATAL;
-    end = t->end;
     lx_void(&p->lx);
-    rwslock_read(&p->current_module->stage_lock);
-    bool needed = (p->current_module->stage != MS_UNNEEDED);
-    rwslock_end_read(&p->current_module->stage_lock);
-    if (needed) {
-        int r = src_file_require(
-            f, p->lx.tc->t, p->lx.smap, rq.srange, p->current_module);
-        if (r == ERR) return PE_FATAL;
-    }
     rq.handled = needed;
     int r = list_builder_add_block(&p->lx.tc->listb, &rq, sizeof(rq));
     if (r) return PE_FATAL;

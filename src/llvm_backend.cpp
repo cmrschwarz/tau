@@ -643,7 +643,7 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
             sc_struct_base* sb = (sc_struct_base*)e;
-            ureg id = id = ((sc_struct*)e)->id;
+            ureg id = ((sc_struct*)e)->id;
             llvm::Type** tp = lookupTypeRaw(id);
             if (*tp) {
                 if (t) *t = *tp;

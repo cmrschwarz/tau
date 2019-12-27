@@ -96,7 +96,7 @@ int handle_cmd_args(
         if (arg[0] != '-') {
             *files_found = true;
             src_file* f = file_map_get_file_from_path(
-                &t->filemap, string_from_cstr(argv[i]));
+                &t->filemap, NULL, string_from_cstr(argv[i]));
             if (!f) {
                 tauc_error_occured(t, ERR);
                 return ERR;

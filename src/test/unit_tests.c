@@ -147,17 +147,18 @@ int file_map_test()
     int res = ERR;
     file_map fm;
     if (file_map_init(&fm)) return ERR;
-    src_file* f =
-        file_map_get_file_from_path(&fm, string_from_cstr("/foo/bar/baz.tau"));
-    src_file* g =
-        file_map_get_file_from_path(&fm, string_from_cstr("/foo/bar/baz.tau"));
+    src_file* f = file_map_get_file_from_path(
+        &fm, NULL, string_from_cstr("/foo/bar/baz.tau"));
+    src_file* g = file_map_get_file_from_path(
+        &fm, NULL, string_from_cstr("/foo/bar/baz.tau"));
     if (f != g) goto err;
     if (string_cmp_cstr(f->head.name, "baz.tau")) goto err;
     src_dir* p = f->head.parent;
     if (string_cmp_cstr(p->head.name, "bar")) goto err;
     src_dir* p2 = p->head.parent;
     if (string_cmp_cstr(p2->head.name, "foo")) goto err;
-    if (file_map_get_dir(&fm, p2, string_from_cstr("bar")) != p) goto err;
+    if (file_map_get_dir_from_path(&fm, NULL, string_from_cstr("bar")) != p)
+        goto err;
     src_dir* p3 = p2->head.parent;
     if (string_cmp_cstr(p3->head.name, "")) goto err;
     res = OK;

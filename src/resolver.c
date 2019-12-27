@@ -1009,7 +1009,18 @@ resolve_error resolve_call(
             r, c, st, ppl, esa->target.name, lhs_st, ctype);
     }
     if (c->lhs->kind == EXPR_MEMBER_ACCESS) {
-        // TODO: member functions
+        expr_member_access* esa = (expr_member_access*)c->lhs;
+        ast_elem* esa_lhs;
+        symbol_table* lhs_st;
+        resolve_error re =
+            resolve_ast_node(r, esa->lhs, st, ppl, &esa_lhs, NULL);
+        if (re) return re;
+        access_modifier am = AM_DEFAULT;
+        assert(ast_elem_is_struct(esa_lhs)); // TODO: error
+        re = get_resolved_symbol_symtab(r, (symbol*)esa_lhs, &am, &lhs_st);
+        if (re) return re;
+        return resolve_func_call(
+            r, c, st, ppl, esa->target.name, lhs_st, ctype);
     }
     assert(false); // TODO
     return RE_OK;

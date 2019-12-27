@@ -8,6 +8,7 @@ const char* token_strings[255] = {
     [TK_KW_MACRO] = "macro",
     [TK_KW_PASTE] = "paste",
     [TK_KW_EXTEND] = "extend",
+    [TK_KW_EXTERN] = "extern",
     [TK_KW_REQUIRE] = "require",
     [TK_KW_IMPORT] = "import",
     [TK_KW_INCLUDE] = "include",

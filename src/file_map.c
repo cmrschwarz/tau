@@ -27,6 +27,7 @@ static inline bool file_map_head_is_dir(file_map_head* h)
     assert(h->elem.kind == ELEM_SRC_FILE || h->elem.kind == ELEM_SRC_DIR);
     return h->elem.kind == ELEM_SRC_DIR;
 }
+
 static inline void file_map_head_fin(file_map_head* h)
 {
 }
@@ -80,7 +81,9 @@ file_map_head* file_map_iterator_next(file_map_iterator* it)
 static inline int
 src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
 {
-    int r = rwslock_init(&f->stage_lock);
+    int r = file_map_head_init(f, fm, parent, name, ELEM_SRC_FILE);
+    if (r) return r;
+    r = rwslock_init(&f->stage_lock);
     if (r) return ERR;
 
     r = aseglist_init(&f->requiring_modules);
@@ -88,7 +91,6 @@ src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
         rwslock_fin(&f->stage_lock);
         return ERR;
     }
-    r = file_map_head_init(&f->head, fm, parent, name, ELEM_SRC_FILE);
     if (r) {
         aseglist_fin(&f->requiring_modules);
         rwslock_fin(&f->stage_lock);
@@ -97,6 +99,12 @@ src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
     f->stage = SFS_UNNEEDED;
     f->file_stream = NULL;
     return OK;
+}
+
+static inline int
+src_dir_init(src_dir* d, file_map* fm, src_dir* parent, string name)
+{
+    return file_map_head_init(d, fm, parent, name, ELEM_SRC_DIR);
 }
 
 int src_file_require(
@@ -138,12 +146,6 @@ static inline void src_file_fin(src_file* f)
     file_map_head_fin(&f->head);
     aseglist_fin(&f->requiring_modules);
     rwslock_fin(&f->stage_lock);
-}
-
-static inline int
-src_dir_init(src_dir* d, file_map* fm, src_dir* parent, string name)
-{
-    return file_map_head_init(&d->head, fm, parent, name, ELEM_SRC_DIR);
 }
 
 static inline void src_dir_fin(src_dir* d)
@@ -269,8 +271,9 @@ void file_map_fin(file_map* fm)
     pool_fin(&fm->string_mem_pool);
     pool_fin(&fm->file_mem_pool);
 }
+
 static inline file_map_head**
-file_map_get_head_unlocked(file_map* fm, src_dir* parent, string name)
+file_map_get_head(file_map* fm, src_dir* parent, string name)
 {
     ureg hash = fnv_hash_pointer(FNV_START_HASH, parent);
     hash = fnv_hash_string(hash, name);
@@ -282,6 +285,7 @@ file_map_get_head_unlocked(file_map* fm, src_dir* parent, string name)
         pos = &(**pos).next;
     }
 }
+
 static inline int file_map_grow(file_map* fm)
 {
     ureg capacity_new = 2 * (fm->table_end - fm->table_start);
@@ -301,7 +305,7 @@ static inline int file_map_grow(file_map* fm)
     for (file_map_head** i = old_start; i != old_end; i++) {
         file_map_head* next = *i;
         while (next) {
-            *file_map_get_head_unlocked(fm, next->parent, next->name) = next;
+            *file_map_get_head(fm, next->parent, next->name) = next;
             next = next->next;
         }
     }
@@ -309,19 +313,20 @@ static inline int file_map_grow(file_map* fm)
     tfree(old_start);
     return OK;
 }
-static inline src_file*
-file_map_get_file_unlocked(file_map* fm, src_dir* parent, string name)
+
+static inline src_file* file_map_get_file_from_head(
+    file_map* fm, file_map_head** head, src_dir* parent, string name)
 {
-    src_file** fp = (src_file**)file_map_get_head_unlocked(fm, parent, name);
-    if (*fp) {
-        src_file* f = *fp;
-        return f;
+    if (!head) return NULL;
+    if (*head) {
+        assert((**head).elem.kind == ELEM_SRC_FILE);
+        return (src_file*)*head;
     }
     src_file* f = pool_alloc(&fm->file_mem_pool, sizeof(src_file));
     if (!f) return NULL;
     int r = src_file_init(f, fm, parent, name);
     if (r) return NULL;
-    *fp = f;
+    *head = (file_map_head*)f;
     fm->elem_count++;
     if (fm->elem_count == fm->grow_on_elem_count) {
         if (file_map_grow(fm)) {
@@ -331,24 +336,20 @@ file_map_get_file_unlocked(file_map* fm, src_dir* parent, string name)
     }
     return f;
 }
-src_file* file_map_get_file(file_map* fm, src_dir* parent, string name)
-{
-    mutex_lock(&fm->lock);
-    src_file* f = file_map_get_file_unlocked(fm, parent, name);
-    mutex_unlock(&fm->lock);
-    return f;
-}
 
-static inline src_dir*
-file_map_get_dir_unlocked(file_map* fm, src_dir* parent, string name)
+static inline src_dir* file_map_get_dir_from_head(
+    file_map* fm, file_map_head** head, src_dir* parent, string name)
 {
-    src_dir** dirp = (src_dir**)file_map_get_head_unlocked(fm, parent, name);
-    if (*dirp) return *dirp;
+    if (!head) return NULL;
+    if (*head) {
+        assert((**head).elem.kind == ELEM_SRC_DIR);
+        return (src_dir*)*head;
+    }
     src_dir* dir = pool_alloc(&fm->file_mem_pool, sizeof(src_dir));
     if (!dir) return NULL;
     int r = src_dir_init(dir, fm, parent, name);
     if (r) return NULL;
-    *dirp = dir;
+    *head = (file_map_head*)dir;
     fm->elem_count++;
     if (fm->elem_count == fm->grow_on_elem_count) {
         if (file_map_grow(fm)) {
@@ -358,17 +359,11 @@ file_map_get_dir_unlocked(file_map* fm, src_dir* parent, string name)
     }
     return dir;
 }
-src_dir* file_map_get_dir(file_map* fm, src_dir* parent, string name)
+
+file_map_head** file_map_get_head_from_path_unlocked(
+    file_map* fm, src_dir* parent_dir, string path, string* name,
+    src_dir** parent)
 {
-    mutex_lock(&fm->lock);
-    src_dir* d = file_map_get_dir_unlocked(fm, parent, name);
-    mutex_unlock(&fm->lock);
-    return d;
-}
-src_file* file_map_get_file_from_relative_path(
-    file_map* fm, src_dir* parent_dir, string path)
-{
-    mutex_lock(&fm->lock);
     char* curr_start = path.start;
     char* curr_end = path.start;
     while (true) {
@@ -379,22 +374,44 @@ src_file* file_map_get_file_from_relative_path(
             string x;
             x.start = curr_start;
             x.end = curr_end;
-            mutex_unlock(&fm->lock);
-            return file_map_get_file_unlocked(fm, parent_dir, x);
+            *name = x;
+            *parent = parent_dir;
+            return file_map_get_head(fm, parent_dir, x);
         }
         string x;
         x.start = curr_start;
         x.end = curr_end;
-        parent_dir = file_map_get_dir_unlocked(fm, parent_dir, x);
+        parent_dir = file_map_get_dir_from_head(
+            fm, file_map_get_head(fm, parent_dir, x), parent_dir, x);
         if (!parent_dir) {
-            mutex_unlock(&fm->lock);
             return NULL;
         }
         curr_end++;
         curr_start = curr_end;
     }
 }
-src_file* file_map_get_file_from_path(file_map* fm, string path)
+
+src_file*
+file_map_get_file_from_path(file_map* fm, src_dir* parent, string path)
 {
-    return file_map_get_file_from_relative_path(fm, NULL, path);
+    mutex_lock(&fm->lock);
+    string name;
+    src_dir* p;
+    file_map_head** head =
+        file_map_get_head_from_path_unlocked(fm, parent, path, &name, &p);
+    src_file* f = file_map_get_file_from_head(fm, head, p, name);
+    mutex_unlock(&fm->lock);
+    return f;
+}
+
+src_dir* file_map_get_dir_from_path(file_map* fm, src_dir* parent, string path)
+{
+    mutex_lock(&fm->lock);
+    string name;
+    src_dir* p;
+    file_map_head** head =
+        file_map_get_head_from_path_unlocked(fm, parent, path, &name, &p);
+    src_dir* f = file_map_get_dir_from_head(fm, head, p, name);
+    mutex_unlock(&fm->lock);
+    return f;
 }

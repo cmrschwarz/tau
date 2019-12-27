@@ -17,6 +17,7 @@
 typedef struct mdg_node_s mdg_node;
 typedef struct pp_resolve_node_s pp_resolve_node;
 typedef struct src_file_s src_file;
+typedef struct file_map_head_s file_map_head;
 typedef struct type_array_s type_array;
 typedef struct sc_func_s sc_func;
 
@@ -99,6 +100,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     TYPE_TUPLE,
     ELEM_MDG_NODE,
     ELEM_SRC_FILE,
+    ELEM_SRC_LIB,
     ELEM_SRC_DIR,
 } ast_node_kind;
 
@@ -197,9 +199,10 @@ typedef struct ast_node_s {
 } ast_node;
 
 typedef struct file_require_s {
-    src_file* file;
+    file_map_head* file;
     src_range srange;
     bool handled;
+    bool is_extern;
 } file_require;
 
 typedef struct symbol_s {

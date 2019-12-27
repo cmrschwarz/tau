@@ -48,6 +48,13 @@ typedef struct src_file_s {
     FILE* file_stream;
 } src_file;
 
+typedef struct src_lib_s {
+    file_map_head head;
+    aseglist requiring_modules;
+    atomic_boolean loaded;
+    atomic_boolean loaded_for_pp;
+} src_lib;
+
 void src_file_print_path(src_file* f, bool to_stderr);
 ureg src_file_get_path_len(src_file* f);
 void src_file_write_path(src_file* f, char* tgt);
@@ -85,11 +92,7 @@ file_map_head* file_map_iterator_next(file_map_iterator* it);
 int file_map_init(file_map* fm);
 void file_map_fin(file_map* fm);
 
-src_file* file_map_get_file(file_map* fm, src_dir* parent, string name);
-src_file* file_map_get_file_from_path(file_map* fm, string path);
-src_file* file_map_get_file_from_relative_path(
-    file_map* fm, src_dir* parent_dir, string path);
-
-src_dir* file_map_get_dir(file_map* fm, src_dir* parent, string name);
-
+src_file*
+file_map_get_file_from_path(file_map* fm, src_dir* parent, string path);
+src_dir* file_map_get_dir_from_path(file_map* fm, src_dir* parent, string path);
 #endif
