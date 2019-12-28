@@ -46,7 +46,7 @@ llvm_error llvm_backend_emit_module(
 void llvm_free_module(llvm_module* mod);
 
 int llvm_link_modules(
-    llvm_module** start, llvm_module** end, char** libs_start, char** libs_end,
+    llvm_module** start, llvm_module** end, ptrlist* link_libs,
     char* output_path);
 
 int llvm_delete_objs(llvm_module** start, llvm_module** end);

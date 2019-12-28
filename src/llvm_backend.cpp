@@ -84,7 +84,7 @@ void llvm_backend_run_paste(LLVMBackend* llvmb, expr_pp* tgt, char* str)
     pstr->str = paste_str;
     *tgt->result_buffer.paste_result.last_next = pstr;
     tgt->result_buffer.paste_result.last_next = &pstr->next;
-    printf("pasted '%s'\n", str);
+    // printf("pasted '%s'\n", str);
 }
 
 void llvm_backend_delete(llvm_backend* llvmb)
@@ -132,7 +132,7 @@ void llvm_free_module(llvm_module* mod)
     delete (LLVMModule*)mod;
 }
 int llvm_link_modules(
-    llvm_module** start, llvm_module** end, char** libs_start, char** libs_end,
+    llvm_module** start, llvm_module** end, ptrlist* link_libs,
     char* output_path)
 {
     tprintf("linking {");
@@ -143,8 +143,7 @@ int llvm_link_modules(
     tput("} ");
     llvm_error lle;
     TIME(lle = linkLLVMModules(
-             (LLVMModule**)start, (LLVMModule**)end, libs_start, libs_end,
-             output_path););
+             (LLVMModule**)start, (LLVMModule**)end, link_libs, output_path););
     tflush();
     if (lle) return ERR;
     return OK;
@@ -158,9 +157,6 @@ static inline llvm_error link_dll(PPRunner* pp, const char* path)
         assert(false);
     }
     pp->exec_session.getMainJITDylib().setGenerator(l.get());
-    /* exec_session.getMainJITDylib().define(llvm::orc::absoluteSymbols(
-        {{"puts", llvm::orc::pointerToJITTargetAddress(&puts)},
-         {"printf", llvm::orc::pointerToJITTargetAddress(&printf)}}));*/
     return LLE_OK;
 }
 static inline llvm_error link_lib(PPRunner* pp, const char* path)
@@ -1727,10 +1723,11 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     }
     // TODO: ugly hack,  use a proper extern function
     // ast node
-    bool extern_func = (fn->fnb.sc.body.srange == SRC_RANGE_INVALID);
-    auto func_name_mangled = extern_func ? std::string(fn->fnb.sc.sym.name)
+    bool fwd_decl = (fn->fnb.sc.body.srange == SRC_RANGE_INVALID);
+    bool extern_flag = ast_flags_get_extern_func(fn->fnb.sc.sym.node.flags);
+    auto func_name_mangled = extern_flag ? std::string(fn->fnb.sc.sym.name)
                                          : name_mangle(fn, *_data_layout);
-    if (extern_func || !isIDInModule(fn->id)) {
+    if (fwd_decl || !isIDInModule(fn->id)) {
         func = (llvm::Function*)llvm::Function::Create(
             func_sig, llvm::GlobalVariable::ExternalLinkage,
             _data_layout->getProgramAddressSpace(), func_name_mangled);
@@ -1960,15 +1957,30 @@ llvm_error LLVMBackend::emitModule()
     return lle;
 }
 llvm_error linkLLVMModules(
-    LLVMModule** start, LLVMModule** end, char** libs_start, char** libs_end,
-    char* output_path)
+    LLVMModule** start, LLVMModule** end, ptrlist* link_libs, char* output_path)
 {
     // ureg args_count = 10 + (end - start);
     std::vector<const char*> args;
     args.push_back(""); // argv[0] -> programm location, ignored
-    args.push_back("--dynamic-linker");
+
     // TODO: do this properly
-    for (char** i = libs_start; i != libs_end; i++) {
+    bool dynamic = false;
+    ureg libs_size = sbuffer_get_used_size(link_libs);
+    char** libs = (char**)tmalloc(libs_size);
+    char** libs_head = libs;
+    if (!libs) return LLE_FATAL;
+    pli lit = pli_begin(link_libs);
+    for (src_lib* l = (src_lib*)pli_next(&lit); l;
+         l = (src_lib*)pli_next(&lit)) {
+        if (l->dynamic) dynamic = true;
+        *libs_head = file_map_head_tmalloc_path(&l->head);
+        if (!*libs_head) {
+            assert(false); // TODO recover
+        }
+        libs_head++;
+    }
+    if (dynamic) args.push_back("--dynamic-linker");
+    for (char** i = libs; i != libs_head; i++) {
         args.push_back(*i);
     }
     for (LLVMModule** i = start; i != end; i++) {
@@ -1978,6 +1990,10 @@ llvm_error linkLLVMModules(
     args.push_back(output_path);
     llvm::ArrayRef<const char*> arr_ref(&args[0], args.size());
     lld::elf::link(arr_ref, false);
+    for (char** i = libs; i != libs_head; i++) {
+        tfree(*i);
+    }
+    tfree(libs);
     return LLE_OK;
 }
 

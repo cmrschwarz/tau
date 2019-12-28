@@ -34,6 +34,7 @@ typedef enum PACK_ENUM access_modifier_e {
 
 // shared bit since applied to different nodes
 #define ASTF_RELATIVE_IMPORT_OFFSET 8
+#define ASTF_EXTERN_FUNC_OFFSET 8
 #define ASTF_COMPUND_DECL_OFFSET 8
 #define ASTF_PASTING_PP_EXPR_OFFSET 8
 
@@ -41,27 +42,11 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_USED_IN_PP_OFFSET 10
 
 #define ASTF_COMPTIME_KNOWN 11
-// we have space for 2 more here
+
+#define ASTF_MEMBER_FUNC_OFFSET 12
+
 #define ASTF_ACCESS_MODIFIER_OFFSET 13
 #define ASTF_ACCESS_MODIFIER_MASK (0x7 << ASTF_ACCESS_MODIFIER_OFFSET)
-
-typedef enum ast_flags_values_e {
-    // this stays set even once resolved
-    ASTF_DECLARED = 1 << ASTF_DECLARED_OFFSET,
-    ASTF_RESOLVING = 1 << ASTF_RESOLVING_OFFSET,
-    ASTF_RESOLVED = 1 << ASTF_RESOLVED_OFFSET,
-    ASTF_STATIC = 1 << ASTF_STATIC_OFFSET,
-    ASTF_VIRTUAL = 1 << ASTF_VIRTUAL_OFFSET,
-    ASTF_SEALED = 1 << ASTF_SEALED_OFFSET,
-    ASTF_CONST = 1 << ASTF_CONST_OFFSET,
-    ASTF_ERROR = 1 << ASTF_ERROR_OFFSET,
-    ASTF_RELATIVE_IMPORT = 1 << ASTF_RELATIVE_IMPORT_OFFSET,
-    ASTF_COMPUND_DECL = 1 << ASTF_COMPUND_DECL_OFFSET,
-    ASTF_PASTING_PP_EXPR = 1 << ASTF_PASTING_PP_EXPR_OFFSET,
-    ASTF_OVERLOADED_IN_PP = 1 << ASTF_OVERLOADED_IN_PP_OFFSET,
-    ASTF_USED_IN_PP = 1 << ASTF_USED_IN_PP_OFFSET,
-    ASTF_ACCESS_MODIFIER = ASTF_ACCESS_MODIFIER_MASK, // ! multiple bits
-} ast_flags_values;
 
 void ast_flags_set_access_mod(ast_flags* f, access_modifier m);
 access_modifier ast_flags_get_access_mod(ast_flags f);
@@ -71,6 +56,9 @@ bool ast_flags_get_const(ast_flags f);
 
 void ast_flags_set_pp_expr_res_used(ast_flags* f);
 bool ast_flags_get_pp_expr_res_used(ast_flags f);
+
+void ast_flags_set_extern_func(ast_flags* f);
+bool ast_flags_get_extern_func(ast_flags f);
 
 void ast_flags_set_import_group_module_used(ast_flags* f);
 bool ast_flags_get_import_group_module_used(ast_flags f);
@@ -117,5 +105,9 @@ bool ast_flags_get_error(ast_flags f);
 
 void ast_flags_set_comptime_known(ast_flags* f);
 bool ast_flags_get_comptime_known(ast_flags f);
+
+// used for expr_calls and the funcs themselves
+void ast_flags_set_member_func(ast_flags* f);
+bool ast_flags_get_member_func(ast_flags f);
 
 #endif

@@ -3366,6 +3366,14 @@ ast_flags_from_kw(parser* p, ast_flags* f, token_kind kw, ureg start, ureg end)
             }
             ast_flags_set_static(f);
         } break;
+        case TK_KW_EXTERN: {
+            if (ast_flags_get_extern_func(*f) != false) {
+                report_redundant_specifier(
+                    p, token_strings[TK_KW_EXTERN], start, end);
+                return PE_ERROR;
+            }
+            ast_flags_set_extern_func(f);
+        } break;
         default: {
             return PE_EOEX;
         } break;

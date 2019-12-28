@@ -1,7 +1,9 @@
 require "support/libc.tau";
+
 import libc::(printf);
+
 module quux{
-    public func puts(s: string);
+    import libc::(puts);
     public func quux(){
         puts("quux :)");
     }

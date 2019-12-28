@@ -53,6 +53,14 @@ bool ast_flags_get_pp_expr_res_used(ast_flags f)
     return bitmask_get_bit(f, ASTF_PP_EXPR_RES_USED);
 }
 
+void ast_flags_set_extern_func(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_EXTERN_FUNC_OFFSET);
+}
+bool ast_flags_get_extern_func(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_EXTERN_FUNC_OFFSET);
+}
 void ast_flags_set_import_group_module_used(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_IMPORT_GROUP_MODULE_USED);
@@ -189,4 +197,13 @@ void ast_flags_set_comptime_known(ast_flags* f)
 bool ast_flags_get_comptime_known(ast_flags f)
 {
     return bitmask_get_bit(f, ASTF_COMPTIME_KNOWN);
+}
+
+void ast_flags_set_member_func(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_EXTERN_FUNC_OFFSET);
+}
+bool ast_flags_get_member_func(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_EXTERN_FUNC_OFFSET);
 }

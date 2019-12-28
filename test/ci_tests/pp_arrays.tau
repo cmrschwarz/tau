@@ -1,16 +1,7 @@
-module libc{
-    public func puts(s: string);
-    public func printf(fmt: string, y: int, c: int);
-    public func printf(fmt: string, y: int){
-        printf(fmt, y, 0);
-    }
-    public func printfln(fmt: string, i: int){
-        printf(fmt, i);
-        puts("");
-    }
-}
+require "support/libc.tau";
+import libc::(printf);
+
 module lols{}
-import { libc::{(printf), (puts)}, lols};
 
 #y := {{1,2,3,4}, {1,2,3,0}};
 public func main() -> int{

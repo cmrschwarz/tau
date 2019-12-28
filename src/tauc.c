@@ -393,20 +393,9 @@ int tauc_link(tauc* t)
     }
     assert(ptrdiff(i, mods) / sizeof(llvm_module*) == mod_count);
     int r = 0;
-    ureg libs_size = sbuffer_get_used_size(&t->filemap.rt_src_libs);
-    char** libs = tmalloc(libs_size);
-    char** libs_head = libs;
-    if (!libs) return ERR;
-    pli lit = pli_begin(&t->filemap.rt_src_libs);
-    for (src_lib* l = pli_next(&lit); l; l = pli_next(&lit)) {
-        *libs_head = file_map_head_tmalloc_path(&l->head);
-        if (!*libs_head) {
-            assert(false); // TODO recover
-        }
-        libs_head++;
-    }
+
     if (t->emit_exe) {
-        r = llvm_link_modules(mods, i, libs, libs_head, "a.out");
+        r = llvm_link_modules(mods, i, &t->filemap.rt_src_libs, "a.out");
         if (!t->emit_objs) {
             r |= llvm_delete_objs(mods, i);
         }
@@ -414,8 +403,6 @@ int tauc_link(tauc* t)
     for (llvm_module** m = mods; m != i; m++) {
         llvm_free_module(*m);
     }
-    for (char** i = libs; i != libs_head; i++) tfree(*i);
-    tfree(libs);
     tfree(mods);
     return r;
 }

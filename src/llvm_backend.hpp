@@ -87,6 +87,7 @@ struct ControlFlowContext {
     llvm::BasicBlock* following_block;
     bool continues_afterwards;
 };
+
 enum ValueState : char {
     NOT_GENERATED = 0,
     PP_IMPL_ADDED,
@@ -230,8 +231,9 @@ struct LLVMBackend {
     llvm_error emitModuleIR();
 };
 
-llvm_error
-linkLLVMModules(LLVMModule** start, LLVMModule** end, char** libs_start, char** libs_end, char* output_path);
+llvm_error linkLLVMModules(
+    LLVMModule** start, LLVMModule** end, ptrlist* link_libs,
+    char* output_path);
 
 llvm_error removeObjs(LLVMModule** start, LLVMModule** end);
 #endif

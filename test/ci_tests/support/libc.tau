@@ -1,18 +1,18 @@
 module libc{
-   
-    require static "/lib64/ld-linux-x86-64.so.2"; 
-   /*
+    require dynamic "/lib64/ld-linux-x86-64.so.2"; 
+
     require static "/usr/lib/x86_64-linux-gnu/crt1.o";
     require static "/usr/lib/x86_64-linux-gnu/crti.o";
     require static "/usr/lib/x86_64-linux-gnu/crtn.o";
-   */
-    require static "/lib/x86_64-linux-gnu/libc.so.6";
+    
+
+    require dynamic "/lib/x86_64-linux-gnu/libc.so.6";
     require static "/usr/lib/x86_64-linux-gnu/libc_nonshared.a";
     
-    public func puts(s: string);
-    public func printf(fmt: string, arg1: int, arg2: int);
-    public func malloc(size: int) -> *void;
-    public func free(ptr: *void);
+    public extern func puts(s: string);
+    public extern func printf(fmt: string, arg1: int, arg2: int);
+    public extern func malloc(size: int) -> *void;
+    public extern func free(ptr: *void);
 
     public func printf(fmt: string, arg1: int){
         printf(fmt, arg1, 0);

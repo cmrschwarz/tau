@@ -7,7 +7,7 @@
     [prim_kind] = {                                                            \
         .sym = {.node = {.kind = PRIMITIVE,                                    \
                          .pt_kind = prim_kind,                                 \
-                         .flags = ASTF_RESOLVED,                               \
+                         .flags = (1 << ASTF_RESOLVED_OFFSET),                 \
                          .srange = SRC_RANGE_INVALID},                         \
                 .name = prim_name,                                             \
                 .next = NULL},                                                 \
