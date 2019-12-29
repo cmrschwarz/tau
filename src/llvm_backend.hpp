@@ -137,6 +137,7 @@ struct LLVMBackend {
     ureg _private_sym_count;
     LLVMModule* _mod_handle;
     llvm::orc::JITDylib* _mod_dylib;
+    llvm::Value* _curr_this; // current 'this' pointer for member functions
 
     bool _pp_mode;
 
@@ -205,6 +206,9 @@ struct LLVMBackend {
     genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded);
 
     llvm_error genFunction(sc_func* fn, llvm::Value** llfn);
+
+    llvm_error
+    genFuncCall(expr_call* c, llvm::Value** vl, llvm::Value** vl_loaded);
 
     llvm_error
     genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded);

@@ -935,6 +935,16 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     ureg align;
     llvm_error lle = lookupCType(var->ctype, &t, &align, NULL);
     if (lle) return lle;
+    if (ast_flags_get_instance_member(n->flags)) {
+        assert(_curr_this);
+        auto gep = _builder.CreateStructGEP(_curr_this, var->var_id);
+        if (vl_loaded) {
+            *vl_loaded = _builder.CreateAlignedLoad(gep, align);
+            if (!*vl_loaded) return LLE_FATAL;
+        }
+        if (vl) *vl = gep;
+        return LLE_OK;
+    }
     auto state = lookupValueState(var->var_id);
     bool generate = false;
     bool gen_stub = false;
@@ -1069,7 +1079,39 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     if (vl) *vl = *llvar;
     return LLE_OK;
 }
-
+llvm_error LLVMBackend::genFuncCall(
+    expr_call* c, llvm::Value** vl, llvm::Value** vl_loaded)
+{
+    llvm_error lle;
+    bool mem_func = ast_flags_get_instance_member(c->node.flags);
+    llvm::Value** args = (llvm::Value**)pool_alloc(
+        &_tc->permmem, sizeof(llvm::Value*) * (c->arg_count + mem_func));
+    if (!args) return LLE_FATAL;
+    ureg i = 0;
+    if (mem_func) {
+        llvm::Value* v;
+        auto ema = (expr_member_access*)c->lhs;
+        assert(ema->node.kind == EXPR_MEMBER_ACCESS);
+        lle = genAstNode(ema->lhs, &v, NULL);
+        if (lle) return lle;
+        args[0] = v;
+        i++;
+    }
+    for (; i < c->arg_count; i++) {
+        lle = genAstNode(c->args[i], NULL, &args[i]);
+        if (lle) return lle;
+    }
+    llvm::ArrayRef<llvm::Value*> args_arr_ref(
+        args, args + c->arg_count + mem_func);
+    llvm::Value* callee;
+    lle = genFunction((sc_func*)c->target.fn, &callee);
+    if (lle) return lle;
+    auto call = _builder.CreateCall(callee, args_arr_ref);
+    if (!call) return LLE_FATAL;
+    if (vl) *vl = call;
+    if (vl_loaded) *vl_loaded = call;
+    return LLE_OK;
+}
 llvm_error
 LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
@@ -1295,24 +1337,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             return LLE_OK;
         }
         case EXPR_CALL: {
-            expr_call* c = (expr_call*)n;
-            llvm::Value** args = (llvm::Value**)pool_alloc(
-                &_tc->permmem, sizeof(llvm::Value*) * c->arg_count);
-            if (!args) return LLE_FATAL;
-            for (ureg i = 0; i < c->arg_count; i++) {
-                lle = genAstNode(c->args[i], NULL, &args[i]);
-                if (lle) return lle;
-            }
-            llvm::ArrayRef<llvm::Value*> args_arr_ref(
-                args, args + c->arg_count);
-            llvm::Value* callee;
-            lle = genFunction((sc_func*)c->target.fn, &callee);
-            if (lle) return lle;
-            auto call = _builder.CreateCall(callee, args_arr_ref);
-            if (!call) return LLE_FATAL;
-            if (vl) *vl = call;
-            if (vl_loaded) *vl_loaded = call;
-            return LLE_OK;
+            return genFuncCall((expr_call*)n, vl, vl_loaded);
         }
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: {
@@ -1326,13 +1351,13 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             auto ema = (expr_member_access*)n;
             llvm::Value* v;
             lle = genAstNode(ema->lhs, &v, NULL);
+
             if (lle) return lle;
             auto st = (sc_struct*)ema->target.sym->declaring_st->owning_node;
             assert(ast_elem_is_struct((ast_elem*)st));
             ureg align;
             lle = lookupCType((ast_elem*)st, NULL, &align, NULL);
             if (lle) return lle;
-
             assert(
                 ema->target.sym->node.kind == SYM_VAR ||
                 ema->target.sym->node.kind == SYM_VAR_INITIALIZED);
@@ -1703,17 +1728,41 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     llvm::Type* ret_type;
     llvm_error lle = lookupCType(fn->fnb.return_ctype, &ret_type, NULL, NULL);
     if (lle) return lle;
-
-    if (fn->fnb.param_count != 0) {
+    bool mem_func = ast_flags_get_instance_member(fn->fnb.sc.sym.node.flags);
+    if (fn->fnb.param_count != 0 || mem_func) {
         llvm::Type** params = (llvm::Type**)pool_alloc(
-            &_tc->permmem, sizeof(llvm::Type*) * fn->fnb.param_count);
+            &_tc->permmem,
+            sizeof(llvm::Type*) * (fn->fnb.param_count + mem_func));
         if (!params) return LLE_FATAL;
-        for (ureg i = 0; i < fn->fnb.param_count; i++) {
+        ureg i = 0;
+        if (mem_func) {
+            ast_elem* owner =
+                symbol_table_skip_metatables(fn->fnb.sc.sym.declaring_st)
+                    ->owning_node;
+            assert(ast_elem_is_struct_base(owner));
+            llvm::Type* struct_type;
+            /*
+            ureg id;
+            if (owner->kind == SC_STRUCT_GENERIC_INST) {
+                id = ((sc_struct_generic_inst*)owner)->id; // TODO: fill id
+            }
+            else {
+                assert(owner->kind == SC_STRUCT);
+                id = ((sc_struct*)owner)->id;
+            }
+            */
+            lle = lookupCType(owner, &struct_type, NULL, NULL);
+            if (lle) return lle;
+            params[i] = struct_type->getPointerTo();
+            assert(params[i]);
+            i++;
+        }
+        for (; i < fn->fnb.param_count; i++) {
             lle = lookupCType(fn->fnb.params[i].ctype, &params[i], NULL, NULL);
             if (lle) return lle;
         }
         llvm::ArrayRef<llvm::Type*> params_array_ref(
-            params, params + fn->fnb.param_count);
+            params, params + fn->fnb.param_count + mem_func);
         func_sig = llvm::FunctionType::get(ret_type, params_array_ref, false);
         if (!func_sig) return LLE_FATAL;
     }
@@ -1771,6 +1820,12 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     _curr_fn_control_flow_ctx = &ctx;
     _builder.SetInsertPoint(func_block);
     bool end_reachable = true;
+    if (mem_func) {
+        _curr_this = func->arg_begin();
+    }
+    else {
+        _curr_this = NULL;
+    }
     lle = genAstBody(&fn->fnb.sc.body, false, &end_reachable);
     if (ctx.following_block) {
         if (_builder.GetInsertBlock() != ctx.following_block) {
@@ -1798,6 +1853,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     if (prev_blk) {
         _builder.SetInsertPoint(prev_blk, prev_pos);
     }
+
     return lle;
 }
 llvm_error LLVMBackend::emitModuleIR()

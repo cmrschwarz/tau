@@ -43,7 +43,7 @@ typedef enum PACK_ENUM access_modifier_e {
 
 #define ASTF_COMPTIME_KNOWN 11
 
-#define ASTF_MEMBER_FUNC_OFFSET 12
+#define ASTF_INSTANCE_MEMBER_OFFSET 12
 
 #define ASTF_ACCESS_MODIFIER_OFFSET 13
 #define ASTF_ACCESS_MODIFIER_MASK (0x7 << ASTF_ACCESS_MODIFIER_OFFSET)
@@ -106,8 +106,8 @@ bool ast_flags_get_error(ast_flags f);
 void ast_flags_set_comptime_known(ast_flags* f);
 bool ast_flags_get_comptime_known(ast_flags f);
 
-// used for expr_calls and the funcs themselves
-void ast_flags_set_member_func(ast_flags* f);
-bool ast_flags_get_member_func(ast_flags f);
+// used for expr_calls, funcs and vars
+void ast_flags_set_instance_member(ast_flags* f);
+bool ast_flags_get_instance_member(ast_flags f);
 
 #endif

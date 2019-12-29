@@ -517,6 +517,7 @@ typedef struct sc_struct_generic_inst_s {
     ast_elem** generic_vals;
     ureg generic_val_count;
     sc_struct_generic* base;
+    ureg id;
 } sc_struct_generic_inst;
 
 typedef struct sc_trait_s {

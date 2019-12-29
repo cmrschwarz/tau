@@ -199,11 +199,11 @@ bool ast_flags_get_comptime_known(ast_flags f)
     return bitmask_get_bit(f, ASTF_COMPTIME_KNOWN);
 }
 
-void ast_flags_set_member_func(ast_flags* f)
+void ast_flags_set_instance_member(ast_flags* f)
 {
-    bitmask_set_bit(f, ASTF_EXTERN_FUNC_OFFSET);
+    bitmask_set_bit(f, ASTF_INSTANCE_MEMBER_OFFSET);
 }
-bool ast_flags_get_member_func(ast_flags f)
+bool ast_flags_get_instance_member(ast_flags f)
 {
-    return bitmask_get_bit(f, ASTF_EXTERN_FUNC_OFFSET);
+    return bitmask_get_bit(f, ASTF_INSTANCE_MEMBER_OFFSET);
 }

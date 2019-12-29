@@ -191,7 +191,7 @@ int src_lib_require(
     }
 }
 
-file_map_head_require(
+int file_map_head_require(
     file_map_head* h, tauc* t, src_map* requiring_smap,
     src_range requiring_srange, mdg_node* requiring_mdgn, bool in_pp)
 {

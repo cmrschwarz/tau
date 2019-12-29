@@ -456,6 +456,7 @@ ureg claim_symbol_id(resolver* r, symbol* s, bool public_st)
     ast_elem* on = decl_st->owning_node;
     if (!ast_flags_get_static(s->node.flags) && ast_elem_is_struct(on)) {
         // TODO: Traits etc.
+        ast_flags_set_instance_member(&s->node.flags);
         return ((sc_struct*)decl_st->owning_node)->id++;
     }
     else {
@@ -541,18 +542,30 @@ static resolve_error add_ast_node_decls(
                 if (re) return re;
             }
         } // fallthrough
-        case SC_STRUCT: {
+        case SC_STRUCT:
+        case SC_STRUCT_GENERIC_INST: {
             sc_struct_base* sb = (sc_struct_base*)n;
             re = add_symbol(r, st, sst, (symbol*)n);
             bool members_public_st =
                 public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED;
             if (n->kind == SC_STRUCT) {
-                sc_struct* s = (sc_struct*)n;
-                s->id = 0; // so members can inc this and we get a member id
-                s->id = ast_node_claim_id(r, n, public_st);
+                ((sc_struct*)n)->id = 0;
             }
+            else if (n->kind == SC_STRUCT_GENERIC_INST) {
+                ((sc_struct_generic_inst*)n)->id = 0;
+            }
+            // so members can inc this and we get a member id
+            // s->id = ast_node_claim_id(r, n, public_st);
+
             re = add_body_decls(
                 r, st, NULL, ppl, &sb->sc.body, members_public_st);
+            if (n->kind == SC_STRUCT) {
+                ((sc_struct*)n)->id = claim_symbol_id(r, (symbol*)n, public_st);
+            }
+            else if (n->kind == SC_STRUCT_GENERIC_INST) {
+                ((sc_struct_generic_inst*)n)->id =
+                    claim_symbol_id(r, (symbol*)n, public_st);
+            }
             if (re) return re;
 
             return RE_OK;
@@ -863,7 +876,10 @@ resolve_error overload_applicable(
     ureg param_count = m ? m->param_count : fn->fnb.param_count;
     sym_param* params = m ? m->params : fn->fnb.params;
     // works cause varags are not in the lang yet
-    if (param_count != arg_count) return false;
+    if (param_count != arg_count) {
+        *applicable = false;
+        return RE_OK;
+    }
     for (ureg i = 0; i < arg_count; i++) {
         ast_elem* ctype;
         resolve_error re = resolve_param(r, &params[i], false, ppl, &ctype);
@@ -903,7 +919,7 @@ static inline resolve_error resolve_no_block_macro_call(
     return RE_FATAL;
 }
 
-// we need a seperate func_st for cases like foo::bar()
+// for ex. wth foo::bar() func_st is foo's st, st is the table to look up args
 resolve_error resolve_func_call(
     resolver* r, expr_call* c, symbol_table* st, ureg ppl, char* func_name,
     symbol_table* func_st, ast_elem** ctype)
@@ -918,7 +934,7 @@ resolve_error resolve_func_call(
     symbol_table* lt = func_st;
     scope* tgt;
     symbol* sym;
-    bool applicable;
+    bool applicable = false;
     symbol** s = symbol_table_lookup(lt, ppl, AM_DEFAULT, func_name);
     if (s == NULL) {
         // we use st instead of func_st here because thats the scope that
@@ -1011,16 +1027,16 @@ resolve_error resolve_call(
     if (c->lhs->kind == EXPR_MEMBER_ACCESS) {
         expr_member_access* esa = (expr_member_access*)c->lhs;
         ast_elem* esa_lhs;
-        symbol_table* lhs_st;
+        ast_elem* esa_lhs_ctype;
         resolve_error re =
-            resolve_ast_node(r, esa->lhs, st, ppl, &esa_lhs, NULL);
+            resolve_ast_node(r, esa->lhs, st, ppl, &esa_lhs, &esa_lhs_ctype);
         if (re) return re;
         access_modifier am = AM_DEFAULT;
-        assert(ast_elem_is_struct(esa_lhs)); // TODO: error
-        re = get_resolved_symbol_symtab(r, (symbol*)esa_lhs, &am, &lhs_st);
-        if (re) return re;
+        assert(ast_elem_is_struct(esa_lhs_ctype)); // TODO: error
+        ast_flags_set_instance_member(&c->node.flags);
         return resolve_func_call(
-            r, c, st, ppl, esa->target.name, lhs_st, ctype);
+            r, c, st, ppl, esa->target.name,
+            ((sc_struct*)esa_lhs_ctype)->sb.sc.body.symtab, ctype);
     }
     assert(false); // TODO
     return RE_OK;
@@ -2546,6 +2562,13 @@ resolve_error resolve_func(
     pp_resolve_node* prev_block_pprn = r->curr_block_pp_node;
     r->curr_block_owner = (ast_node*)fnb;
     if (!continue_block) {
+        if (!ast_flags_get_static(fnb->sc.sym.node.flags)) {
+            if (ast_elem_is_struct(
+                    symbol_table_skip_metatables(fnb->sc.sym.declaring_st)
+                        ->owning_node)) {
+                ast_flags_set_instance_member(&fnb->sc.sym.node.flags);
+            }
+        }
         if (generic) {
             for (ureg i = 0; i < fnb->param_count; i++) {
                 re = resolve_param(r, &fnb->params[i], false, ppl, NULL);
