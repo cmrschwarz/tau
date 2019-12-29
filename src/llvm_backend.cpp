@@ -554,6 +554,15 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
             if (lle) return lle;
         }
     }
+    if (n->call_when_done) {
+        assert(n->node->kind == SC_FUNC);
+        llvm::Value* func;
+        lle = genFunction((sc_func*)n->node, &func);
+        if (lle) return lle;
+        llvm::ArrayRef<llvm::Value*> no_args{};
+        auto call = _builder.CreateCall(func, no_args);
+        if (!call) return LLE_FATAL;
+    }
     return LLE_OK;
 }
 llvm_error

@@ -42,6 +42,7 @@ typedef struct pp_resolve_node_s {
     ureg pending_pastes;
     bool run_when_ready; // false for exprs in functions
     bool block_pos_reachable;
+    bool call_when_done;
     struct pp_resolve_node_s* parent; // gets informed once this is pending
     struct pp_resolve_node_s** waiting_list_entry;
     struct pp_resolve_node_s* first_unresolved_child;
@@ -87,6 +88,8 @@ typedef struct resolver_s {
 
     pp_resolve_node* curr_pp_node;
     pp_resolve_node* curr_block_pp_node;
+    sc_func* module_group_constructor;
+    sc_func* module_group_destructor;
     sym_var* curr_var_decl;
     pp_resolve_node* curr_var_pp_node;
     // this is used to determine whether the curr block is inside the decl

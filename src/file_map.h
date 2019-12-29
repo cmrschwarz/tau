@@ -36,7 +36,6 @@ typedef enum src_file_stage_s {
     // because only once parsing the src_map is initialized
     SFS_PARSING,
     SFS_PARSED,
-
 } src_file_stage;
 
 typedef struct src_file_s {
@@ -105,4 +104,8 @@ file_map_get_file_from_path(file_map* fm, src_dir* parent, string path);
 src_dir* file_map_get_dir_from_path(file_map* fm, src_dir* parent, string path);
 src_lib* file_map_get_lib_from_path(
     file_map* fm, src_dir* parent, string path, bool is_dynamic);
+
+int file_map_head_require(
+    file_map_head* h, tauc* t, src_map* requiring_smap,
+    src_range requiring_srange, mdg_node* requiring_mdgn, bool in_pp);
 #endif

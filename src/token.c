@@ -2,6 +2,11 @@
 #include "file_map.h"
 #include "stdio.h"
 
+const char* COND_KW_CONSTRUCT = "construct";
+const char* COND_KW_DESTRUCT = "destruct";
+const char* COND_KW_MAIN = "main";
+extern const char* COND_KW_START = "_start";
+
 // clang-format off
 const char* token_strings[255] = {
     [TK_KW_MODULE] = "module",

@@ -110,6 +110,9 @@ typedef enum PACK_ENUM token_kind_e {
     TK_EOF,
 } token_kind;
 
+extern const char* COND_KW_CONSTRUCT;
+extern const char* COND_KW_DESTRUCT;
+extern const char* COND_KW_MAIN;
 extern const char* token_strings[255];
 
 typedef struct token_s {

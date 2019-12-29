@@ -65,6 +65,7 @@ int tauc_core_init(tauc* t)
     t->emit_ast = false;
     t->emit_exe = true;
     t->trap_on_error = false;
+    t->emit_objs = false;
     return OK;
 }
 void tauc_core_fin(tauc* t)

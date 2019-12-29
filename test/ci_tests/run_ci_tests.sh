@@ -39,7 +39,7 @@ else
     printf "\033[0;31m$errors test(s) failed, $success test(s) passed\n"
 fi
 
-for output in *.out *.ll *.asm; do 
+for output in *.out *.ll *.asm *.obj; do 
     [ -e "$output" ] || continue
     rm $output
 done

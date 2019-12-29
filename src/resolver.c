@@ -15,6 +15,7 @@ static resolve_error add_body_decls(
     resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
     ast_body* b, bool public_st);
 
+resolve_error resolver_run_pp_resolve_nodes(resolver* r);
 resolve_error resolve_param(
     resolver* r, sym_param* p, bool generic, ureg ppl, ast_elem** ctype);
 resolve_error
@@ -156,6 +157,7 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->parent = NULL;
     pprn->run_when_ready = run_when_ready;
     pprn->block_pos_reachable = true;
+    pprn->call_when_done = false;
     pprn->first_unresolved_child = NULL;
     pprn->waiting_list_entry = NULL;
     return pprn;
@@ -246,7 +248,11 @@ curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
 resolve_error
 pp_resolve_node_activate(resolver* r, pp_resolve_node* pprn, bool resolved)
 {
+    if (pprn->dep_count == 0 && r->module_group_constructor) {
+        resolve_func_from_call(r, r->module_group_constructor, 0, NULL);
+    }
     if (pprn->dep_count == 0) {
+
         if (resolved) {
             return pp_resolve_node_ready(r, pprn);
         }
@@ -644,6 +650,70 @@ static resolve_error add_ast_node_decls(
                 if (re) return re;
             }
             set_parent_symtabs(&b->symtab, st);
+            if (n->kind == SC_FUNC) {
+                sc_func* fn = (sc_func*)n;
+                if (cstr_eq(fn->fnb.sc.sym.name, COND_KW_CONSTRUCT)) {
+                    if (r->module_group_constructor) {
+                        src_range_large mgc1_srl;
+                        ast_node_get_src_range(
+                            (ast_node*)r->module_group_constructor,
+                            r->module_group_constructor->fnb.sc.sym
+                                .declaring_st,
+                            &mgc1_srl);
+                        src_range_large mgc2_srl;
+                        ast_node_get_src_range(
+                            (ast_node*)r->module_group_constructor,
+                            r->module_group_constructor->fnb.sc.sym
+                                .declaring_st,
+                            &mgc2_srl);
+                        error_log_report_annotated_twice(
+                            r->tc->err_log, ES_PARSER, false,
+                            "multiple module constructors in one cyclic module "
+                            "group",
+                            mgc1_srl.smap, mgc1_srl.start, mgc1_srl.end,
+                            "first module constructor here", mgc2_srl.smap,
+                            mgc2_srl.start, mgc2_srl.end,
+                            "second module constructor here");
+                        return RE_ERROR;
+                    }
+                    pp_resolve_node* pprn = pp_resolve_node_create(
+                        r, (ast_node*)fn, st, true, true, 0);
+                    if (!pprn) return RE_FATAL;
+                    fn->fnb.pprn = pprn;
+                    pprn->call_when_done = true;
+                    r->module_group_constructor = fn;
+                }
+                else if (cstr_eq(fn->fnb.sc.sym.name, COND_KW_DESTRUCT)) {
+                    if (r->module_group_destructor) {
+                        src_range_large mgc1_srl;
+                        ast_node_get_src_range(
+                            (ast_node*)r->module_group_constructor,
+                            r->module_group_constructor->fnb.sc.sym
+                                .declaring_st,
+                            &mgc1_srl);
+                        src_range_large mgc2_srl;
+                        ast_node_get_src_range(
+                            (ast_node*)r->module_group_constructor,
+                            r->module_group_constructor->fnb.sc.sym
+                                .declaring_st,
+                            &mgc2_srl);
+                        error_log_report_annotated_twice(
+                            r->tc->err_log, ES_PARSER, false,
+                            "multiple module destructors in one cyclic module "
+                            "group",
+                            mgc1_srl.smap, mgc1_srl.start, mgc1_srl.end,
+                            "first module destructor here", mgc2_srl.smap,
+                            mgc2_srl.start, mgc2_srl.end,
+                            "second module destructor here");
+                        return RE_ERROR;
+                    }
+                    pp_resolve_node* pprn = pp_resolve_node_create(
+                        r, (ast_node*)fn, st, true, true, 0);
+                    if (!pprn) return RE_FATAL;
+                    fn->fnb.pprn = pprn;
+                    r->module_group_destructor = fn;
+                }
+            }
             return RE_OK;
         }
         case SYM_IMPORT_GROUP: {
@@ -966,8 +1036,8 @@ resolve_error resolve_func_call(
     }
     else if (sym->node.kind == SC_FUNC) {
         re = overload_applicable(
-            r, call_arg_types, c->arg_count, (scope*)sym, sym->declaring_st,
-            &applicable, ctype);
+            r, call_arg_types, c->arg_count, (scope*)sym, ppl, &applicable,
+            ctype);
         if (applicable) tgt = (scope*)sym;
     }
     else {
@@ -1031,7 +1101,6 @@ resolve_error resolve_call(
         resolve_error re =
             resolve_ast_node(r, esa->lhs, st, ppl, &esa_lhs, &esa_lhs_ctype);
         if (re) return re;
-        access_modifier am = AM_DEFAULT;
         assert(ast_elem_is_struct(esa_lhs_ctype)); // TODO: error
         ast_flags_set_instance_member(&c->node.flags);
         return resolve_func_call(
@@ -2363,6 +2432,7 @@ static inline resolve_error resolve_ast_node_raw(
 static inline void
 report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl)
 {
+    if (r->tc->t->trap_on_error) debugbreak();
     ureg stack_s = stack_size(&r->error_stack);
     // we are at the peek of the type loop. unwind and report again.
     if (stack_s == 0) return;
@@ -2656,7 +2726,8 @@ resolve_error resolve_func(
     }
     if (bpprn) {
         if (!re) bpprn->continue_block = NULL;
-        if (!fnb->pprn->first_unresolved_child) {
+        if (!fnb->pprn->first_unresolved_child &&
+            fnb != (sc_func_base*)r->module_group_constructor) {
             bpprn->run_when_ready = false;
         }
         re = pp_resolve_node_activate(r, fnb->pprn, re == RE_OK);
@@ -2780,6 +2851,14 @@ resolve_error resolver_add_osc_decls(resolver* r)
 }
 resolve_error resolver_cleanup(resolver* r, ureg startid)
 {
+    if (r->module_group_destructor) {
+        pp_resolve_node* pprn = pp_resolve_node_create(
+            r, (ast_node*)r->module_group_destructor, NULL, false, false, 0);
+        if (!pprn) return RE_FATAL;
+        pprn->call_when_done = true;
+        ptrlist_append(&r->pp_resolve_nodes_ready, pprn);
+        resolver_run_pp_resolve_nodes(r);
+    }
     free_pprns(r);
     llvm_backend_reserve_symbols(
         r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
@@ -3110,6 +3189,8 @@ int resolver_resolve(
     r->id_space = PRIV_SYMBOL_OFFSET;
     r->mdgs_begin = start;
     r->mdgs_end = end;
+    r->module_group_constructor = NULL;
+    r->module_group_destructor = NULL;
     resolve_error re;
     print_debug_info(r);
     re = resolver_init_mdg_symtabs_and_handle_root(r);
@@ -3123,6 +3204,7 @@ int resolver_resolve(
     *startid = atomic_ureg_add(&r->tc->t->node_ids, r->public_sym_count);
     re = resolver_cleanup(r, *startid);
     if (re) return re;
+
     return RE_OK;
 }
 int resolver_emit(resolver* r, ureg startid, llvm_module** module)
