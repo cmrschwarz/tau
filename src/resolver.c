@@ -2851,6 +2851,12 @@ resolve_error resolver_add_osc_decls(resolver* r)
 }
 resolve_error resolver_cleanup(resolver* r, ureg startid)
 {
+    if (r->module_group_constructor) {
+        const char* n = llvm_backend_name_mangle(
+            r->backend, (sc_func_base*)r->module_group_constructor);
+        if (!n) return RE_FATAL;
+        aseglist_add(&r->tc->t->module_ctors, n);
+    }
     if (r->module_group_destructor) {
         pp_resolve_node* pprn = pp_resolve_node_create(
             r, (ast_node*)r->module_group_destructor, NULL, false, false, 0);
@@ -2858,6 +2864,10 @@ resolve_error resolver_cleanup(resolver* r, ureg startid)
         pprn->call_when_done = true;
         ptrlist_append(&r->pp_resolve_nodes_ready, pprn);
         resolver_run_pp_resolve_nodes(r);
+        const char* n = llvm_backend_name_mangle(
+            r->backend, (sc_func_base*)r->module_group_destructor);
+        if (!n) return RE_FATAL;
+        aseglist_add(&r->tc->t->module_dtors, n);
     }
     free_pprns(r);
     llvm_backend_reserve_symbols(

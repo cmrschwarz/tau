@@ -103,6 +103,11 @@ llvm_error llvm_backend_run_pp(
     return ((LLVMBackend*)llvmb)->runPP(private_sym_count, resolve_nodes);
 }
 
+const char* llvm_backend_name_mangle(llvm_backend* llvmb, sc_func_base* f)
+{
+    return ((LLVMBackend*)llvmb)->nameMangle(f);
+}
+
 llvm_error llvm_backend_reserve_symbols(
     llvm_backend* llvmb, ureg private_sym_count, ureg public_sym_count)
 {
@@ -148,6 +153,13 @@ int llvm_link_modules(
     if (lle) return ERR;
     return OK;
 }
+llvm_error llvm_backend_generate_entrypoint(
+    llvm_backend* llvmb, sc_func* mainfn, sc_func* startfn, aseglist* ctors,
+    aseglist* dtors)
+{
+    ((LLVMBackend*)llvmb)->generateEntrypoint(mainfn, startfn, ctors, dtors);
+}
+
 static inline llvm_error link_dll(PPRunner* pp, const char* path)
 {
 
@@ -1656,11 +1668,12 @@ llvm_error LLVMBackend::genBinaryOp(
     if (vl) *vl = v;
     return LLE_OK;
 }
+
 // TODO: do this properly
-std::string name_mangle(sc_func* fn, const llvm::DataLayout& dl)
+const char* LLVMBackend::nameMangle(sc_func_base* fn)
 {
-    std::string name = fn->fnb.sc.sym.name;
-    symbol_table* st = fn->fnb.sc.body.symtab;
+    std::string name = fn->sc.sym.name;
+    symbol_table* st = fn->sc.body.symtab;
     while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
     mdg_node* n = (mdg_node*)st->owning_node;
     while (n->parent != NULL) {
@@ -1668,14 +1681,20 @@ std::string name_mangle(sc_func* fn, const llvm::DataLayout& dl)
         n = n->parent;
     }
     if (name != "main") {
-        name = name + "_" + std::to_string(fn->fnb.param_count);
+        name = name + "_" + std::to_string(fn->param_count);
     }
     std::string MangledName;
     {
         llvm::raw_string_ostream MangledNameStream(MangledName);
-        llvm::Mangler::getNameWithPrefix(MangledNameStream, name, dl);
+        llvm::Mangler::getNameWithPrefix(
+            MangledNameStream, name, *_data_layout);
     }
-    return MangledName;
+    ureg size = MangledName.size();
+    char* str = (char*)pool_alloc(&_tc->permmem, size + 1);
+    if (!str) return NULL;
+    memcpy(str, MangledName.c_str(), size);
+    str[size] = '\0';
+    return str;
 }
 
 llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
@@ -1706,7 +1725,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         auto fun = PP_RUNNER->exec_session.lookup(
             llvm::orc::JITDylibSearchList(
                 {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
-            PP_RUNNER->exec_session.intern(name_mangle(fn, *_data_layout)));
+            PP_RUNNER->exec_session.intern(nameMangle(&fn->fnb)));
         PP_RUNNER->mtx.unlock();
         if (!fun) {
             llvm::errs() << fun.takeError() << "\n";
@@ -1783,8 +1802,8 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     // ast node
     bool fwd_decl = (fn->fnb.sc.body.srange == SRC_RANGE_INVALID);
     bool extern_flag = ast_flags_get_extern_func(fn->fnb.sc.sym.node.flags);
-    auto func_name_mangled = extern_flag ? std::string(fn->fnb.sc.sym.name)
-                                         : name_mangle(fn, *_data_layout);
+    auto func_name_mangled =
+        extern_flag ? std::string(fn->fnb.sc.sym.name) : nameMangle(&fn->fnb);
     if (fwd_decl || !isIDInModule(fn->id)) {
         func = (llvm::Function*)llvm::Function::Create(
             func_sig, llvm::GlobalVariable::ExternalLinkage,
@@ -1865,6 +1884,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
 
     return lle;
 }
+
 llvm_error LLVMBackend::emitModuleIR()
 {
     std::error_code EC;
@@ -1874,6 +1894,7 @@ llvm_error LLVMBackend::emitModuleIR()
     ir_stream.flush();
     return LLE_OK;
 }
+
 llvm_error LLVMBackend::emitModuleToStream(
     llvm::TargetLibraryInfoImpl* tlii, llvm::raw_pwrite_stream* stream,
     bool emit_asm)
@@ -1898,6 +1919,7 @@ llvm_error LLVMBackend::emitModuleToStream(
     stream->flush();
     return LLE_OK;
 }
+
 llvm_error
 LLVMBackend::emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm)
 {
@@ -1907,6 +1929,7 @@ LLVMBackend::emitModuleToFile(llvm::TargetLibraryInfoImpl* tlii, bool emit_asm)
     llvm::raw_fd_ostream file_stream{name, ec, llvm::sys::fs::F_None};
     return emitModuleToStream(tlii, &file_stream, emit_asm);
 }
+
 llvm_error LLVMBackend::emitModuleToPP(
     llvm::TargetLibraryInfoImpl* tlii, bool write_out_file)
 {
@@ -2021,6 +2044,32 @@ llvm_error LLVMBackend::emitModule()
     }
     return lle;
 }
+llvm_error LLVMBackend::generateEntrypoint(
+    sc_func* mainfn, sc_func* startfn, aseglist* ctors, aseglist* dtors)
+{
+    if (!startfn) {
+        llvm::ArrayRef<llvm::Type*> no_args{NULL, 0};
+        auto func_sig =
+            llvm::FunctionType::get(_primitive_types[PT_VOID], false);
+        if (!func_sig) return LLE_FATAL;
+    }
+    // TODO: ugly hack,  use a proper extern function
+    // ast nod
+
+    auto func = llvm::Function::Create(
+        func_sig, llvm::Function::ExternalLinkage, COND_KW_START, _module);
+    if (!func) return LLE_FATAL;
+    *res = func;
+    if (llfn) *llfn = func;
+    *state = (_pp_mode && isLocalID(fn->id)) ? PP_IMPL_ADDED : IMPL_ADDED;
+    _reset_after_emit.push_back(fn->id);
+    llvm::BasicBlock* func_block = llvm::BasicBlock::Create(_context, "", func);
+    if (!func_block) return LLE_FATAL;
+    ureg cfcsize = _control_flow_ctx.size();
+    _control_flow_ctx.emplace_back();
+    ControlFlowContext& ctx = _control_flow_ctx.back();
+}
+
 llvm_error linkLLVMModules(
     LLVMModule** start, LLVMModule** end, ptrlist* link_libs, char* output_path)
 {

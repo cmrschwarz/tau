@@ -49,7 +49,13 @@ int llvm_link_modules(
     llvm_module** start, llvm_module** end, ptrlist* link_libs,
     char* output_path);
 
+llvm_error llvm_backend_generate_entrypoint(
+    llvm_backend* llvmb, sc_func* mainfn, sc_func* startfn, aseglist* ctors,
+    aseglist* dtors);
+
 int llvm_delete_objs(llvm_module** start, llvm_module** end);
+
+const char* llvm_backend_name_mangle(llvm_backend* llvmb, sc_func_base* f);
 
 int llvm_initialize_primitive_information();
 

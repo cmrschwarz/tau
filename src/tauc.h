@@ -22,7 +22,8 @@ typedef struct tauc_s {
     atomic_sreg error_code;
     atomic_ureg node_ids; // stores the max used id
     symbol_table* root_symtab;
-
+    aseglist module_ctors;
+    aseglist module_dtors;
     bool emit_ll;
     bool emit_asm;
     bool emit_exe;

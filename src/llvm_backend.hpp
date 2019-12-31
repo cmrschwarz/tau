@@ -158,7 +158,11 @@ struct LLVMBackend {
     llvm_error runPP(ureg private_sym_count, ptrlist* resolve_nodes);
     llvm_error reserveSymbols(ureg priv_sym_limit, ureg pub_sym_limit);
     llvm_error emit(ureg startid, ureg endid, ureg priv_sym_count);
+    llvm_error generateEntrypoint(
+        sc_func* mainfn, sc_func* startfn, aseglist* ctors, aseglist* dtors);
     pp_resolve_node* lookupPPResolveNode(ureg id);
+    const char* nameMangle(sc_func_base* func);
+
     void setPPResolveNode(ureg id, pp_resolve_node* pprn);
     void buildPasteHelpers();
     void resetAfterEmit();

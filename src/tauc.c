@@ -16,9 +16,11 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
 {
     switch (i) {
         case -1:
-        case 10: mdg_fin(&t->mdg); // fallthrough
+        case 12: mdg_fin(&t->mdg); // fallthrough
         case -2: // skip mdg because we freed that earlier when we still had all
                  // threads and their permmem
+        case 11: aseglist_fin(&t->module_dtors); // fallthrough
+        case 10: aseglist_fin(&t->module_ctors); // fallthrough
         case 9: thread_context_fin(&t->main_thread_context); // fallthrough
         case 8: fin_root_symtab(t->root_symtab); // fallthrough
         case 7: atomic_ureg_fin(&t->linking_holdups); // fallthrough
@@ -57,8 +59,12 @@ int tauc_core_init(tauc* t)
     if (r) return tauc_core_partial_fin(t, r, 7);
     r = thread_context_init(&t->main_thread_context, t);
     if (r) return tauc_core_partial_fin(t, r, 8);
-    r = mdg_init(&t->mdg);
+    r = aseglist_init(&t->module_ctors);
     if (r) return tauc_core_partial_fin(t, r, 9);
+    r = aseglist_init(&t->module_dtors);
+    if (r) return tauc_core_partial_fin(t, r, 10);
+    r = mdg_init(&t->mdg);
+    if (r) return tauc_core_partial_fin(t, r, 11);
     t->emit_asm = false;
     t->emit_ll = false;
     t->explicit_exe = false;
