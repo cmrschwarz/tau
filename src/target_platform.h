@@ -120,4 +120,4 @@ typedef struct target_platform_s {
 arch_kind parse_arch_kind(char* str);
 os_kind parse_os_kind(char* str);
 object_format_kind parse_object_format_kind(char* str);
-void get_host_platform();
+void get_host_platform(target_platform* tp);
