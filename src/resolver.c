@@ -2664,10 +2664,14 @@ resolve_error resolve_func(
             r->generic_context = generic_parent;
             return re;
         }
-        if (b->srange == SRC_RANGE_INVALID) { // hack for external functions
+        // handle external function
+        if (ast_flags_get_extern_func(fnb->sc.sym.node.flags)) {
             ast_flags_set_resolved(&fnb->sc.sym.node.flags);
             r->curr_block_owner = parent_block_owner;
             r->generic_context = generic_parent;
+            if (fnb->pprn) {
+                return pp_resolve_node_activate(r, fnb->pprn, true);
+            }
             return RE_OK;
         }
     }

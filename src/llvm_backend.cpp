@@ -2136,7 +2136,7 @@ llvm_error linkLLVMModules(
 {
     // ureg args_count = 10 + (end - start);
     std::vector<const char*> args;
-    args.push_back(""); // argv[0] -> programm location, ignored
+    args.push_back("lld"); // argv[0] -> programm location
 
     // TODO: do this properly
     bool dynamic = false;

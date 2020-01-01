@@ -360,7 +360,9 @@ file_map_get_head(file_map* fm, src_dir* parent, string name)
     file_map_head** pos = fm->table_start + hash;
     while (true) {
         if (!*pos) return pos;
-        if (string_cmp(name, (**pos).name) == 0) return pos;
+        if ((**pos).parent == parent && string_cmp(name, (**pos).name) == 0) {
+            return pos;
+        }
         pos = &(**pos).next;
     }
 }
