@@ -72,6 +72,11 @@ int tauc_core_init(tauc* t)
     t->emit_exe = true;
     t->trap_on_error = false;
     t->emit_objs = false;
+    t->opt_strat = OPT_STRAT_UNSPECIFIED;
+    t->debug_symbols = true;
+    t->explicit_debug_symbols = false;
+    target_platform_get_host(&t->host_target);
+    target_platform_set_unknown(&t->target);
     return OK;
 }
 void tauc_core_fin(tauc* t)
@@ -89,6 +94,19 @@ int complain_trailing_args(tauc* t, error_log* el, char* arg)
         "\" must be specified before input files");
     master_error_log_report(&t->mel, msg);
     return ERR;
+}
+int check_multi_opt_strats(tauc* t, optimization_strategy opt_strat)
+{
+    if (t->opt_strat != OPT_STRAT_UNSPECIFIED) {
+        master_error_log_report(
+            &t->mel, "only one optimization strategy may be specified");
+        return ERR;
+    }
+    if (!t->explicit_debug_symbols) {
+        t->debug_symbols = false;
+    }
+    t->opt_strat = opt_strat;
+    return OK;
 }
 int handle_cmd_args(
     tauc* t, error_log* el, int argc, char** argv, bool* files_found)
@@ -113,8 +131,8 @@ int handle_cmd_args(
             if (r) return r;
             continue;
         }
+        if (*files_found) return complain_trailing_args(t, el, arg);
         if (!strcmp(arg, "-T")) {
-            if (*files_found) return complain_trailing_args(t, el, arg);
             if (i == argc - 1) {
                 master_error_log_report(
                     &t->mel, "-T requires a number to follow");
@@ -132,7 +150,67 @@ int handle_cmd_args(
             platttform_override_virt_core_count(num);
             i++;
         }
-        else if (!strcmp(arg, "-A")) {
+        else if (!strcmp(arg, "--arch")) {
+            if (i == argc - 1) {
+                master_error_log_report(
+                    &t->mel, "--arch requires an arch name to follow");
+                return ERR;
+            }
+            if (t->target.arch != ARCH_UNKNOWN) {
+                master_error_log_report(
+                    &t->mel, "--arch mustn't be given twice");
+                return ERR;
+            }
+            t->target.arch = parse_arch_kind(argv[i + 1]);
+            if (t->target.arch == ARCH_UNKNOWN) {
+                char* msg = error_log_cat_strings_3(
+                    el, "unknown arch '", argv[i + 1], "'");
+                master_error_log_report(&t->mel, msg);
+                return ERR;
+            }
+            i++;
+        }
+        else if (!strcmp(arg, "--os")) {
+            if (i == argc - 1) {
+                master_error_log_report(
+                    &t->mel, "--os requires an os name to follow");
+                return ERR;
+            }
+            if (t->target.os != OS_UNKNOWN) {
+                master_error_log_report(&t->mel, "--os mustn't be given twice");
+                return ERR;
+            }
+            t->target.os = parse_os_kind(argv[i + 1]);
+            if (t->target.os == OS_UNKNOWN) {
+                char* msg = error_log_cat_strings_3(
+                    el, "unknown os '", argv[i + 1], "'");
+                master_error_log_report(&t->mel, msg);
+                return ERR;
+            }
+            i++;
+        }
+        else if (!strcmp(arg, "--object-format")) {
+            if (i == argc - 1) {
+                master_error_log_report(
+                    &t->mel,
+                    "--object-format requires an object-format name to follow");
+                return ERR;
+            }
+            if (t->target.object_format != OBJECT_FORMAT_UNKNOWN) {
+                master_error_log_report(
+                    &t->mel, "--object-format mustn't be given twice");
+                return ERR;
+            }
+            t->target.object_format = parse_os_kind(argv[i + 1]);
+            if (t->target.object_format == OBJECT_FORMAT_UNKNOWN) {
+                char* msg = error_log_cat_strings_3(
+                    el, "unknown object-format '", argv[i + 1], "'");
+                master_error_log_report(&t->mel, msg);
+                return ERR;
+            }
+            i++;
+        }
+        else if (!strcmp(arg, "--ast")) {
             t->emit_ast = true;
             if (!t->explicit_exe) t->emit_exe = false;
         }
@@ -152,11 +230,30 @@ int handle_cmd_args(
             t->emit_exe = true;
             t->explicit_exe = true;
         }
-        else if (!strcmp(arg, "-R")) { // short for REEEEEEE
+        else if (!strcmp(arg, "-O0")) {
+            if (check_multi_opt_strats(t, OPT_STRAT_O0)) return ERR;
+        }
+        else if (!strcmp(arg, "-O1")) {
+            if (check_multi_opt_strats(t, OPT_STRAT_O1)) return ERR;
+        }
+        else if (!strcmp(arg, "-O2")) {
+            if (check_multi_opt_strats(t, OPT_STRAT_O2)) return ERR;
+        }
+        else if (!strcmp(arg, "-O3")) {
+            if (check_multi_opt_strats(t, OPT_STRAT_O3)) return ERR;
+        }
+        else if (!strcmp(arg, "-OS")) {
+            if (check_multi_opt_strats(t, OPT_STRAT_OS)) return ERR;
+        }
+        else if (!strcmp(arg, "-D")) {
+            t->debug_symbols = true;
+            t->explicit_debug_symbols = true;
+        }
+        else if (!strcmp(arg, "--debugbreak")) {
             t->trap_on_error = true;
         }
 #if DEBUG
-        else if (!strcmp(arg, "-U")) {
+        else if (!strcmp(arg, "--run-unit-tests")) {
             r = run_unit_tests(argc, argv);
             tests_run = true;
             if (r) return r;
@@ -180,6 +277,10 @@ int handle_cmd_args(
 #if DEBUG
         }
 #endif
+    }
+    target_platform_fill_gaps(&t->target, &t->host_target);
+    if (t->opt_strat == OPT_STRAT_UNSPECIFIED) {
+        t->opt_strat = OPT_STRAT_O0;
     }
     return OK;
 }

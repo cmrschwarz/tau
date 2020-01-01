@@ -1439,6 +1439,10 @@ static inline parse_error parse_expr_block_or_array(parser* p, ast_node** ex)
     if (push_bpd(p, &fake_node, NULL)) return PE_FATAL;
     ast_node* first_expr;
     parse_error pe = parse_statement(p, &first_expr);
+    if (pe) {
+        drop_bpd(p);
+        return pe;
+    }
     PEEK(p, t);
     if (t->kind == TK_SEMICOLON) lx_void(&p->lx);
     if (t->kind == TK_SEMICOLON || ast_node_may_drop_semicolon(first_expr)) {

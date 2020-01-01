@@ -5,6 +5,16 @@
 #include "thread_context.h"
 #include "utils/threading.h"
 #include "target_platform.h"
+
+typedef enum optimization_strategy_e {
+    OPT_STRAT_UNSPECIFIED,
+    OPT_STRAT_O0,
+    OPT_STRAT_O1,
+    OPT_STRAT_O2,
+    OPT_STRAT_O3,
+    OPT_STRAT_OS,
+} optimization_strategy;
+
 typedef struct tauc_s {
     // these two are still needed for error reporting after
     // the compiler has run
@@ -24,7 +34,9 @@ typedef struct tauc_s {
     symbol_table* root_symtab;
     aseglist module_ctors;
     aseglist module_dtors;
+    target_platform host_target;
     target_platform target;
+    optimization_strategy opt_strat;
     bool emit_ll;
     bool emit_asm;
     bool emit_exe;
@@ -33,6 +45,8 @@ typedef struct tauc_s {
     bool needs_emit_stage;
     bool explicit_exe;
     bool trap_on_error;
+    bool debug_symbols;
+    bool explicit_debug_symbols;
 } tauc;
 
 // THREADSAFE

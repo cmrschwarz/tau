@@ -132,6 +132,7 @@ struct LLVMBackend {
     sc_func* _curr_fn_ast_node;
     ureg _mod_startid;
     ureg _mod_endid;
+    bool _pp_required;
     mdg_node** _mods_start;
     mdg_node** _mods_end;
     ureg _private_sym_count;

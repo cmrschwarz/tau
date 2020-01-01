@@ -26,7 +26,7 @@ object_format_kind parse_object_format_kind(char* str)
 }
 
 // TODO: implement this properly :)
-void get_host_platform(target_platform* tp)
+void target_platform_get_host(target_platform* tp)
 {
 #if HOST_OS_LINUX
     tp->os = OS_LINUX;
@@ -40,23 +40,23 @@ void get_host_platform(target_platform* tp)
 #endif
 
 #if HOST_ARCH_X86 && REG_WIDTH_64
-    tp->arch = ARCH_X86;
-#elif HOST_ARCH_X86 && REG_WIDTH_32
     tp->arch = ARCH_X86_64;
+#elif HOST_ARCH_X86 && REG_WIDTH_32
+    tp->arch = ARCH_X86;
 #else
 // TODO
 #error unsupported HOST OS
 #endif
 }
 
-void set_unknown_host_platform(target_platform* tp)
+void target_platform_set_unknown(target_platform* tp)
 {
     tp->arch = ARCH_UNKNOWN;
     tp->object_format = OBJECT_FORMAT_UNKNOWN;
     tp->os = OS_UNKNOWN;
 }
 
-void fill_plattform_gaps(target_platform* tgt, target_platform* src)
+void target_platform_fill_gaps(target_platform* tgt, target_platform* src)
 {
     if (tgt->arch == ARCH_UNKNOWN) tgt->arch = src->arch;
     if (tgt->object_format == OBJECT_FORMAT_UNKNOWN) {

@@ -2664,8 +2664,8 @@ resolve_error resolve_func(
             r->generic_context = generic_parent;
             return re;
         }
-        // handle external function
-        if (ast_flags_get_extern_func(fnb->sc.sym.node.flags)) {
+        // handle function declarations
+        if (fnb->sc.body.srange == SRC_RANGE_INVALID) {
             ast_flags_set_resolved(&fnb->sc.sym.node.flags);
             r->curr_block_owner = parent_block_owner;
             r->generic_context = generic_parent;
@@ -2922,13 +2922,14 @@ resolve_error resolver_cleanup(resolver* r, ureg startid)
                 if (mainfn && startfn) break;
             }
         }
-        if (!mainfn) {
+        if (!mainfn && !startfn) {
             // TODO: maybe create a separate error kind for this?
             error_log_report_critical_failiure(
-                r->tc->err_log, "no main function found in root module");
+                r->tc->err_log,
+                "no main or _start function found in root module");
             return RE_ERROR;
         }
-        assert(mainfn->node.kind == SC_FUNC);
+        assert(!mainfn || mainfn->node.kind == SC_FUNC);
         assert(!startfn || startfn->node.kind == SC_FUNC);
         lle = llvm_backend_generate_entrypoint(
             r->backend, (sc_func*)mainfn, (sc_func*)startfn,

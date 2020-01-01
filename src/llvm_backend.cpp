@@ -374,6 +374,7 @@ LLVMBackend::initModule(mdg_node** start, mdg_node** end, LLVMModule** module)
     *module = m;
     _mod_handle = m;
     _mods_start = start;
+    _pp_required = false;
     _mods_end = end;
     // create actual module
     _module =
@@ -442,6 +443,9 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     // init id space
     _mod_startid = 0;
     _mod_endid = 0;
+    if (!_pp_required) {
+        _pp_required = true;
+    }
     _private_sym_count = private_sym_count;
     // TODO: find a lower upper bound for this
     ureg max_pub_symbols = atomic_ureg_load(&_tc->t->node_ids);
@@ -2126,7 +2130,25 @@ llvm_error LLVMBackend::generateEntrypoint(
         if (!call) return LLE_FATAL;
         call = _builder.CreateCall(destruct_all_func);
         if (!call) return LLE_FATAL;
-        _builder.CreateRetVoid();
+        target_platform t = _tc->t->target;
+        if (t.arch == ARCH_X86_64) {
+            if (t.os == OS_LINUX) {
+                auto func_sig =
+                    llvm::FunctionType::get(_primitive_types[PT_VOID], false);
+                auto myasm = llvm::InlineAsm::get(
+                    func_sig, "movl $$1, %eax;movl $$0, %ebx;int $$0x80", "",
+                    true);
+                call = _builder.CreateCall(myasm);
+                if (!call) return LLE_FATAL;
+            }
+            else {
+                assert(false); // TODO
+            }
+        }
+        else {
+            assert(false); // TODO
+        }
+        _builder.CreateUnreachable();
     }
     return LLE_OK;
 }
