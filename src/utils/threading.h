@@ -34,14 +34,14 @@ void mutex_lock(mutex* m);
 void mutex_unlock(mutex* m);
 void mutex_fin(mutex* m);
 
-int rwlock_init(rwlock* m);
-void rwlock_try_read(rwlock* m);
-void rwlock_begin_read(rwlock* m);
-void rwlock_end_read(mutex* m);
-void rwlock_try_write(rwlock* m);
-void rwlock_begin_write(rwlock* m);
-void rwlock_end_write(rwlock* m);
-void rwlock_fin(mutex* m);
+int rwlock_init(rwlock* rwl);
+bool rwlock_try_read(rwlock* rwl);
+void rwlock_begin_read(rwlock* rwl);
+void rwlock_end_read(rwlock* rwl);
+bool rwlock_try_write(rwlock* rwl);
+void rwlock_begin_write(rwlock* rwl);
+void rwlock_end_write(rwlock* rwl);
+void rwlock_fin(rwlock* rwl);
 
 int cond_var_init(cond_var* cv);
 void cond_var_wait(cond_var* cv, mutex* m);

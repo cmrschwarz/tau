@@ -121,3 +121,5 @@ arch_kind parse_arch_kind(char* str);
 os_kind parse_os_kind(char* str);
 object_format_kind parse_object_format_kind(char* str);
 void get_host_platform(target_platform* tp);
+void set_unknown_host_platform(target_platform* tp);
+void fill_plattform_gaps(target_platform* target, target_platform* source);

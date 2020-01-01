@@ -48,3 +48,19 @@ void get_host_platform(target_platform* tp)
 #error unsupported HOST OS
 #endif
 }
+
+void set_unknown_host_platform(target_platform* tp)
+{
+    tp->arch = ARCH_UNKNOWN;
+    tp->object_format = OBJECT_FORMAT_UNKNOWN;
+    tp->os = OS_UNKNOWN;
+}
+
+void fill_plattform_gaps(target_platform* tgt, target_platform* src)
+{
+    if (tgt->arch == ARCH_UNKNOWN) tgt->arch = src->arch;
+    if (tgt->object_format == OBJECT_FORMAT_UNKNOWN) {
+        tgt->object_format = src->object_format;
+    }
+    if (tgt->os == OS_UNKNOWN) tgt->os = src->os;
+}

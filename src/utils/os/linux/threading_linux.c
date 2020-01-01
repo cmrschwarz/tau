@@ -27,37 +27,37 @@ void mutex_fin(mutex* m)
     if (pthread_mutex_destroy(m)) panic("mutex deallocation failed");
 }
 
-int rwlock_init(rwlock* m)
+int rwlock_init(rwlock* rwl)
 {
-    return pthread_rwlock_init(m, NULL);
+    return pthread_rwlock_init(rwl, NULL);
 }
-void rwlock_try_read(rwlock* m)
+bool rwlock_try_read(rwlock* rwl)
 {
-    return (pthread_rwlock_tryrdlock(m) == 0);
+    return (pthread_rwlock_tryrdlock(rwl) == 0);
 }
-void rwlock_begin_read(rwlock* m)
+void rwlock_begin_read(rwlock* rwl)
 {
-    if (pthread_rwlock_rdlock(m)) panic("rwlock read lock failed");
+    if (pthread_rwlock_rdlock(rwl)) panic("rwlock read lock failed");
 }
-void rwlock_end_read(mutex* m)
+void rwlock_end_read(rwlock* rwl)
 {
-    if (pthread_rwlock_unlock(m)) panic("rwlock read unlock failed");
+    if (pthread_rwlock_unlock(rwl)) panic("rwlock read unlock failed");
 }
-void rwlock_try_write(rwlock* m)
+bool rwlock_try_write(rwlock* rwl)
 {
-    return (pthread_rwlock_trywrlock(m) == 0);
+    return (pthread_rwlock_trywrlock(rwl) == 0);
 }
-void rwlock_begin_write(rwlock* m)
+void rwlock_begin_write(rwlock* rwl)
 {
-    if (pthread_rwlock_wrlock(m)) panic("rwlock write lock failed");
+    if (pthread_rwlock_wrlock(rwl)) panic("rwlock write lock failed");
 }
-void rwlock_end_write(rwlock* m)
+void rwlock_end_write(rwlock* rwl)
 {
-    if (pthread_rwlock_unlock(m)) panic("rwlock write unlock failed");
+    if (pthread_rwlock_unlock(rwl)) panic("rwlock write unlock failed");
 }
-void rwlock_fin(mutex* m)
+void rwlock_fin(rwlock* rwl)
 {
-    if (pthread_mutex_destroy(m)) panic("rwlock deallocation failed");
+    if (pthread_rwlock_destroy(rwl)) panic("rwlock deallocation failed");
 }
 
 int cond_var_init(cond_var* cv)

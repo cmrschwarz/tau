@@ -1,20 +1,23 @@
 module libc{
-    require dynamic "/lib64/ld-linux-x86-64.so.2"; 
-    
-    require dynamic "/usr/lib/x86_64-linux-gnu/libc.so";
     require static "/usr/lib/x86_64-linux-gnu/libc.a";
     require static "/usr/lib/gcc/x86_64-linux-gnu/8/libgcc_eh.a";
-    
-    private extern func __libc_init_first();
 
+    require dynamic "/lib64/ld-linux-x86-64.so.2"; 
+    require dynamic "/usr/lib/x86_64-linux-gnu/libc.so";
+
+    private extern func __libc_init_first();
     public func construct(){
         __libc_init_first();
-        puts("init libc :)");
     }
     
     public func destruct(){
-        puts("fin libc :)");
+       // TODO: proper finalization
     }
+
+    public extern func puts(s: string);
+    public extern func printf(fmt: string, arg1: int, arg2: int);
+    public extern func malloc(size: int) -> *void;
+    public extern func free(ptr: *void);
 
     public func printf(fmt: string, arg1: int){
         printf(fmt, arg1, 0);
@@ -22,9 +25,4 @@ module libc{
     public func printf(fmt: string){
         printf(fmt, 0, 0);
     }
-  
-    public extern func puts(s: string);
-    public extern func printf(fmt: string, arg1: int, arg2: int);
-    public extern func malloc(size: int) -> *void;
-    public extern func free(ptr: *void);
 }

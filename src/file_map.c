@@ -201,7 +201,7 @@ int file_map_head_require(
     }
     else if (h->elem.kind == ELEM_SRC_LIB) {
         return src_lib_require(
-            (src_file*)h, t, requiring_smap, requiring_srange, in_pp);
+            (src_lib*)h, t, requiring_smap, requiring_srange, in_pp);
     }
     else {
         assert(false);

@@ -333,7 +333,6 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
             sc_func_base* fnb = (sc_func_base*)n;
-            sc_func* fn = (n->kind == SC_FUNC) ? (sc_func*)n : NULL;
             sc_func_generic* fng =
                 (n->kind == SC_FUNC) ? NULL : (sc_func_generic*)n;
 
