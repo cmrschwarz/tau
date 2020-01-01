@@ -377,15 +377,18 @@ static inline int file_map_grow(file_map* fm)
     fm->table_start = fmnew;
     fm->table_end = fmnew + capacity_new;
     fm->size_bits += 1;
-    fm->hash_mask = (fm->size_bits << 1) & 1;
+    fm->hash_mask = (1 << fm->size_bits) - 1;
     fm->elem_count = 0;
     fm->grow_on_elem_count *= 2;
 
     for (file_map_head** i = old_start; i != old_end; i++) {
         file_map_head* next = *i;
         while (next) {
-            *file_map_get_head(fm, next->parent, next->name) = next;
+            file_map_head** tgt =
+                file_map_get_head(fm, next->parent, next->name);
+            *tgt = next;
             next = next->next;
+            (**tgt).next = NULL;
         }
     }
     // PERF: we could give this memory region to the pools

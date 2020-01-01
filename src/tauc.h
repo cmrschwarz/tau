@@ -4,7 +4,7 @@
 #include "job_queue.h"
 #include "thread_context.h"
 #include "utils/threading.h"
-
+#include "target_platform.h"
 typedef struct tauc_s {
     // these two are still needed for error reporting after
     // the compiler has run
@@ -24,6 +24,7 @@ typedef struct tauc_s {
     symbol_table* root_symtab;
     aseglist module_ctors;
     aseglist module_dtors;
+    target_platform target;
     bool emit_ll;
     bool emit_asm;
     bool emit_exe;

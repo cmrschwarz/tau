@@ -6,10 +6,10 @@
 
 static inline ureg ulog2(ureg v)
 {
-#if ARCH_X86 && REG_WIDTH_64
+#if HOST_ARCH_X86 && REG_WIDTH_64
     __asm__("bsrq %0, %0" : "=r"(v) : "0"(v));
     return v;
-#elif ARCH_X86 && REG_WIDTH_32
+#elif HOST_ARCH_X86 && REG_WIDTH_32
     __asm__("bsrl %0, %0" : "=r"(v) : "0"(v));
     return v;
 #else

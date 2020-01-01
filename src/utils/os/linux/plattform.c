@@ -1,5 +1,5 @@
 #include "../../plattform.h"
-#if OS_LINUX
+#if HOST_OS_LINUX
 #include <stdio.h>
 #include <unistd.h>
 static ureg _page_size = 0;

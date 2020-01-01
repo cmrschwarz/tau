@@ -6,7 +6,7 @@
 #include "atomics.h"
 
 typedef void (*thread_function_ptr)(void* context);
-#if OS_LINUX
+#if HOST_OS_LINUX
 #include "os/linux/threading_linux.h"
 #else
 #error no threading backend for configured plattform

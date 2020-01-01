@@ -2855,7 +2855,7 @@ resolve_error resolver_cleanup(resolver* r, ureg startid)
         const char* n = llvm_backend_name_mangle(
             r->backend, (sc_func_base*)r->module_group_constructor);
         if (!n) return RE_FATAL;
-        aseglist_add(&r->tc->t->module_ctors, n);
+        aseglist_add(&r->tc->t->module_ctors, (void*)n);
     }
     if (r->module_group_destructor) {
         pp_resolve_node* pprn = pp_resolve_node_create(
@@ -2867,23 +2867,72 @@ resolve_error resolver_cleanup(resolver* r, ureg startid)
         const char* n = llvm_backend_name_mangle(
             r->backend, (sc_func_base*)r->module_group_destructor);
         if (!n) return RE_FATAL;
-        aseglist_add(&r->tc->t->module_dtors, n);
+        aseglist_add(&r->tc->t->module_dtors, (void*)n);
     }
     free_pprns(r);
-    llvm_backend_reserve_symbols(
+
+    llvm_error lle;
+    lle = llvm_backend_reserve_symbols(
         r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
         startid + r->public_sym_count);
+    if (lle) return RE_ERROR;
     int res = 0;
+    ureg endid = startid;
     for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
         aseglist_iterator it;
         aseglist_iterator_begin(&it, &(**n).open_scopes);
         for (open_scope* osc = aseglist_iterator_next(&it); osc;
              osc = aseglist_iterator_next(&it)) {
-            adjust_body_ids(r, &startid, &osc->sc.body);
+            adjust_body_ids(r, &endid, &osc->sc.body);
         }
         res |= mdg_node_resolved(*n, r->tc);
     }
     if (res) return RE_FATAL;
+    // check for root module
+    mdg_node* root = r->tc->t->mdg.root_node;
+    if (*r->mdgs_begin == root) {
+        symbol* mainfn = NULL;
+        symbol* startfn = NULL;
+        symbol** s =
+            symbol_table_lookup(root->symtab, 0, AM_PRIVATE, COND_KW_MAIN);
+        if (s) mainfn = *s;
+        s = symbol_table_lookup(root->symtab, 0, AM_PRIVATE, COND_KW_START);
+        if (s) startfn = *s;
+        if (!mainfn || !startfn) {
+            aseglist_iterator oscs;
+            aseglist_iterator_begin(&oscs, &root->open_scopes);
+            for (open_scope* osc = aseglist_iterator_next(&oscs); osc;
+                 osc = aseglist_iterator_next(&oscs)) {
+                if (!mainfn) {
+                    s = symbol_table_lookup_limited(
+                        osc->sc.body.symtab, 0, AM_PRIVATE, root->symtab,
+                        COND_KW_MAIN);
+                    if (s) mainfn = *s;
+                }
+                if (!startfn) {
+                    s = symbol_table_lookup_limited(
+                        osc->sc.body.symtab, 0, AM_PRIVATE, root->symtab,
+                        COND_KW_START);
+                    if (s) startfn = *s;
+                }
+                if (mainfn && startfn) break;
+            }
+        }
+        if (!mainfn) {
+            // TODO: maybe create a separate error kind for this?
+            error_log_report_critical_failiure(
+                r->tc->err_log, "no main function found in root module");
+            return RE_ERROR;
+        }
+        assert(mainfn->node.kind == SC_FUNC);
+        assert(!startfn || startfn->node.kind == SC_FUNC);
+        lle = llvm_backend_generate_entrypoint(
+            r->backend, (sc_func*)mainfn, (sc_func*)startfn,
+            &r->tc->t->module_ctors, &r->tc->t->module_dtors, startid, endid,
+            r->private_sym_count);
+        if (lle) return RE_ERROR;
+    }
+
     return RE_OK;
 }
 

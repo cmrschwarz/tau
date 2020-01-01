@@ -12,7 +12,7 @@ void* trealloc(void* mem, ureg size_used, ureg size_new);
 void* tmallocz(ureg size);
 void tfree(void* mem);
 
-#if OS_LINUX
+#if HOST_OS_LINUX
 #define USE_LIBC_ALLOCATOR
 #endif
 

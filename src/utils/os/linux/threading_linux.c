@@ -1,6 +1,6 @@
 #include "../../panic.h"
 #include "../../threading.h"
-#if OS_LINUX
+#if HOST_OS_LINUX
 
 #include <pthread.h>
 #include <stdio.h>

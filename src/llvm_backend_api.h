@@ -6,6 +6,7 @@ extern "C" {
 #endif
 #include "ast.h"
 #include "utils/types.h"
+#include "utils/aseglist.h"
 #define PRIV_SYMBOL_OFFSET (UREG_MAX / 2)
 typedef void llvm_backend;
 typedef void llvm_module;
@@ -51,7 +52,7 @@ int llvm_link_modules(
 
 llvm_error llvm_backend_generate_entrypoint(
     llvm_backend* llvmb, sc_func* mainfn, sc_func* startfn, aseglist* ctors,
-    aseglist* dtors);
+    aseglist* dtors, ureg startid, ureg endid, ureg private_sym_count);
 
 int llvm_delete_objs(llvm_module** start, llvm_module** end);
 

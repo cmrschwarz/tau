@@ -3,7 +3,7 @@
 
 #include "plattform.h"
 #include "types.h"
-#if OS_LINUX
+#if HOST_OS_LINUX
 #include "os/linux/timing_linux.h"
 #else
 #error no timing backend for configured plattform

@@ -1,5 +1,5 @@
 #include "../../plattform.h"
-#if OS_LINUX
+#if HOST_OS_LINUX
 #include "../../time_conversions.h"
 #include "../../timing.h"
 #include <time.h>

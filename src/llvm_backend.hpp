@@ -159,7 +159,8 @@ struct LLVMBackend {
     llvm_error reserveSymbols(ureg priv_sym_limit, ureg pub_sym_limit);
     llvm_error emit(ureg startid, ureg endid, ureg priv_sym_count);
     llvm_error generateEntrypoint(
-        sc_func* mainfn, sc_func* startfn, aseglist* ctors, aseglist* dtors);
+        sc_func* mainfn, sc_func* startfn, aseglist* ctors, aseglist* dtors,
+        ureg startid, ureg endid, ureg private_sym_count);
     pp_resolve_node* lookupPPResolveNode(ureg id);
     const char* nameMangle(sc_func_base* func);
 
@@ -176,6 +177,9 @@ struct LLVMBackend {
     static bool isLocalID(ureg id);
     static bool isGlobalID(ureg id);
     static bool isPPSymbolGlobal(symbol* sym);
+    llvm_error genSpecialFunc(const char* name, llvm::Function** func);
+
+    llvm_error genSpecialCall(const char* func_name);
 
   private:
     ControlFlowContext* getTartetCFC(ast_node* target);

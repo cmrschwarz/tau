@@ -155,9 +155,11 @@ int llvm_link_modules(
 }
 llvm_error llvm_backend_generate_entrypoint(
     llvm_backend* llvmb, sc_func* mainfn, sc_func* startfn, aseglist* ctors,
-    aseglist* dtors)
+    aseglist* dtors, ureg startid, ureg endid, ureg private_sym_count)
 {
-    ((LLVMBackend*)llvmb)->generateEntrypoint(mainfn, startfn, ctors, dtors);
+    return ((LLVMBackend*)llvmb)
+        ->generateEntrypoint(
+            mainfn, startfn, ctors, dtors, startid, endid, private_sym_count);
 }
 
 static inline llvm_error link_dll(PPRunner* pp, const char* path)
@@ -373,6 +375,12 @@ LLVMBackend::initModule(mdg_node** start, mdg_node** end, LLVMModule** module)
     _mod_handle = m;
     _mods_start = start;
     _mods_end = end;
+    // create actual module
+    _module =
+        new (std::nothrow) llvm::Module(_mod_handle->module_str, _context);
+    if (!_module) return LLE_OK;
+    _module->setTargetTriple(_target_machine->getTargetTriple().str());
+    _module->setDataLayout(*_data_layout);
     return LLE_OK;
 }
 void LLVMBackend::resetAfterEmit()
@@ -443,7 +451,8 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
         PP_RUNNER->pp_count.fetch_add(1, std::memory_order_relaxed));
     std::string pp_func_name = "__pp_func_" + num;
     std::string pp_mod_name = "__pp_mod_" + num;
-    // create actual module
+    // swap out for pp moudle
+    auto mod = _module;
     _module = new (std::nothrow) llvm::Module(pp_mod_name, _context);
     if (!_module) return LLE_OK;
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
@@ -471,6 +480,7 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
 
     resetAfterEmit();
     delete _module;
+    _module = mod;
     return lle;
 }
 llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
@@ -482,12 +492,6 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     _mod_endid = endid;
     _private_sym_count = private_sym_count;
     if (reserveSymbols(private_sym_count, endid)) return LLE_FATAL;
-    // create actual module
-    _module =
-        new (std::nothrow) llvm::Module(_mod_handle->module_str, _context);
-    if (!_module) return LLE_OK;
-    _module->setTargetTriple(_target_machine->getTargetTriple().str());
-    _module->setDataLayout(*_data_layout);
     llvm_error lle;
     tprintf("generating {%s}", _mod_handle->module_str.c_str());
     TIME(lle = genModules(););
@@ -1818,9 +1822,14 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         if (llfn) *llfn = func;
         return LLE_OK;
     }
-    auto lt = (isLocalID(fn->id) && !_pp_mode)
-                  ? llvm::Function::InternalLinkage
-                  : llvm::Function::ExternalLinkage;
+    llvm::GlobalValue::LinkageTypes lt;
+    if (_pp_mode) {
+        lt = llvm::Function::InternalLinkage;
+    }
+    else {
+        lt = (isLocalID(fn->id)) ? llvm::Function::InternalLinkage
+                                 : llvm::Function::ExternalLinkage;
+    }
     func = llvm::Function::Create(func_sig, lt, func_name_mangled, _module);
     if (!func) return LLE_FATAL;
     *res = func;
@@ -2044,30 +2053,82 @@ llvm_error LLVMBackend::emitModule()
     }
     return lle;
 }
-llvm_error LLVMBackend::generateEntrypoint(
-    sc_func* mainfn, sc_func* startfn, aseglist* ctors, aseglist* dtors)
+llvm_error
+LLVMBackend::genSpecialFunc(const char* name_mangled, llvm::Function** func)
 {
-    if (!startfn) {
-        llvm::ArrayRef<llvm::Type*> no_args{NULL, 0};
-        auto func_sig =
-            llvm::FunctionType::get(_primitive_types[PT_VOID], false);
-        if (!func_sig) return LLE_FATAL;
-    }
-    // TODO: ugly hack,  use a proper extern function
-    // ast nod
-
-    auto func = llvm::Function::Create(
-        func_sig, llvm::Function::ExternalLinkage, COND_KW_START, _module);
-    if (!func) return LLE_FATAL;
-    *res = func;
-    if (llfn) *llfn = func;
-    *state = (_pp_mode && isLocalID(fn->id)) ? PP_IMPL_ADDED : IMPL_ADDED;
-    _reset_after_emit.push_back(fn->id);
-    llvm::BasicBlock* func_block = llvm::BasicBlock::Create(_context, "", func);
+    auto func_sig = llvm::FunctionType::get(_primitive_types[PT_VOID], false);
+    if (!func_sig) return LLE_FATAL;
+    auto f = llvm::Function::Create(
+        func_sig, llvm::Function::ExternalLinkage, name_mangled, _module);
+    if (!f) return LLE_FATAL;
+    llvm::BasicBlock* func_block = llvm::BasicBlock::Create(_context, "", f);
     if (!func_block) return LLE_FATAL;
-    ureg cfcsize = _control_flow_ctx.size();
-    _control_flow_ctx.emplace_back();
-    ControlFlowContext& ctx = _control_flow_ctx.back();
+    _builder.SetInsertPoint(func_block);
+    if (func) *func = f;
+    return LLE_OK;
+}
+
+llvm_error LLVMBackend::genSpecialCall(const char* func_name_mangled)
+{
+    auto func_sig = llvm::FunctionType::get(_primitive_types[PT_VOID], false);
+    if (!func_sig) return LLE_FATAL;
+    auto func = (llvm::Function*)llvm::Function::Create(
+        func_sig, llvm::GlobalVariable::ExternalLinkage,
+        _data_layout->getProgramAddressSpace(), func_name_mangled);
+    if (!func) return LLE_FATAL;
+    _module->getFunctionList().push_back(func);
+    auto call = _builder.CreateCall(func);
+    if (!call) return LLE_FATAL;
+    return LLE_OK;
+}
+llvm_error LLVMBackend::generateEntrypoint(
+    sc_func* mainfn, sc_func* startfn, aseglist* ctors, aseglist* dtors,
+    ureg startid, ureg endid, ureg private_sym_count)
+{
+    _pp_mode = false;
+    _mod_startid = startid;
+    _mod_endid = endid;
+    _private_sym_count = private_sym_count;
+    if (reserveSymbols(private_sym_count, endid)) return LLE_FATAL;
+    llvm_error lle;
+    llvm::Function* construct_all_func;
+    lle = genSpecialFunc("tau_constructAll", &construct_all_func);
+    if (lle) return lle;
+    aseglist_iterator it;
+    aseglist_iterator_begin(&it, ctors);
+    for (const char* ct = (const char*)aseglist_iterator_next(&it); ct;
+         ct = (const char*)aseglist_iterator_next(&it)) {
+        lle = genSpecialCall(ct);
+        if (lle) return lle;
+    }
+    _builder.CreateRetVoid();
+    llvm::Function* destruct_all_func;
+    lle = genSpecialFunc("tau_destructAll", &destruct_all_func);
+    if (lle) return lle;
+    aseglist_iterator_begin(&it, dtors);
+    for (const char* ct = (const char*)aseglist_iterator_next(&it); ct;
+         ct = (const char*)aseglist_iterator_next(&it)) {
+        lle = genSpecialCall(ct);
+        if (lle) return lle;
+    }
+    _builder.CreateRetVoid();
+
+    if (!startfn) {
+        lle = genSpecialFunc(COND_KW_START, NULL);
+        if (lle) return lle;
+        auto call = _builder.CreateCall(construct_all_func);
+        if (!call) return LLE_FATAL;
+        llvm::Value* mainfnval;
+        assert(mainfn->fnb.param_count == 0); // TODO
+        lle = genFunction(mainfn, &mainfnval);
+        if (lle) return lle;
+        call = _builder.CreateCall(mainfnval);
+        if (!call) return LLE_FATAL;
+        call = _builder.CreateCall(destruct_all_func);
+        if (!call) return LLE_FATAL;
+        _builder.CreateRetVoid();
+    }
+    return LLE_OK;
 }
 
 llvm_error linkLLVMModules(

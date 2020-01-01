@@ -36,6 +36,7 @@ set(TAUC_C_SRCS
     ./src/job_queue.c
     ./src/utils/debug_utils.c
     ./src/utils/os/linux/plattform.c
+    ./src/target_platform.c
 )
 set (TAUC_CPP_SRCS
     ./src/llvm_backend.cpp
