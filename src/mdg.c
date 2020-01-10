@@ -841,6 +841,25 @@ int mdg_node_add_osc(mdg_node* n, open_scope* osc, tauc* t)
     }
     return r;
 }
+// make sure the required libraries of an mdg node are loaded
+int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp)
+{
+    aseglist_iterator oscs_it;
+    aseglist_iterator_begin(&oscs_it, &n->open_scopes);
+    while (true) {
+        open_scope* osc = aseglist_iterator_next(&oscs_it);
+        if (!osc) break;
+        file_require* r = osc->requires;
+        while (*(void**)r) {
+            int res = file_map_head_require(
+                r->fmh, tc->t, open_scope_get_smap(osc), r->srange, n,
+                r->in_ppl || in_pp);
+            r++;
+            if (res) return res;
+        }
+    }
+    return OK;
+}
 int mdg_node_require(mdg_node* n, thread_context* tc)
 {
     mdg_node* parent = n->parent;
@@ -895,22 +914,12 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
                 }
             }
         }
-        rwslock_end_write(&n->stage_lock);
+        int r = OK;
         if (oscs) {
-            aseglist_iterator oscs_it;
-            aseglist_iterator_begin(&oscs_it, oscs);
-            while (true) {
-                open_scope* osc = aseglist_iterator_next(&oscs_it);
-                if (!osc) break;
-                file_require* r = osc->requires;
-                while (*(void**)r) {
-                    file_map_head_require(
-                        r->fmh, tc->t, open_scope_get_smap(osc), r->srange, n,
-                        r->in_ppl);
-                    r++;
-                }
-            }
+            r = mdg_node_require_requirements(n, tc, false);
         }
+        rwslock_end_write(&n->stage_lock);
+        if (r) return r;
         while (true) {
             if (tc->tempstack.head == stack_head) {
                 if (run_scc) return scc_detector_run(tc, start_node);

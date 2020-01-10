@@ -164,24 +164,39 @@ llvm_error llvm_backend_generate_entrypoint(
 
 static inline llvm_error link_dll(PPRunner* pp, const char* path)
 {
-
-    auto l = llvm::orc::DynamicLibrarySearchGenerator::Load(path, '\0');
-    if (!l) {
-        llvm::errs() << l.takeError() << "\n";
+    std::string ErrMsg;
+    auto dll = llvm::sys::DynamicLibrary::getPermanentLibrary(path, &ErrMsg);
+    if (!dll.isValid()) {
+        llvm::errs() << ErrMsg << "\n";
         assert(false);
     }
-    pp->exec_session.getMainJITDylib().setGenerator(l.get());
+    PP_RUNNER->addDll(std::move(dll));
     return LLE_OK;
 }
-static inline llvm_error link_lib(PPRunner* pp, const char* path)
+
+static inline llvm_error link_archive(PPRunner* pp, const char* path)
 {
-    auto& dl = pp->exec_session.createJITDylib(path);
     // TODO: throw am error the file doesnt exist
+    auto mb = std::move(llvm::MemoryBuffer::getFile(path).get());
+    llvm::MemoryBufferRef mb_ref{*mb};
+    auto arch = llvm::object::Archive::create(mb_ref);
+    if (!arch) {
+        llvm::errs() << arch.takeError() << "\n";
+        assert(false);
+    }
+    llvm::object::OwningBinary<llvm::object::Archive> arch_ob{
+        std::move(arch.get()), std::move(mb)};
+    PP_RUNNER->addArchive(std::move(arch_ob));
+    return LLE_OK;
+}
+static inline llvm_error link_obj(PPRunner* pp, const char* path)
+{
+    auto& dl = pp->exec_session.getMainJITDylib();
     auto file{std::move(llvm::MemoryBuffer::getFile(path).get())};
     auto err = pp->obj_link_layer.add(
         dl, std::move(file), pp->exec_session.allocateVModule());
     if (err) {
-        llvm::errs() << err << "\n";
+        return link_archive(pp, path); // TODO: make this less ugly
         assert(false);
     }
     return LLE_OK;
@@ -192,7 +207,7 @@ llvm_error llvm_backend_link_for_pp(bool is_dynamic, char* path)
         return link_dll(PP_RUNNER, path);
     }
     else {
-        return link_lib(PP_RUNNER, path);
+        return link_obj(PP_RUNNER, path);
     }
 }
 } // CPP
@@ -202,12 +217,87 @@ PPRunner::PPRunner()
       obj_link_layer(
           exec_session,
           []() { return llvm::make_unique<llvm::SectionMemoryManager>(); }),
-      pp_count(0)
+      pp_stuff_dylib(exec_session.createJITDylib("pp_stuff", true)), pp_count(0)
 {
+    auto generator = [this](
+                         llvm::orc::JITDylib& dylib,
+                         const llvm::orc::SymbolNameSet& symbols)
+        -> llvm::Expected<llvm::orc::SymbolNameSet> {
+        // std::lock_guard<std::mutex> guard{this->mtx};
+        llvm::orc::SymbolNameSet added;
+        llvm::orc::SymbolMap new_symbols;
+        for (auto& sym : symbols) {
+            printf("looking for symbol '%s'\n", (*sym).str().c_str());
+            bool found = false;
+            for (auto& arch_obs : this->archives) {
+                auto& arch = *arch_obs.getBinary();
+                // Look for our symbols in each Archive
+                auto OptionalChildOrErr = arch.findSym(*sym);
+                if (!OptionalChildOrErr)
+                    report_fatal_error(OptionalChildOrErr.takeError());
+                auto& OptionalChild = *OptionalChildOrErr;
+                if (OptionalChild) {
+                    // FIXME: Support nested archives?
+                    llvm::Expected<std::unique_ptr<llvm::object::Binary>>
+                        ChildBinOrErr = OptionalChild->getAsBinary();
+                    if (!ChildBinOrErr) {
+                        llvm::errs() << ChildBinOrErr.takeError() << "\n";
+                        assert(false);
+                        continue;
+                    }
+                    std::unique_ptr<llvm::object::Binary>& ChildBin =
+                        ChildBinOrErr.get();
+                    if (ChildBin->isObject()) {
+                        this->obj_link_layer.add(
+                            this->exec_session.getMainJITDylib(),
+                            llvm::MemoryBuffer::getMemBufferCopy(
+                                ChildBin->getData()));
+                        added.insert(sym);
+                        found = true;
+                        break;
+                    }
+                    else {
+                        printf("bin type: %i\n", ChildBin->getType());
+                    }
+                }
+            }
+            if (found) continue;
+            for (auto dll : dlls) {
+                void* addr = dll.getAddressOfSymbol((*sym).str().c_str());
+                if (addr) {
+                    new_symbols[sym] = llvm::JITEvaluatedSymbol(
+                        static_cast<llvm::JITTargetAddress>(
+                            reinterpret_cast<uintptr_t>(addr)),
+                        llvm::JITSymbolFlags::Exported);
+                    added.insert(sym);
+                    found = true;
+                }
+            }
+            if (found) continue;
+            // TODO: error ?
+        }
+        this->exec_session.getMainJITDylib().define(
+            absoluteSymbols(std::move(new_symbols)));
+        return added;
+    };
+    exec_session.getMainJITDylib().setGenerator(generator);
+    pp_stuff_dylib.addToSearchOrder(exec_session.getMainJITDylib(), true);
 
-    link_dll(this, "/lib64/ld-linux-x86-64.so.2");
-    link_dll(this, "/lib/x86_64-linux-gnu/libc.so.6");
+    // link_dll(this, "/lib64/ld-linux-x86-64.so.2");
+    // link_dll(this, "/lib/x86_64-linux-gnu/libc.so.6");
     // link_lib(this, "/usr/lib/x86_64-linux-gnu/libc_nonshared.a");
+}
+void PPRunner::addArchive(
+    llvm::object::OwningBinary<llvm::object::Archive>&& arch)
+{
+    std::lock_guard<std::mutex> guard{mtx};
+    archives.emplace_back(std::move(arch));
+}
+
+void PPRunner::addDll(llvm::sys::DynamicLibrary&& dll)
+{
+    std::lock_guard<std::mutex> guard{mtx};
+    dlls.emplace_back(std::move(dll));
 }
 
 llvm_error processEscapeSymbols(char** str_ptr)
@@ -445,6 +535,10 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     _mod_endid = 0;
     if (!_pp_required) {
         _pp_required = true;
+        for (mdg_node** n = _mods_start; n != _mods_end; n++) {
+            int r = mdg_node_require_requirements(*n, _tc, true);
+            if (r) return LLE_FATAL;
+        }
     }
     _private_sym_count = private_sym_count;
     // TODO: find a lower upper bound for this
@@ -467,19 +561,17 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     // emit
     lle = emitModule();
     if (lle) return lle;
-    PP_RUNNER->mtx.lock();
     auto mainfn = PP_RUNNER->exec_session.lookup(
-        llvm::orc::JITDylibSearchList(
-            {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
+        llvm::orc::JITDylibSearchList({{&PP_RUNNER->pp_stuff_dylib, true}}),
         PP_RUNNER->exec_session.intern(pp_func_name));
-    PP_RUNNER->mtx.unlock();
     if (!mainfn) {
-        debugbreak();
         llvm::errs() << mainfn.takeError() << "\n";
+        debugbreak();
         assert(false);
     }
 
     auto jit_func = (void (*)())(mainfn.get()).getAddress();
+    printf("running '%s'\n", pp_func_name.c_str());
     jit_func();
 
     resetAfterEmit();
@@ -1049,7 +1141,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (isLocalID(var->var_id) || gen_stub) {
                 if (_pp_mode) {
                     _reset_after_emit.push_back(var->var_id);
-                    lt = llvm::GlobalVariable::ExternalLinkage;
+                    lt = llvm::GlobalVariable::InternalLinkage;
                 }
                 else {
                     lt = llvm::GlobalVariable::InternalLinkage;
@@ -1729,12 +1821,10 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         // we disabled this in favor of using stubs (-->
         // PP_IMPL_GENERATED)
         assert(false);
-        PP_RUNNER->mtx.lock();
         auto fun = PP_RUNNER->exec_session.lookup(
             llvm::orc::JITDylibSearchList(
                 {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
             PP_RUNNER->exec_session.intern(nameMangle(&fn->fnb)));
-        PP_RUNNER->mtx.unlock();
         if (!fun) {
             llvm::errs() << fun.takeError() << "\n";
             assert(false);
@@ -1828,7 +1918,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     }
     llvm::GlobalValue::LinkageTypes lt;
     if (_pp_mode) {
-        lt = llvm::Function::InternalLinkage;
+        lt = llvm::Function::ExternalWeakLinkage;
     }
     else {
         lt = (isLocalID(fn->id)) ? llvm::Function::InternalLinkage
@@ -1960,11 +2050,15 @@ llvm_error LLVMBackend::emitModuleToPP(
     std::unique_ptr<llvm::MemoryBuffer> obj_svmb{
         new llvm::SmallVectorMemoryBuffer{std::move(obj_sv)}};
     // link that mem buffer file
-    PP_RUNNER->mtx.lock();
+    llvm::orc::JITDylib* dl;
+    if (_pp_mode) {
+        dl = &PP_RUNNER->pp_stuff_dylib;
+    }
+    else {
+        dl = &PP_RUNNER->exec_session.getMainJITDylib();
+    }
     auto res = PP_RUNNER->obj_link_layer.add(
-        PP_RUNNER->exec_session.getMainJITDylib(), std::move(obj_svmb),
-        PP_RUNNER->exec_session.allocateVModule());
-    PP_RUNNER->mtx.unlock();
+        *dl, std::move(obj_svmb), PP_RUNNER->exec_session.allocateVModule());
     if (res.dynamicClassID() != NULL) {
         llvm::errs() << res;
         assert(false);

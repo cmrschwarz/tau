@@ -66,13 +66,38 @@ extern "C" {
 #include <llvm/ADT/STLExtras.h>
 #include <unistd.h>
 
+class ArchiveSymbolsMaterializationUnit
+    : public llvm::orc::MaterializationUnit {
+  public:
+    ArchiveSymbolsMaterializationUnit(
+        llvm::orc::SymbolMap Symbols, llvm::orc::VModuleKey K);
+
+    llvm::StringRef getName() const override;
+
+  private:
+    void materialize(llvm::orc::MaterializationResponsibility R) override;
+    void discard(
+        const llvm::orc::JITDylib& JD,
+        const llvm::orc::SymbolStringPtr& Name) override;
+    static llvm::orc::SymbolFlagsMap
+    extractFlags(const llvm::orc::SymbolMap& Symbols);
+
+    llvm::orc::SymbolMap Symbols;
+};
+
 struct PPRunner {
     llvm::orc::ExecutionSession exec_session;
+    llvm::orc::JITDylib& pp_stuff_dylib;
     llvm::orc::RTDyldObjectLinkingLayer obj_link_layer;
     std::mutex mtx;
     std::atomic<ureg> pp_count;
+    std::vector<llvm::object::OwningBinary<llvm::object::Archive>> archives;
+    std::vector<llvm::sys::DynamicLibrary> dlls;
     PPRunner();
     ~PPRunner();
+
+    void addArchive(llvm::object::OwningBinary<llvm::object::Archive>&& arch);
+    void addDll(llvm::sys::DynamicLibrary&& dll);
 };
 
 struct LLVMModule {

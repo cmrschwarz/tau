@@ -1,19 +1,28 @@
 module libc{
     require dynamic "/lib64/ld-linux-x86-64.so.2"; 
-    require dynamic "/usr/lib/x86_64-linux-gnu/libc.so";
     require static "/usr/lib/x86_64-linux-gnu/crti.o";
-
+    require static "/usr/lib/x86_64-linux-gnu/libc_nonshared.a";
+    require dynamic "/lib/x86_64-linux-gnu/libc.so.6";
+    
     private extern func __dl_tls_setup();
     private extern func __libc_csu_init();
+    private extern func __libc_csu_fini();
     private extern func __libc_init_first();
 
     public func construct(){
-        __libc_csu_init();
+        __init_array_start();
+        __init_array_end();
+        __gmon_start__();
+        __libc_init_first();
     }
     
-    public func fdaas(){
-       // TODO: proper finalization
+    public func destruct(){
+       __libc_csu_fini();
     }
+
+    public extern func __init_array_start(){}
+    public extern func __init_array_end(){}
+    public extern func __gmon_start__(){};
 
     public extern func puts(s: string);
     public extern func printf(fmt: string, arg1: int, arg2: int);
