@@ -8,6 +8,7 @@
 #include "utils/sbuffer.h"
 #include "utils/string.h"
 #include <stdio.h>
+#include <assert.h>
 
 typedef struct thread_context_s thread_context;
 typedef struct src_file_s src_file;
@@ -53,6 +54,9 @@ void lx_close_file(lexer* lx);
 // the void operation itself does not invalidate
 token* lx_consume(lexer* lx);
 token* lx_peek(lexer* lx);
+// this completely circumvents the lookahead and normal lexing structure
+// no lookahead may be present when calling this
+token* lx_consume_macro_string(lexer* lx);
 token* lx_peek_2nd(lexer* p);
 token* lx_peek_3rd(lexer* p);
 token* lx_peek_nth(lexer* lx, ureg n);
@@ -62,6 +66,7 @@ void lx_void_n(lexer* lx, ureg n);
 // get a token that was already peeked at
 static inline token* lx_aquire(lexer* lx)
 {
+    assert(lx->loaded_tokens_start != lx->loaded_tokens_head);
     return lx->loaded_tokens_start;
 }
 #endif

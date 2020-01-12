@@ -341,6 +341,9 @@ LLVMBackend::LLVMBackend(thread_context* tc)
     llvm::TargetOptions opt;
     opt.ThreadModel = llvm::ThreadModel::POSIX;
     opt.DataSections = true;
+    opt.ExceptionModel = llvm::ExceptionHandling::None;
+    opt.EnableFastISel = true;
+
     llvm::Optional<llvm::CodeModel::Model> CM = llvm::CodeModel::Small;
     llvm::CodeGenOpt::Level OptLevel = llvm::CodeGenOpt::None;
     llvm::Optional<llvm::Reloc::Model> rm{llvm::Reloc::Model::PIC_};
@@ -1138,10 +1141,13 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         if (k == ELEM_MDG_NODE || k == OSC_MODULE || k == OSC_EXTEND) {
             // global var
             llvm::GlobalVariable::LinkageTypes lt;
-            if (isLocalID(var->var_id) || gen_stub) {
+            if (gen_stub) {
+                lt = llvm::GlobalVariable::InternalLinkage;
+            }
+            else if (isLocalID(var->var_id)) {
                 if (_pp_mode) {
                     _reset_after_emit.push_back(var->var_id);
-                    lt = llvm::GlobalVariable::InternalLinkage;
+                    lt = llvm::GlobalVariable::ExternalLinkage;
                 }
                 else {
                     lt = llvm::GlobalVariable::InternalLinkage;
@@ -1643,6 +1649,23 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             }
             return LLE_OK;
         }
+        // TODO: implement this generally
+        case EXPR_MACRO_STR_CALL: {
+            auto emsc = (expr_macro_str_call*)n;
+            assert(emsc->lhs->kind == EXPR_IDENTIFIER);
+            auto id = (expr_identifier*)emsc->lhs;
+            assert(cstr_eq(id->value.str, "asm"));
+            auto func_sig =
+                llvm::FunctionType::get(_primitive_types[PT_VOID], false);
+            auto myasm = llvm::InlineAsm::get(
+                func_sig, emsc->str_param.start, "", true, false,
+                llvm::InlineAsm::AsmDialect::AD_ATT);
+            auto call = _builder.CreateCall(myasm);
+            if (!call) return LLE_FATAL;
+            if (vl) *vl = call;
+            if (vl_loaded) *vl_loaded = call;
+            return LLE_OK;
+        }
         default: assert(false);
     }
     assert(false);
@@ -1918,7 +1941,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     }
     llvm::GlobalValue::LinkageTypes lt;
     if (_pp_mode) {
-        lt = llvm::Function::ExternalWeakLinkage;
+        lt = llvm::Function::ExternalLinkage;
     }
     else {
         lt = (isLocalID(fn->id)) ? llvm::Function::InternalLinkage
@@ -2166,15 +2189,16 @@ LLVMBackend::genSpecialFunc(const char* name_mangled, llvm::Function** func)
     return LLE_OK;
 }
 
-llvm_error LLVMBackend::genSpecialCall(const char* func_name_mangled)
+llvm_error LLVMBackend::genSpecialCall(sc_func* fn)
 {
     auto func_sig = llvm::FunctionType::get(_primitive_types[PT_VOID], false);
     if (!func_sig) return LLE_FATAL;
-    auto func = (llvm::Function*)llvm::Function::Create(
-        func_sig, llvm::GlobalVariable::ExternalLinkage,
-        _data_layout->getProgramAddressSpace(), func_name_mangled);
-    if (!func) return LLE_FATAL;
-    _module->getFunctionList().push_back(func);
+    const char* name = nameMangle(&fn->fnb);
+    if (!name) return LLE_FATAL;
+    // TODO: make sure this holds?
+    llvm::Value* func;
+    auto lle = genFunction(fn, &func);
+    if (lle) return lle;
     auto call = _builder.CreateCall(func);
     if (!call) return LLE_FATAL;
     return LLE_OK;
@@ -2194,9 +2218,9 @@ llvm_error LLVMBackend::generateEntrypoint(
     if (lle) return lle;
     aseglist_iterator it;
     aseglist_iterator_begin(&it, ctors);
-    for (const char* ct = (const char*)aseglist_iterator_next(&it); ct;
-         ct = (const char*)aseglist_iterator_next(&it)) {
-        lle = genSpecialCall(ct);
+    for (sc_func* fn = (sc_func*)aseglist_iterator_next(&it); fn;
+         fn = (sc_func*)aseglist_iterator_next(&it)) {
+        lle = genSpecialCall(fn);
         if (lle) return lle;
     }
     _builder.CreateRetVoid();
@@ -2204,9 +2228,9 @@ llvm_error LLVMBackend::generateEntrypoint(
     lle = genSpecialFunc("tau_destructAll", &destruct_all_func);
     if (lle) return lle;
     aseglist_iterator_begin(&it, dtors);
-    for (const char* ct = (const char*)aseglist_iterator_next(&it); ct;
-         ct = (const char*)aseglist_iterator_next(&it)) {
-        lle = genSpecialCall(ct);
+    for (sc_func* fn = (sc_func*)aseglist_iterator_next(&it); fn;
+         fn = (sc_func*)aseglist_iterator_next(&it)) {
+        lle = genSpecialCall(fn);
         if (lle) return lle;
     }
     _builder.CreateRetVoid();
@@ -2253,7 +2277,9 @@ llvm_error linkLLVMModules(
     // ureg args_count = 10 + (end - start);
     std::vector<const char*> args;
     args.push_back("lld"); // argv[0] -> programm location
-
+    for (LLVMModule** i = start; i != end; i++) {
+        args.push_back((**i).module_obj.c_str());
+    }
     // TODO: do this properly
     bool dynamic = false;
     ureg libs_size = sbuffer_get_used_size(link_libs);
@@ -2274,11 +2300,15 @@ llvm_error linkLLVMModules(
     for (char** i = libs; i != libs_head; i++) {
         args.push_back(*i);
     }
-    for (LLVMModule** i = start; i != end; i++) {
-        args.push_back((**i).module_obj.c_str());
-    }
+
     args.push_back("-o");
     args.push_back(output_path);
+    tprintf("linker args:");
+    for (auto v : args) {
+        tprintf(" %s", v);
+    }
+    tputs("\n");
+    tflush();
     llvm::ArrayRef<const char*> arr_ref(&args[0], args.size());
     lld::elf::link(arr_ref, false);
     for (char** i = libs; i != libs_head; i++) {

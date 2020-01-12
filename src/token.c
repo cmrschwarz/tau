@@ -4,6 +4,7 @@
 
 const char* COND_KW_CONSTRUCT = "construct";
 const char* COND_KW_DESTRUCT = "destruct";
+const char* COND_KW_ASM = "asm";
 const char* COND_KW_MAIN = "main";
 const char* COND_KW_START = "_start";
 

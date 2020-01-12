@@ -205,7 +205,7 @@ struct LLVMBackend {
     static bool isPPSymbolGlobal(symbol* sym);
     llvm_error genSpecialFunc(const char* name, llvm::Function** func);
 
-    llvm_error genSpecialCall(const char* func_name);
+    llvm_error genSpecialCall(sc_func* fn);
 
   private:
     ControlFlowContext* getTartetCFC(ast_node* target);

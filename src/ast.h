@@ -84,6 +84,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     EXPR_CALL,
     EXPR_NO_BLOCK_MACRO_CALL,
     EXPR_MACRO_CALL,
+    EXPR_MACRO_STR_CALL,
     EXPR_ACCESS,
     EXPR_PARENTHESES,
     EXPR_SCOPE_ACCESS,
@@ -110,6 +111,7 @@ typedef enum PACK_ENUM operator_kind_e {
     OP_CALL,
     OP_ACCESS,
     OP_MACRO_CALL,
+    OP_MACRO_STR_CALL,
     OP_PARENTHESES,
     OP_MEMBER_ACCESS,
     OP_SCOPE_ACCESS,
@@ -382,6 +384,12 @@ typedef struct expr_macro_call_s {
     sc_macro* tgt;
 } expr_macro_call;
 
+typedef struct expr_macro_str_call_s {
+    ast_node node;
+    ast_node* lhs;
+    string str_param;
+} expr_macro_str_call;
+
 typedef struct pasted_str_s {
     char* str;
     struct pasted_str_s* next;
@@ -483,9 +491,8 @@ typedef struct sc_func_generic_s {
 } sc_func_generic;
 
 typedef struct sc_func_generic_inst_s {
-    sc_func_base fnb;
+    sc_func fnb;
     sc_func_generic* generic;
-    ureg id;
 } sc_func_generic_inst;
 
 typedef struct sym_func_overloaded_s {

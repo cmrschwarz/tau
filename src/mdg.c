@@ -211,6 +211,9 @@ static void free_astn_symtabs(ast_node* n)
             free_astn_symtabs(ob->lhs);
             free_astn_symtabs(ob->rhs);
         } break;
+        case EXPR_MACRO_STR_CALL: {
+            free_astn_symtabs(((expr_macro_str_call*)n)->lhs);
+        } break;
         case EXPR_OP_UNARY: {
             free_astn_symtabs(((expr_op_unary*)n)->child);
         } break;

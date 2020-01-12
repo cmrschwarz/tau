@@ -114,6 +114,7 @@ extern const char* COND_KW_CONSTRUCT;
 extern const char* COND_KW_DESTRUCT;
 extern const char* COND_KW_MAIN;
 extern const char* COND_KW_START;
+extern const char* COND_KW_ASM;
 extern const char* token_strings[255];
 
 typedef struct token_s {

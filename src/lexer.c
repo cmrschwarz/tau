@@ -70,7 +70,6 @@ token* lx_peek(lexer* lx)
     }
     return lx_load(lx);
 }
-
 token* lx_peek_2nd(lexer* lx)
 {
     return lx_peek_nth(lx, 2);
@@ -190,7 +189,49 @@ static inline char lx_consume_char(lexer* lx)
     lx_void_char_peek(lx);
     return c;
 }
-
+token* lx_consume_macro_string(lexer* lx)
+{
+    assert(lx->loaded_tokens_start == lx->loaded_tokens_head);
+    token* tok = lx->loaded_tokens_head;
+    char start = lx_consume_char(lx);
+    char end;
+    if (start == '(') {
+        end = ')';
+    }
+    else if (start == '{') {
+        end = '}';
+    }
+    else {
+        error_log_report_simple(
+            lx->tc->err_log, ES_TOKENIZER, false,
+            "expected '(' or '{' to begin macro string", lx->smap,
+            lx->loaded_tokens_head->start);
+        return NULL;
+    }
+    char curr = lx_consume_char(lx);
+    char* str_start = lx->file_buffer_pos - 1;
+    ureg paren_level = 1;
+    while (true) {
+        lx_void_char_peek(lx);
+        if (curr == end) {
+            paren_level--;
+            if (paren_level == 0) break;
+        }
+        else if (curr == start) {
+            paren_level++;
+        }
+        curr = lx_peek_char_holding(lx, &str_start);
+    }
+    tok->kind = TK_STRING;
+    tok->str.start = str_start;
+    tok->str.end = lx->file_buffer_pos - 1; //-1 for the trailing ')'
+    // plus one for the initial '('
+    tok->end = tok->start + ptrdiff(lx->file_buffer_head, str_start) + 1;
+    lx_inc_iter(lx, &lx->loaded_tokens_head);
+    lx->loaded_tokens_start = lx->loaded_tokens_head;
+    lx->loaded_tokens_head->start = tok->end;
+    return tok;
+}
 int lx_init(lexer* lx, thread_context* tc)
 {
     lx->tc = tc;

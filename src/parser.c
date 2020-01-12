@@ -49,6 +49,7 @@ static const unsigned char op_precedence[] = {
     [OP_POST_DECREMENT] = 15,
     [OP_CALL] = 15,
     [OP_MACRO_CALL] = 15,
+    [OP_MACRO_STR_CALL] = 15,
     [OP_ACCESS] = 15,
     [OP_SCOPE_ACCESS] = 15,
     [OP_MEMBER_ACCESS] = 15,
@@ -242,7 +243,8 @@ static inline operator_kind token_to_postfix_unary_op(parser* p, token* t)
         case TK_DOUBLE_PLUS: return OP_POST_INCREMENT;
         case TK_DOUBLE_MINUS: return OP_POST_DECREMENT;
         case TK_PAREN_OPEN: return OP_CALL;
-        case TK_BRACE_OPEN:
+        case TK_EXCLAMATION_MARK: return OP_MACRO_STR_CALL;
+        case TK_BRACE_OPEN: // fallthrough
         case TK_AT: {
             if (!p->disable_macro_body_call) return OP_MACRO_CALL;
             return OP_NOOP;
@@ -1807,6 +1809,23 @@ parse_macro_block_call(parser* p, ast_node** ex, ast_node* lhs)
     *ex = (ast_node*)emc;
     return PE_OK;
 }
+static inline parse_error
+parse_macro_str_call(parser* p, ast_node** ex, ast_node* lhs)
+{
+    ureg start = lx_aquire(&p->lx)->start; // initial '!'
+    lx_void(&p->lx);
+    expr_macro_str_call* emsc = alloc_perm(p, sizeof(expr_macro_str_call));
+    if (!emsc) return PE_FATAL;
+    emsc->lhs = lhs;
+    ast_node_init((ast_node*)emsc, EXPR_MACRO_STR_CALL);
+    token* t = lx_consume_macro_string(&p->lx);
+    if (!t) return PE_LX_ERROR;
+    emsc->str_param.start = alloc_string_perm(p, t->str);
+    if (!emsc->str_param.start) return PE_FATAL;
+    emsc->str_param.end = ptradd(emsc->str_param.start, string_len(t->str));
+    *ex = (ast_node*)emsc;
+    return ast_node_fill_srange(p, (ast_node*)emsc, start, t->end);
+}
 static inline parse_error parse_call(parser* p, ast_node** ex, ast_node* lhs)
 {
     token* t = lx_aquire(&p->lx);
@@ -1930,6 +1949,9 @@ static inline parse_error parse_postfix_unary_op(
     }
     else if (op == OP_MACRO_CALL) {
         return parse_macro_block_call(p, ex, lhs);
+    }
+    else if (op == OP_MACRO_STR_CALL) {
+        return parse_macro_str_call(p, ex, lhs);
     }
     else if (op == OP_CAST) {
         return parse_expr_cast(p, ex, lhs);

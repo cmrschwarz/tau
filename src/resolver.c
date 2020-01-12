@@ -501,6 +501,7 @@ static resolve_error add_ast_node_decls(
         case EXPR_MEMBER_ACCESS:
         case EXPR_PARENTHESES:
         case EXPR_PASTE_STR:
+        case EXPR_MACRO_STR_CALL:
         case EXPR_OP_UNARY: {
             // only called inside an expression context.
             // we add the symbols individually to avoid use before define
@@ -680,7 +681,7 @@ static resolve_error add_ast_node_decls(
                         r, (ast_node*)fn, st, true, true, 0);
                     if (!pprn) return RE_FATAL;
                     fn->fnb.pprn = pprn;
-                    pprn->call_when_done = true;
+                    pprn->call_when_done = false;
                     r->module_group_constructor = fn;
                 }
                 else if (cstr_eq(fn->fnb.sc.sym.name, COND_KW_DESTRUCT)) {
@@ -2426,6 +2427,15 @@ static inline resolve_error resolve_ast_node_raw(
             assert(false); // TODO operator overloading / generics
             return RE_FATAL;
         }
+        case EXPR_MACRO_STR_CALL: {
+            // TODO: implement this properly
+            expr_macro_str_call* emsc = (expr_macro_str_call*)n;
+            assert(emsc->lhs->kind == EXPR_IDENTIFIER);
+            expr_identifier* id = (expr_identifier*)emsc->lhs;
+            assert(cstr_eq(id->value.str, "asm"));
+            ast_flags_set_resolved(&n->flags);
+            RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
+        }
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
@@ -2856,22 +2866,17 @@ resolve_error resolver_add_osc_decls(resolver* r)
 resolve_error resolver_cleanup(resolver* r, ureg startid)
 {
     if (r->module_group_constructor) {
-        const char* n = llvm_backend_name_mangle(
-            r->backend, (sc_func_base*)r->module_group_constructor);
-        if (!n) return RE_FATAL;
-        aseglist_add(&r->tc->t->module_ctors, (void*)n);
+        aseglist_add(&r->tc->t->module_ctors, r->module_group_constructor);
     }
     if (r->module_group_destructor) {
-        pp_resolve_node* pprn = pp_resolve_node_create(
-            r, (ast_node*)r->module_group_destructor, NULL, false, false, 0);
-        if (!pprn) return RE_FATAL;
-        pprn->call_when_done = true;
-        ptrlist_append(&r->pp_resolve_nodes_ready, pprn);
-        resolver_run_pp_resolve_nodes(r);
-        const char* n = llvm_backend_name_mangle(
-            r->backend, (sc_func_base*)r->module_group_destructor);
-        if (!n) return RE_FATAL;
-        aseglist_add(&r->tc->t->module_dtors, (void*)n);
+        /* pp_resolve_node* pprn = pp_resolve_node_create(
+             r, (ast_node*)r->module_group_destructor, NULL, false, false, 0);
+         if (!pprn) return RE_FATAL;
+         pprn->call_when_done = true;
+         ptrlist_append(&r->pp_resolve_nodes_ready, pprn);
+         resolver_run_pp_resolve_nodes(r);
+         */
+        aseglist_add(&r->tc->t->module_dtors, r->module_group_destructor);
     }
     free_pprns(r);
 

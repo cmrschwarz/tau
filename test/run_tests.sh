@@ -7,7 +7,7 @@ cd "$SCRIPT_DIR/../"
 TAUC="./build/tauc"
 
 #run unit tests
-$TAUC -U
+$TAUC --run-unit-tests
 
 #run ci tests
 ./test/ci_tests/run_ci_tests.sh
