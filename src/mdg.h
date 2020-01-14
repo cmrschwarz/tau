@@ -58,6 +58,7 @@ typedef struct mdg_node_s {
     rwslock stage_lock; // everything below here is under the stage lock
     module_stage stage;
     pp_emission_stage ppe_stage;
+    bool pp_libs_requested;
     aseglist notify; // only requires stage read lock
     aseglist dependencies; // only requires stage read lock
     aseglist open_scopes; // only requires stage read lock

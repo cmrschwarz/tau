@@ -171,6 +171,7 @@ static inline llvm_error link_dll(PPRunner* pp, const char* path)
         assert(false);
     }
     PP_RUNNER->addDll(std::move(dll));
+    printf("linked dll %s\n", path);
     return LLE_OK;
 }
 
@@ -187,6 +188,7 @@ static inline llvm_error link_archive(PPRunner* pp, const char* path)
     llvm::object::OwningBinary<llvm::object::Archive> arch_ob{
         std::move(arch.get()), std::move(mb)};
     PP_RUNNER->addArchive(std::move(arch_ob));
+    printf("linked archive %s\n", path);
     return LLE_OK;
 }
 static inline llvm_error link_obj(PPRunner* pp, const char* path)
@@ -199,6 +201,7 @@ static inline llvm_error link_obj(PPRunner* pp, const char* path)
         return link_archive(pp, path); // TODO: make this less ugly
         assert(false);
     }
+    printf("linked object %s\n", path);
     return LLE_OK;
 }
 llvm_error llvm_backend_link_for_pp(bool is_dynamic, char* path)
@@ -282,10 +285,6 @@ PPRunner::PPRunner()
     };
     exec_session.getMainJITDylib().setGenerator(generator);
     pp_stuff_dylib.addToSearchOrder(exec_session.getMainJITDylib(), true);
-
-    // link_dll(this, "/lib64/ld-linux-x86-64.so.2");
-    // link_dll(this, "/lib/x86_64-linux-gnu/libc.so.6");
-    // link_lib(this, "/usr/lib/x86_64-linux-gnu/libc_nonshared.a");
 }
 void PPRunner::addArchive(
     llvm::object::OwningBinary<llvm::object::Archive>&& arch)

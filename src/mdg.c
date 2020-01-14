@@ -136,6 +136,7 @@ mdg_node* mdg_node_create(
     n->stage = initial_stage;
     n->symtab = NULL;
     n->ppe_stage = PPES_UNNEEDED;
+    n->pp_libs_requested = false;
     return n;
 }
 void free_body_symtabs(ast_node* node, ast_body* b);
@@ -847,10 +848,18 @@ int mdg_node_add_osc(mdg_node* n, open_scope* osc, tauc* t)
 // make sure the required libraries of an mdg node are loaded
 int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp)
 {
-    aseglist_iterator oscs_it;
-    aseglist_iterator_begin(&oscs_it, &n->open_scopes);
+    if (in_pp) {
+        bool pplr;
+        rwslock_write(&n->stage_lock);
+        pplr = n->pp_libs_requested;
+        if (!pplr) n->pp_libs_requested = true;
+        rwslock_end_write(&n->stage_lock);
+        if (pplr) return OK;
+    }
+    aseglist_iterator it;
+    aseglist_iterator_begin(&it, &n->open_scopes);
     while (true) {
-        open_scope* osc = aseglist_iterator_next(&oscs_it);
+        open_scope* osc = aseglist_iterator_next(&it);
         if (!osc) break;
         file_require* r = osc->requires;
         while (*(void**)r) {
@@ -858,6 +867,15 @@ int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp)
                 r->fmh, tc->t, open_scope_get_smap(osc), r->srange, n,
                 r->in_ppl || in_pp);
             r++;
+            if (res) return res;
+        }
+    }
+    if (in_pp) {
+        aseglist_iterator_begin(&it, &n->dependencies);
+        while (true) {
+            mdg_node* dep = aseglist_iterator_next(&it);
+            if (!dep) break;
+            int res = mdg_node_require_requirements(dep, tc, true);
             if (res) return res;
         }
     }
