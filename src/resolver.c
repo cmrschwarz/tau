@@ -151,6 +151,7 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->pending_pastes = 0;
     pprn->declaring_st = declaring_st;
     pprn->node = n;
+    assert(n->kind != OSC_MODULE);
     pprn->continue_block = NULL;
     pprn->ppl = ppl;
     pprn->next = NULL;

@@ -370,13 +370,13 @@ LLVMBackend::~LLVMBackend()
 }
 void LLVMBackend::buildPasteHelpers()
 {
-    auto& params = *new std::vector<llvm::Type*>{
-        _primitive_types[PT_UINT], // this
-        _primitive_types[PT_UINT], // paste target
-        _primitive_types[PT_UINT] // pasted string
-    };
-    llvm::ArrayRef<llvm::Type*> params_array_ref(
-        &params[0], &params[params.size() - 1] + 1);
+    auto params =
+        (llvm::Type**)pool_alloc(&_tc->permmem, sizeof(llvm::Type*) * 3);
+    if (!params) panic("todo proper error handling here");
+    params[0] = _primitive_types[PT_UINT]; // llvm_backend ptr
+    params[1] = _primitive_types[PT_UINT]; // paste target
+    params[2] = _primitive_types[PT_UINT]; // pasted string
+    llvm::ArrayRef<llvm::Type*> params_array_ref(params, params + 3);
     auto func_type = llvm::FunctionType::get(
         _primitive_types[PT_VOID], params_array_ref, false);
     auto func_ptr = llvm::ConstantInt::get(
@@ -1555,13 +1555,15 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             llvm::Value* paste_val;
             lle = genAstNode(eps->value, NULL, &paste_val);
             if (lle) return lle;
-            auto& args = *new std::vector<llvm::Value*>{
-                llvm::ConstantInt::get(_primitive_types[PT_UINT], (size_t)this),
-                llvm::ConstantInt::get(
-                    _primitive_types[PT_UINT], (size_t)eps->target),
-                paste_val};
-            llvm::ArrayRef<llvm::Value*> args_array{&args[0],
-                                                    &args[args.size() - 1] + 1};
+            auto args = (llvm::Value**)pool_alloc(
+                &_tc->permmem, sizeof(llvm::Type*) * 3);
+            args[0] =
+                llvm::ConstantInt::get(_primitive_types[PT_UINT], (size_t)this);
+            args[1] = llvm::ConstantInt::get(
+                _primitive_types[PT_UINT], (size_t)eps->target);
+            args[2] = paste_val;
+            if (!args) return LLE_FATAL;
+            llvm::ArrayRef<llvm::Value*> args_array{args, args + 3};
             _builder.CreateCall(_paste_func_ptr, args_array);
             assert(!vl && !vl_loaded);
             return LLE_OK;
@@ -1573,18 +1575,20 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             lle = lookupCType((ast_elem*)arr->ctype, &arr_type, &align, NULL);
             if (lle) return lle;
             if (ast_flags_get_comptime_known(arr->node.flags)) {
-                auto& elements = *new std::vector<llvm::Constant*>();
+                auto elements = (llvm::Constant**)pool_alloc(
+                    &_tc->permmem, arr->elem_count * sizeof(llvm::Constant*));
+                if (!elements) return LLE_FATAL;
                 ast_node** e = arr->elements;
                 for (ureg i = 0; i < arr->elem_count; i++) {
                     llvm::Value* vl;
                     lle = genAstNode(*e, NULL, &vl);
                     if (lle) return lle;
                     assert(llvm::isa<llvm::Constant>(vl));
-                    elements.push_back((llvm::Constant*)vl);
+                    elements[i] = (llvm::Constant*)vl;
                     e++;
                 }
                 llvm::ArrayRef<llvm::Constant*> elems_array_ref{
-                    &elements[0], &elements[elements.size() - 1] + 1};
+                    elements, elements + arr->elem_count};
                 assert(llvm::isa<llvm::ArrayType>(arr_type));
                 auto llarr = llvm::ConstantArray::get(
                     (llvm::ArrayType*)arr_type, elems_array_ref);

@@ -41,7 +41,9 @@ int src_map_init(src_map* m, ast_elem* source, thread_context* tc)
 
 src_map* src_map_create_child(src_map* m, ast_elem* source, thread_context* tc)
 {
-    src_map* smap = pool_alloc(&tc->permmem, sizeof(src_map));
+    mutex_lock(&tc->t->filemap.lock);
+    src_map* smap = pool_alloc(&tc->t->filemap.file_mem_pool, sizeof(src_map));
+    mutex_unlock(&tc->t->filemap.lock);
     if (!smap) return NULL;
     if (src_map_init(smap, source, tc)) {
         src_map_fin(smap);

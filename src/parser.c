@@ -1730,8 +1730,9 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     ureg start = t->start;
     lx_void(&p->lx);
     expr_pp* sp = alloc_perm(p, sizeof(expr_pp));
-    sp->result = NULL;
     if (!sp) return PE_FATAL;
+    sp->result = NULL;
+    sp->ctype = NULL;
     ast_node_init(&sp->node, EXPR_PP);
     ast_flags_set_pp_expr_res_used(&sp->node.flags);
     ast_flags_set_comptime_known(&sp->node.flags);
@@ -3415,6 +3416,7 @@ static inline parse_error parse_pp_stmt(
     if (pe) return pe;
     expr_pp* sp = alloc_perm(p, sizeof(expr_pp));
     if (!sp) return PE_FATAL;
+    sp->ctype = NULL;
     ast_node_init(&sp->node, EXPR_PP);
     ast_flags_set_comptime_known(&sp->node.flags);
     sp->result_buffer.state.pprn = NULL;
