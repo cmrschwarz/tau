@@ -4,6 +4,7 @@
 #include "../tauc.h"
 #include "../utils/stack.h"
 #include "../utils/debug_utils.h"
+#include "../utils/list.h"
 
 static void print_dash_padded(char* msg, bool err)
 {
@@ -157,7 +158,8 @@ int file_map_test()
     if (string_cmp_cstr(p->head.name, "bar")) goto err;
     src_dir* p2 = p->head.parent;
     if (string_cmp_cstr(p2->head.name, "foo")) goto err;
-    if (file_map_get_dir_from_path(&fm, NULL, string_from_cstr("bar")) != p)
+    if (file_map_get_dir_from_path(&fm, NULL, string_from_cstr("/foo/bar")) !=
+        p)
         goto err;
     src_dir* p3 = p2->head.parent;
     if (string_cmp_cstr(p3->head.name, "")) goto err;
@@ -233,6 +235,40 @@ int list_builder_test()
     // TODO
     return OK;
 }
+
+int list_test()
+{
+    int res = ERR;
+    list l;
+    list_init(&l);
+    pool mem;
+    if (pool_init(&mem)) return ERR;
+    for (int j = 0; j < 10; j++) {
+        void** p = NULL;
+        const ureg fill_count = 100 * j;
+        for (ureg i = 1; i < fill_count; i++) {
+            if (list_length(&l) != i - 1) {
+                goto err;
+            }
+            p++;
+            if (list_append(&l, &mem, p)) goto err;
+        }
+        void** i = NULL;
+        list_it it;
+        for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it)) {
+            i++;
+            if (v != i) goto err;
+        }
+        if (i != p) goto err;
+        res = OK;
+        list_clear(&l);
+    }
+err:
+    list_fin(&l);
+    pool_fin(&mem);
+    return res;
+}
+
 #include <utils/debug_utils.h>
 int run_unit_tests(int argc, char** argv)
 {
@@ -244,6 +280,7 @@ int run_unit_tests(int argc, char** argv)
     TEST(res, file_map_test);
     TEST(res, job_queue_test);
     TEST(res, mdg_test);
+    TEST(res, list_test);
 
     if (res) {
         print_dash_padded("FAILED", false);

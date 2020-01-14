@@ -17,6 +17,7 @@ set(TAUC_C_SRCS
     ./src/utils/timing_common.c
     ./src/utils/pool.c
     ./src/utils/hms.c
+    ./src/utils/list.c
     ./src/utils/sbuffer.c
     ./src/main.c
     ./src/tauc.c

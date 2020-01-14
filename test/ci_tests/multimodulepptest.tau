@@ -1,3 +1,5 @@
+require "support/libc.tau";
+import libc::(printf);
 module a{
     public func foo()->int{
         x := 1;  
@@ -49,7 +51,6 @@ module g{
 
 import {a, b, c, d, e, f, g};
 
-public func printf(s: string, i: int, j: int);
 func collect()->int{
     x: int = 0;
     x = x + a::foo();

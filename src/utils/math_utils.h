@@ -4,6 +4,11 @@
 #include "plattform.h"
 #include "types.h"
 
+// ulog2(0) = 0
+// ulog2(1) = 1
+// ulog2(2) = 2
+// ulog2(3) = 2
+// ulog2(4) = 3
 static inline ureg ulog2(ureg v)
 {
 #if HOST_ARCH_X86 && REG_WIDTH_64

@@ -87,8 +87,8 @@ class ArchiveSymbolsMaterializationUnit
 
 struct PPRunner {
     llvm::orc::ExecutionSession exec_session;
-    llvm::orc::JITDylib& pp_stuff_dylib;
     llvm::orc::RTDyldObjectLinkingLayer obj_link_layer;
+    llvm::orc::JITDylib& pp_stuff_dylib;
     std::mutex mtx;
     std::atomic<ureg> pp_count;
     std::vector<llvm::object::OwningBinary<llvm::object::Archive>> archives;
