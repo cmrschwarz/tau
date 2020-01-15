@@ -28,6 +28,7 @@ typedef enum module_stage_e {
     MS_DONE,
     // can happen e.g. when host int is out of bounds for arch int
     MS_GENERATION_ERROR, // TODO: actually integrate this
+    MS_RESOLVING_ERROR,
 } module_stage;
 
 typedef enum pp_emission_stage_e {
@@ -55,7 +56,8 @@ typedef struct mdg_node_s {
     atomic_ureg decl_count;
     atomic_ureg using_count;
     symbol_table* symtab;
-    rwslock stage_lock; // everything below here is under the stage lock
+
+    rwlock lock; // everything below here is under the stage lock
     module_stage stage;
     pp_emission_stage ppe_stage;
     bool pp_libs_requested;

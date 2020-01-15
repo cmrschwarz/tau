@@ -36,10 +36,10 @@ void mutex_fin(mutex* m);
 
 int rwlock_init(rwlock* rwl);
 bool rwlock_try_read(rwlock* rwl);
-void rwlock_begin_read(rwlock* rwl);
+void rwlock_read(rwlock* rwl);
 void rwlock_end_read(rwlock* rwl);
 bool rwlock_try_write(rwlock* rwl);
-void rwlock_begin_write(rwlock* rwl);
+void rwlock_write(rwlock* rwl);
 void rwlock_end_write(rwlock* rwl);
 void rwlock_fin(rwlock* rwl);
 

@@ -2802,15 +2802,16 @@ parse_error parse_module_frame_decl(
         if (r) return RE_FATAL;
     }
     mdg_node_add_osc(mdgn, (open_scope*)md, p->lx.tc->t);
-    rwslock_read(&mdgn->stage_lock);
     int r = OK;
+    rwlock_read(&mdgn->lock);
     if (atomic_ureg_load(&mdgn->unparsed_files) == 1) {
-        rwslock_end_read(&mdgn->stage_lock);
+        rwlock_end_read(&mdgn->lock);
         r = mdg_node_file_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc);
     }
     else {
-        rwslock_end_read(&mdgn->stage_lock);
+        rwlock_end_read(&mdgn->lock);
     }
+
     if (r) return RE_FATAL;
     return PE_OK; // consider PE_NO_STMT
 }
@@ -3311,9 +3312,9 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     rq.handled = false;
     rq.srange = src_range_pack_lines(p->lx.tc, start, t->end);
     if (rq.srange == SRC_RANGE_INVALID) return PE_FATAL;
-    rwslock_read(&p->current_module->stage_lock);
+    rwlock_read(&p->current_module->lock);
     bool needed = (p->current_module->stage != MS_UNNEEDED);
-    rwslock_end_read(&p->current_module->stage_lock);
+    rwlock_end_read(&p->current_module->lock);
     if (!is_extern) {
         src_file* f = file_map_get_file_from_path(
             &p->lx.tc->t->filemap, p->current_file->head.parent, t->str);

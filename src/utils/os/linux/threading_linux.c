@@ -35,7 +35,7 @@ bool rwlock_try_read(rwlock* rwl)
 {
     return (pthread_rwlock_tryrdlock(rwl) == 0);
 }
-void rwlock_begin_read(rwlock* rwl)
+void rwlock_read(rwlock* rwl)
 {
     if (pthread_rwlock_rdlock(rwl)) panic("rwlock read lock failed");
 }
@@ -47,7 +47,7 @@ bool rwlock_try_write(rwlock* rwl)
 {
     return (pthread_rwlock_trywrlock(rwl) == 0);
 }
-void rwlock_begin_write(rwlock* rwl)
+void rwlock_write(rwlock* rwl)
 {
     if (pthread_rwlock_wrlock(rwl)) panic("rwlock write lock failed");
 }

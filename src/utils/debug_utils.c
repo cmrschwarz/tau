@@ -42,6 +42,7 @@ void tprintf(const char* format, ...)
         size = len + 1;
     }
     buff.head -= (size - len);
+    debugflush();
 }
 void tput(const char* c)
 {

@@ -1864,8 +1864,13 @@ static inline resolve_error require_module_in_pp(
     bool pp_done;
     bool diy = false;
     atomic_boolean_init(done, false);
-    rwslock_write(&mdg->stage_lock);
-    pp_done = (mdg->stage == MS_DONE);
+    rwlock_write(&mdg->lock);
+    pp_done = (mdg->stage >= MS_DONE);
+    // TODO: do this properly
+    if (mdg->stage > MS_DONE) {
+        rwlock_end_write(&mdg->lock);
+        return RE_FATAL;
+    }
     if (pp_done) {
         if (mdg->ppe_stage == PPES_DONE) {
             pp_done = true;
@@ -1886,7 +1891,7 @@ static inline resolve_error require_module_in_pp(
             aseglist_add(&mdg->notify, n);
         }
     }
-    rwslock_end_write(&mdg->stage_lock);
+    rwlock_end_write(&mdg->lock);
     if (!pp_done || diy) {
         pp_resolve_node* pprn =
             pp_resolve_node_create(r, n, st, false, false, ppl);
@@ -3287,6 +3292,20 @@ int resolver_emit(resolver* r, ureg startid, llvm_module** module)
         if (lle) return RE_ERROR;
     }
     else {
+        for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
+            rwlock_write(&(**i).lock);
+            (**i).stage = MS_RESOLVING_ERROR;
+            rwlock_end_write(&(**i).lock);
+        }
+        for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
+            aseglist_iterator it;
+            aseglist_iterator_begin(&it, &(**i).notify);
+            while (true) {
+                mdg_node* dep = aseglist_iterator_next(&it);
+                if (!dep) break;
+                if (scc_detector_run(r->tc, *i)) return ERR;
+            }
+        }
         *module = NULL;
     }
     return OK;
