@@ -75,6 +75,7 @@ int tauc_core_init(tauc* t)
     t->opt_strat = OPT_STRAT_UNSPECIFIED;
     t->debug_symbols = true;
     t->explicit_debug_symbols = false;
+    t->verbosity_flags = 0;
     target_platform_get_host(&t->host_target);
     target_platform_set_unknown(&t->target);
     return OK;
@@ -329,31 +330,38 @@ int tauc_run(int argc, char** argv)
 {
     tauc t;
     int r;
-    TIME_MSG("total ", "\n", {
-        r = tauc_scaffolding_init(&t);
-        if (r) return r;
-        bool files_found = false;
-        r = tauc_core_init(&t);
-        if (!r) {
-            thread_context_preorder_job(&t.main_thread_context);
-            r = handle_cmd_args(
-                &t, t.main_thread_context.err_log, argc, argv, &files_found);
+    TAU_TIME_STAGE_CTX(
+        &t, tprintf("total "),
+        {
+            r = tauc_scaffolding_init(&t);
+            if (r) return r;
+            bool files_found = false;
+            r = tauc_core_init(&t);
             if (!r) {
-                if (files_found) {
-                    r = tauc_run_jobs(&t);
-                    tauc_core_fin(&t);
+                thread_context_preorder_job(&t.main_thread_context);
+                r = handle_cmd_args(
+                    &t, t.main_thread_context.err_log, argc, argv,
+                    &files_found);
+                if (!r) {
+                    if (files_found) {
+                        r = tauc_run_jobs(&t);
+                        tauc_core_fin(&t);
+                    }
+                    else {
+                        tauc_core_fin_no_run(&t);
+                    }
                 }
                 else {
                     tauc_core_fin_no_run(&t);
                 }
             }
-            else {
-                tauc_core_fin_no_run(&t);
-            }
-        }
-        master_error_log_unwind(&t.mel);
-        tauc_scaffolding_fin(&t);
-    });
+            master_error_log_unwind(&t.mel);
+            tauc_scaffolding_fin(&t);
+        },
+        {
+            tputs("\n");
+            tflush();
+        });
     debug_utils_free_res();
     if (!r) {
         if (tauc_success_so_far(&t)) return OK;
@@ -364,7 +372,7 @@ int tauc_run(int argc, char** argv)
 
 void worker_thread_fn(void* ctx)
 {
-    tputs("added worker thread!");
+    // tputs("added worker thread!");
     tflush();
     worker_thread* wt = (worker_thread*)ctx;
     thread_context_run(&wt->tc);
@@ -503,7 +511,7 @@ int tauc_link(tauc* t)
     int r = 0;
 
     if (t->emit_exe) {
-        r = llvm_link_modules(mods, i, &t->filemap.rt_src_libs, "a.out");
+        r = llvm_link_modules(t, mods, i, &t->filemap.rt_src_libs, "a.out");
         if (!t->emit_objs) {
             r |= llvm_delete_objs(mods, i);
         }

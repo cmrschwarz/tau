@@ -1853,10 +1853,12 @@ static inline resolve_error require_module_in_pp(
     resolver* r, ast_node* n, symbol_table* st, ureg ppl, mdg_node* mdg,
     atomic_boolean* done, pp_resolve_node** tgt_pprn)
 {
+    resolve_error re;
     if (*tgt_pprn) {
         if (atomic_boolean_load(done)) {
             atomic_boolean_fin(done);
-            pp_resolve_node_ready(r, *tgt_pprn);
+            re = pp_resolve_node_ready(r, *tgt_pprn);
+            if (re) return re;
             *tgt_pprn = NULL;
         }
         return RE_OK;
@@ -1897,10 +1899,9 @@ static inline resolve_error require_module_in_pp(
             pp_resolve_node_create(r, n, st, false, false, ppl);
         if (!pprn) return PE_FATAL;
         *tgt_pprn = pprn;
-        resolve_error re = pp_resolve_node_activate(r, pprn, false);
+        re = pp_resolve_node_activate(r, pprn, false);
+        pprn->parent = pprn;
         if (re) return re;
-        // muste come after the activate so we get sorted into pending
-        pprn->dep_count = 1;
     }
     else {
         *tgt_pprn = NULL;
@@ -3133,7 +3134,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
         import_pprns = false;
         non_import_pprns = false;
         if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
-            print_pprns(r);
+            // print_pprns(r);
             lle = llvm_backend_run_pp(
                 r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
                 &r->pp_resolve_nodes_ready);
@@ -3194,14 +3195,21 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             if (re) return re;
             if (ast_elem_is_any_import_symbol((ast_elem*)astn)) {
                 import_pprns = true;
+                if (ast_flags_get_resolved(astn->flags)) {
+                    progress = true;
+                    pli_prev(&it);
+                    ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+                    re = pp_resolve_node_done(r, rn, NULL);
+                    if (re) return re;
+                }
             }
             else {
                 non_import_pprns = true;
-            }
-            if (ast_flags_get_resolved(astn->flags)) {
-                progress = true;
-                pli_prev(&it);
-                ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+                if (ast_flags_get_resolved(astn->flags)) {
+                    progress = true;
+                    pli_prev(&it);
+                    ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+                }
             }
         }
     } while (progress || (import_pprns && non_import_pprns) ||
@@ -3267,7 +3275,6 @@ int resolver_resolve(
     r->module_group_constructor = NULL;
     r->module_group_destructor = NULL;
     resolve_error re;
-    print_debug_info(r);
     re = resolver_init_mdg_symtabs_and_handle_root(r);
     if (re) return re;
     re = resolver_add_osc_decls(r);
@@ -3317,7 +3324,9 @@ int resolver_resolve_and_emit(
     int res;
     res = llvm_backend_init_module(r->backend, start, end, module);
     if (res) return ERR;
-    TIME(res = resolver_resolve(r, start, end, &startid););
+    TAU_TIME_STAGE_CTX(r->tc->t, print_debug_info(r);
+                       , res = resolver_resolve(r, start, end, &startid);
+                       , tflush(););
     if (res) {
         free_pprns(r);
         return ERR;

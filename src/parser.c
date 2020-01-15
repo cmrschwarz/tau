@@ -2205,9 +2205,6 @@ parse_error parser_parse_file(parser* p, job_parse* j)
 {
     int r = lx_open_file(&p->lx, j->file);
     p->current_file = j->file;
-    tprintf("parsing ");
-    tprintn(j->file->head.name.start, string_len(j->file->head.name));
-    tputchar(' ');
     if (r) {
         if (j->requiring_smap != NULL) {
             src_range_large srl;
@@ -2275,6 +2272,9 @@ parse_error init_paste_evaluation_parse(
     p->ppl = ppl;
     *eval = pe;
     p->file_root = NULL;
+    if (p->lx.tc->t->verbosity_flags & VERBOSITY_FLAGS_TIME_STAGES) {
+        tprintf("parsing a paste expression\n");
+    }
     return PE_OK;
 }
 parse_error parser_parse_paste_expr(
@@ -2286,7 +2286,6 @@ parse_error parser_parse_paste_expr(
         p, epp, ppl, EXPR_PASTE_EVALUATION, st, parent_ebb,
         (paste_evaluation**)&eval);
     if (pe) return pe;
-    tprintf("parsing a paste expression\n");
     pe = parse_expression(p, &eval->expr);
     if (pe) return pe;
     token* t = lx_peek(&p->lx);
@@ -2306,7 +2305,6 @@ parse_error parser_parse_paste_stmt(
         p, epp, (**st).ppl, STMT_PASTE_EVALUATION, *st, parent_ebb,
         (paste_evaluation**)&eval);
     if (pe) return pe;
-    tprintf("parsing a paste statement\n");
     p->paste_block = &eval->body;
     p->paste_parent_symtab = st;
     p->paste_parent_owns_st = owned_st;

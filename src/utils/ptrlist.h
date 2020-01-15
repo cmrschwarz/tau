@@ -24,6 +24,14 @@ static inline int ptrlist_append(ptrlist* p, void* data)
     *v = data;
     return OK;
 }
+static inline int ptrlist_append_get_pos(ptrlist* p, void* data, void*** pos)
+{
+    void** v = (void**)sbuffer_append(p, sizeof(void*));
+    if (!v) return ERR;
+    *pos = v;
+    *v = data;
+    return OK;
+}
 static inline bool ptrlist_is_empty(ptrlist* p)
 {
     if (p->first_seg != p->tail_seg) return false;

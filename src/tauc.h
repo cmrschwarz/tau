@@ -5,6 +5,22 @@
 #include "thread_context.h"
 #include "utils/threading.h"
 #include "target_platform.h"
+#include "utils/debug_utils.h"
+
+#define VERBOSITY_FLAGS_TIME_STAGES 1
+#define TAU_TIME_STAGE_CTX(t, before, code, after)                             \
+    do {                                                                       \
+        if ((t)->verbosity_flags & VERBOSITY_FLAGS_TIME_STAGES) {              \
+            before;                                                            \
+            TIME(code);                                                        \
+            after;                                                             \
+        }                                                                      \
+        else {                                                                 \
+            code                                                               \
+        }                                                                      \
+    } while (false)
+
+#define TAU_TIME_STAGE(t, code) TAU_TIME_STAGE_CTX(t, , code, )
 
 typedef enum optimization_strategy_e {
     OPT_STRAT_UNSPECIFIED,
@@ -37,6 +53,7 @@ typedef struct tauc_s {
     target_platform host_target;
     target_platform target;
     optimization_strategy opt_strat;
+    ureg verbosity_flags;
     bool emit_ll;
     bool emit_asm;
     bool emit_exe;

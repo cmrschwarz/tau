@@ -65,8 +65,18 @@ int thread_context_do_job(thread_context* tc, job* j)
 
     if (j->kind == JOB_PARSE) {
         parse_error pe;
-        TIME(pe = parser_parse_file(&tc->p, &j->concrete.parse););
-        tflush();
+        TAU_TIME_STAGE_CTX(
+            tc->t,
+            {
+                tprintf("parsing ");
+                tprintn(
+                    j->concrete.parse.file->head.name.start,
+                    string_len(j->concrete.parse.file->head.name));
+                tputchar(' ');
+            },
+            { pe = parser_parse_file(&tc->p, &j->concrete.parse); },
+            { tflush(); });
+
         if (pe) tauc_error_occured(tc->t, pe);
         if (pe == PE_FATAL) return ERR;
         return OK;

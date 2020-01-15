@@ -10,6 +10,7 @@ extern "C" {
 #define PRIV_SYMBOL_OFFSET (UREG_MAX / 2)
 typedef void llvm_backend;
 typedef void llvm_module;
+typedef struct tauc_s tauc;
 
 typedef struct mdg_node_s mdg_node;
 typedef struct pp_resolve_node_s pp_resolve_node;
@@ -47,7 +48,7 @@ llvm_error llvm_backend_emit_module(
 void llvm_free_module(llvm_module* mod);
 
 int llvm_link_modules(
-    llvm_module** start, llvm_module** end, ptrlist* link_libs,
+    tauc* t, llvm_module** start, llvm_module** end, ptrlist* link_libs,
     char* output_path);
 
 llvm_error llvm_backend_generate_entrypoint(

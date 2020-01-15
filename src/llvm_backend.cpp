@@ -137,19 +137,26 @@ void llvm_free_module(llvm_module* mod)
     delete (LLVMModule*)mod;
 }
 int llvm_link_modules(
-    llvm_module** start, llvm_module** end, ptrlist* link_libs,
+    tauc* t, llvm_module** start, llvm_module** end, ptrlist* link_libs,
     char* output_path)
 {
-    tprintf("linking {");
-    for (LLVMModule** n = (LLVMModule**)start; !ptreq(n, end); n++) {
-        tprintf(
-            "%s%s", (**n).module_str.c_str(), ptreq(n + 1, end) ? "" : ", ");
-    }
-    tput("} ");
     llvm_error lle;
-    TIME(lle = linkLLVMModules(
-             (LLVMModule**)start, (LLVMModule**)end, link_libs, output_path););
-    tflush();
+    TAU_TIME_STAGE_CTX(
+        t,
+        {
+            tprintf("linking {");
+            for (LLVMModule** n = (LLVMModule**)start; !ptreq(n, end); n++) {
+                tprintf(
+                    "%s%s", (**n).module_str.c_str(),
+                    ptreq(n + 1, end) ? "" : ", ");
+            }
+            tput("} ");
+        },
+        {
+            lle = linkLLVMModules(
+                (LLVMModule**)start, (LLVMModule**)end, link_libs, output_path);
+        },
+        tflush(););
     if (lle) return ERR;
     return OK;
 }
@@ -171,7 +178,7 @@ static inline llvm_error link_dll(PPRunner* pp, const char* path)
         assert(false);
     }
     PP_RUNNER->addDll(std::move(dll));
-    printf("linked dll %s\n", path);
+    // printf("linked dll %s\n", path);
     return LLE_OK;
 }
 
@@ -188,7 +195,7 @@ static inline llvm_error link_archive(PPRunner* pp, const char* path)
     llvm::object::OwningBinary<llvm::object::Archive> arch_ob{
         std::move(arch.get()), std::move(mb)};
     PP_RUNNER->addArchive(std::move(arch_ob));
-    printf("linked archive %s\n", path);
+    // printf("linked archive %s\n", path);
     return LLE_OK;
 }
 static inline llvm_error link_obj(PPRunner* pp, const char* path)
@@ -201,7 +208,7 @@ static inline llvm_error link_obj(PPRunner* pp, const char* path)
         return link_archive(pp, path); // TODO: make this less ugly
         assert(false);
     }
-    printf("linked object %s\n", path);
+    // printf("linked object %s\n", path);
     return LLE_OK;
 }
 llvm_error llvm_backend_link_for_pp(bool is_dynamic, char* path)
@@ -573,7 +580,7 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     }
 
     auto jit_func = (void (*)())(mainfn.get()).getAddress();
-    printf("running '%s'\n", pp_func_name.c_str());
+    // printf("running '%s'\n", pp_func_name.c_str());
     jit_func();
 
     resetAfterEmit();
@@ -591,12 +598,20 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     _private_sym_count = private_sym_count;
     if (reserveSymbols(private_sym_count, endid)) return LLE_FATAL;
     llvm_error lle;
-    tprintf("generating {%s}", _mod_handle->module_str.c_str());
-    TIME(lle = genModules(););
-    tflush();
+
+    TAU_TIME_STAGE_CTX(
+        _tc->t, tprintf("generating {%s}", _mod_handle->module_str.c_str());
+        , lle = genModules();, tflush(););
     if (lle) return lle;
-    TIME(lle = emitModule(););
-    tflush();
+    TAU_TIME_STAGE_CTX(
+        _tc->t,
+        {
+            if (!_pp_mode) {
+                tprintf("emmitting {%s} ", _mod_handle->module_str.c_str());
+            }
+        },
+        { lle = emitModule(); }, { tflush(); });
+
     // PERF: instead of this last minute checking
     // just have different buffers for the different
     // reset types
@@ -2094,9 +2109,6 @@ llvm_error LLVMBackend::emitModuleToPP(
 
 llvm_error LLVMBackend::emitModule()
 {
-    if (!_pp_mode) {
-        tprintf("emmitting {%s} ", _mod_handle->module_str.c_str());
-    }
     llvm::Triple TargetTriple(_module->getTargetTriple());
     std::unique_ptr<llvm::TargetLibraryInfoImpl> TLII(
         new llvm::TargetLibraryInfoImpl(TargetTriple));
@@ -2306,12 +2318,13 @@ llvm_error linkLLVMModules(
 
     args.push_back("-o");
     args.push_back(output_path);
-    tprintf("linker args:");
-    for (auto v : args) {
-        tprintf(" %s", v);
-    }
-    tputs("\n");
-    tflush();
+    /*  tprintf("linker args:");
+      for (auto v : args) {
+          tprintf(" %s", v);
+      }
+      tputs("\n");
+      tflush();
+      */
     llvm::ArrayRef<const char*> arr_ref(&args[0], args.size());
     lld::elf::link(arr_ref, false);
     for (char** i = libs; i != libs_head; i++) {

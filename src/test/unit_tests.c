@@ -284,7 +284,6 @@ int list_remove_test()
 
     for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it)) {
         sum += (ureg)v;
-        printf("+ %i\n", (int)v);
         if ((ureg)v % 2 == 0) list_remove_swap(&l, &it);
     }
 
@@ -292,7 +291,6 @@ int list_remove_test()
     sum = 0;
     for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it)) {
         sum += (ureg)v;
-        printf("+ %i\n", (int)v);
         if ((ureg)v % 3 == 0) list_remove_swap(&l, &it);
     }
     if (sum != 2500) goto err;
@@ -310,6 +308,75 @@ err:
     return res;
 }
 
+int ptrlist_test()
+{
+    int res = ERR;
+    ptrlist l;
+    if (ptrlist_init(&l, 1)) return ERR;
+    for (int j = 0; j < 10; j++) {
+        void** p = NULL;
+        const ureg fill_count = 100 * j;
+        for (ureg i = 1; i < fill_count; i++) {
+            if (sbuffer_get_used_size(&l) / sizeof(void*) != i - 1) {
+                goto err;
+            }
+            p++;
+            if (ptrlist_append(&l, p)) goto err;
+        }
+        void** i = NULL;
+        pli it = pli_begin(&l);
+        for (void* v = pli_next(&it); v; v = pli_next(&it)) {
+            i++;
+            if (v != i) goto err;
+        }
+        if (i != p) goto err;
+        res = OK;
+        ptrlist_clear(&l);
+    }
+err:
+    ptrlist_fin(&l);
+    return res;
+}
+
+int ptrlist_remove_test()
+{
+    int res = ERR;
+    ptrlist l;
+    if (ptrlist_init(&l, 1)) return ERR;
+    for (ureg i = 1; i <= 100; i++) {
+        if (ptrlist_append(&l, (void*)i)) goto err;
+    }
+    ureg sum = 0;
+    pli it = pli_begin(&l);
+    for (void* v = pli_next(&it); v; v = pli_next(&it)) {
+        sum += (ureg)v;
+        printf("+ %i\n", (int)v);
+        if ((ureg)v % 2 == 0) ptrlist_remove(&l, &it);
+    }
+
+    if (sum != 5050) goto err;
+    sum = 0;
+    it = pli_begin(&l);
+    for (void* v = pli_next(&it); v; v = pli_next(&it)) {
+        sum += (ureg)v;
+        printf("+ %i\n", (int)v);
+        if ((ureg)v % 3 == 0) ptrlist_remove(&l, &it);
+    }
+    if (sum != 2500) goto err;
+    sum = 0;
+    it = pli_begin(&l);
+    for (void* v = pli_next(&it); v; v = pli_next(&it)) {
+        sum += (ureg)v;
+        ptrlist_remove(&l, &it);
+    }
+    if (sum != 1633) goto err;
+    if (!ptrlist_is_empty(&l)) goto err;
+    res = OK;
+err:
+    ptrlist_fin(&l);
+    return res;
+}
+
 #include <utils/debug_utils.h>
 int run_unit_tests(int argc, char** argv)
 {
@@ -323,6 +390,7 @@ int run_unit_tests(int argc, char** argv)
     TEST(res, mdg_test);
     TEST(res, list_test);
     TEST(res, list_remove_test);
+    TEST(res, ptrlist_test);
     if (res) {
         print_dash_padded("FAILED", false);
     }
