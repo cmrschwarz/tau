@@ -21,6 +21,7 @@
 typedef struct list_node_s {
     void** head;
     void** end;
+    struct list_node_s* prev; // TODO: maybe store xor of prev and next?
     struct list_node_s* next;
 } list_node;
 
@@ -39,6 +40,7 @@ typedef struct list_it_s {
 ureg list_length(list* l);
 int list_append_node(list* l, pool* alloc_pool, void* data);
 void list_remove(list* l, list_it* it);
+void list_remove_swap(list* l, list_it* it);
 
 static inline void list_init(list* l)
 {
@@ -82,6 +84,7 @@ static inline void* list_it_next(list_it* it)
         if (it->next_node == NULL) return NULL;
         it->head = ptradd(it->next_node, sizeof(list_node));
         it->end = it->next_node->head;
+        if (it->head == it->end) return NULL;
         it->next_node = it->next_node->next;
     }
     void* res = *it->head;
@@ -111,18 +114,17 @@ static inline void* list_pop_back(list* l)
             (list_node*)((((ureg)l->head_node) & ~LIST_SSO_MASK) | sso_val);
         return l->sso_slots[LIST_SSO_CAPACITY - sso_val];
     }
-    else {
-        assert(ptrdiff(
-            l->head_node->head, ptradd(l->head_node, sizeof(list_node))));
-        l->head_node->head--;
-        return *l->head_node->head;
+    if (l->head_node->head == ptradd(l->head_node, sizeof(list_node))) {
+        if (!l->head_node->prev) {
+            l->head_node =
+                (list_node*)((((ureg)l->head_node) & ~LIST_SSO_MASK) | 1);
+            return l->sso_slots[LIST_SSO_CAPACITY - 1];
+        }
+        l->head_node = l->head_node->prev;
+        return list_pop_back(l);
     }
-}
-
-static inline void list_remove_swap(list* l, list_it* it)
-{
-    assert(it->head != &l->sso_slots[0]);
-    *(it->head - 1) = list_pop_back(l);
+    l->head_node->head--;
+    return *l->head_node->head;
 }
 
 static inline bool list_empty(list* l)

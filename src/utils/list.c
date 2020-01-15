@@ -5,6 +5,7 @@ int list_append_node(list* l, pool* alloc_pool, void* data)
 {
     list_node* n = l->head_node->next;
     if (!n) {
+        list_node* prev;
         list_node** prev_next;
         ureg size;
         if (l->head_node == (list_node*)NULL_PTR_PTR) {
@@ -21,6 +22,7 @@ int list_append_node(list* l, pool* alloc_pool, void* data)
         n->end = ptradd(n, size);
         n->next = NULL;
         *prev_next = n;
+        n->prev = l->head_node;
     }
     l->head_node = n;
     n->head = ptradd(n, sizeof(list_node));
@@ -47,6 +49,48 @@ ureg list_length(list* l)
            (head_size - prev_nodes_count * sizeof(list_node) -
             LIST_NODE_MIN_SIZE) /
                sizeof(void*);
+}
+
+void list_remove_swap(list* l, list_it* it)
+{
+    ureg sso_val = ((ureg)l->head_node) & LIST_SSO_MASK;
+    if (sso_val || l->head_node == (list_node*)NULL_PTR_PTR) {
+        assert(sso_val < LIST_SSO_CAPACITY);
+        sso_val++;
+        l->head_node =
+            (list_node*)((((ureg)l->head_node) & ~LIST_SSO_MASK) | sso_val);
+        it->head--;
+        it->end--;
+        *it->head = l->sso_slots[LIST_SSO_CAPACITY - sso_val];
+        return;
+    }
+    if (it->end == l->head_node->head) {
+        it->end--;
+    }
+    l->head_node->head--;
+    if (l->head_node->head == ptradd(l->head_node, sizeof(list_node))) {
+        void* val = *l->head_node->head;
+        if (it->end == l->head_node->head) {
+            it->next_node = l->head_node;
+            l->head_node = l->head_node->prev;
+            if (l->head_node->prev != (list_node*)NULL_PTR_PTR) {
+                it->end = l->head_node->head;
+            }
+            else {
+                it->end = &l->sso_slots[0] + LIST_SSO_CAPACITY;
+            }
+            it->head = it->end - 1;
+            *it->head = val;
+            return;
+        }
+        it->head--;
+        *it->head = val;
+        l->head_node = l->head_node->prev;
+        return;
+    }
+    it->head--;
+    *it->head = *l->head_node->head;
+    return;
 }
 
 void list_remove(list* l, list_it* it)

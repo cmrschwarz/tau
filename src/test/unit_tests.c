@@ -269,6 +269,47 @@ err:
     return res;
 }
 
+int list_remove_test()
+{
+    int res = ERR;
+    list l;
+    list_init(&l);
+    pool mem;
+    if (pool_init(&mem)) return ERR;
+    for (ureg i = 1; i <= 100; i++) {
+        if (list_append(&l, &mem, (void*)i)) goto err;
+    }
+    ureg sum = 0;
+    list_it it;
+
+    for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it)) {
+        sum += (ureg)v;
+        printf("+ %i\n", (int)v);
+        if ((ureg)v % 2 == 0) list_remove_swap(&l, &it);
+    }
+
+    if (sum != 5050) goto err;
+    sum = 0;
+    for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it)) {
+        sum += (ureg)v;
+        printf("+ %i\n", (int)v);
+        if ((ureg)v % 3 == 0) list_remove_swap(&l, &it);
+    }
+    if (sum != 2500) goto err;
+    sum = 0;
+    for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it)) {
+        sum += (ureg)v;
+        list_remove_swap(&l, &it);
+    }
+    if (sum != 1633) goto err;
+    if (!list_empty(&l)) goto err;
+    res = OK;
+err:
+    list_fin(&l);
+    pool_fin(&mem);
+    return res;
+}
+
 #include <utils/debug_utils.h>
 int run_unit_tests(int argc, char** argv)
 {
@@ -281,7 +322,7 @@ int run_unit_tests(int argc, char** argv)
     TEST(res, job_queue_test);
     TEST(res, mdg_test);
     TEST(res, list_test);
-
+    TEST(res, list_remove_test);
     if (res) {
         print_dash_padded("FAILED", false);
     }
