@@ -159,6 +159,10 @@ bool ast_flags_get_resolved(ast_flags f)
 {
     return bitmask_get_bit(f, ASTF_RESOLVED_OFFSET);
 }
+void ast_flags_clear_resolved(ast_flags* f)
+{
+    bitmask_clear_bit(f, ASTF_RESOLVED_OFFSET);
+}
 
 void ast_flags_set_resolving(ast_flags* f)
 {

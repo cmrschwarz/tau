@@ -109,6 +109,8 @@ resolve_error resolve_ast_node(
     resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
     ast_elem** ctype);
 ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st);
+resolve_error report_redeclaration_error(
+    resolver* r, symbol* redecl, symbol* prev, symbol_table* st);
 ureg claim_symbol_id(resolver* r, symbol* s, bool public_st);
 bool ctypes_unifiable(ast_elem* a, ast_elem* b);
 #endif

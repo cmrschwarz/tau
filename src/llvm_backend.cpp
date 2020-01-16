@@ -439,7 +439,7 @@ void LLVMBackend::addPrimitives()
             case PT_VOID: t = _builder.getVoidTy(); break;
             case PT_TYPE:
             case PT_PASTED_EXPR:
-            case PT_UNBOUND_GENERIC:
+            case PT_GENERIC_TYPE:
             case PT_UNREACHABLE: t = NULL; break;
             default: assert(false); return;
         }

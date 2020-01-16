@@ -64,7 +64,7 @@ report_unknown_symbol(resolver* r, ast_node* n, symbol_table* st)
         "use of an undefined symbol");
     return RE_UNKNOWN_SYMBOL;
 }
-static resolve_error report_redeclaration_error(
+resolve_error report_redeclaration_error(
     resolver* r, symbol* redecl, symbol* prev, symbol_table* st)
 {
     src_range_large prev_st, redecl_st;
@@ -1133,7 +1133,7 @@ resolve_error choose_unary_operator_overload(
         resolve_ast_node(r, ou->child, st, ppl, &child_value, &child_type);
     if (re) return re;
 
-    if (child_type == TYPE_ELEM) {
+    if (child_type == TYPE_ELEM || child_type == GENERIC_TYPE_ELEM) {
         if (ou->node.op_kind == OP_DEREF) {
             re = create_pointer_to(r, child_value, false, &child_type);
             if (re) return re;
@@ -1397,7 +1397,7 @@ resolve_error resolve_param(
     else {
         if (!p->default_value) {
             if (generic) {
-                p->ctype = UNBOUND_GENERIC_ELEM;
+                p->ctype = GENERIC_TYPE_ELEM;
             }
             else {
                 assert(false); // would cause a parser error
@@ -2064,10 +2064,14 @@ static inline resolve_error resolve_ast_node_raw(
             return resolve_expr_scope_access(
                 r, esa, st, ppl, &access, value, ctype);
         }
+        case SC_STRUCT_GENERIC: {
+            sc_struct_generic* esa = (sc_struct_generic*)n;
+            if (!resolved) ast_flags_set_resolved(&n->flags);
+            // TODO: handle scope escaped pp exprs
+            RETURN_RESOLVED(value, ctype, n, GENERIC_TYPE_ELEM);
+        }
         case SC_STRUCT:
-        case SC_STRUCT_GENERIC:
-        case SC_TRAIT:
-        case SC_TRAIT_GENERIC: {
+        case SC_STRUCT_GENERIC_INST: {
             if (resolved) RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
             re = resolve_body(r, n, &((scope*)n)->body, ppl);
             if (re) return re;
@@ -2294,14 +2298,19 @@ static inline resolve_error resolve_ast_node_raw(
             }
             return RE_OK;
         }
-        case SYM_PARAM:
-        case SYM_GENERIC_PARAM: {
+        case SYM_GENERIC_PARAM:
+        case SYM_PARAM: {
             sym_param* p = (sym_param*)n;
             if (resolved) RETURN_RESOLVED(value, ctype, p, p->ctype);
             re =
                 resolve_param(r, p, (n->kind == SYM_GENERIC_PARAM), ppl, ctype);
             if (value) *value = (ast_elem*)n;
             return re;
+        }
+        case SYM_PARAM_GENERIC_INST: {
+            assert(resolved);
+            sym_param_generic_inst* pgi = (sym_param_generic_inst*)n;
+            RETURN_RESOLVED(value, ctype, pgi->value, pgi->ctype);
         }
         case ARRAY_DECL: {
             array_decl* ad = (array_decl*)n;
@@ -3378,6 +3387,7 @@ int resolver_init(resolver* r, thread_context* tc)
 }
 ast_elem* get_resolved_ast_node_ctype(ast_node* n)
 {
+    // we could optimize this but it's currently not worth it
     ast_elem* ctype;
     resolve_ast_node_raw(NULL, n, NULL, 0, NULL, &ctype);
     return ctype;

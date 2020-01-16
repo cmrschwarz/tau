@@ -11,7 +11,7 @@
 #define VOID_ELEM ((ast_elem*)&PRIMITIVES[PT_VOID])
 #define UNREACHABLE_ELEM ((ast_elem*)&PRIMITIVES[PT_UNREACHABLE])
 #define PASTED_EXPR_ELEM ((ast_elem*)&PRIMITIVES[PT_PASTED_EXPR])
-#define UNBOUND_GENERIC_ELEM ((ast_elem*)&PRIMITIVES[PT_UNBOUND_GENERIC])
+#define GENERIC_TYPE_ELEM ((ast_elem*)&PRIMITIVES[PT_GENERIC_TYPE])
 #define TYPE_ELEM ((ast_elem*)&PRIMITIVES[PT_TYPE])
 
 typedef struct mdg_node_s mdg_node;
@@ -42,6 +42,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SYM_VAR_INITIALIZED,
     SYM_PARAM,
     SYM_GENERIC_PARAM,
+    SYM_PARAM_GENERIC_INST,
     SYM_NAMED_USING,
     SYM_IMPORT_MODULE,
     SYM_IMPORT_SYMBOL,
@@ -173,7 +174,7 @@ typedef enum PACK_ENUM operator_kind_e {
 typedef enum PACK_ENUM primitive_kind_e {
     PT_VOID,
     PT_UNREACHABLE,
-    PT_UNBOUND_GENERIC,
+    PT_GENERIC_TYPE,
     PT_INT,
     PT_UINT,
     PT_FLOAT,
@@ -186,16 +187,20 @@ typedef enum PACK_ENUM primitive_kind_e {
 } primitive_kind;
 
 // root of all, can be cast from ast_node since it only contains one element
+
 typedef struct ast_elem_s {
     ast_node_kind kind;
 } ast_elem;
 
 typedef struct ast_node_s {
-    ast_node_kind kind;
-    ANONYMOUS_UNION_START
-    primitive_kind pt_kind;
-    operator_kind op_kind;
-    ANONYMOUS_UNION_END
+    union {
+        ast_node_kind kind;
+        ast_elem elem;
+    };
+    union {
+        primitive_kind pt_kind;
+        operator_kind op_kind;
+    };
     ast_flags flags;
     src_range srange;
 } ast_node;
@@ -322,13 +327,13 @@ typedef struct expr_block_s {
     expr_block_base ebb;
     ast_body body;
     ast_elem* ctype;
-    ANONYMOUS_UNION_START
-    void* control_flow_ctx;
-    // this works, since the block ITSELF (not its children)
-    // won't be touched by the backend until its fully resolved
-    // and then we don't need the pprn anymore
-    pp_resolve_node* pprn;
-    ANONYMOUS_UNION_END
+    union {
+        void* control_flow_ctx;
+        // this works, since the block ITSELF (not its children)
+        // won't be touched by the backend until its fully resolved
+        // and then we don't need the pprn anymore
+        pp_resolve_node* pprn;
+    };
 } expr_block;
 
 typedef struct expr_if_s {
@@ -343,10 +348,10 @@ typedef struct expr_loop_s {
     expr_block_base ebb;
     ast_body body;
     ast_elem* ctype;
-    ANONYMOUS_UNION_START
-    void* control_flow_ctx;
-    pp_resolve_node* pprn; // see expr_block on why this works
-    ANONYMOUS_UNION_END
+    union {
+        void* control_flow_ctx;
+        pp_resolve_node* pprn; // see expr_block on why this works
+    };
 } expr_loop;
 
 typedef struct sym_param_s {
@@ -355,6 +360,12 @@ typedef struct sym_param_s {
     ast_elem* ctype;
     ast_node* default_value;
 } sym_param;
+
+typedef struct sym_param_generic_inst_s {
+    symbol sym;
+    ast_elem* value;
+    ast_elem* ctype;
+} sym_param_generic_inst;
 
 typedef struct chained_macro_s {
     ast_node node;
@@ -521,8 +532,8 @@ typedef struct sc_struct_generic_s {
 
 typedef struct sc_struct_generic_inst_s {
     sc_struct st;
-    ast_elem** generic_vals;
-    ureg generic_val_count;
+    sym_param_generic_inst* generic_args;
+    ureg generic_arg_count;
     sc_struct_generic* base;
     ureg id;
 } sc_struct_generic_inst;
@@ -703,19 +714,28 @@ typedef enum ast_type_mod_s {
 #define ATM_MAX_COUNT (ATM_BYTES * ATM_PER_BYTE)
 
 typedef struct type_pointer_s {
-    ast_node_kind kind;
+    union {
+        ast_node_kind kind;
+        ast_elem elem;
+    };
     bool rvalue;
     ast_elem* base;
 } type_pointer;
 
 typedef struct type_array_s {
-    ast_node_kind kind;
+    union {
+        ast_node_kind kind;
+        ast_elem elem;
+    };
     ast_elem* ctype_members;
     ureg length;
 } type_array;
 
 typedef struct type_tuple_s {
-    ast_node_kind kind;
+    union {
+        ast_node_kind kind;
+        ast_elem elem;
+    };
     ast_elem** ctypes_of_members;
     ureg size;
 } type_tuple;
