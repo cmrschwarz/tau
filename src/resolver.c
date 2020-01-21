@@ -11,10 +11,6 @@
 #include "generic_instance_resolution.h"
 #include <assert.h>
 
-static resolve_error add_body_decls(
-    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
-    ast_body* b, bool public_st);
-
 resolve_error resolver_run_pp_resolve_nodes(resolver* r);
 resolve_error resolve_param(
     resolver* r, sym_param* p, bool generic, ureg ppl, ast_elem** ctype);
@@ -866,7 +862,7 @@ evaluate_array_bounds(resolver* r, array_decl* ad, symbol_table* st, ureg* res)
         "in the array bounds for this array");
     return RE_ERROR;
 }
-static resolve_error add_body_decls(
+resolve_error add_body_decls(
     resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
     ast_body* b, bool public_st)
 {
@@ -2543,17 +2539,19 @@ resolve_error resolve_expr_body(
     }
     // if we already have decls this is the second pass.
     // TODO prevent use before define
-    ast_node** n = b->elements;
+
+    ast_node** continue_at = b->elements;
     if (pprn) {
-        n = pprn->continue_block;
+        continue_at = pprn->continue_block;
         if (!pprn->block_pos_reachable) stmt_ctype_ptr = NULL;
     }
+    ast_node** n = continue_at;
     for (; *n != NULL; n++) {
         re = add_ast_node_decls(r, b->symtab, NULL, ppl, *n, false);
         if (re) break;
         re = resolve_ast_node(r, *n, b->symtab, ppl, NULL, stmt_ctype_ptr);
         if (r->curr_block_pp_node && r->curr_block_pp_node->pending_pastes) {
-            r->curr_block_pp_node->continue_block = n + 1;
+            r->curr_block_pp_node->continue_block = n;
             re = RE_SYMBOL_NOT_FOUND_YET;
             break;
         }
@@ -2727,7 +2725,7 @@ resolve_error resolve_func(
         if (re) break;
         r->curr_pp_node = NULL;
         if (r->curr_block_pp_node && r->curr_block_pp_node->pending_pastes) {
-            r->curr_block_pp_node->continue_block = n + 1;
+            r->curr_block_pp_node->continue_block = n;
             re = RE_SYMBOL_NOT_FOUND_YET;
             break;
         }
@@ -2886,9 +2884,8 @@ resolve_error resolver_cleanup(resolver* r, ureg startid)
     }
     if (r->module_group_destructor) {
         /* pp_resolve_node* pprn = pp_resolve_node_create(
-             r, (ast_node*)r->module_group_destructor, NULL, false, false, 0);
-         if (!pprn) return RE_FATAL;
-         pprn->call_when_done = true;
+             r, (ast_node*)r->module_group_destructor, NULL, false, false,
+         0); if (!pprn) return RE_FATAL; pprn->call_when_done = true;
          ptrlist_append(&r->pp_resolve_nodes_ready, pprn);
          resolver_run_pp_resolve_nodes(r);
          */

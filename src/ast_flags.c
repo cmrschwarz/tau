@@ -123,6 +123,10 @@ bool ast_flags_get_declared(ast_flags f)
 {
     return bitmask_get_bit(f, ASTF_DECLARED_OFFSET);
 }
+void ast_flags_clear_declared(ast_flags* f)
+{
+    bitmask_clear_bit(f, ASTF_DECLARED_OFFSET);
+}
 
 void ast_flags_set_relative_import(ast_flags* f)
 {

@@ -108,6 +108,9 @@ ast_elem* get_resolved_ast_node_ctype(ast_node* n);
 resolve_error resolve_ast_node(
     resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
     ast_elem** ctype);
+resolve_error add_body_decls(
+    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
+    ast_body* b, bool public_st);
 ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st);
 resolve_error report_redeclaration_error(
     resolver* r, symbol* redecl, symbol* prev, symbol_table* st);

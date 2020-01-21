@@ -3,8 +3,8 @@
 #include "thread_context.h"
 #include "assert.h"
 
-resolve_error instantiate_ast_elem(
-    resolver* r, ast_elem* n, ast_elem** tgt, symbol_table* st, bool inst);
+resolve_error instantiate_ast_node(
+    resolver* r, ast_node* n, ast_node** tgt, symbol_table* st);
 
 static inline void* alloc_perm(resolver* r, ureg size)
 {
@@ -17,6 +17,8 @@ static inline void* alloc_perm(resolver* r, ureg size)
     do {                                                                       \
         *(TGT_PTR_PTR) = alloc_perm((r), sizeof(NODE_TYPE));                   \
         if (*(TGT_PTR_PTR) == NULL) return RE_FATAL;                           \
+        ast_flags_clear_declared(&(**TGT_PTR_PTR).flags);                      \
+        **(NODE_TYPE**)(TGT_PTR_PTR) = *(NODE_TYPE*)(NODE);                    \
     } while (false)
 
 #define COPY_INST(r, NODE, NODE_TYPE, COPY_PTR, TGT_PTR_PTR)                   \
@@ -24,13 +26,14 @@ static inline void* alloc_perm(resolver* r, ureg size)
         (COPY_PTR) = alloc_perm((r), sizeof(NODE_TYPE));                       \
         if ((COPY_PTR) == NULL) return RE_FATAL;                               \
         *(NODE_TYPE*)(COPY_PTR) = *(NODE_TYPE*)(NODE);                         \
-        *(TGT_PTR_PTR) = (ast_elem*)(COPY_PTR);                                \
+        ast_flags_clear_declared(&((ast_node*)(COPY_PTR))->flags);             \
+        *(TGT_PTR_PTR) = (ast_node*)(COPY_PTR);                                \
     } while (false)
 // inst indicates whether we are in a generic instance, or if we are currently
 // copying a nested generic. in that case we don't want to claim var ids
 resolve_error instantiate_body(
     resolver* r, ast_body* src, ast_body* tgt, ast_node* generic_owner,
-    ast_node* inst_owner, symbol_table* tgt_parent_st, bool inst)
+    ast_node* inst_owner)
 {
     symbol_table* stc = src->symtab;
     if (stc->owning_node == (ast_elem*)generic_owner) {
@@ -40,15 +43,15 @@ resolve_error instantiate_body(
             &tgt->symtab, src->symtab->decl_count, using_count, false,
             (ast_elem*)inst_owner, src->symtab->ppl);
         if (r) return RE_FATAL;
-        tgt->symtab->parent = tgt_parent_st;
+        tgt->symtab->parent = NULL;
     }
     // TODO: switch to count instead of zero termination to get rid of this
     // mess
     resolve_error re = RE_OK;
     void** body_elems = list_builder_start(&r->tc->listb);
     for (ast_node** n = src->elements; *n; n++) {
-        ast_elem* copy;
-        re = instantiate_ast_elem(r, (ast_elem*)*n, &copy, tgt->symtab, inst);
+        ast_node* copy;
+        re = instantiate_ast_node(r, *n, &copy, tgt->symtab);
         if (re) break;
         if (list_builder_add(&r->tc->listb, copy)) {
             list_builder_drop_list(&r->tc->listb, body_elems);
@@ -62,11 +65,19 @@ resolve_error instantiate_body(
 }
 // instance is the generic instance of the struct or function, inst_of is the
 // generic that is being instantiated
-resolve_error instantiate_ast_elem(
-    resolver* r, ast_elem* n, ast_elem** tgt, symbol_table* st, bool inst)
+resolve_error
+instantiate_ast_node(resolver* r, ast_node* n, ast_node** tgt, symbol_table* st)
 {
+    if (!n) {
+        *tgt = NULL;
+        return RE_OK;
+    }
     resolve_error re;
     switch (n->kind) {
+        case EXPR_LITERAL: {
+            *tgt = n;
+            return RE_OK;
+        }
         case EXPR_IDENTIFIER: {
             COPY_TO_TGT(r, n, expr_identifier, tgt);
             return RE_OK;
@@ -74,26 +85,15 @@ resolve_error instantiate_ast_elem(
         case SYM_VAR: {
             sym_var* vc;
             COPY_INST(r, n, sym_var, vc, tgt);
-            symbol** res = symbol_table_insert(st, (symbol*)vc);
-            assert(res == NULL);
-            vc->sym.declaring_st = st;
-            if (inst) vc->var_id = claim_symbol_id(r, (symbol*)vc, false);
-            return instantiate_ast_elem(
-                r, &vc->type->elem, &vc->ctype, st, inst);
+            return instantiate_ast_node(r, vc->type, &vc->type, st);
         }
         case SYM_VAR_INITIALIZED: {
             sym_var_initialized* vc;
             COPY_INST(r, n, sym_var_initialized, vc, tgt);
-            symbol** res = symbol_table_insert(st, (symbol*)vc);
-            assert(res == NULL);
-            vc->var.sym.declaring_st = st;
-            vc->var.var_id = claim_symbol_id(r, (symbol*)vc, false);
-            re = instantiate_ast_elem(
-                r, (ast_elem*)vc->var.type, &vc->var.ctype, st, inst);
+            re = instantiate_ast_node(r, vc->var.type, &vc->var.type, st);
             if (re) return re;
-            return instantiate_ast_elem(
-                r, (ast_elem*)vc->initial_value, (ast_elem**)&vc->initial_value,
-                st, inst);
+            return instantiate_ast_node(
+                r, vc->initial_value, (ast_elem**)&vc->initial_value, st);
         }
         case SC_FUNC: {
             // TODO: think about NOT doing this were possible :)
@@ -105,21 +105,35 @@ resolve_error instantiate_ast_elem(
             if (!fc->fnb.params) return RE_FATAL;
             memcpy(fc->fnb.params, f->fnb.params, param_size);
             for (ureg i = 0; i < fc->fnb.param_count; i++) {
-                re = instantiate_ast_elem(
-                    r, (ast_elem*)f->fnb.params[i].type,
-                    (ast_elem**)&fc->fnb.params[i].type, st, inst);
+                re = instantiate_ast_node(
+                    r, f->fnb.params[i].type, &fc->fnb.params[i].type, st);
                 if (re) return re;
             }
             return instantiate_body(
                 r, &f->fnb.sc.body, &fc->fnb.sc.body, (ast_node*)f,
-                (ast_node*)fc, st, inst);
+                (ast_node*)fc);
+        }
+        case SC_FUNC_GENERIC: {
         }
         case EXPR_OP_UNARY: {
             expr_op_unary* ou;
-            COPY_INST(r, n, expr_identifier, ou, tgt);
-            return instantiate_ast_elem(
-                r, (ast_elem*)ou->child, (ast_elem**)&ou->child, st, inst);
-        };
+            COPY_INST(r, n, expr_op_unary, ou, tgt);
+            return instantiate_ast_node(r, ou->child, &ou->child, st);
+        }
+        case EXPR_OP_BINARY: {
+            expr_op_binary* ob;
+            COPY_INST(r, n, expr_op_binary, ob, tgt);
+            re = instantiate_ast_node(r, ob->lhs, &ob->lhs, st);
+            if (re) return re;
+            return instantiate_ast_node(r, ob->rhs, &ob->rhs, st);
+        }
+        case EXPR_CAST: {
+            expr_cast* c;
+            COPY_INST(r, n, expr_cast, c, tgt);
+            re = instantiate_ast_node(r, c->value, &c->value, st);
+            if (re) return re;
+            return instantiate_ast_node(r, c->target_type, &c->target_type, st);
+        }
         default:
             assert(false);
             *tgt = n; // for the common case we can share it... i think :)
@@ -143,10 +157,7 @@ resolve_error instantiate_generic_struct(
     if (!sgi->generic_args) return RE_FATAL;
     sgi->generic_arg_count = ea->arg_count;
     re = instantiate_body(
-        r, &sg->sb.sc.body, &sgi->st.sb.sc.body, (ast_node*)sg, (ast_node*)sgi,
-        st, true);
-    sgi->st.id = claim_symbol_id(
-        r, (symbol*)sgi, symbol_table_is_public(sg->sb.sc.sym.declaring_st));
+        r, &sg->sb.sc.body, &sgi->st.sb.sc.body, (ast_node*)sg, (ast_node*)sgi);
     for (ureg i = 0; i < sg->generic_param_count; i++) {
         sym_param* gp = &sg->generic_params[i];
         sym_param_generic_inst* gpi = &sgi->generic_args[i];
@@ -162,7 +173,8 @@ resolve_error instantiate_generic_struct(
             symbol_table_insert(sgi->st.sb.sc.body.symtab, (symbol*)gpi);
         if (c) {
             return report_redeclaration_error(
-                r, *c, &sgi->generic_args[i], sgi->st.sb.sc.body.symtab);
+                r, *c, (symbol*)&sgi->generic_args[i],
+                sgi->st.sb.sc.body.symtab);
         }
     }
     if (re) return re;
@@ -205,6 +217,10 @@ resolve_error resolve_generic_struct(
         if (success) {
             if (value) *value = (ast_elem*)sgi;
             if (ctype) *ctype = TYPE_ELEM;
+            sbuffer_remove_back(
+                &r->call_types, sizeof(ast_elem*) * ea->arg_count);
+            sbuffer_remove_back(
+                &r->call_types, sizeof(ast_elem*) * ea->arg_count);
             return RE_OK;
         }
     }
@@ -213,7 +229,12 @@ resolve_error resolve_generic_struct(
     sbuffer_remove_back(&r->call_types, sizeof(ast_elem*) * ea->arg_count);
     sbuffer_remove_back(&r->call_types, sizeof(ast_elem*) * ea->arg_count);
     if (re) return re;
+    re = add_body_decls(
+        r, sgi->st.sb.sc.sym.declaring_st, NULL, ppl, &sgi->st.sb.sc.body,
+        false);
+    if (re) return re;
+    sgi->st.id = claim_symbol_id(
+        r, (symbol*)sgi, symbol_table_is_public(sg->sb.sc.sym.declaring_st));
     return resolve_ast_node(
-        r, (ast_node*)sgi, sgi->st.sb.sc.sym.declaring_st,
-        sgi->st.sb.sc.sym.declaring_st->ppl, value, ctype);
+        r, (ast_node*)sgi, sgi->st.sb.sc.sym.declaring_st, ppl, value, ctype);
 }

@@ -86,6 +86,7 @@ bool ast_flags_get_pasting_pp_expr(ast_flags f);
 
 void ast_flags_set_declared(ast_flags* f);
 bool ast_flags_get_declared(ast_flags f);
+void ast_flags_clear_declared(ast_flags* f);
 
 void ast_flags_set_resolved(ast_flags* f);
 bool ast_flags_get_resolved(ast_flags f);
