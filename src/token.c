@@ -103,6 +103,7 @@ const char* token_strings[255] = {
     [TK_IDENTIFIER] = "expression",
     [TK_EOF] = "EOF",
     [TK_AT] = "@",
+    [TK_BACKSLASH] = "\\",
 };
 // clang-format on
 

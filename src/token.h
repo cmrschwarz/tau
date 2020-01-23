@@ -73,6 +73,7 @@ typedef enum PACK_ENUM token_kind_e {
     TK_DOUBLE_GREATER_THAN,
     TK_DOUBLE_GREATER_THAN_EQUALS,
     TK_AND,
+    TK_BACKSLASH,
     TK_AT,
     TK_DOUBLE_AND,
     TK_AND_EQUALS,
