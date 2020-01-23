@@ -4,6 +4,7 @@
 #include "allocator.h"
 #include "math_utils.h"
 #include "types.h"
+#include <assert.h>
 
 typedef struct sbuffer_segment_s {
     void* tail;
@@ -61,7 +62,8 @@ static inline sbuffer_iterator sbuffer_iterator_begin_at_end(sbuffer* sb)
 static inline void* sbuffer_iterator_next(sbuffer_iterator* sbi, ureg size)
 {
     while (true) {
-        if (ptrdiff(sbi->seg->tail, sbi->pos) >= size) {
+        if (ptrdiff(sbi->seg->tail, sbi->pos) != 0) {
+            assert(ptrdiff(sbi->seg->tail, sbi->pos) >= size);
             void* res = sbi->pos;
             sbi->pos = ptradd(sbi->pos, size);
             return res;

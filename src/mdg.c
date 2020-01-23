@@ -99,7 +99,7 @@ void* mdg_node_partial_fin(mdg_node* n, int i)
         case 4: aseglist_fin(&n->notify); // fallthrough
         case 3: aseglist_fin(&n->dependencies); // fallthrough
         case 2: rwlock_fin(&n->lock); // fallthrough
-        case 1: aseglist_fin(&n->open_scopes); // fallthrough
+        case 1: aseglist_fin(&n->module_frames); // fallthrough
     }
     return NULL;
 }
@@ -119,7 +119,7 @@ mdg_node* mdg_node_create(
     n->name[identlen] = '\0';
     n->id = atomic_ureg_inc(&m->node_ids);
     n->parent = parent;
-    int r = aseglist_init(&n->open_scopes);
+    int r = aseglist_init(&n->module_frames);
     if (r) return NULL;
     r = rwlock_init(&n->lock);
     if (r) return mdg_node_partial_fin(n, 1);
@@ -143,17 +143,18 @@ void free_body_symtabs(ast_node* node, ast_body* b);
 static void free_astn_symtabs(ast_node* n)
 {
     if (!n) return;
-    if (ast_elem_is_scope((ast_elem*)n)) {
+    if (ast_elem_is_module_frame((ast_elem*)n)) {
         // these are parts of a module and therefore already handled
-        if (!ast_elem_is_open_scope((ast_elem*)n)) {
-            free_body_symtabs(n, &((scope*)n)->body);
-            if (n->kind == SC_STRUCT_GENERIC) {
-                for (sc_struct_generic_inst* sgi =
-                         ((sc_struct_generic*)n)->instances;
-                     sgi;
-                     sgi = (sc_struct_generic_inst*)sgi->st.sb.sc.sym.next) {
-                    free_astn_symtabs((ast_node*)sgi);
-                }
+        return;
+    }
+    if (ast_elem_is_scope((ast_elem*)n)) {
+        free_body_symtabs(n, &((scope*)n)->body);
+        if (n->kind == SC_STRUCT_GENERIC) {
+            for (sc_struct_generic_inst* sgi =
+                     ((sc_struct_generic*)n)->instances;
+                 sgi;
+                 sgi = (sc_struct_generic_inst*)sgi->st.sb.sc.osym.sym.next) {
+                free_astn_symtabs((ast_node*)sgi);
             }
         }
         return;
@@ -257,7 +258,7 @@ static void free_astn_symtabs(ast_node* n)
             stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
             free_body_symtabs(n, &spe->body);
         } break;
-        case ARRAY_DECL: {
+        case EXPR_ARRAY_DECL: {
             array_decl* ad = (array_decl*)n;
             free_astn_symtabs(ad->length_spec);
             free_astn_symtabs(ad->base_type);
@@ -306,11 +307,11 @@ void mdg_node_fin(mdg_node* n)
 {
     if (n->stage >= MS_PARSING) {
         aseglist_iterator it;
-        aseglist_iterator_begin(&it, &n->open_scopes);
+        aseglist_iterator_begin(&it, &n->module_frames);
         while (true) {
-            open_scope* osc = aseglist_iterator_next(&it);
-            if (!osc) break;
-            free_body_symtabs((ast_node*)osc, &osc->sc.body);
+            module_frame* mf = aseglist_iterator_next(&it);
+            if (!mf) break;
+            free_body_symtabs((ast_node*)mf, &mf->body);
         }
     }
     if (n->stage >= MS_RESOLVING) {
@@ -500,12 +501,20 @@ bool module_import_group_find_import(
     }
     return false;
 }
-bool scope_find_import(
-    scope* s, mdg_node* import, sym_import_group** tgt_group, symbol** tgt_sym)
+bool ast_body_find_import(
+    ast_body* b, mdg_node* import, sym_import_group** tgt_group,
+    symbol** tgt_sym)
 {
-    for (ast_node** n = s->body.elements; *n; n++) {
+    for (ast_node** n = b->elements; *n; n++) {
         if (ast_elem_is_scope((ast_elem*)*n)) {
-            if (scope_find_import((scope*)*n, import, tgt_group, tgt_sym)) {
+            if (ast_body_find_import(
+                    &((scope*)*n)->body, import, tgt_group, tgt_sym)) {
+                return true;
+            }
+        }
+        else if (ast_elem_is_module_frame((ast_elem*)n)) {
+            if (ast_body_find_import(
+                    &((module_frame*)*n)->body, import, tgt_group, tgt_sym)) {
                 return true;
             }
         }
@@ -531,15 +540,14 @@ void mdg_node_find_import(
     symbol** tgt_sym, src_map** smap)
 {
     aseglist_iterator it;
-    aseglist_iterator_begin(&it, &m->open_scopes);
+    aseglist_iterator_begin(&it, &m->module_frames);
     while (true) {
-        open_scope* osc = aseglist_iterator_next(&it);
-        if (!osc) break;
-        if (scope_find_import(&osc->sc, import, tgt_group, tgt_sym)) {
-            *smap = open_scope_get_smap(osc);
+        module_frame* mf = aseglist_iterator_next(&it);
+        if (!mf) break;
+        if (ast_body_find_import(&mf->body, import, tgt_group, tgt_sym)) {
+            *smap = module_frame_get_smap(mf);
             return;
         }
-        osc = (open_scope*)osc->sc.sym.next;
     }
     panic("failed to find the source location of a missing import!");
 }
@@ -560,7 +568,7 @@ void mdg_node_report_missing_import(
         return;
     }
     src_range_large tgt_group_srl;
-    src_range_unpack(tgt_group->sym.node.srange, &tgt_group_srl);
+    src_range_unpack(tgt_group->osym.sym.node.srange, &tgt_group_srl);
     error_log_report_annotated_twice(
         tc->err_log, ES_RESOLVER, false,
         "missing definition for imported module", smap, tgt_sym_srl.start,
@@ -822,24 +830,24 @@ int mdg_node_generated(mdg_node* n, thread_context* tc, bool pp_generated)
     }
     return OK;
 }
-int mdg_node_add_osc(mdg_node* n, open_scope* osc, tauc* t)
+int mdg_node_add_frame(mdg_node* n, module_frame* mf, tauc* t)
 {
     int r;
     bool needed;
     rwlock_read(&n->lock);
     // the aseglist_add must be inside the locked region!
     // otherwise we find unnedded, exit lock,
-    // another thread updates to needed, and than we add osc
+    // another thread updates to needed, and than we add mf
     // --> missing requires
-    r = aseglist_add(&n->open_scopes, osc);
+    r = aseglist_add(&n->module_frames, mf);
     needed = module_stage_needed(n->stage);
     rwlock_end_read(&n->lock);
     if (r) return r;
     if (needed) {
-        file_require* r = osc->requires;
+        file_require* r = mf->requires;
         while (*(void**)r && !r->handled) {
             file_map_head_require(
-                r->fmh, t, open_scope_get_smap(osc), r->srange, n, r->in_ppl);
+                r->fmh, t, module_frame_get_smap(mf), r->srange, n, r->in_ppl);
             r++;
         }
     }
@@ -857,14 +865,14 @@ int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp)
         if (pplr) return OK;
     }
     aseglist_iterator it;
-    aseglist_iterator_begin(&it, &n->open_scopes);
+    aseglist_iterator_begin(&it, &n->module_frames);
     while (true) {
-        open_scope* osc = aseglist_iterator_next(&it);
-        if (!osc) break;
-        file_require* r = osc->requires;
+        module_frame* mf = aseglist_iterator_next(&it);
+        if (!mf) break;
+        file_require* r = mf->requires;
         while (*(void**)r) {
             int res = file_map_head_require(
-                r->fmh, tc->t, open_scope_get_smap(osc), r->srange, n,
+                r->fmh, tc->t, module_frame_get_smap(mf), r->srange, n,
                 r->in_ppl || in_pp);
             r++;
             if (res) return res;
@@ -900,25 +908,25 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
     scc_detector_housekeep_ids(&tc->sccd);
     tc->sccd.dfs_start_index = tc->sccd.dfs_index;
     tc->sccd.dfs_index++;
-    aseglist* oscs;
+    aseglist* mfs;
     // since the stack is segmented there is no risk of this getting invalidated
     void** stack_head = tc->tempstack.head;
     while (true) {
         rwlock_write(&n->lock);
         if (n->stage == MS_UNNEEDED) {
             n->stage = MS_PARSING;
-            oscs = &n->open_scopes;
+            mfs = &n->module_frames;
         }
         else if (n->stage == MS_AWAITING_NEED) {
             n->stage = MS_AWAITING_DEPENDENCIES;
-            oscs = &n->open_scopes;
+            mfs = &n->module_frames;
             run_scc = true;
         }
         else {
-            oscs = NULL;
+            mfs = NULL;
         }
 
-        if (oscs) {
+        if (mfs) {
             aseglist_iterator it;
             aseglist_iterator_begin(&it, &n->dependencies);
             while (true) {
@@ -936,7 +944,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
             }
         }
         int r = OK;
-        if (oscs) {
+        if (mfs) {
             r = mdg_node_require_requirements(n, tc, false);
         }
         rwlock_end_write(&n->lock);
@@ -980,20 +988,20 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
         // still be going on
         rwlock_read(&n->lock);
         if (n->stage == MS_UNNEEDED || n->stage == MS_AWAITING_NEED) {
-            open_scope* mod = NULL;
+            module_frame* mod_frame = NULL;
             aseglist_iterator it;
-            aseglist_iterator_begin(&it, &n->open_scopes);
-            open_scope* first_target = NULL;
-            open_scope* i = aseglist_iterator_next(&it);
+            aseglist_iterator_begin(&it, &n->module_frames);
+            module_frame* first_target = NULL;
+            module_frame* i = aseglist_iterator_next(&it);
             first_target = i;
             while (i) {
-                if (i->sc.sym.node.kind == OSC_MODULE ||
-                    i->sc.sym.node.kind == OSC_MODULE_GENERIC) {
-                    if (mod != NULL) {
+                if (i->node.kind == MF_MODULE ||
+                    i->node.kind == MF_MODULE_GENERIC) {
+                    if (mod_frame != NULL) {
                         src_range_large srl;
-                        src_range_unpack(i->sc.sym.node.srange, &srl);
+                        src_range_unpack(i->node.srange, &srl);
                         src_range_large srl_mod;
-                        src_range_unpack(mod->sc.sym.node.srange, &srl_mod);
+                        src_range_unpack(mod_frame->node.srange, &srl_mod);
                         // these should always have a smap
                         assert(srl.smap && srl_mod.smap);
                         // since aseglist iterates backwards we reverse, so
@@ -1007,13 +1015,13 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
                         res = ERR;
                         break;
                     }
-                    mod = i;
+                    mod_frame = i;
                 }
                 i = aseglist_iterator_next(&it);
             }
-            if (mod == NULL && first_target != NULL) {
+            if (mod_frame == NULL && first_target != NULL) {
                 src_range_large srl;
-                src_range_unpack(first_target->sc.sym.node.srange, &srl);
+                src_range_unpack(first_target->node.srange, &srl);
                 // THINK: maybe report extend count here or report all
                 error_log_report_annotated(
                     tc->err_log, ES_RESOLVER, false,

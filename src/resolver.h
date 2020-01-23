@@ -58,7 +58,7 @@ typedef struct resolver_s {
     mdg_node** mdgs_begin;
     mdg_node** mdgs_end;
     mdg_node* curr_mdg;
-    open_scope* curr_osc;
+    module_frame* curr_mf;
     ast_node* curr_block_owner;
     // temporary memory space
     sbuffer call_types;

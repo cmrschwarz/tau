@@ -14,7 +14,6 @@
 typedef struct tauc_s tauc;
 typedef struct src_dir_s src_dir;
 typedef struct thread_context_s thread_context;
-typedef struct open_scope_s open_scope;
 typedef struct file_require_s file_require;
 typedef struct mdg_node_s mdg_node;
 
@@ -44,7 +43,7 @@ typedef struct src_file_s {
     rwslock stage_lock;
     src_file_stage stage;
     src_map smap;
-    osc_extend root;
+    module_frame root;
     FILE* file_stream;
 } src_file;
 

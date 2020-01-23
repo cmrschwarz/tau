@@ -5,7 +5,6 @@ int list_append_node(list* l, pool* alloc_pool, void* data)
 {
     list_node* n = l->head_node->next;
     if (!n) {
-        list_node* prev;
         list_node** prev_next;
         ureg size;
         if (l->head_node == (list_node*)NULL_PTR_PTR) {

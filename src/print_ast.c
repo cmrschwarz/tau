@@ -61,12 +61,12 @@ void print_body_elements(ast_body* body, mdg_node* cmdg, ureg indent)
         pc('\n');
     }
 }
-void print_open_scope_body(open_scope* osc, mdg_node* cmdg, ureg indent)
+void print_module_frame_body(module_frame* mf, mdg_node* cmdg, ureg indent)
 {
     p("{\n");
     indent++;
-    print_requires(osc->requires, indent);
-    print_body_elements(&osc->sc.body, cmdg, indent);
+    print_requires(mf->requires, indent);
+    print_body_elements(&mf->body, cmdg, indent);
     indent--;
     print_indent(indent);
     p("}");
@@ -129,8 +129,8 @@ void print_compound_decl_list(
     for (ureg i = 0; i < elem_count; i++) {
         if ((**el).kind == SYM_VAR) {
             sym_var* v = (sym_var*)*el;
-            if (ast_flags_get_const(v->sym.node.flags)) p("const ");
-            pu(v->sym.name);
+            if (ast_flags_get_const(v->osym.sym.node.flags)) p("const ");
+            pu(v->osym.sym.name);
             if (v->type != NULL) {
                 p(": ");
                 print_ast_node(v->type, cmdg, indent);
@@ -185,7 +185,7 @@ void print_ast_elem_name(ast_elem* n)
     if (ast_elem_is_symbol(n)) {
         pu(((symbol*)n)->name);
     }
-    else if (n->kind == PRIMITIVE) {
+    else if (n->kind == SYM_PRIMITIVE) {
         pu(PRIMITIVES[((ast_node*)n)->pt_kind].sym.name);
     }
     else {
@@ -200,7 +200,7 @@ void print_import_group(
     symtab_it stit;
     symbol* c;
     bool use_stit = false;
-    if (ast_flags_get_resolved(g->sym.node.flags)) {
+    if (ast_flags_get_resolved(g->osym.sym.node.flags)) {
         use_stit = true;
         stit = symtab_it_make(g->children.symtab);
         c = symtab_it_next(&stit);
@@ -228,17 +228,17 @@ void print_import_group(
             assert(c->node.kind == SYM_IMPORT_SYMBOL);
             sym_import_symbol* sym = (sym_import_symbol*)c;
 
-            if (ast_flags_get_resolved(sym->sym.node.flags)) {
-                if (!cstr_eq(sym->target.sym->name, sym->sym.name)) {
+            if (ast_flags_get_resolved(sym->osym.sym.node.flags)) {
+                if (!cstr_eq(sym->target.sym->name, sym->osym.sym.name)) {
                     tgt_str = sym->target.sym->name;
-                    name = sym->sym.name;
+                    name = sym->osym.sym.name;
                 }
             }
             // not comparing the string is fine here since we alloc only
             // once
-            else if (sym->sym.name != sym->target.name) {
+            else if (sym->osym.sym.name != sym->target.name) {
                 tgt_str = sym->target.name;
-                name = sym->sym.name;
+                name = sym->osym.sym.name;
             }
             if (name) {
                 p(name);
@@ -338,7 +338,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
 
             print_ast_node_modifiers(n->flags);
             p("func ");
-            pu(fnb->sc.sym.name);
+            pu(fnb->sc.osym.sym.name);
             if (fng) {
                 p("[");
                 print_sym_params(
@@ -359,13 +359,13 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case SC_STRUCT: {
             sc_struct* s = (sc_struct*)n;
             p("struct ");
-            pinn(s->sb.sc.sym.name);
+            pinn(s->sb.sc.osym.sym.name);
             print_body_braced(&s->sb.sc.body, cmdg, indent);
         } break;
         case SC_STRUCT_GENERIC: {
             sc_struct_generic* s = (sc_struct_generic*)n;
             p("struct ");
-            pinn(s->sb.sc.sym.name);
+            pinn(s->sb.sc.osym.sym.name);
             p("[");
             print_sym_params(
                 s->generic_params, s->generic_param_count, cmdg, indent);
@@ -375,36 +375,38 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case SC_TRAIT: {
             sc_trait* t = (sc_trait*)n;
             p("trait ");
-            pinn(t->sb.sc.sym.name);
+            pinn(t->sb.sc.osym.sym.name);
             print_body_braced(&t->sb.sc.body, cmdg, indent);
         } break;
         case SC_TRAIT_GENERIC: {
             sc_trait_generic* t = (sc_trait_generic*)n;
             p("trait ");
-            pinn(t->sb.sc.sym.name);
+            pinn(t->sb.sc.osym.sym.name);
             p("[");
             print_sym_params(
                 t->generic_params, t->generic_param_count, cmdg, indent);
             pc(']');
             print_body_braced(&t->sb.sc.body, cmdg, indent);
         } break;
-        case OSC_MODULE:
-        case OSC_EXTEND: {
-            osc_module* m = (osc_module*)n;
-            p(n->kind == OSC_EXTEND ? "extend " : "module ");
-            pinn(m->oscope.sc.sym.name);
-            print_open_scope_body(&m->oscope, cmdg, indent);
+        case MF_MODULE:
+        case MF_EXTEND: {
+            module_frame* mf = (module_frame*)n;
+            p(n->kind == MF_EXTEND ? "extend " : "module ");
+            // pinn(mf->oscope.sc.osym.sym.name); //TODO: get name here?
+            pinn("?");
+            print_module_frame_body(mf, cmdg, indent);
         } break;
-        case OSC_MODULE_GENERIC:
-        case OSC_EXTEND_GENERIC: {
-            osc_module_generic* m = (osc_module_generic*)n;
-            p(n->kind == OSC_EXTEND ? "extend " : "module ");
-            pinn(m->oscope.sc.sym.name);
+        case MF_MODULE_GENERIC:
+        case MF_EXTEND_GENERIC: {
+            module_frame_generic* mf = (module_frame_generic*)n;
+            p(n->kind == MF_EXTEND_GENERIC ? "extend " : "module ");
+            // pinn(mf->frame.oscope.sc.osym.sym.name); //TODO: get name here?
+            pinn("?");
             p("[");
             print_sym_params(
-                m->generic_params, m->generic_param_count, cmdg, indent);
+                mf->generic_params, mf->generic_param_count, cmdg, indent);
             pc(']');
-            print_open_scope_body(&m->oscope, cmdg, indent);
+            print_module_frame_body(&mf->frame, cmdg, indent);
         } break;
         case EXPR_PP: {
             pc('#');
@@ -417,9 +419,9 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_NAMED_USING: {
             sym_named_using* nu = (sym_named_using*)n;
-            print_ast_node_modifiers(nu->sym.node.flags);
+            print_ast_node_modifiers(nu->osym.sym.node.flags);
             p("using ");
-            p(nu->sym.name);
+            p(nu->osym.sym.name);
             p(" = ");
             print_ast_node(nu->target, cmdg, indent);
         } break;
@@ -461,8 +463,8 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_VAR: {
             sym_var* v = (sym_var*)n;
-            print_ast_node_modifiers(v->sym.node.flags);
-            pu(v->sym.name);
+            print_ast_node_modifiers(v->osym.sym.node.flags);
+            pu(v->osym.sym.name);
             if (v->type != NULL) {
                 p(": ");
                 print_ast_node(v->type, cmdg, indent);
@@ -470,8 +472,8 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_VAR_INITIALIZED: {
             sym_var_initialized* v = (sym_var_initialized*)n;
-            print_ast_node_modifiers(v->var.sym.node.flags);
-            pu(v->var.sym.name);
+            print_ast_node_modifiers(v->var.osym.sym.node.flags);
+            pu(v->var.osym.sym.name);
             if (v->var.type != NULL) {
                 p(": ");
                 print_ast_node(v->var.type, cmdg, indent);
@@ -521,7 +523,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             print_expr_list(a->elements, a->elem_count, cmdg, indent);
             pc('}');
         } break;
-        case ARRAY_DECL: {
+        case EXPR_ARRAY_DECL: {
             array_decl* a = (array_decl*)n;
             pc('[');
             print_ast_node(a->length_spec, cmdg, indent);
@@ -681,15 +683,15 @@ void print_mdg_node(mdg_node* mdg, ureg indent)
     p("{\n");
 
     aseglist_iterator it;
-    aseglist_iterator_begin(&it, &mdg->open_scopes);
-    for (open_scope* osc = aseglist_iterator_next(&it); osc != NULL;
-         osc = aseglist_iterator_next(&it)) {
-        print_requires(osc->requires, indent + 1);
+    aseglist_iterator_begin(&it, &mdg->module_frames);
+    for (module_frame* mf = aseglist_iterator_next(&it); mf != NULL;
+         mf = aseglist_iterator_next(&it)) {
+        print_requires(mf->requires, indent + 1);
     }
-    aseglist_iterator_begin(&it, &mdg->open_scopes);
-    for (open_scope* osc = aseglist_iterator_next(&it); osc != NULL;
-         osc = aseglist_iterator_next(&it)) {
-        print_body_elements(&osc->sc.body, mdg, indent + 1);
+    aseglist_iterator_begin(&it, &mdg->module_frames);
+    for (module_frame* mf = aseglist_iterator_next(&it); mf != NULL;
+         mf = aseglist_iterator_next(&it)) {
+        print_body_elements(&mf->body, mdg, indent + 1);
     }
     print_indent(indent);
     p("}");

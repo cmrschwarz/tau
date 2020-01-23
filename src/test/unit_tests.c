@@ -243,11 +243,12 @@ int list_test()
     list_init(&l);
     pool mem;
     if (pool_init(&mem)) return ERR;
-    for (int j = 0; j < 10; j++) {
+    for (int j = 0; j < 100; j++) {
         void** p = NULL;
         const ureg fill_count = 100 * j;
         for (ureg i = 1; i < fill_count; i++) {
-            if (list_length(&l) != i - 1) {
+            ureg ll = list_length(&l);
+            if (ll != i - 1) {
                 goto err;
             }
             p++;
@@ -260,9 +261,9 @@ int list_test()
             if (v != i) goto err;
         }
         if (i != p) goto err;
-        res = OK;
         list_clear(&l);
     }
+    res = OK;
 err:
     list_fin(&l);
     pool_fin(&mem);
@@ -313,7 +314,7 @@ int ptrlist_test()
     int res = ERR;
     ptrlist l;
     if (ptrlist_init(&l, 1)) return ERR;
-    for (int j = 0; j < 10; j++) {
+    for (int j = 1; j < 100; j++) {
         void** p = NULL;
         const ureg fill_count = 100 * j;
         for (ureg i = 1; i < fill_count; i++) {
@@ -330,9 +331,9 @@ int ptrlist_test()
             if (v != i) goto err;
         }
         if (i != p) goto err;
-        res = OK;
         ptrlist_clear(&l);
     }
+    res = OK;
 err:
     ptrlist_fin(&l);
     return res;
@@ -350,8 +351,10 @@ int ptrlist_remove_test()
     pli it = pli_begin(&l);
     for (void* v = pli_next(&it); v; v = pli_next(&it)) {
         sum += (ureg)v;
-        printf("+ %i\n", (int)v);
-        if ((ureg)v % 2 == 0) ptrlist_remove(&l, &it);
+        if ((ureg)v % 2 == 0) {
+            pli_prev(&it);
+            ptrlist_remove(&l, &it);
+        }
     }
 
     if (sum != 5050) goto err;
@@ -359,14 +362,17 @@ int ptrlist_remove_test()
     it = pli_begin(&l);
     for (void* v = pli_next(&it); v; v = pli_next(&it)) {
         sum += (ureg)v;
-        printf("+ %i\n", (int)v);
-        if ((ureg)v % 3 == 0) ptrlist_remove(&l, &it);
+        if ((ureg)v % 3 == 0) {
+            pli_prev(&it);
+            ptrlist_remove(&l, &it);
+        }
     }
     if (sum != 2500) goto err;
     sum = 0;
     it = pli_begin(&l);
     for (void* v = pli_next(&it); v; v = pli_next(&it)) {
         sum += (ureg)v;
+        pli_prev(&it);
         ptrlist_remove(&l, &it);
     }
     if (sum != 1633) goto err;
@@ -391,6 +397,7 @@ int run_unit_tests(int argc, char** argv)
     TEST(res, list_test);
     TEST(res, list_remove_test);
     TEST(res, ptrlist_test);
+    TEST(res, ptrlist_remove_test);
     if (res) {
         print_dash_padded("FAILED", false);
     }

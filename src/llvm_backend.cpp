@@ -735,10 +735,10 @@ llvm_error LLVMBackend::genModules()
 {
     for (mdg_node** n = _mods_start; n != _mods_end; n++) {
         aseglist_iterator it;
-        aseglist_iterator_begin(&it, &(**n).open_scopes);
-        for (open_scope* osc = (open_scope*)aseglist_iterator_next(&it); osc;
-             osc = (open_scope*)aseglist_iterator_next(&it)) {
-            for (ast_node** n = osc->sc.body.elements; *n; n++) {
+        aseglist_iterator_begin(&it, &(**n).module_frames);
+        for (module_frame* mf = (module_frame*)aseglist_iterator_next(&it); mf;
+             mf = (module_frame*)aseglist_iterator_next(&it)) {
+            for (ast_node** n = mf->body.elements; *n; n++) {
                 llvm_error lle = genAstNode(*n, NULL, NULL);
                 if (lle) return lle;
             }
@@ -784,7 +784,7 @@ llvm_error
 LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
 {
     switch (e->kind) {
-        case PRIMITIVE: {
+        case SYM_PRIMITIVE: {
             primitive_kind kind = ((primitive*)e)->sym.node.pt_kind;
             if (t) *t = _primitive_types[kind];
             if (align) *align = PRIMITIVES[kind].alignment;
@@ -907,7 +907,7 @@ bool LLVMBackend::isGlobalID(ureg id)
 }
 bool LLVMBackend::isPPSymbolGlobal(symbol* sym)
 {
-    if (sym->declaring_st->owning_node->kind != OSC_EXTEND) return false;
+    if (sym->declaring_st->owning_node->kind != MF_EXTEND) return false;
     auto am = ast_flags_get_access_mod(sym->node.flags);
     return (am == AM_PUBLIC || am == AM_PROTECTED);
 }
@@ -1029,7 +1029,7 @@ LLVMBackend::buildConstant(ast_elem* ctype, void* data, llvm::Constant** res)
             if (!*res) return LLE_FATAL;
             return LLE_OK;
         }
-        case PRIMITIVE: {
+        case SYM_PRIMITIVE: {
             auto pt = (primitive*)ctype;
             primitive_kind pk = pt->sym.node.pt_kind;
             switch (pk) {
@@ -1149,10 +1149,11 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         default: assert(false);
     }
     if (generate) {
-        ast_node_kind k = symbol_table_skip_metatables(var->sym.declaring_st)
-                              ->owning_node->kind;
+        ast_node_kind k =
+            symbol_table_skip_metatables(var->osym.sym.declaring_st)
+                ->owning_node->kind;
         llvm::Value* var_val;
-        if (k == ELEM_MDG_NODE || k == OSC_MODULE || k == OSC_EXTEND) {
+        if (k == ELEM_MDG_NODE || k == MF_MODULE || k == MF_EXTEND) {
             // global var
             llvm::GlobalVariable::LinkageTypes lt;
             if (gen_stub) {
@@ -1187,7 +1188,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                 }
             }
             auto gv = new llvm::GlobalVariable(
-                *_module, t, false, lt, init, var->sym.name);
+                *_module, t, false, lt, init, var->osym.sym.name);
             if (!gv) return LLE_FATAL;
             gv->setAlignment(align);
             var_val = gv;
@@ -1258,7 +1259,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
     assert(
         ast_flags_get_resolved(n->flags) ||
-        ast_elem_is_open_scope((ast_elem*)n) ||
+        ast_elem_is_module_frame((ast_elem*)n) ||
         ast_elem_is_any_import_symbol((ast_elem*)n));
     // TODO: proper error handling
     llvm_error lle;
@@ -1274,8 +1275,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     epp->ctype, epp->result, (llvm::Constant**)vl_loaded);
             }
         }
-        case OSC_MODULE:
-        case OSC_EXTEND:
+        case MF_MODULE:
+        case MF_EXTEND:
         case SC_STRUCT_GENERIC:
             // no codegen required
             assert(!vl);
@@ -1813,7 +1814,7 @@ llvm_error LLVMBackend::genBinaryOp(
 // TODO: do this properly
 const char* LLVMBackend::nameMangle(sc_func_base* fn)
 {
-    std::string name = fn->sc.sym.name;
+    std::string name = fn->sc.osym.sym.name;
     symbol_table* st = fn->sc.body.symtab;
     while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
     mdg_node* n = (mdg_node*)st->owning_node;
@@ -1895,7 +1896,8 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     llvm::Type* ret_type;
     llvm_error lle = lookupCType(fn->fnb.return_ctype, &ret_type, NULL, NULL);
     if (lle) return lle;
-    bool mem_func = ast_flags_get_instance_member(fn->fnb.sc.sym.node.flags);
+    bool mem_func =
+        ast_flags_get_instance_member(fn->fnb.sc.osym.sym.node.flags);
     if (fn->fnb.param_count != 0 || mem_func) {
         llvm::Type** params = (llvm::Type**)pool_alloc(
             &_tc->permmem,
@@ -1904,7 +1906,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         ureg i = 0;
         if (mem_func) {
             ast_elem* owner =
-                symbol_table_skip_metatables(fn->fnb.sc.sym.declaring_st)
+                symbol_table_skip_metatables(fn->fnb.sc.osym.sym.declaring_st)
                     ->owning_node;
             assert(ast_elem_is_struct_base(owner));
             llvm::Type* struct_type;
@@ -1940,9 +1942,10 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     // TODO: ugly hack,  use a proper extern function
     // ast node
     bool fwd_decl = (fn->fnb.sc.body.srange == SRC_RANGE_INVALID);
-    bool extern_flag = ast_flags_get_extern_func(fn->fnb.sc.sym.node.flags);
-    auto func_name_mangled =
-        extern_flag ? std::string(fn->fnb.sc.sym.name) : nameMangle(&fn->fnb);
+    bool extern_flag =
+        ast_flags_get_extern_func(fn->fnb.sc.osym.sym.node.flags);
+    auto func_name_mangled = extern_flag ? std::string(fn->fnb.sc.osym.sym.name)
+                                         : nameMangle(&fn->fnb);
     if (fwd_decl || !isIDInModule(fn->id)) {
         func = (llvm::Function*)llvm::Function::Create(
             func_sig, llvm::GlobalVariable::ExternalLinkage,

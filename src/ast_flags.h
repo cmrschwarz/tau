@@ -7,7 +7,7 @@ typedef u16 ast_flags;
 
 // !symbol_table's data layout depends on this enums order
 typedef enum PACK_ENUM access_modifier_e {
-    AM_DEFAULT = 0, // osc
+    AM_DEFAULT = 0, // module frame
     AM_INTERNAL = 1, // module
     AM_PRIVATE = 2, // current scope (module / struct)
     AM_PROTECTED = 3, // current scope + scopes with using ...;

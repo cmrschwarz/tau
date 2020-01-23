@@ -229,7 +229,7 @@ void symbol_table_inc_decl_count(symbol_table* st)
 }
 src_map* symbol_table_get_smap(symbol_table* st)
 {
-    // TODO: this can happen if neither the func nor the osc have a single
+    // TODO: this can happen if neither the func nor the mf have a single
     // symbol
     assert(st->owning_node->kind != ELEM_MDG_NODE);
     src_map* smap = src_range_get_smap(((ast_node*)st->owning_node)->srange);

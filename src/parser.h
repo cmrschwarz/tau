@@ -23,7 +23,7 @@ typedef struct parser_s {
     src_file* current_file;
     mdg_node* current_module;
     bool disable_macro_body_call;
-    osc_extend* file_root;
+    module_frame* file_root;
     bool paste_parent_owns_st;
     ast_body* paste_block;
     symbol_table** paste_parent_symtab;

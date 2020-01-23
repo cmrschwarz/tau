@@ -5,7 +5,7 @@
 
 #define mk_prim(prim_kind, prim_name)                                          \
     [prim_kind] = {                                                            \
-        .sym = {.node = {.kind = PRIMITIVE,                                    \
+        .sym = {.node = {.kind = SYM_PRIMITIVE,                                \
                          .pt_kind = prim_kind,                                 \
                          .flags = (1 << ASTF_RESOLVED_OFFSET),                 \
                          .srange = SRC_RANGE_INVALID},                         \
@@ -26,9 +26,13 @@ primitive PRIMITIVES[] = {
     mk_prim(PT_TYPE, "type"),
 };
 
-src_map* open_scope_get_smap(open_scope* s)
+src_map* scope_get_smap(scope* s)
 {
-    return src_range_get_smap(s->sc.sym.node.srange);
+    return src_range_get_smap(s->osym.sym.node.srange);
+}
+src_map* module_frame_get_smap(module_frame* mf)
+{
+    return src_range_get_smap(mf->node.srange);
 }
 src_map* ast_node_get_smap(ast_node* n, symbol_table* st)
 {
@@ -66,9 +70,13 @@ char* ast_elem_get_label(ast_elem* n, bool* lbl)
     }
     return name;
 }
-bool ast_elem_is_open_scope(ast_elem* s)
+bool ast_elem_is_module_frame(ast_elem* s)
 {
-    return s->kind <= OSC_LAST_OSC_ID;
+    return s->kind >= MF_FIRST_ID && s->kind <= MF_LAST_ID;
+}
+bool ast_elem_is_scope(ast_elem* s)
+{
+    return s->kind >= SC_FIRST_ID && s->kind <= SC_LAST_ID;
 }
 bool ast_elem_is_func_base(ast_elem* s)
 {
@@ -84,21 +92,17 @@ bool ast_elem_is_any_import_symbol(ast_elem* s)
     return s->kind == SYM_IMPORT_GROUP || s->kind == SYM_IMPORT_MODULE ||
            s->kind == SYM_IMPORT_PARENT;
 }
-bool ast_elem_is_scope(ast_elem* s)
-{
-    return s->kind <= SC_LAST_SC_ID;
-}
 bool ast_elem_is_symbol(ast_elem* s)
 {
     return s->kind <= SYM_LAST_SYM_ID;
 }
 bool ast_elem_is_stmt(ast_elem* s)
 {
-    return (s->kind < STMT_LAST_STMT_ID);
+    return (s->kind >= STMT_FIRST_ID && s->kind <= STMT_LAST_ID);
 }
 bool ast_elem_is_expr(ast_elem* s)
 {
-    return (s->kind > STMT_LAST_STMT_ID);
+    return (s->kind <= EXPR_FIRST_ID && s->kind <= EXPR_LAST_ID);
 }
 bool ast_elem_is_paste_evaluation(ast_elem* s)
 {
@@ -233,5 +237,5 @@ bool ast_elem_is_struct(ast_elem* s)
 bool symbol_table_is_public(symbol_table* st)
 {
     ast_elem* owner = symbol_table_skip_metatables(st)->owning_node;
-    return ast_elem_is_open_scope(owner) || owner->kind == SC_STRUCT;
+    return ast_elem_is_module_frame(owner) || owner->kind == SC_STRUCT;
 }

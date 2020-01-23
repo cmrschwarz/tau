@@ -93,7 +93,7 @@ instantiate_ast_node(resolver* r, ast_node* n, ast_node** tgt, symbol_table* st)
             re = instantiate_ast_node(r, vc->var.type, &vc->var.type, st);
             if (re) return re;
             return instantiate_ast_node(
-                r, vc->initial_value, (ast_elem**)&vc->initial_value, st);
+                r, vc->initial_value, (ast_node**)&vc->initial_value, st);
         }
         case SC_FUNC: {
             // TODO: think about NOT doing this were possible :)
@@ -151,7 +151,7 @@ resolve_error instantiate_generic_struct(
         pool_alloc(&r->tc->permmem, sizeof(sc_struct_generic_inst));
     if (!sgi) return RE_FATAL;
     sgi->st.sb = sg->sb;
-    sgi->st.sb.sc.sym.node.kind = SC_STRUCT_GENERIC_INST;
+    sgi->st.sb.sc.osym.sym.node.kind = SC_STRUCT_GENERIC_INST;
     sgi->generic_args = pool_alloc(
         &r->tc->permmem, sizeof(sym_param_generic_inst) * ea->arg_count);
     if (!sgi->generic_args) return RE_FATAL;
@@ -163,7 +163,7 @@ resolve_error instantiate_generic_struct(
         sym_param_generic_inst* gpi = &sgi->generic_args[i];
         gpi->value = args[i];
         gpi->ctype = ctypes[i];
-        gpi->sym.declaring_st = sgi->st.sb.sc.body.symtab;
+        // gpi->sym.declaring_st = sgi->st.sb.sc.body.symtab;
         gpi->sym.name = gp->sym.name;
         gpi->sym.node.flags = gp->sym.node.flags;
         ast_flags_set_resolved(&gpi->sym.node.flags);
@@ -178,10 +178,10 @@ resolve_error instantiate_generic_struct(
         }
     }
     if (re) return re;
-    sgi->st.sb.sc.sym.next = (symbol*)sg->instances;
+    sgi->st.sb.sc.osym.sym.next = (symbol*)sg->instances;
     sg->instances = sgi;
-    ast_flags_clear_resolving(&sgi->st.sb.sc.sym.node.flags);
-    ast_flags_clear_resolved(&sgi->st.sb.sc.sym.node.flags);
+    ast_flags_clear_resolving(&sgi->st.sb.sc.osym.sym.node.flags);
+    ast_flags_clear_resolved(&sgi->st.sb.sc.osym.sym.node.flags);
     *tgt = sgi;
     return RE_OK;
 }
@@ -206,7 +206,7 @@ resolve_error resolve_generic_struct(
         if (re) return re;
     }
     for (sc_struct_generic_inst* sgi = sg->instances; sgi;
-         sgi = (sc_struct_generic_inst*)sgi->st.sb.sc.sym.next) {
+         sgi = (sc_struct_generic_inst*)sgi->st.sb.sc.osym.sym.next) {
         bool success = true;
         for (ureg i = 0; i < ea->arg_count; i++) {
             if (!ctypes_unifiable(args[i], sgi->generic_args[i].value)) {
@@ -230,11 +230,13 @@ resolve_error resolve_generic_struct(
     sbuffer_remove_back(&r->call_types, sizeof(ast_elem*) * ea->arg_count);
     if (re) return re;
     re = add_body_decls(
-        r, sgi->st.sb.sc.sym.declaring_st, NULL, ppl, &sgi->st.sb.sc.body,
+        r, sgi->st.sb.sc.osym.sym.declaring_st, NULL, ppl, &sgi->st.sb.sc.body,
         false);
     if (re) return re;
     sgi->st.id = claim_symbol_id(
-        r, (symbol*)sgi, symbol_table_is_public(sg->sb.sc.sym.declaring_st));
+        r, (symbol*)sgi,
+        symbol_table_is_public(sg->sb.sc.osym.sym.declaring_st));
     return resolve_ast_node(
-        r, (ast_node*)sgi, sgi->st.sb.sc.sym.declaring_st, ppl, value, ctype);
+        r, (ast_node*)sgi, sgi->st.sb.sc.osym.sym.declaring_st, ppl, value,
+        ctype);
 }

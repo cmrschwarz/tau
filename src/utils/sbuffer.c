@@ -88,6 +88,7 @@ void* sbuffer_append(sbuffer* sb, ureg size)
 }
 void sbuffer_remove(sbuffer* sb, sbuffer_iterator* sbi, ureg size)
 {
+    assert(ptrdiff(sbi->seg->tail, sbi->seg) >= sizeof(sbuffer_segment) + size);
     sbi->seg->tail = ptrsub(sbi->seg->tail, size);
     if (sbi->seg->tail != ptradd(sbi->seg, sizeof(sbuffer_segment))) {
         memmove(

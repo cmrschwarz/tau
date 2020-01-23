@@ -100,8 +100,13 @@ static inline void* list_it_start(list_it* it, list* l)
 
 static inline void list_clear(list* l)
 {
-    l->head_node =
-        (list_node*)((l->first_node ? (ureg)l->first_node : (ureg)NULL_PTR_PTR) | LIST_SSO_CAPACITY);
+    if (l->first_node) {
+        l->first_node->head = ptradd(l->first_node, sizeof(list_node));
+        l->head_node = (list_node*)(((ureg)l->first_node) | LIST_SSO_CAPACITY);
+    }
+    else {
+        l->head_node = (list_node*)(((ureg)NULL_PTR_PTR) | LIST_SSO_CAPACITY);
+    }
 }
 
 static inline void* list_pop_back(list* l)

@@ -202,7 +202,7 @@ struct LLVMBackend {
     bool isGlobalIDInModule(ureg id);
     static bool isLocalID(ureg id);
     static bool isGlobalID(ureg id);
-    static bool isPPSymbolGlobal(symbol* sym);
+    static bool isPPSymbolGlobal(symbol* osym);
     llvm_error genSpecialFunc(const char* name, llvm::Function** func);
 
     llvm_error genSpecialCall(sc_func* fn);

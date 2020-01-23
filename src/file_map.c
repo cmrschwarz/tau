@@ -275,7 +275,7 @@ int src_file_done_parsing(src_file* f, thread_context* tc)
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &f->requiring_modules);
     rwslock_end_write(&f->stage_lock);
-    aseglist_add(&tc->t->mdg.root_node->open_scopes, &f->root);
+    aseglist_add(&tc->t->mdg.root_node->module_frames, &f->root);
     while (true) {
         mdg_node* m = aseglist_iterator_next(&it);
         if (!m) break;

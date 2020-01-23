@@ -22,13 +22,16 @@ typedef struct type_array_s type_array;
 typedef struct sc_func_s sc_func;
 
 typedef enum PACK_ENUM ast_node_kind_e {
-    OSC_MODULE,
-    OSC_MODULE_GENERIC,
-    OSC_EXTEND,
-    OSC_EXTEND_GENERIC,
-    OSC_LAST_OSC_ID = OSC_EXTEND_GENERIC,
+    ELEM_INVALID, // make 0 invalid for debugging
+    MF_MODULE,
+    MF_FIRST_ID = MF_MODULE,
+    MF_MODULE_GENERIC,
+    MF_EXTEND,
+    MF_EXTEND_GENERIC,
+    MF_LAST_ID = MF_EXTEND_GENERIC,
 
     SC_STRUCT,
+    SC_FIRST_ID = SC_STRUCT,
     SC_STRUCT_GENERIC,
     SC_STRUCT_GENERIC_INST,
     SC_TRAIT,
@@ -36,9 +39,10 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SC_FUNC,
     SC_MACRO,
     SC_FUNC_GENERIC,
-    SC_LAST_SC_ID = SC_FUNC_GENERIC,
+    SC_LAST_ID = SC_FUNC_GENERIC,
 
     SYM_VAR,
+    SYM_FIRST_ID = SYM_VAR,
     SYM_VAR_INITIALIZED,
     SYM_PARAM,
     SYM_GENERIC_PARAM,
@@ -50,15 +54,17 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SYM_IMPORT_PARENT,
     SYM_FUNC_EXTERN, // TODO
     SYM_FUNC_OVERLOADED,
-    PRIMITIVE,
-    SYM_LAST_SYM_ID = PRIMITIVE,
+    SYM_PRIMITIVE,
+    SYM_LAST_SYM_ID = SYM_PRIMITIVE,
 
     STMT_USING,
+    STMT_FIRST_ID = STMT_USING,
     STMT_PASTE_EVALUATION,
     STMT_COMPOUND_ASSIGN,
-    STMT_LAST_STMT_ID = STMT_COMPOUND_ASSIGN,
+    STMT_LAST_ID = STMT_COMPOUND_ASSIGN,
 
     EXPR_BLOCK,
+    EXPR_FIRST_ID = EXPR_BLOCK,
     EXPR_CAST,
     EXPR_PP,
     EXPR_PASTE_EVALUATION,
@@ -93,13 +99,16 @@ typedef enum PACK_ENUM ast_node_kind_e {
     EXPR_OP_UNARY,
     EXPR_OP_BINARY,
     EXPR_OP_INFIX_FUNC,
-    ARRAY_DECL,
-    SLICE_DECL,
-    EXPR_LAST_EXPR_ID = SLICE_DECL,
+    EXPR_ARRAY_DECL,
+    EXPR_SLICE_DECL,
+    EXPR_LAST_ID = EXPR_SLICE_DECL,
 
     TYPE_POINTER,
+    TYPE_FIRST_ID = TYPE_POINTER,
     TYPE_ARRAY,
     TYPE_TUPLE,
+    TYPE_LAST_ID = TYPE_TUPLE,
+
     ELEM_MDG_NODE,
     ELEM_SRC_FILE,
     ELEM_SRC_LIB,
@@ -216,12 +225,19 @@ typedef struct file_require_s {
 typedef struct symbol_s {
     ast_node node;
     char* name;
-    struct symbol_s* next;
-    // PERF: store this only for symbols in mdg symtabs, either by placing it
-    // before the symbol pointer or by creating some sort if lookup table
-    // in these symtabs (or find a smarter solution)
+    // the symbol table where this symbol was DECLARED in
+    // (not necessarily the one it resides in)
+    // for pasted blocks this points to the metatable
+    // for mdg node symbols it points to the declaring module frame
     symbol_table* declaring_st;
+    struct symbol_s* next;
 } symbol;
+
+// all symbols with specifieable visibility
+typedef struct open_symbol_s {
+    symbol sym;
+    symbol_table* visible_within; // inclusive limit for private[foo] visibility
+} open_symbol;
 
 typedef struct ast_body_s {
     ast_node** elements; // zero terminated
@@ -230,19 +246,12 @@ typedef struct ast_body_s {
 } ast_body;
 
 typedef struct scope_s {
-    symbol sym;
+    open_symbol osym;
     ast_body body;
 } scope;
 
-// TODO: rename this to module frame?
-typedef struct open_scope_s {
-    scope sc;
-    file_require* requires;
-    ureg* shared_pp_decls;
-} open_scope;
-
 typedef struct sym_named_using_s {
-    symbol sym;
+    open_symbol osym;
     ast_node* target;
 } sym_named_using;
 
@@ -252,7 +261,7 @@ typedef struct stmt_using_s {
 } stmt_using;
 
 typedef struct sym_import_parent_s {
-    symbol sym;
+    open_symbol osym;
     union {
         symbol_table* symtab;
         symbol* symbols;
@@ -260,14 +269,14 @@ typedef struct sym_import_parent_s {
 } sym_import_parent;
 
 typedef struct sym_import_module_s {
-    symbol sym;
+    open_symbol osym;
     mdg_node* target;
     atomic_boolean done;
     pp_resolve_node* pprn;
 } sym_import_module;
 
 typedef struct sym_import_group_s {
-    symbol sym; // name is NULL for an unnamed import group
+    open_symbol osym; // name is NULL for an unnamed import group
     mdg_node* parent_mdgn;
     union {
         // used for named groups
@@ -281,7 +290,7 @@ typedef struct sym_import_group_s {
 
 struct mdg_node_s;
 typedef struct sym_import_symbol_s {
-    symbol sym;
+    open_symbol osym;
     // PERF: this member is kinda uneccessary since the group already knows,
     // but this connection gets lost during the insertion into tht target st
     sym_import_group* import_group;
@@ -468,18 +477,6 @@ typedef struct expr_match_s {
     ast_body body;
 } expr_match;
 
-typedef struct osc_module_s {
-    open_scope oscope;
-} osc_module;
-typedef osc_module osc_extend;
-
-typedef struct osc_module_generic_s {
-    open_scope oscope;
-    sym_param* generic_params;
-    ureg generic_param_count;
-} osc_module_generic;
-typedef osc_module_generic osc_extend_generic;
-
 typedef struct sc_func_base_s {
     scope sc;
     sym_param* params;
@@ -549,13 +546,15 @@ typedef struct sc_trait_generic_s {
 } sc_trait_generic;
 
 typedef struct sym_var_s {
-    symbol sym;
-    ast_node* type; // may be NULL in sym_var_initialized or compoind_assignment
+    open_symbol osym;
+    ast_node* type; // may be NULL in sym_var_initialized or compound_assignment
     ast_elem* ctype;
     pp_resolve_node* pprn;
     ureg var_id;
 } sym_var;
 
+// TODO: remove this, maybe create member variable opt instead (no open_symbol
+// required)
 typedef struct sym_var_initialized_s {
     sym_var var;
     ast_node* initial_value;
@@ -700,6 +699,18 @@ typedef struct expr_lambda_s {
     ast_body body;
 } expr_lambda;
 
+typedef struct module_frame_s {
+    ast_node node;
+    ast_body body;
+    file_require* requires;
+} module_frame;
+
+typedef struct module_frame_generic_s {
+    module_frame frame;
+    sym_param* generic_params;
+    ureg generic_param_count;
+} module_frame_generic;
+
 typedef enum ast_type_mod_s {
     ATM_NONE = 0,
     ATM_CONST = 1,
@@ -748,11 +759,11 @@ typedef struct primitive_s {
 
 extern primitive PRIMITIVES[];
 
-bool ast_elem_is_open_scope(ast_elem* s);
 bool ast_elem_is_func_base(ast_elem* s);
 bool ast_elem_is_struct_base(ast_elem* s);
 bool ast_elem_is_struct(ast_elem* s);
 bool ast_elem_is_any_import_symbol(ast_elem* s);
+bool ast_elem_is_module_frame(ast_elem* s);
 bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
 bool ast_elem_is_expr(ast_elem* s);
@@ -761,7 +772,8 @@ bool ast_elem_is_expr_block_base(ast_elem* n);
 bool ast_elem_is_paste_evaluation(ast_elem* s);
 ast_body* ast_elem_get_body(ast_elem* s);
 char* ast_elem_get_label(ast_elem* n, bool* lbl);
-src_map* open_scope_get_smap(open_scope* s);
+src_map* scope_get_smap(scope* s);
+src_map* module_frame_get_smap(module_frame* mf);
 src_map* ast_node_get_smap(ast_node* n, symbol_table* st);
 void ast_node_get_src_range(
     ast_node* n, symbol_table* st, src_range_large* srl);

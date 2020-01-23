@@ -7,21 +7,6 @@
 #include "target_platform.h"
 #include "utils/debug_utils.h"
 
-#define VERBOSITY_FLAGS_TIME_STAGES 1
-#define TAU_TIME_STAGE_CTX(t, before, code, after)                             \
-    do {                                                                       \
-        if ((t)->verbosity_flags & VERBOSITY_FLAGS_TIME_STAGES) {              \
-            before;                                                            \
-            TIME(code);                                                        \
-            after;                                                             \
-        }                                                                      \
-        else {                                                                 \
-            code                                                               \
-        }                                                                      \
-    } while (false)
-
-#define TAU_TIME_STAGE(t, code) TAU_TIME_STAGE_CTX(t, , code, )
-
 typedef enum optimization_strategy_e {
     OPT_STRAT_UNSPECIFIED,
     OPT_STRAT_O0,
@@ -86,4 +71,20 @@ int tauc_core_init(tauc* t);
 void tauc_core_fin(tauc* t);
 void tauc_core_fin_no_run(tauc* t);
 void tauc_scaffolding_fin(tauc* t);
+
+#define VERBOSITY_FLAGS_TIME_STAGES 1
+#define TAU_TIME_STAGE_CTX(t, before, code, after)                             \
+    do {                                                                       \
+        if ((t)->verbosity_flags & VERBOSITY_FLAGS_TIME_STAGES) {              \
+            before;                                                            \
+            TIME(code);                                                        \
+            after;                                                             \
+        }                                                                      \
+        else {                                                                 \
+            code                                                               \
+        }                                                                      \
+    } while (false)
+
+#define TAU_TIME_STAGE(t, code) TAU_TIME_STAGE_CTX(t, , code, )
+
 #endif
