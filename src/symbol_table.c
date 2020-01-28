@@ -79,7 +79,7 @@ static inline ureg symbol_table_get_capacity(symbol_table* st)
     return st->hash_mask ? st->hash_mask + 1 : 0;
 }
 void symbol_table_insert_using(
-    symbol_table* st, access_modifier am, ast_node* used_node,
+    symbol_table* st, access_modifier am, ast_node* using_node,
     symbol_table* used_symtab)
 {
     st = symbol_table_skip_metatables(st);
@@ -96,10 +96,30 @@ void symbol_table_insert_using(
         ut->using_ends[i]++;
     }
     *ut->using_ends[am] = used_symtab;
-    *(ast_node**)ptradd(ut->using_ends[am], usings_size) = used_node;
+    *(ast_node**)ptradd(ut->using_ends[am], usings_size) = using_node;
     ut->using_ends[am]++;
 }
 
+symbol_table**
+symbol_table_get_usings_start(symbol_table* st, access_modifier am)
+{
+    assert(st->usings);
+    if (am == 0)
+        return (symbol_table**)ptradd(st->usings, sizeof(usings_table));
+    return st->usings->using_ends[am - 1];
+}
+symbol_table** symbol_table_get_usings_end(symbol_table* st, access_modifier am)
+{
+    assert(st->usings);
+    return st->usings->using_ends[am];
+}
+ast_node**
+symbol_table_get_using_node(symbol_table* st, symbol_table** using_st)
+{
+    assert(st->usings);
+    return (ast_node**)ptradd(
+        using_st, st->usings->usings_count * sizeof(symbol_table**));
+}
 void symbol_table_fin(symbol_table* st)
 {
     if (st != NULL) {
@@ -141,8 +161,8 @@ int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings)
 symbol** symbol_table_find_insert_position(symbol_table* st, char* name)
 {
     st = symbol_table_skip_metatables(st);
-    ureg hash = fnv_hash_str(FNV_START_HASH, name) & st->hash_mask;
-    symbol** tgt = ptradd(st->table, hash * sizeof(symbol*));
+    ureg idx = fnv_hash_str(FNV_START_HASH, name) & st->hash_mask;
+    symbol** tgt = &st->table[idx];
     while (*tgt) {
         if (strcmp((**tgt).name, name) == 0) return tgt;
         tgt = (symbol**)&(**tgt).next;
@@ -152,8 +172,8 @@ symbol** symbol_table_find_insert_position(symbol_table* st, char* name)
 symbol** symbol_table_insert(symbol_table* st, symbol* s)
 {
     st = symbol_table_skip_metatables(st);
-    ureg hash = fnv_hash_str(FNV_START_HASH, s->name) & st->hash_mask;
-    symbol** tgt = ptradd(st->table, hash * sizeof(symbol*));
+    ureg idx = fnv_hash_str(FNV_START_HASH, s->name) & st->hash_mask;
+    symbol** tgt = &st->table[idx];
     while (*tgt) {
         if (strcmp((**tgt).name, s->name) == 0) return tgt;
         tgt = (symbol**)&(**tgt).next;
@@ -162,71 +182,22 @@ symbol** symbol_table_insert(symbol_table* st, symbol* s)
     s->next = NULL;
     return NULL;
 }
-symbol** symbol_table_lookup_limited(
-    symbol_table* st, ureg ppl, access_modifier am, symbol_table* stop_at,
-    const char* s)
+ureg symbol_table_prehash(const char* s)
 {
-    // TODO: test if this makes perf better or worse
-    // while (st->decl_count == UREG_MAX) st = st->parent;
-    ureg hash = fnv_hash_str(FNV_START_HASH, s);
-    do {
-        symbol_table* curr_st = st;
-        while (curr_st->ppl < ppl) {
-            if (!curr_st->pp_symtab) break;
-            curr_st = curr_st->pp_symtab;
-        }
-        while (true) {
-            // PERF: get rid of this check somehow
-            if (curr_st->decl_count != 0) {
-                ureg idx = hash & curr_st->hash_mask;
-                symbol** tgt =
-                    (symbol**)ptradd(curr_st->table, idx * sizeof(symbol*));
-                while (*tgt) {
-                    if (strcmp((**tgt).name, s) == 0) {
-                        return tgt;
-                    }
-                    tgt = (symbol**)&(**tgt).next;
-                }
-            }
-            if (st->usings) {
-                symbol_table** i = (symbol_table**)(st->usings + 1);
-                symbol_table** end =
-                    st->usings->using_ends[AM_ENUM_ELEMENT_COUNT - am];
-                // for pub usings we can look at their pub and prot symbols
-                symbol** res = symbol_table_lookup(*i, AM_PROTECTED, ppl, s);
-                if (res) return res;
-                i++;
-                // for prot to unspecified usings we can look at their pub
-                // symbols and if they are used directly by us at ther protected
-                // symbols
-                access_modifier tgt_am =
-                    (am < AM_PROTECTED) ? AM_PROTECTED : AM_PUBLIC;
-                while (i != end) {
-                    res = symbol_table_lookup(*i, tgt_am, ppl, s);
-                    if (res) return res;
-                }
-            }
-            if (!curr_st->parent ||
-                curr_st->owning_node != curr_st->parent->owning_node) {
-                break;
-            }
-            curr_st = curr_st->parent;
-        }
-        st = st->parent;
-    } while (st != stop_at);
-    return NULL;
+    return fnv_hash_str(FNV_START_HASH, s);
 }
-symbol** symbol_table_lookup(
-    symbol_table* st, ureg ppl, access_modifier am, const char* s)
+
+symbol* symbol_table_lookup_raw(symbol_table* st, ureg hash, const char* name)
 {
-    return symbol_table_lookup_limited(st, ppl, am, NULL, s);
+    ureg idx = hash & st->hash_mask;
+    symbol* tgt = st->table[idx];
+    while (tgt) {
+        if (cstr_eq(tgt->name, name)) return tgt;
+        tgt = tgt->next;
+    }
+    return tgt;
 }
-void symbol_table_inc_decl_count(symbol_table* st)
-{
-    // while (st->decl_count == UREG_MAX) st = st->parent;
-    // st->decl_count++;
-    // assert(st->decl_count <= symbol_table_get_capacity(st));
-}
+
 src_map* symbol_table_get_smap(symbol_table* st)
 {
     // TODO: this can happen if neither the func nor the mf have a single
@@ -241,8 +212,6 @@ src_map* symbol_table_get_smap(symbol_table* st)
 }
 int init_root_symtab(symbol_table** root_symtab)
 {
-    // to avoid an assertion (which makes sense for all other cases)
-    *root_symtab = NULL;
     if (symbol_table_init(root_symtab, PRIMITIVE_COUNT + 1, 0, true, NULL, 0))
         return ERR;
     (**root_symtab).parent = NULL;

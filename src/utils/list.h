@@ -101,6 +101,8 @@ static inline void* list_it_start(list_it* it, list* l)
 static inline void list_clear(list* l)
 {
     if (l->first_node) {
+        // we need to fix the head of the first node since otherwise
+        // the logic breaks after we filled the sso slots
         l->first_node->head = ptradd(l->first_node, sizeof(list_node));
         l->head_node = (list_node*)(((ureg)l->first_node) | LIST_SSO_CAPACITY);
     }

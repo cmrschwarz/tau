@@ -41,21 +41,22 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SC_FUNC_GENERIC,
     SC_LAST_ID = SC_FUNC_GENERIC,
 
-    SYM_VAR,
-    SYM_FIRST_ID = SYM_VAR,
-    SYM_VAR_INITIALIZED,
+    SYM_PRIMITIVE,
+    SYM_FIRST_ID = SYM_PRIMITIVE,
     SYM_PARAM,
     SYM_GENERIC_PARAM,
     SYM_PARAM_GENERIC_INST,
+    SYM_FUNC_OVERLOADED,
+    SYM_VAR,
+    SYM_FIRST_OPEN_ID = SYM_VAR,
+    SYM_VAR_INITIALIZED,
     SYM_NAMED_USING,
     SYM_IMPORT_MODULE,
     SYM_IMPORT_SYMBOL,
     SYM_IMPORT_GROUP,
     SYM_IMPORT_PARENT,
     SYM_FUNC_EXTERN, // TODO
-    SYM_FUNC_OVERLOADED,
-    SYM_PRIMITIVE,
-    SYM_LAST_SYM_ID = SYM_PRIMITIVE,
+    SYM_LAST_SYM_ID = SYM_FUNC_EXTERN,
 
     STMT_USING,
     STMT_FIRST_ID = STMT_USING,
@@ -508,9 +509,13 @@ typedef struct sym_func_overloaded_s {
     scope* overloads;
 } sym_func_overloaded;
 
+typedef struct sc_struct_s sc_struct;
+
 typedef struct sc_struct_base_s {
     scope sc;
     pp_resolve_node* pprn;
+    sc_struct* extends;
+    ast_node* extends_spec;
 } sc_struct_base;
 
 typedef struct sc_struct_s {
@@ -760,6 +765,7 @@ typedef struct primitive_s {
 extern primitive PRIMITIVES[];
 
 bool ast_elem_is_func_base(ast_elem* s);
+bool symbol_is_open_symbol(symbol* s);
 bool ast_elem_is_struct_base(ast_elem* s);
 bool ast_elem_is_struct(ast_elem* s);
 bool ast_elem_is_any_import_symbol(ast_elem* s);

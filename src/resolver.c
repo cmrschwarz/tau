@@ -85,7 +85,7 @@ add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
                                                                          : st;
     symbol** conflict;
     conflict = symbol_table_insert(tgtst, sym);
-    symbol_table_inc_decl_count(tgtst);
+    // symbol_table_inc_decl_count(tgtst);
     if (conflict) {
         return report_redeclaration_error(r, sym, *conflict, tgtst);
     }
@@ -316,7 +316,7 @@ resolve_error add_sym_import_module_decl(
             p = NULL;
             next = NULL;
             children = NULL;
-            symbol_table_inc_decl_count(st);
+            // symbol_table_inc_decl_count(st);
         }
     }
     // PERF: this is O(n^2) over imports with the same prefix TODO: fix
@@ -400,7 +400,7 @@ resolve_error add_import_group_decls(
         }
         else if (s->node.kind == SYM_IMPORT_SYMBOL) {
             symbol** cf = symbol_table_insert(st, s);
-            symbol_table_inc_decl_count(st);
+            // symbol_table_inc_decl_count(st);
             s->declaring_st = st;
             if (cf) {
                 return report_redeclaration_error(r, s, *cf, st);
@@ -612,7 +612,7 @@ static resolve_error add_ast_node_decls(
             sym->declaring_st = st;
             conflict = symbol_table_insert(tgtst, sym);
             if (!conflict) {
-                symbol_table_inc_decl_count(tgtst);
+                // symbol_table_inc_decl_count(tgtst);
             }
             else {
                 sym_func_overloaded* sfo;
@@ -986,8 +986,205 @@ static inline resolve_error resolve_no_block_macro_call(
     assert(false); // TODO
     return RE_FATAL;
 }
+static inline access_modifier resolver_get_am_end(
+    symbol_table* lookup_st, symbol_table* looking_mf,
+    symbol_table* looking_mod)
+{
+    for (symbol_table* t = lookup_st; t != NULL; t = t->parent) {
+        if (t == looking_mf) {
+            return AM_DEFAULT;
+        }
+        if (t == looking_mod) {
+            return AM_INTERNAL;
+        }
+    }
+    return AM_PUBLIC;
+}
+static inline resolve_error resolver_update_ams(
+    resolver* r, symbol_table* lookup_st, symbol_table* looking_st,
+    sc_struct* looking_struct, symbol_table* looking_mf,
+    symbol_table* looking_mod, symbol_table* visible_within_st,
+    bool* visible_within, access_modifier* am_start, access_modifier* am_end)
+{
+    if (visible_within && !visible_within_st) {
+        *visible_within = true;
+    }
+    if (*am_start == AM_UNKNOWN) {
+        for (symbol_table* t = looking_st; t != NULL; t = t->parent) {
+            if (t == lookup_st) {
+                *am_start = AM_PRIVATE;
+                if (!visible_within_st || *visible_within) break;
+            }
+            if (visible_within_st && visible_within_st == t) {
+                *visible_within = true;
+                if (*am_start != AM_UNKNOWN) break;
+            }
+        }
+    }
+    if (*am_start == AM_UNKNOWN) {
+        *am_start = AM_PUBLIC;
+        if (ast_elem_is_struct(lookup_st->owning_node)) {
+            if (looking_struct) {
+                sc_struct* lookup_struct = (sc_struct*)lookup_st->owning_node;
+                while (true) {
+                    if (looking_struct == lookup_struct) {
+                        *am_start = AM_PROTECTED;
+                        break;
+                    }
+                    if (!looking_struct->sb.extends_spec) break;
+                    if (!looking_struct->sb.extends) {
+                        resolve_error re = resolve_ast_node(
+                            r, looking_struct->sb.extends_spec, lookup_st,
+                            lookup_st->ppl,
+                            (ast_elem**)&looking_struct->sb.extends, NULL);
+                        if (re) return re;
+                        assert(ast_elem_is_struct(
+                            (ast_elem*)looking_struct->sb.extends));
+                    }
+                    looking_struct = looking_struct->sb.extends;
+                }
+            }
+        }
+    }
+    if (*am_end == AM_UNKNOWN) {
+        *am_end = resolver_get_am_end(lookup_st, looking_mf, looking_mod);
+    }
+    return RE_OK;
+}
 
-// for ex. wth foo::bar() func_st is foo's st, st is the table to look up args
+static inline resolve_error resolver_lookup_symbol_raw(
+    resolver* r, symbol_table* lookup_st, ureg ppl,
+    sc_struct* struct_inst_lookup, symbol_table* looking_st,
+    sc_struct* looking_struct, symbol_table* looking_mf,
+    symbol_table* looking_mod, ureg hash, char* tgt_name,
+    access_modifier am_end, symbol** first_hidden_match, symbol** res)
+{
+    access_modifier am_start = AM_UNKNOWN;
+    resolve_error re;
+    for (ureg i = 0; i < ppl; i++) {
+        if (!lookup_st->pp_symtab) break;
+        lookup_st = lookup_st->pp_symtab;
+    }
+    symbol* s = symbol_table_lookup_raw(lookup_st, hash, tgt_name);
+    if (s != NULL) {
+        access_modifier am = ast_flags_get_access_mod(s->node.flags);
+        bool vis_within = false;
+        if (symbol_is_open_symbol(s)) {
+            open_symbol* osym = (open_symbol*)s;
+            re = resolver_update_ams(
+                r, lookup_st, looking_st, looking_struct, looking_mf,
+                looking_mod, osym->visible_within, &vis_within, &am_start,
+                &am_end);
+            if (re) return re;
+        }
+        else {
+            re = resolver_update_ams(
+                r, lookup_st, looking_st, looking_struct, looking_mf,
+                looking_mod, NULL, NULL, &am_start, &am_end);
+            if (re) return re;
+            vis_within = true;
+        }
+        if (vis_within && am >= am_start && am <= am_end) {
+            *res = s;
+            return RE_OK;
+        }
+        if (!*first_hidden_match) *first_hidden_match = s;
+    }
+    if (lookup_st->usings) {
+        re = resolver_update_ams(
+            r, lookup_st, looking_st, looking_struct, looking_mf, looking_mod,
+            NULL, NULL, &am_start, &am_end);
+        if (re) return re;
+        symbol_table** usings_end =
+            symbol_table_get_usings_start(lookup_st, am_start);
+        symbol_table** usings_start =
+            symbol_table_get_usings_end(lookup_st, am_end);
+        resolve_error re;
+        symbol* ures;
+        symbol* res1 = NULL;
+        for (symbol_table** i = usings_start; i != usings_end; i++) {
+            // TODO: cycle detection
+            re = resolver_lookup_symbol_raw(
+                r, *i, ppl, struct_inst_lookup, looking_st, looking_struct,
+                looking_mf, looking_mod, hash, tgt_name, AM_UNKNOWN,
+                first_hidden_match, &ures);
+            if (re) return re;
+            if (ures) {
+                if (res1) {
+                    assert(false); // TODO: ambiguity error
+                }
+                res1 = ures;
+            }
+        }
+        if (ures) {
+            *res = ures;
+            return RE_OK;
+        }
+    }
+    if (ast_elem_is_struct(lookup_st->owning_node)) {
+        sc_struct* st = (sc_struct*)lookup_st->owning_node;
+        if (st->sb.extends_spec) {
+            if (!st->sb.extends) {
+                re = resolve_ast_node(
+                    r, st->sb.extends_spec, lookup_st, lookup_st->ppl,
+                    (ast_elem**)&st->sb.extends, NULL);
+                if (re) return re;
+                assert(ast_elem_is_struct((ast_elem*)st->sb.extends));
+            }
+            return resolver_lookup_symbol_raw(
+                r, st->sb.extends->sb.sc.body.symtab, ppl, struct_inst_lookup,
+                looking_st, looking_struct, looking_mf, looking_mod, hash,
+                tgt_name, AM_UNKNOWN, first_hidden_match, res);
+        }
+    }
+    *res = NULL;
+    return RE_OK;
+}
+
+resolve_error resolver_lookup_symbol(
+    resolver* r, symbol_table* lookup_st, ureg ppl,
+    sc_struct* struct_inst_lookup, symbol_table* looking_st, char* tgt_name,
+    symbol** res)
+{
+
+    lookup_st = symbol_table_skip_metatables(lookup_st);
+    looking_st = symbol_table_skip_metatables(looking_st);
+    ureg hash = symbol_table_prehash(tgt_name);
+    symbol* first_hidden_match = NULL;
+    sc_struct* looking_struct = NULL;
+    symbol_table* looking_mf;
+    symbol_table* looking_mod;
+    symbol_table* i = looking_st;
+    while (true) {
+        if (!looking_struct && ast_elem_is_struct(i->owning_node)) {
+            looking_struct = (sc_struct*)i->owning_node;
+        }
+        if (ast_elem_is_module_frame(i->owning_node)) {
+            looking_mf = i;
+            if (looking_mf->parent->owning_node->kind == ELEM_MDG_NODE) {
+                looking_mod = looking_mf->parent;
+            }
+            else {
+                looking_mod = looking_mf;
+            }
+            break;
+        }
+        if (i->owning_node->kind == ELEM_MDG_NODE) {
+            looking_mf = NULL;
+            looking_mod = i;
+            break;
+        }
+        i = i->parent;
+        assert(i);
+    }
+    return resolver_lookup_symbol_raw(
+        r, lookup_st, ppl, struct_inst_lookup, looking_st, looking_struct,
+        looking_mf, looking_mod, hash, tgt_name,
+        resolver_get_am_end(lookup_st, looking_mf, looking_mod),
+        &first_hidden_match, res);
+}
+// for ex. wth foo::bar() func_st is foo's st, st is the table to look up
+// args
 resolve_error resolve_func_call(
     resolver* r, expr_call* c, symbol_table* st, ureg ppl, char* func_name,
     symbol_table* func_st, ast_elem** ctype)
@@ -999,21 +1196,23 @@ resolve_error resolve_func_call(
         re = resolve_ast_node(r, c->args[i], st, ppl, NULL, &call_arg_types[i]);
         if (re) return re;
     }
-    symbol_table* lt = func_st;
     scope* tgt;
     symbol* sym;
     bool applicable = false;
-    symbol** s = symbol_table_lookup(lt, ppl, AM_DEFAULT, func_name);
-    if (s == NULL) {
+    re = resolver_lookup_symbol(r, func_st, ppl, NULL, st, func_name, &sym);
+    if (re) {
+        sbuffer_remove_back(&r->call_types, c->arg_count * sizeof(ast_elem*));
+        return re;
+    }
+    if (sym == NULL) {
         // we use st instead of func_st here because thats the scope that
         // the call is in
         sbuffer_remove_back(&r->call_types, c->arg_count * sizeof(ast_elem*));
         return report_unknown_symbol(r, c->lhs, st);
     }
-    sym = *s;
     if (sym->node.kind == SYM_IMPORT_SYMBOL) {
         re = resolve_ast_node(
-            r, (ast_node*)*s, (**s).declaring_st, (**s).declaring_st->ppl,
+            r, (ast_node*)sym, sym->declaring_st, sym->declaring_st->ppl,
             (ast_elem**)&sym, NULL);
         if (re) {
             sbuffer_remove_back(
@@ -1210,6 +1409,8 @@ resolve_error choose_binary_operator_overload(
     symbol_table* lt = st;
     while (lt) {
         bool applicable;
+        re = resolver_lookup_symbol(r, lt, ppl, NULL, st, );
+        if (re) return re;
         symbol** s = symbol_table_lookup(
             lt, ppl, AM_DEFAULT, op_to_str(ob->node.op_kind));
         if (!s) return report_unknown_symbol(r, (ast_node*)ob, lt);
@@ -1356,7 +1557,7 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
             // we checked for collisions during insert into the linked list
             // the check is to prevent unused var warnings in release builds
             if (!res) assert(!res);
-            symbol_table_inc_decl_count(pst);
+            // symbol_table_inc_decl_count(pst);
         }
         else {
             symbol_table_insert_using(

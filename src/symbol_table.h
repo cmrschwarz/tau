@@ -16,13 +16,18 @@ typedef struct usings_table_s {
 } usings_table;
 
 typedef struct symbol_table_s {
+    // we cannot really use joined allocation since that would invalidate st
+    // pointers on grow (grow is unavoidable due to the pp / macros)
     symbol** table;
     ureg hash_mask;
-    symbol_table* parent; // this points to the postprocessing symtab for ppsts
+    // for ppsts, this points to the 'post'processing symtab
+    symbol_table* parent;
     usings_table* usings;
     ast_elem* owning_node;
     symbol_table* pp_symtab;
     ureg ppl;
+    // this stores the requested decl count, not the actual present amount
+    // it is only updated during init and amend
     ureg decl_count;
 } symbol_table;
 
@@ -32,7 +37,8 @@ int symbol_table_init(
 void symbol_table_fin(symbol_table* st);
 
 void symbol_table_insert_using(
-    symbol_table* st, access_modifier am, ast_node* use, symbol_table* ust);
+    symbol_table* st, access_modifier am, ast_node* use,
+    symbol_table* using_node);
 
 // if a symbol of that name already exists returns pointer to that entry
 // otherwise inserts and returns NULL
@@ -44,14 +50,21 @@ symbol** symbol_table_insert(symbol_table* st, symbol* s);
 symbol** symbol_table_find_insert_position(symbol_table* st, char* name);
 void symbol_table_inc_decl_count(symbol_table* st);
 // returns the symbol found or NULL if nonexistant
-symbol** symbol_table_lookup(
-    symbol_table* st, ureg ppl, access_modifier am, const char* s);
-symbol** symbol_table_lookup_limited(
-    symbol_table* st, ureg ppl, access_modifier am, symbol_table* stop_at,
-    const char* s);
+
+ureg symbol_table_prehash(const char* s);
+
+symbol* symbol_table_lookup_raw(symbol_table* st, ureg hash, const char* name);
+symbol_table**
+symbol_table_get_usings_start(symbol_table* st, access_modifier am);
+symbol_table**
+symbol_table_get_usings_end(symbol_table* st, access_modifier am);
+ast_node**
+symbol_table_get_using_node(symbol_table* st, symbol_table** using_st);
+
 // might return NULL, for example for mdg_node symbol tables
 src_map* symbol_table_get_smap(symbol_table* st);
 
+// used when the pp introduces additional symbols
 int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings);
 
 int init_root_symtab(symbol_table** root_st);

@@ -74,6 +74,11 @@ bool ast_elem_is_module_frame(ast_elem* s)
 {
     return s->kind >= MF_FIRST_ID && s->kind <= MF_LAST_ID;
 }
+bool symbol_is_open_symbol(symbol* s)
+{
+    // since we know it's a symbol an upper bounds check is uneccessary
+    return s->node.kind >= SYM_FIRST_OPEN_ID;
+}
 bool ast_elem_is_scope(ast_elem* s)
 {
     return s->kind >= SC_FIRST_ID && s->kind <= SC_LAST_ID;
