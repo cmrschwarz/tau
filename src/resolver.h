@@ -27,6 +27,28 @@ typedef enum resolve_error_e {
     RE_SYMBOL_NOT_FOUND_YET,
 } resolve_error;
 
+typedef struct symbol_lookup_level {
+    struct symbol_lookup_level* parent;
+    symbol_table* lookup_st;
+    access_modifier am_start;
+    access_modifier am_end;
+    symbol_table** usings_head;
+} symbol_lookup_level;
+
+typedef struct symbol_lookup_iterator {
+    symbol_lookup_level sll1;
+    symbol_lookup_level* head;
+    ureg ppl;
+    symbol_table* looking_st;
+    sc_struct* struct_inst_lookup;
+    sc_struct* looking_struct;
+    symbol_table* looking_mf;
+    symbol_table* looking_mod;
+    ureg hash;
+    char* tgt_name;
+    symbol** first_hidden_match;
+} symbol_lookup_iterator;
+
 typedef struct thread_context_s thread_context;
 
 typedef struct pp_resolve_node_s {
@@ -61,7 +83,7 @@ typedef struct resolver_s {
     module_frame* curr_mf;
     ast_node* curr_block_owner;
     // temporary memory space
-    sbuffer call_types;
+    sbuffer temp_stack;
     // dealing with type loops and type inference in expr blocks
     stack error_stack;
     ast_node* type_loop_start;

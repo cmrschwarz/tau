@@ -1190,7 +1190,7 @@ resolve_error resolve_func_call(
     symbol_table* func_st, ast_elem** ctype)
 {
     ast_elem** call_arg_types =
-        sbuffer_append(&r->call_types, c->arg_count * sizeof(ast_elem*));
+        sbuffer_append(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
     resolve_error re = RE_OK;
     for (ureg i = 0; i < c->arg_count; i++) {
         re = resolve_ast_node(r, c->args[i], st, ppl, NULL, &call_arg_types[i]);
@@ -1201,7 +1201,7 @@ resolve_error resolve_func_call(
     bool applicable = false;
     re = resolver_lookup_symbol(r, func_st, ppl, NULL, st, func_name, &sym);
     if (re) {
-        sbuffer_remove_back(&r->call_types, c->arg_count * sizeof(ast_elem*));
+        sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
         return re;
     }
     if (sym == NULL) {
