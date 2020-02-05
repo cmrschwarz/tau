@@ -1052,6 +1052,157 @@ static inline resolve_error resolver_update_ams(
     return RE_OK;
 }
 
+resolve_error create_symbol_lookup_level(
+    resolver* r, symbol_table* lookup_st, symbol_table** usings_head,
+    symbol_table** usings_end, symbol_lookup_level** lookup_level_target)
+{
+    symbol_lookup_level* l = *lookup_level_target;
+    if (!l) {
+        l = (symbol_lookup_level*)sbuffer_append(
+            &r->temp_stack, sizeof(symbol_lookup_level));
+        if (!l) return LLE_FATAL;
+        *lookup_level_target = l;
+    }
+    l->usings_head = usings_head;
+    l->usings_end = usings_end;
+    l->lookup_st = lookup_st;
+    return RE_OK;
+}
+
+resolve_error symbol_lookup_level_run(
+    resolver* r, symbol_lookup_iterator* sli, symbol_lookup_level* parent,
+    symbol_lookup_level* lookup_level_prealloc, symbol_table* lookup_st,
+    symbol** res)
+{
+    access_modifier am_start = AM_UNKNOWN;
+    access_modifier am_end = AM_UNKNOWN;
+    resolve_error re;
+    for (ureg i = 0; i < sli->ppl; i++) {
+        if (!lookup_st->pp_symtab) break;
+        lookup_st = lookup_st->pp_symtab;
+    }
+    symbol* sym = symbol_table_lookup_raw(lookup_st, sli->hash, sli->tgt_name);
+    bool symbol_found = false;
+    if (sym != NULL) {
+        access_modifier am = ast_flags_get_access_mod(sym->node.flags);
+        bool vis_within = false;
+        if (symbol_is_open_symbol(sym)) {
+            open_symbol* osym = (open_symbol*)sym;
+            re = resolver_update_ams(
+                r, lookup_st, sli->looking_st, sli->looking_struct,
+                sli->looking_mf, sli->looking_mod, osym->visible_within,
+                &vis_within, &am_start, &am_end);
+            if (re) return re;
+        }
+        else {
+            re = resolver_update_ams(
+                r, lookup_st, sli->looking_st, sli->looking_struct,
+                sli->looking_mf, sli->looking_mod, NULL, NULL, &am_start,
+                &am_end);
+            if (re) return re;
+            vis_within = true;
+        }
+        if (vis_within && am >= am_start && am <= am_end) {
+            *res = sym;
+        }
+        else {
+            if (!*sli->first_hidden_match) *sli->first_hidden_match = sym;
+            sym = NULL;
+        }
+    }
+    symbol_lookup_level* llt = lookup_level_prealloc;
+    bool is_struct = ast_elem_is_struct(lookup_st->owning_node);
+    if (lookup_st->usings) {
+        re = resolver_update_ams(
+            r, lookup_st, sli->looking_st, sli->looking_struct, sli->looking_mf,
+            sli->looking_mod, NULL, NULL, &am_start, &am_end);
+        if (re) return re;
+        symbol_table** usings_end =
+            symbol_table_get_usings_start(lookup_st, am_start);
+        symbol_table** usings_start =
+            symbol_table_get_usings_end(lookup_st, am_end);
+        if (usings_start != usings_end) {
+            // is we have a symbol, we need to create a stackframe and return
+
+            // optimization: don't create a stackframe if we only have one child
+            if (!sym && usings_start + 1 == usings_end && !is_struct) {
+                return symbol_lookup_level_run(
+                    r, sli, parent, lookup_level_prealloc, usings_start, res);
+            }
+            re = create_symbol_lookup_level(
+                r, lookup_st, usings_start + (sym == NULL) ? 0 : 1, usings_end,
+                &llt);
+            if (re || sym) return re; // TODO: proper stack cleanup
+            return symbol_lookup_level_run(
+                r, sli, llt, NULL, *usings_start, res);
+        }
+    }
+    if (is_struct) {
+        sc_struct* st = (sc_struct*)lookup_st->owning_node;
+        if (st->sb.extends_spec) {
+            if (!st->sb.extends) {
+                re = resolve_ast_node(
+                    r, st->sb.extends_spec, lookup_st, lookup_st->ppl,
+                    (ast_elem**)&st->sb.extends, NULL);
+                if (re) return re;
+                assert(ast_elem_is_struct((ast_elem*)st->sb.extends));
+            }
+            if (sym) {
+                return create_symbol_lookup_level(
+                    r, lookup_st, NULL, NULL, &llt);
+            }
+            return symbol_lookup_level_run(
+                r, sli, parent, lookup_level_prealloc,
+                st->sb.extends->sb.sc.body.symtab, res);
+        }
+    }
+    return RE_OK;
+}
+
+resolve_error symbol_lookup_iterator_start(
+    symbol_lookup_iterator* sli, resolver* r, symbol_table* lookup_st, ureg ppl,
+    sc_struct* struct_inst_lookup, symbol_table* looking_st, char* tgt_name,
+    symbol** res)
+{
+    lookup_st = symbol_table_skip_metatables(looking_st);
+    looking_st = symbol_table_skip_metatables(lookup_st);
+    sc_struct* looking_struct = NULL;
+    symbol_table* looking_mf;
+    symbol_table* looking_mod;
+    symbol_table* i = looking_st;
+    while (true) {
+        if (!looking_struct && ast_elem_is_struct(i->owning_node)) {
+            looking_struct = (sc_struct*)i->owning_node;
+        }
+        if (ast_elem_is_module_frame(i->owning_node)) {
+            looking_mf = i;
+            if (looking_mf->parent->owning_node->kind == ELEM_MDG_NODE) {
+                looking_mod = looking_mf->parent;
+            }
+            else {
+                looking_mod = looking_mf;
+            }
+            break;
+        }
+        if (i->owning_node->kind == ELEM_MDG_NODE) {
+            looking_mf = NULL;
+            looking_mod = i;
+            break;
+        }
+        i = i->parent;
+        assert(i);
+    }
+    sli->first_hidden_match = NULL;
+    sli->hash = symbol_table_prehash(tgt_name);
+    sli->tgt_name = tgt_name;
+    sli->looking_st = looking_st;
+    sli->looking_struct = looking_struct;
+    sli->looking_mf = looking_mf;
+    sli->looking_mod = looking_mod;
+    return symbol_lookup_level_run(
+        r, &sli->sll1, NULL, &sli->sll1, looking_st, res);
+}
+
 static inline resolve_error resolver_lookup_symbol_raw(
     resolver* r, symbol_table* lookup_st, ureg ppl,
     sc_struct* struct_inst_lookup, symbol_table* looking_st,
@@ -1207,7 +1358,7 @@ resolve_error resolve_func_call(
     if (sym == NULL) {
         // we use st instead of func_st here because thats the scope that
         // the call is in
-        sbuffer_remove_back(&r->call_types, c->arg_count * sizeof(ast_elem*));
+        sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
         return report_unknown_symbol(r, c->lhs, st);
     }
     if (sym->node.kind == SYM_IMPORT_SYMBOL) {
@@ -1216,7 +1367,7 @@ resolve_error resolve_func_call(
             (ast_elem**)&sym, NULL);
         if (re) {
             sbuffer_remove_back(
-                &r->call_types, c->arg_count * sizeof(ast_elem*));
+                &r->temp_stack, c->arg_count * sizeof(ast_elem*));
             return re;
         }
     }
@@ -1243,7 +1394,7 @@ resolve_error resolve_func_call(
         assert(false);
         re = RE_FATAL;
     }
-    sbuffer_remove_back(&r->call_types, c->arg_count * sizeof(ast_elem*));
+    sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
     if (!applicable) {
         src_range_large srl;
         ast_node_get_src_range(c->lhs, st, &srl);
@@ -3551,7 +3702,7 @@ int resolver_partial_fin(resolver* r, int i, int res)
         case 5: ptrlist_fin(&r->pp_resolve_nodes_pending); // fallthrough
         case 4: sbuffer_fin(&r->pp_resolve_nodes_waiting); // fallthrough
         case 3: freelist_fin(&r->pp_resolve_nodes); // fallthrough
-        case 2: sbuffer_fin(&r->call_types); // fallthrough
+        case 2: sbuffer_fin(&r->temp_stack); // fallthrough
         case 1: stack_fin(&r->error_stack); // fallthrough
         case 0: break;
     }
@@ -3566,7 +3717,7 @@ int resolver_init(resolver* r, thread_context* tc)
     r->tc = tc;
     int e = stack_init(&r->error_stack, &r->tc->tempmem);
     if (e) return resolver_partial_fin(r, 0, e);
-    e = sbuffer_init(&r->call_types, sizeof(ast_node*) * 32);
+    e = sbuffer_init(&r->temp_stack, sizeof(ast_node*) * 32);
     if (e) return resolver_partial_fin(r, 1, e);
     e = freelist_init(
         &r->pp_resolve_nodes, &r->tc->permmem, sizeof(pp_resolve_node));

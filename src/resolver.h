@@ -29,10 +29,10 @@ typedef enum resolve_error_e {
 
 typedef struct symbol_lookup_level {
     struct symbol_lookup_level* parent;
+    struct symbol_lookup_level* prev;
     symbol_table* lookup_st;
-    access_modifier am_start;
-    access_modifier am_end;
     symbol_table** usings_head;
+    symbol_table** usings_end;
 } symbol_lookup_level;
 
 typedef struct symbol_lookup_iterator {
@@ -47,6 +47,7 @@ typedef struct symbol_lookup_iterator {
     ureg hash;
     char* tgt_name;
     symbol** first_hidden_match;
+    bool disallow_two_competing; // TODO
 } symbol_lookup_iterator;
 
 typedef struct thread_context_s thread_context;
