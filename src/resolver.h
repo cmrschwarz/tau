@@ -53,7 +53,7 @@ typedef struct symbol_lookup_iterator {
     symbol_table* looking_mod;
     ureg hash;
     const char* tgt_name;
-    symbol** first_hidden_match;
+    symbol* first_hidden_match;
     // when scope contains match, don't check indirections (-> variable
     // shadowing)
     bool enable_shadowing;

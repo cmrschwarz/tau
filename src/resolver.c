@@ -1104,6 +1104,7 @@ resolve_error symbol_lookup_level_run(
     access_modifier am_start = AM_UNKNOWN;
     access_modifier am_end = AM_UNKNOWN;
     resolve_error re;
+    // TODO: handle all pp_sts <= ppl here
     for (ureg i = 0; i < sli->ppl; i++) {
         if (!lookup_st->pp_symtab) break;
         lookup_st = lookup_st->pp_symtab;
@@ -1197,8 +1198,8 @@ resolve_error symbol_lookup_iterator_init(
     sc_struct* struct_inst_lookup, symbol_table* looking_st,
     const char* tgt_name, bool enable_shadowing, bool deref_aliases)
 {
-    lookup_st = symbol_table_skip_metatables(looking_st);
-    looking_st = symbol_table_skip_metatables(lookup_st);
+    looking_st = symbol_table_skip_metatables(looking_st);
+    lookup_st = symbol_table_skip_metatables(lookup_st);
     sc_struct* looking_struct = NULL;
     symbol_table* looking_mf;
     symbol_table* looking_mod;
@@ -1238,6 +1239,7 @@ resolve_error symbol_lookup_iterator_init(
     sli->head = NULL;
     sli->next_lookup_st = lookup_st;
     sli->struct_inst_lookup = struct_inst_lookup;
+    sli->ppl = ppl;
     return RE_OK;
 }
 
@@ -1287,11 +1289,7 @@ symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res)
         if (sli->struct_inst_lookup) {
             par = NULL;
         }
-        else if (par && par->owning_node != nls->owning_node) {
-            while (par->pp_symtab && par->ppl < sli->ppl) {
-                par = par->pp_symtab;
-            }
-        }
+        // TODO: do we need to handle ppls here?
         sli->next_lookup_st = par;
         re = symbol_lookup_level_run(sli, nls, res);
         if (re) return re;
