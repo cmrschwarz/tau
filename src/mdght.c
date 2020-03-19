@@ -3,7 +3,7 @@
 #include "string.h"
 #include "utils/fnv_hash.h"
 #include "utils/math_utils.h"
-static mdg_node tombstone_node = {0};
+static mdg_node tombstone_node;
 
 ureg mdght_get_hash(mdg_node* parent, const char* str)
 {

@@ -633,6 +633,8 @@ typedef struct expr_op_unary_s {
 // TODO: implement named arguments
 typedef struct expr_call_s {
     ast_node node;
+    // one might argue that this is inefficient/weird for the common case foo()
+    // since the lhs 'identifier' is not really a full entity by itself
     ast_node* lhs;
     ast_node** args;
     ureg arg_count;

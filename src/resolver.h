@@ -29,25 +29,36 @@ typedef enum resolve_error_e {
 
 typedef struct symbol_lookup_level {
     struct symbol_lookup_level* parent;
-    struct symbol_lookup_level* prev;
-    symbol_table* lookup_st;
+    symbol_table* st;
     symbol_table** usings_head;
     symbol_table** usings_end;
+    symbol_table* extends_sc;
+    open_symbol* overloaded_sym_head;
+    access_modifier am_start;
+    access_modifier am_end;
 } symbol_lookup_level;
 
+typedef struct resolver_s resolver;
+
 typedef struct symbol_lookup_iterator {
-    symbol_lookup_level sll1;
+    symbol_lookup_level sll_prealloc;
+    resolver* r;
     symbol_lookup_level* head;
     ureg ppl;
+    symbol_table* next_lookup_st;
     symbol_table* looking_st;
     sc_struct* struct_inst_lookup;
     sc_struct* looking_struct;
     symbol_table* looking_mf;
     symbol_table* looking_mod;
     ureg hash;
-    char* tgt_name;
+    const char* tgt_name;
     symbol** first_hidden_match;
-    bool disallow_two_competing; // TODO
+    // when scope contains match, don't check indirections (-> variable
+    // shadowing)
+    bool enable_shadowing;
+    // when the symbol is an alias return the symbol the alias points to
+    bool deref_aliases;
 } symbol_lookup_iterator;
 
 typedef struct thread_context_s thread_context;
@@ -83,7 +94,7 @@ typedef struct resolver_s {
     mdg_node* curr_mdg;
     module_frame* curr_mf;
     ast_node* curr_block_owner;
-    // temporary memory space
+    // temporary memory space (used in overload resulution)
     sbuffer temp_stack;
     // dealing with type loops and type inference in expr blocks
     stack error_stack;

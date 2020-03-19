@@ -195,10 +195,10 @@ resolve_error resolve_generic_struct(
         assert(false); // TODO: error / varargs
     }
     ast_elem** args =
-        sbuffer_append(&r->call_types, sizeof(ast_elem*) * ea->arg_count);
+        sbuffer_append(&r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
     if (!args) return RE_FATAL;
     ast_elem** ctypes =
-        sbuffer_append(&r->call_types, sizeof(ast_elem*) * ea->arg_count);
+        sbuffer_append(&r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
     if (!ctypes) return RE_FATAL;
     resolve_error re;
     for (ureg i = 0; i < ea->arg_count; i++) {
@@ -218,16 +218,16 @@ resolve_error resolve_generic_struct(
             if (value) *value = (ast_elem*)sgi;
             if (ctype) *ctype = TYPE_ELEM;
             sbuffer_remove_back(
-                &r->call_types, sizeof(ast_elem*) * ea->arg_count);
+                &r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
             sbuffer_remove_back(
-                &r->call_types, sizeof(ast_elem*) * ea->arg_count);
+                &r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
             return RE_OK;
         }
     }
     sc_struct_generic_inst* sgi;
     re = instantiate_generic_struct(r, ea, args, ctypes, sg, st, ppl, &sgi);
-    sbuffer_remove_back(&r->call_types, sizeof(ast_elem*) * ea->arg_count);
-    sbuffer_remove_back(&r->call_types, sizeof(ast_elem*) * ea->arg_count);
+    sbuffer_remove_back(&r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
+    sbuffer_remove_back(&r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
     if (re) return re;
     re = add_body_decls(
         r, sgi->st.sb.sc.osym.sym.declaring_st, NULL, ppl, &sgi->st.sb.sc.body,

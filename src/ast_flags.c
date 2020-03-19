@@ -16,10 +16,6 @@ static inline void bitmask_set_range(u16* data, ureg offs, u16 value)
 {
     *data = *data | (value << offs);
 }
-static inline void bitmask_clear_range(u16* data, ureg mask)
-{
-    *data = *data & ~mask;
-}
 static inline u16 bitmask_get_range(u16 data, ureg offs, ureg mask)
 {
     return (data & mask) >> offs;

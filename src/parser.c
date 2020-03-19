@@ -2346,7 +2346,7 @@ static inline parse_error ast_flags_from_kw_set_access_mod(
             msgstrs[2] = "' conflicts with previous '";
             msgstrs[3] = access_modifier_string(old_am);
             msgstrs[4] = "'";
-            char* msg = error_log_cat_strings(p->lx.tc->err_log, 4, msgstrs);
+            char* msg = error_log_cat_strings(p->lx.tc->err_log, 5, msgstrs);
             if (!msg) return PE_FATAL;
             error_log_report_annotated(
                 p->lx.tc->err_log, ES_PARSER, false,

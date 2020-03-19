@@ -202,7 +202,7 @@ int handle_cmd_args(
                     &t->mel, "--object-format mustn't be given twice");
                 return ERR;
             }
-            t->target.object_format = parse_os_kind(argv[i + 1]);
+            t->target.object_format = parse_object_format_kind(argv[i + 1]);
             if (t->target.object_format == OBJECT_FORMAT_UNKNOWN) {
                 char* msg = error_log_cat_strings_3(
                     el, "unknown object-format '", argv[i + 1], "'");

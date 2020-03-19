@@ -500,8 +500,7 @@ int print_src_line(
             }
             else {
                 if (ep_pos + 1 != ep_end &&
-                    (ep_pos + 1)->col_start < ep_pos->col_end &&
-                    next < (ep_pos + 1)->col_start) {
+                    (ep_pos + 1)->col_start < ep_pos->col_end) {
                     mode = 2;
                     next = (ep_pos + 1)->col_start;
                 }

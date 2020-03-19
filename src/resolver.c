@@ -27,8 +27,8 @@ resolve_error resolve_expr_body(
 resolve_error resolve_expr_scope_access(
     resolver* r, expr_scope_access* esa, symbol_table* st, ureg ppl,
     access_modifier* access, ast_elem** value, ast_elem** ctype);
-resolve_error get_resolved_symbol_symtab(
-    resolver* r, symbol* s, access_modifier* access, symbol_table** tgt_st);
+resolve_error
+get_resolved_symbol_symtab(resolver* r, symbol* s, symbol_table** tgt_st);
 resolve_error
 resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl, ast_elem** ctype);
 resolve_error
@@ -792,7 +792,7 @@ static inline resolve_error parse_int_literal(
     while (*str) {
         if (*str < '0' || *str > '9') {
             assert(false); // should have ben caught by the lexer
-            return PE_ERROR;
+            return RE_ERROR;
         }
         ureg digit = (*str - '0') * digit_val;
         if (UREG_MAX - res < digit) {
@@ -815,14 +815,14 @@ static inline resolve_error parse_int_literal(
         else {
             *result = res;
         }
-        if (!overflow) return PE_OK;
+        if (!overflow) return RE_OK;
     }
     src_range_large srl;
     ast_node_get_src_range((ast_node*)lit, st, &srl);
     error_log_report_annotated(
         r->tc->err_log, ES_RESOLVER, false, "integer literal overflow",
         srl.smap, srl.start, srl.end, "in this integer literal");
-    return PE_ERROR;
+    return RE_ERROR;
 }
 static resolve_error
 evaluate_array_bounds(resolver* r, array_decl* ad, symbol_table* st, ureg* res)
@@ -986,7 +986,7 @@ static inline resolve_error resolve_no_block_macro_call(
     assert(false); // TODO
     return RE_FATAL;
 }
-static inline access_modifier resolver_get_am_end(
+static inline access_modifier resolver_get_am_start(
     symbol_table* lookup_st, symbol_table* looking_mf,
     symbol_table* looking_mod)
 {
@@ -1000,35 +1000,57 @@ static inline access_modifier resolver_get_am_end(
     }
     return AM_PUBLIC;
 }
+static inline bool
+check_visible_within(symbol_table* looking_st, symbol_table* visible_within_st)
+{
+    if (visible_within_st == NULL) return true;
+    for (symbol_table* t = looking_st; t != NULL; t = t->parent) {
+        if (visible_within_st == t) return true;
+    }
+    return false;
+}
 static inline resolve_error resolver_update_ams(
     resolver* r, symbol_table* lookup_st, symbol_table* looking_st,
     sc_struct* looking_struct, symbol_table* looking_mf,
     symbol_table* looking_mod, symbol_table* visible_within_st,
     bool* visible_within, access_modifier* am_start, access_modifier* am_end)
 {
-    if (visible_within && !visible_within_st) {
-        *visible_within = true;
-    }
-    if (*am_start == AM_UNKNOWN) {
-        for (symbol_table* t = looking_st; t != NULL; t = t->parent) {
-            if (t == lookup_st) {
-                *am_start = AM_PRIVATE;
-                if (!visible_within_st || *visible_within) break;
-            }
-            if (visible_within_st && visible_within_st == t) {
-                *visible_within = true;
-                if (*am_start != AM_UNKNOWN) break;
-            }
+    bool vis_within_check_required = false;
+    if (visible_within) {
+        if (visible_within_st) {
+            vis_within_check_required = true;
+            *visible_within = false;
+        }
+        else {
+            *visible_within = true;
         }
     }
     if (*am_start == AM_UNKNOWN) {
-        *am_start = AM_PUBLIC;
-        if (ast_elem_is_struct(lookup_st->owning_node)) {
+        *am_start = resolver_get_am_start(lookup_st, looking_mf, looking_mod);
+    }
+
+    if (*am_end == AM_UNKNOWN || vis_within_check_required) {
+        for (symbol_table* t = looking_st; t != NULL; t = t->parent) {
+            if (t == lookup_st) {
+                *am_end = AM_PRIVATE;
+                if (!vis_within_check_required) break;
+            }
+            if (vis_within_check_required && visible_within_st == t) {
+                *visible_within = true;
+                vis_within_check_required = false;
+                if (*am_end != AM_UNKNOWN) break;
+            }
+        }
+    }
+    if (*am_end == AM_UNKNOWN) {
+        *am_end = AM_PUBLIC;
+        if (lookup_st->owning_node &&
+            ast_elem_is_struct(lookup_st->owning_node)) {
             if (looking_struct) {
                 sc_struct* lookup_struct = (sc_struct*)lookup_st->owning_node;
                 while (true) {
                     if (looking_struct == lookup_struct) {
-                        *am_start = AM_PROTECTED;
+                        *am_end = AM_PROTECTED;
                         break;
                     }
                     if (!looking_struct->sb.extends_spec) break;
@@ -1046,34 +1068,35 @@ static inline resolve_error resolver_update_ams(
             }
         }
     }
-    if (*am_end == AM_UNKNOWN) {
-        *am_end = resolver_get_am_end(lookup_st, looking_mf, looking_mod);
-    }
     return RE_OK;
 }
 
-resolve_error create_symbol_lookup_level(
-    resolver* r, symbol_table* lookup_st, symbol_table** usings_head,
-    symbol_table** usings_end, symbol_lookup_level** lookup_level_target)
+resolve_error push_symbol_lookup_level(
+    symbol_lookup_iterator* sli, symbol_table** usings_head,
+    symbol_table** usings_end, symbol_table* extends_sc,
+    open_symbol* overloaded_sym_head)
 {
-    symbol_lookup_level* l = *lookup_level_target;
-    if (!l) {
-        l = (symbol_lookup_level*)sbuffer_append(
-            &r->temp_stack, sizeof(symbol_lookup_level));
-        if (!l) return LLE_FATAL;
-        *lookup_level_target = l;
+    symbol_lookup_level* sll;
+    if (sli->head == NULL) {
+        sll = &sli->sll_prealloc;
     }
-    l->usings_head = usings_head;
-    l->usings_end = usings_end;
-    l->lookup_st = lookup_st;
+    else {
+        sll = (symbol_lookup_level*)sbuffer_append(
+            &sli->r->temp_stack, sizeof(symbol_lookup_level));
+        if (!sll) return RE_FATAL;
+    }
+    sll->usings_head = usings_head;
+    sll->usings_end = usings_end;
+    sll->parent = sli->head;
+    sll->extends_sc = extends_sc;
+    sll->overloaded_sym_head = overloaded_sym_head;
+    sli->head = sll;
     return RE_OK;
 }
-
 resolve_error symbol_lookup_level_run(
-    resolver* r, symbol_lookup_iterator* sli, symbol_lookup_level* parent,
-    symbol_lookup_level* lookup_level_prealloc, symbol_table* lookup_st,
-    symbol** res)
+    symbol_lookup_iterator* sli, symbol_table* lookup_st, symbol** res)
 {
+    // access modifiers that would be visible to
     access_modifier am_start = AM_UNKNOWN;
     access_modifier am_end = AM_UNKNOWN;
     resolve_error re;
@@ -1082,87 +1105,92 @@ resolve_error symbol_lookup_level_run(
         lookup_st = lookup_st->pp_symtab;
     }
     symbol* sym = symbol_table_lookup_raw(lookup_st, sli->hash, sli->tgt_name);
-    bool symbol_found = false;
     if (sym != NULL) {
         access_modifier am = ast_flags_get_access_mod(sym->node.flags);
-        bool vis_within = false;
+        bool vis_within;
         if (symbol_is_open_symbol(sym)) {
             open_symbol* osym = (open_symbol*)sym;
             re = resolver_update_ams(
-                r, lookup_st, sli->looking_st, sli->looking_struct,
+                sli->r, lookup_st, sli->looking_st, sli->looking_struct,
                 sli->looking_mf, sli->looking_mod, osym->visible_within,
                 &vis_within, &am_start, &am_end);
             if (re) return re;
         }
         else {
             re = resolver_update_ams(
-                r, lookup_st, sli->looking_st, sli->looking_struct,
+                sli->r, lookup_st, sli->looking_st, sli->looking_struct,
                 sli->looking_mf, sli->looking_mod, NULL, NULL, &am_start,
                 &am_end);
             if (re) return re;
             vis_within = true;
         }
-        if (vis_within && am >= am_start && am <= am_end) {
-            *res = sym;
-        }
-        else {
-            if (!*sli->first_hidden_match) *sli->first_hidden_match = sym;
+        if (!vis_within || am < am_start || am > am_end) {
+            if (!sli->first_hidden_match) sli->first_hidden_match = sym;
             sym = NULL;
         }
     }
-    symbol_lookup_level* llt = lookup_level_prealloc;
-    bool is_struct = ast_elem_is_struct(lookup_st->owning_node);
-    if (lookup_st->usings) {
-        re = resolver_update_ams(
-            r, lookup_st, sli->looking_st, sli->looking_struct, sli->looking_mf,
-            sli->looking_mod, NULL, NULL, &am_start, &am_end);
-        if (re) return re;
-        symbol_table** usings_end =
-            symbol_table_get_usings_start(lookup_st, am_start);
-        symbol_table** usings_start =
-            symbol_table_get_usings_end(lookup_st, am_end);
-        if (usings_start != usings_end) {
-            // is we have a symbol, we need to create a stackframe and return
-
-            // optimization: don't create a stackframe if we only have one child
-            if (!sym && usings_start + 1 == usings_end && !is_struct) {
-                return symbol_lookup_level_run(
-                    r, sli, parent, lookup_level_prealloc, usings_start, res);
+    open_symbol* overloaded_sym_head = NULL;
+    if (sym && sym->node.kind == SYM_FUNC_OVERLOADED) {
+        open_symbol* ols = (open_symbol*)((sym_func_overloaded*)sym)->overloads;
+        sym = NULL;
+        while (ols) {
+            open_symbol* s = overloaded_sym_head;
+            ols = (open_symbol*)s->sym.next;
+            access_modifier am = ast_flags_get_access_mod(s->sym.node.flags);
+            if (am < am_start || am > am_end) continue;
+            if (!check_visible_within(sli->looking_st, s->visible_within)) {
+                continue;
             }
-            re = create_symbol_lookup_level(
-                r, lookup_st, usings_start + (sym == NULL) ? 0 : 1, usings_end,
-                &llt);
-            if (re || sym) return re; // TODO: proper stack cleanup
-            return symbol_lookup_level_run(
-                r, sli, llt, NULL, *usings_start, res);
+            if (sym) {
+                overloaded_sym_head = s;
+                break;
+            }
+            sym = (symbol*)s;
+            if (sli->enable_shadowing) break;
         }
     }
-    if (is_struct) {
+    if (sym && sli->enable_shadowing) {
+        *res = sym;
+        return RE_OK;
+    }
+    symbol_table* extends_sc = NULL;
+    if (lookup_st->owning_node && ast_elem_is_struct(lookup_st->owning_node)) {
         sc_struct* st = (sc_struct*)lookup_st->owning_node;
+        // TODO: respect extends visibility
         if (st->sb.extends_spec) {
             if (!st->sb.extends) {
                 re = resolve_ast_node(
-                    r, st->sb.extends_spec, lookup_st, lookup_st->ppl,
+                    sli->r, st->sb.extends_spec, lookup_st, lookup_st->ppl,
                     (ast_elem**)&st->sb.extends, NULL);
                 if (re) return re;
                 assert(ast_elem_is_struct((ast_elem*)st->sb.extends));
             }
-            if (sym) {
-                return create_symbol_lookup_level(
-                    r, lookup_st, NULL, NULL, &llt);
-            }
-            return symbol_lookup_level_run(
-                r, sli, parent, lookup_level_prealloc,
-                st->sb.extends->sb.sc.body.symtab, res);
+            extends_sc = st->sb.extends->sb.sc.body.symtab;
         }
+    }
+    symbol_table** usings_end = NULL;
+    symbol_table** usings_start = NULL;
+    if (lookup_st->usings) {
+        re = resolver_update_ams(
+            sli->r, lookup_st, sli->looking_st, sli->looking_struct,
+            sli->looking_mf, sli->looking_mod, NULL, NULL, &am_start, &am_end);
+        if (re) return re;
+        usings_start = symbol_table_get_usings_start(lookup_st, am_start);
+        usings_end = symbol_table_get_usings_end(lookup_st, am_end);
+    }
+    *res = sym;
+    if (!sym) return RE_OK;
+    if (overloaded_sym_head || usings_start != usings_end || extends_sc) {
+        return push_symbol_lookup_level(
+            sli, usings_start, usings_end, extends_sc, overloaded_sym_head);
     }
     return RE_OK;
 }
 
-resolve_error symbol_lookup_iterator_start(
+resolve_error symbol_lookup_iterator_init(
     symbol_lookup_iterator* sli, resolver* r, symbol_table* lookup_st, ureg ppl,
-    sc_struct* struct_inst_lookup, symbol_table* looking_st, char* tgt_name,
-    symbol** res)
+    sc_struct* struct_inst_lookup, symbol_table* looking_st,
+    const char* tgt_name, bool enable_shadowing, bool deref_aliases)
 {
     lookup_st = symbol_table_skip_metatables(looking_st);
     looking_st = symbol_table_skip_metatables(lookup_st);
@@ -1192,6 +1220,7 @@ resolve_error symbol_lookup_iterator_start(
         i = i->parent;
         assert(i);
     }
+    sli->r = r;
     sli->first_hidden_match = NULL;
     sli->hash = symbol_table_prehash(tgt_name);
     sli->tgt_name = tgt_name;
@@ -1199,141 +1228,72 @@ resolve_error symbol_lookup_iterator_start(
     sli->looking_struct = looking_struct;
     sli->looking_mf = looking_mf;
     sli->looking_mod = looking_mod;
-    return symbol_lookup_level_run(
-        r, &sli->sll1, NULL, &sli->sll1, looking_st, res);
+    sli->enable_shadowing = enable_shadowing;
+    sli->deref_aliases = deref_aliases;
+    sli->head = NULL;
+    sli->next_lookup_st = lookup_st;
+    sli->struct_inst_lookup = struct_inst_lookup;
+    return RE_OK;
 }
 
-static inline resolve_error resolver_lookup_symbol_raw(
-    resolver* r, symbol_table* lookup_st, ureg ppl,
-    sc_struct* struct_inst_lookup, symbol_table* looking_st,
-    sc_struct* looking_struct, symbol_table* looking_mf,
-    symbol_table* looking_mod, ureg hash, char* tgt_name,
-    access_modifier am_end, symbol** first_hidden_match, symbol** res)
+resolve_error
+symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res)
 {
-    access_modifier am_start = AM_UNKNOWN;
+    symbol_lookup_level* sll = sli->head;
     resolve_error re;
-    for (ureg i = 0; i < ppl; i++) {
-        if (!lookup_st->pp_symtab) break;
-        lookup_st = lookup_st->pp_symtab;
-    }
-    symbol* s = symbol_table_lookup_raw(lookup_st, hash, tgt_name);
-    if (s != NULL) {
-        access_modifier am = ast_flags_get_access_mod(s->node.flags);
-        bool vis_within = false;
-        if (symbol_is_open_symbol(s)) {
-            open_symbol* osym = (open_symbol*)s;
-            re = resolver_update_ams(
-                r, lookup_st, looking_st, looking_struct, looking_mf,
-                looking_mod, osym->visible_within, &vis_within, &am_start,
-                &am_end);
-            if (re) return re;
-        }
-        else {
-            re = resolver_update_ams(
-                r, lookup_st, looking_st, looking_struct, looking_mf,
-                looking_mod, NULL, NULL, &am_start, &am_end);
-            if (re) return re;
-            vis_within = true;
-        }
-        if (vis_within && am >= am_start && am <= am_end) {
-            *res = s;
-            return RE_OK;
-        }
-        if (!*first_hidden_match) *first_hidden_match = s;
-    }
-    if (lookup_st->usings) {
-        re = resolver_update_ams(
-            r, lookup_st, looking_st, looking_struct, looking_mf, looking_mod,
-            NULL, NULL, &am_start, &am_end);
-        if (re) return re;
-        symbol_table** usings_end =
-            symbol_table_get_usings_start(lookup_st, am_start);
-        symbol_table** usings_start =
-            symbol_table_get_usings_end(lookup_st, am_end);
-        resolve_error re;
-        symbol* ures;
-        symbol* res1 = NULL;
-        for (symbol_table** i = usings_start; i != usings_end; i++) {
-            // TODO: cycle detection
-            re = resolver_lookup_symbol_raw(
-                r, *i, ppl, struct_inst_lookup, looking_st, looking_struct,
-                looking_mf, looking_mod, hash, tgt_name, AM_UNKNOWN,
-                first_hidden_match, &ures);
-            if (re) return re;
-            if (ures) {
-                if (res1) {
-                    assert(false); // TODO: ambiguity error
-                }
-                res1 = ures;
-            }
-        }
-        if (ures) {
-            *res = ures;
-            return RE_OK;
-        }
-    }
-    if (ast_elem_is_struct(lookup_st->owning_node)) {
-        sc_struct* st = (sc_struct*)lookup_st->owning_node;
-        if (st->sb.extends_spec) {
-            if (!st->sb.extends) {
-                re = resolve_ast_node(
-                    r, st->sb.extends_spec, lookup_st, lookup_st->ppl,
-                    (ast_elem**)&st->sb.extends, NULL);
+    while (true) {
+        while (sll) {
+            while (sll->usings_head != sll->usings_end) {
+                symbol_table* t = *sll->usings_head;
+                sll->usings_head++;
+                re = symbol_lookup_level_run(sli, t, res);
                 if (re) return re;
-                assert(ast_elem_is_struct((ast_elem*)st->sb.extends));
+                if (*res) return RE_OK;
             }
-            return resolver_lookup_symbol_raw(
-                r, st->sb.extends->sb.sc.body.symtab, ppl, struct_inst_lookup,
-                looking_st, looking_struct, looking_mf, looking_mod, hash,
-                tgt_name, AM_UNKNOWN, first_hidden_match, res);
+            while (sll->overloaded_sym_head) {
+                open_symbol* s = sll->overloaded_sym_head;
+                sll->overloaded_sym_head =
+                    (open_symbol*)sll->overloaded_sym_head->sym.next;
+                access_modifier am =
+                    ast_flags_get_access_mod(s->sym.node.flags);
+                if (am < sll->am_start || am > sll->am_end) continue;
+                if (check_visible_within(sli->looking_st, s->visible_within)) {
+                    *res = (symbol*)s;
+                    return RE_OK;
+                }
+            }
+            // lookup level will be done, pop it
+            sll = sll->parent;
+            if (sll != &sli->sll_prealloc) {
+                sbuffer_remove_back(
+                    &sli->r->temp_stack, sizeof(symbol_lookup_level));
+            }
+            if (sll->extends_sc) {
+                symbol_table* st = sll->extends_sc;
+                sll->extends_sc = NULL;
+                return symbol_lookup_level_run(sli, st, res);
+            }
         }
+        symbol_table* nls = sli->next_lookup_st;
+        if (!nls) break;
+        symbol_table* par = nls->parent;
+        if (sli->struct_inst_lookup) {
+            par = NULL;
+        }
+        else if (par && par->owning_node != nls->owning_node) {
+            while (par->pp_symtab && par->ppl < sli->ppl) {
+                par = par->pp_symtab;
+            }
+        }
+        sli->next_lookup_st = par;
+        re = symbol_lookup_level_run(sli, nls, res);
+        if (re) return re;
+        if (*res) return RE_OK;
     }
     *res = NULL;
     return RE_OK;
 }
 
-resolve_error resolver_lookup_symbol(
-    resolver* r, symbol_table* lookup_st, ureg ppl,
-    sc_struct* struct_inst_lookup, symbol_table* looking_st, char* tgt_name,
-    symbol** res)
-{
-
-    lookup_st = symbol_table_skip_metatables(lookup_st);
-    looking_st = symbol_table_skip_metatables(looking_st);
-    ureg hash = symbol_table_prehash(tgt_name);
-    symbol* first_hidden_match = NULL;
-    sc_struct* looking_struct = NULL;
-    symbol_table* looking_mf;
-    symbol_table* looking_mod;
-    symbol_table* i = looking_st;
-    while (true) {
-        if (!looking_struct && ast_elem_is_struct(i->owning_node)) {
-            looking_struct = (sc_struct*)i->owning_node;
-        }
-        if (ast_elem_is_module_frame(i->owning_node)) {
-            looking_mf = i;
-            if (looking_mf->parent->owning_node->kind == ELEM_MDG_NODE) {
-                looking_mod = looking_mf->parent;
-            }
-            else {
-                looking_mod = looking_mf;
-            }
-            break;
-        }
-        if (i->owning_node->kind == ELEM_MDG_NODE) {
-            looking_mf = NULL;
-            looking_mod = i;
-            break;
-        }
-        i = i->parent;
-        assert(i);
-    }
-    return resolver_lookup_symbol_raw(
-        r, lookup_st, ppl, struct_inst_lookup, looking_st, looking_struct,
-        looking_mf, looking_mod, hash, tgt_name,
-        resolver_get_am_end(lookup_st, looking_mf, looking_mod),
-        &first_hidden_match, res);
-}
 // for ex. wth foo::bar() func_st is foo's st, st is the table to look up
 // args
 resolve_error resolve_func_call(
@@ -1348,51 +1308,55 @@ resolve_error resolve_func_call(
         if (re) return re;
     }
     scope* tgt;
-    symbol* sym;
+    symbol_lookup_iterator sli;
+    re = symbol_lookup_iterator_init(
+        &sli, r, func_st, ppl, NULL, st, func_name, false, true);
     bool applicable = false;
-    re = resolver_lookup_symbol(r, func_st, ppl, NULL, st, func_name, &sym);
     if (re) {
         sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
         return re;
     }
-    if (sym == NULL) {
-        // we use st instead of func_st here because thats the scope that
-        // the call is in
-        sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
-        return report_unknown_symbol(r, c->lhs, st);
-    }
-    if (sym->node.kind == SYM_IMPORT_SYMBOL) {
-        re = resolve_ast_node(
-            r, (ast_node*)sym, sym->declaring_st, sym->declaring_st->ppl,
-            (ast_elem**)&sym, NULL);
+    // TODO: for now we just pick the first applicable overload instead of
+    // having some sort of matching heuristic
+    while (true) {
+        symbol* sym;
+        re = symbol_lookup_iterator_next(&sli, &sym);
         if (re) {
             sbuffer_remove_back(
                 &r->temp_stack, c->arg_count * sizeof(ast_elem*));
             return re;
         }
-    }
-    if (sym->node.kind == SYM_FUNC_OVERLOADED) {
-        sym_func_overloaded* sfo = (sym_func_overloaded*)sym;
-        scope* o = sfo->overloads;
-        while (o) {
-            re = overload_applicable(
-                r, call_arg_types, c->arg_count, o, ppl, &applicable, ctype);
-            if (applicable) tgt = o;
-            if (re || applicable) break;
-            o = (scope*)o->osym.sym.next;
+        if (sym == NULL) {
+            // we use st instead of func_st here because thats the scope that
+            // the call is in
+            sbuffer_remove_back(
+                &r->temp_stack, c->arg_count * sizeof(ast_elem*));
+            return report_unknown_symbol(r, c->lhs, st);
         }
-    }
-    else if (sym->node.kind == SC_FUNC) {
-        re = overload_applicable(
-            r, call_arg_types, c->arg_count, (scope*)sym, ppl, &applicable,
-            ctype);
-        if (applicable) tgt = (scope*)sym;
-    }
-    else {
-        // TODO: generic overload resolution and instantation selection
-        assert(sym->node.kind == SC_FUNC_GENERIC);
-        assert(false);
-        re = RE_FATAL;
+        if (sym->node.kind == SYM_FUNC_OVERLOADED) {
+            sym_func_overloaded* sfo = (sym_func_overloaded*)sym;
+            scope* o = sfo->overloads;
+            while (o) {
+                re = overload_applicable(
+                    r, call_arg_types, c->arg_count, o, ppl, &applicable,
+                    ctype);
+                if (applicable) tgt = o;
+                if (re || applicable) break;
+                o = (scope*)o->osym.sym.next;
+            }
+        }
+        else if (sym->node.kind == SC_FUNC) {
+            re = overload_applicable(
+                r, call_arg_types, c->arg_count, (scope*)sym, ppl, &applicable,
+                ctype);
+            if (applicable) tgt = (scope*)sym;
+        }
+        else {
+            // TODO: generic overload resolution and instantation selection
+            assert(sym->node.kind == SC_FUNC_GENERIC);
+            assert(false);
+            re = RE_FATAL;
+        }
     }
     sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
     if (!applicable) {
@@ -1404,18 +1368,17 @@ resolve_error resolve_func_call(
             "no available overload is applicable for the given arguments");
         return RE_ERROR;
     }
-    if (!re) {
-        if (tgt->osym.sym.node.kind == SC_MACRO) {
-            c->node.kind = EXPR_NO_BLOCK_MACRO_CALL;
-            re = resolve_no_block_macro_call(r, c, st, (sc_macro*)tgt, ctype);
-        }
-        else {
-            c->target.fn = (sc_func*)tgt;
-            ast_flags_set_resolved(&c->node.flags);
-            // we sadly need to do this so the resolved flag means
-            //"ready to emit and run" which we need for the pp
-            re = resolve_func_from_call(r, (sc_func*)tgt, ppl, ctype);
-        }
+    if (re) return re;
+    if (tgt->osym.sym.node.kind == SC_MACRO) {
+        c->node.kind = EXPR_NO_BLOCK_MACRO_CALL;
+        re = resolve_no_block_macro_call(r, c, st, (sc_macro*)tgt, ctype);
+    }
+    else {
+        c->target.fn = (sc_func*)tgt;
+        ast_flags_set_resolved(&c->node.flags);
+        // we sadly need to do this so the resolved flag means
+        //"ready to emit and run" which we need for the pp
+        re = resolve_func_from_call(r, (sc_func*)tgt, ppl, ctype);
     }
     return re;
 }
@@ -1431,13 +1394,11 @@ resolve_error resolve_call(
         expr_scope_access* esa = (expr_scope_access*)c->lhs;
         ast_elem* esa_lhs;
         symbol_table* lhs_st;
-        // TODO: fix access modifier restrictions
-        access_modifier am = AM_DEFAULT;
         resolve_error re =
             resolve_ast_node(r, esa->lhs, st, ppl, &esa_lhs, NULL);
         if (re) return re;
         assert(ast_elem_is_symbol(esa_lhs));
-        re = get_resolved_symbol_symtab(r, (symbol*)esa_lhs, &am, &lhs_st);
+        re = get_resolved_symbol_symtab(r, (symbol*)esa_lhs, &lhs_st);
         if (re) return re;
         return resolve_func_call(
             r, c, st, ppl, esa->target.name, lhs_st, ctype);
@@ -1557,37 +1518,27 @@ resolve_error choose_binary_operator_overload(
         if (ctype) *ctype = lhs_ctype;
         return RE_OK;
     }
-    symbol_table* lt = st;
-    while (lt) {
-        bool applicable;
-        re = resolver_lookup_symbol(r, lt, ppl, NULL, st, );
+    symbol* s;
+    symbol_lookup_iterator sli;
+    re = symbol_lookup_iterator_init(
+        &sli, r, st, ppl, NULL, st, op_to_str(ob->node.op_kind), false, true);
+    if (re) return re;
+    while (true) {
+        re = symbol_lookup_iterator_next(&sli, &s);
         if (re) return re;
-        symbol** s = symbol_table_lookup(
-            lt, ppl, AM_DEFAULT, op_to_str(ob->node.op_kind));
-        if (!s) return report_unknown_symbol(r, (ast_node*)ob, lt);
-        ureg op_ppl = (**s).declaring_st->ppl;
-        if ((**s).node.kind == SYM_FUNC_OVERLOADED) {
-            sym_func_overloaded* sfo = (sym_func_overloaded*)s;
-            assert(
-                sfo->overloads->osym.sym.node.kind ==
-                SC_FUNC); // prevent macros
-            sc_func* f = (sc_func*)sfo->overloads;
-            while (f) {
-                re = operator_func_applicable(
-                    r, f, op_ppl, lhs_ctype, rhs_ctype, &applicable, ctype);
-                if (re) return re;
-                if (applicable) return RE_OK;
-                f = (sc_func*)f->fnb.sc.osym.sym.next;
-            }
-        }
-        else if ((**s).node.kind == SC_FUNC) {
+        if (!s) break;
+        bool applicable;
+        ureg op_ppl = s->declaring_st->ppl;
+        if (s->node.kind == SC_FUNC) {
             re = operator_func_applicable(
-                r, (sc_func*)*s, op_ppl, lhs_ctype, rhs_ctype, &applicable,
+                r, (sc_func*)s, op_ppl, lhs_ctype, rhs_ctype, &applicable,
                 ctype);
             if (re) return re;
             if (applicable) return RE_OK;
         }
-        lt = lt->parent;
+        else {
+            assert(false); // TODO: error
+        }
     }
     return report_unknown_symbol(r, (ast_node*)ob, st);
 }
@@ -1648,18 +1599,17 @@ resolve_error resolve_break_target(
     assert(false); // TODO: error
     return RE_ERROR;
 }
-resolve_error get_resolved_symbol_symtab(
-    resolver* r, symbol* s, access_modifier* access, symbol_table** tgt_st)
+resolve_error
+get_resolved_symbol_symtab(resolver* r, symbol* s, symbol_table** tgt_st)
 {
     if (ast_elem_is_scope((ast_elem*)s)) {
         // TODO: handle access change here
         *tgt_st = ((scope*)s)->body.symtab;
         return RE_OK;
     }
-    *access = AM_PUBLIC;
     if (s->node.kind == SYM_IMPORT_SYMBOL) {
         return get_resolved_symbol_symtab(
-            r, ((sym_import_symbol*)s)->target.sym, access, tgt_st);
+            r, ((sym_import_symbol*)s)->target.sym, tgt_st);
     }
     if (s->node.kind == SYM_IMPORT_GROUP) {
         *tgt_st = ((sym_import_group*)s)->children.symtab;
@@ -1763,9 +1713,22 @@ resolve_error resolve_param(
     ast_flags_set_resolved(&p->sym.node.flags);
     return PE_OK;
 }
-resolve_error resolve_expr_scope_access(
+resolve_error resolver_lookup_single(
+    resolver* r, symbol_table* st, ureg ppl, sc_struct* struct_inst,
+    symbol_table* looking_st, const char* tgt_name, symbol** res,
+    symbol** ambiguity)
+{
+    symbol_lookup_iterator sli;
+    resolve_error re = symbol_lookup_iterator_init(
+        &sli, r, st, ppl, struct_inst, looking_st, tgt_name, true, true);
+    if (re) return re;
+    re = symbol_lookup_iterator_next(&sli, res);
+    if (re) return re;
+    return symbol_lookup_iterator_next(&sli, ambiguity);
+}
+resolve_error resolve_scoped_identifier(
     resolver* r, expr_scope_access* esa, symbol_table* st, ureg ppl,
-    access_modifier* access, ast_elem** value, ast_elem** ctype)
+    ast_elem** value, ast_elem** ctype)
 {
     resolve_error re;
     symbol_table* lhs_st;
@@ -1773,20 +1736,27 @@ resolve_error resolve_expr_scope_access(
     re = resolve_ast_node(r, esa->lhs, st, ppl, &lhs_val, NULL);
     if (re) return re;
     assert(lhs_val != NULL && ast_elem_is_symbol(lhs_val)); // TODO: log error
-    re = get_resolved_symbol_symtab(r, (symbol*)lhs_val, access, &lhs_st);
+    re = get_resolved_symbol_symtab(r, (symbol*)lhs_val, &lhs_st);
     if (re) return re;
-    symbol** s = symbol_table_lookup(lhs_st, ppl, *access, esa->target.name);
-    if (!*s) {
+    symbol* idf;
+    symbol* amb;
+    re = resolver_lookup_single(
+        r, lhs_st, ppl, NULL, st, esa->target.name, &idf, &amb);
+    if (re) return re;
+    if (!idf) {
         return report_unknown_symbol(r, (ast_node*)esa, st);
     }
-    ureg rhs_ppl = (**s).declaring_st->ppl;
-    ast_elem* rhs_val;
+    if (amb) {
+        assert(false); // TODO report ambiguity error
+    }
+    ast_elem* idf_val;
 
     resolve_ast_node(
-        r, (ast_node*)*s, (**s).declaring_st, rhs_ppl, &rhs_val, ctype);
-    assert(rhs_val != NULL && ast_elem_is_symbol(rhs_val)); // TODO: log error
-    esa->target.sym = (symbol*)lhs_val;
-    if (value) *value = rhs_val;
+        r, (ast_node*)idf, idf->declaring_st, idf->declaring_st->ppl, &idf_val,
+        ctype);
+    assert(idf_val != NULL && ast_elem_is_symbol(idf_val)); // TODO: log error
+    esa->target.sym = idf;
+    if (value) *value = idf_val;
     ast_flags_set_resolved(&esa->node.flags);
     return RE_OK;
 }
@@ -1796,26 +1766,32 @@ access_modifier check_member_access(symbol_table* st, scope* tgt)
 }
 resolve_error resolve_expr_member_accesss(
     resolver* r, expr_member_access* ema, symbol_table* st, ureg ppl,
-    access_modifier* access, ast_elem** value, ast_elem** ctype)
+    ast_elem** value, ast_elem** ctype)
 {
     ast_elem* lhs_type;
     resolve_error re = resolve_ast_node(r, ema->lhs, st, ppl, NULL, &lhs_type);
     if (re) return re;
-    if (!ast_elem_is_struct_base(lhs_type)) { // TODO: pointers
+    if (!ast_elem_is_struct(lhs_type)) { // TODO: pointers
         // TODO: errror
         assert(false);
         return RE_FATAL;
     }
-    scope* sc = (scope*)lhs_type;
-    // TODO: try to make this check more efficient
-    access_modifier acc = check_member_access(st, sc);
-    symbol** rhs = symbol_table_lookup_limited(
-        sc->body.symtab, ppl, acc, sc->body.symtab->parent, ema->target.name);
-    if (!*rhs) return report_unknown_symbol(r, (ast_node*)ema, sc->body.symtab);
-    ureg rhs_ppl = (**rhs).declaring_st->ppl;
-    ema->target.sym = *rhs;
-    resolve_ast_node(
-        r, (ast_node*)*rhs, (**rhs).declaring_st, rhs_ppl, value, ctype);
+    symbol* mem;
+    symbol* amb;
+    symbol_table* struct_st = ((scope*)lhs_type)->body.symtab;
+    re = resolver_lookup_single(
+        r, struct_st, ppl, (sc_struct*)lhs_type, st, ema->target.name, &mem,
+        &amb);
+    if (re) return re;
+    if (!mem) return report_unknown_symbol(r, (ast_node*)ema, struct_st);
+    if (amb) {
+        assert(false); // TODO: report ambiguity
+    }
+    ema->target.sym = mem;
+    re = resolve_ast_node(
+        r, (ast_node*)mem, mem->declaring_st, mem->declaring_st->ppl, value,
+        ctype);
+    if (re) return re;
     ast_flags_set_resolved(&ema->node.flags);
     return RE_OK;
 }
@@ -2020,11 +1996,17 @@ static inline resolve_error resolve_identifier(
     resolver* r, symbol_table* st, ureg ppl, expr_identifier* e,
     ast_elem** value, ast_elem** ctype)
 {
-    symbol** s = symbol_table_lookup(st, ppl, AM_DEFAULT, e->value.str);
-    if (!s) return report_unknown_symbol(r, (ast_node*)e, st);
     symbol* sym;
-    resolve_error re = resolve_ast_node(
-        r, (ast_node*)*s, (**s).declaring_st, ppl, (ast_elem**)&sym, ctype);
+    symbol* amb;
+    resolve_error re =
+        resolver_lookup_single(r, st, ppl, NULL, st, e->value.str, &sym, &amb);
+    if (re) return re;
+    if (!sym) return report_unknown_symbol(r, (ast_node*)e, st);
+    if (amb) {
+        assert(false); // TODO: report ambiguity
+    }
+    re = resolve_ast_node(
+        r, (ast_node*)sym, sym->declaring_st, ppl, (ast_elem**)&sym, ctype);
     if (re == RE_DIFFERENT_PP_LEVEL) {
         sym = stack_pop(&r->error_stack);
         assert(ast_elem_is_symbol((ast_elem*)sym));
@@ -2399,9 +2381,7 @@ static inline resolve_error resolve_ast_node_raw(
                     value, ctype, n,
                     get_resolved_symbol_ctype(ema->target.sym));
             }
-            access_modifier am = AM_DEFAULT;
-            return resolve_expr_member_accesss(
-                r, ema, st, ppl, &am, value, ctype);
+            return resolve_expr_member_accesss(r, ema, st, ppl, value, ctype);
         }
         case EXPR_SCOPE_ACCESS: {
             expr_scope_access* esa = (expr_scope_access*)n;
@@ -2410,9 +2390,7 @@ static inline resolve_error resolve_ast_node_raw(
                     value, ctype, n,
                     get_resolved_symbol_ctype(esa->target.sym));
             }
-            access_modifier access = AM_DEFAULT;
-            return resolve_expr_scope_access(
-                r, esa, st, ppl, &access, value, ctype);
+            return resolve_scoped_identifier(r, esa, st, ppl, value, ctype);
         }
         case SC_STRUCT_GENERIC: {
             sc_struct_generic* sg = (sc_struct_generic*)n;
@@ -2494,14 +2472,20 @@ static inline resolve_error resolve_ast_node_raw(
                     r, (ast_node*)is->import_group, st, ppl, NULL, NULL);
                 if (re) return re;
             }
-            symbol** s = symbol_table_lookup(
-                is->import_group->parent_mdgn->symtab, ppl, AM_PROTECTED,
-                is->target.name);
-            if (!s) return report_unknown_symbol(r, n, st);
+            symbol* sym;
+            symbol* amb;
+            re = resolver_lookup_single(
+                r, is->import_group->parent_mdgn->symtab, ppl, NULL, st,
+                is->target.name, &sym, &amb);
+            if (re) return re;
+            if (!sym) return report_unknown_symbol(r, n, st);
+            if (amb) {
+                assert(false); // TODO: report ambiguity
+            }
             // change the declaring st fom the group to the actual one
             is->osym.sym.declaring_st = st;
             re = resolve_ast_node(
-                r, (ast_node*)*s, st, ppl, (ast_elem**)&is->target.sym, NULL);
+                r, (ast_node*)sym, st, ppl, (ast_elem**)&is->target.sym, NULL);
             assert(ast_elem_is_symbol((ast_elem*)is->target.sym));
             ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, is->target.sym, NULL);
@@ -3267,29 +3251,37 @@ resolve_error resolver_cleanup(resolver* r, ureg startid)
     // check for root module
     mdg_node* root = r->tc->t->mdg.root_node;
     if (*r->mdgs_begin == root) {
-        symbol* mainfn = NULL;
-        symbol* startfn = NULL;
-        symbol** s =
-            symbol_table_lookup(root->symtab, 0, AM_PRIVATE, COND_KW_MAIN);
-        if (s) mainfn = *s;
-        s = symbol_table_lookup(root->symtab, 0, AM_PRIVATE, COND_KW_START);
-        if (s) startfn = *s;
+        symbol* mainfn;
+        symbol* startfn;
+        symbol* amb;
+        resolve_error re = resolver_lookup_single(
+            r, root->symtab, 0, NULL, root->symtab, COND_KW_MAIN, &mainfn,
+            &amb);
+        if (re) return re;
+        if (amb) assert(false); // TODO: report ambiguity
+        re = resolver_lookup_single(
+            r, root->symtab, 0, NULL, root->symtab, COND_KW_START, &startfn,
+            &amb);
+        if (re) return re;
+        if (amb) assert(false); // TODO: report ambiguity
         if (!mainfn || !startfn) {
             aseglist_iterator mfs;
             aseglist_iterator_begin(&mfs, &root->module_frames);
             for (module_frame* mf = aseglist_iterator_next(&mfs); mf;
                  mf = aseglist_iterator_next(&mfs)) {
                 if (!mainfn) {
-                    s = symbol_table_lookup_limited(
-                        mf->body.symtab, 0, AM_PRIVATE, root->symtab,
-                        COND_KW_MAIN);
-                    if (s) mainfn = *s;
+                    re = resolver_lookup_single(
+                        r, mf->body.symtab, 0, NULL, root->symtab, COND_KW_MAIN,
+                        &mainfn, &amb);
+                    if (re) return re;
+                    if (amb) assert(false); // TODO: report ambiguity
                 }
                 if (!startfn) {
-                    s = symbol_table_lookup_limited(
-                        mf->body.symtab, 0, AM_PRIVATE, root->symtab,
-                        COND_KW_START);
-                    if (s) startfn = *s;
+                    re = resolver_lookup_single(
+                        r, mf->body.symtab, 0, NULL, root->symtab,
+                        COND_KW_START, &startfn, &amb);
+                    if (re) return re;
+                    if (amb) assert(false); // TODO: report ambiguity
                 }
                 if (mainfn && startfn) break;
             }
