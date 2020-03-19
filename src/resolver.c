@@ -622,6 +622,7 @@ static resolve_error add_ast_node_decls(
                     if (!sfo) return RE_FATAL;
                     sfo->sym.node.kind = SYM_FUNC_OVERLOADED;
                     sfo->sym.node.flags = AST_NODE_FLAGS_DEFAULT;
+                    ast_flags_set_access_mod(&sfo->sym.node.flags, AM_PUBLIC);
                     sfo->sym.node.srange = SRC_RANGE_INVALID;
                     sfo->sym.next = (**conflict).next;
                     sfo->sym.name = (**conflict).name;
@@ -1074,7 +1075,8 @@ static inline resolve_error resolver_update_ams(
 resolve_error push_symbol_lookup_level(
     symbol_lookup_iterator* sli, symbol_table** usings_head,
     symbol_table** usings_end, symbol_table* extends_sc,
-    open_symbol* overloaded_sym_head)
+    open_symbol* overloaded_sym_head, access_modifier am_start,
+    access_modifier am_end)
 {
     symbol_lookup_level* sll;
     if (sli->head == NULL) {
@@ -1090,6 +1092,8 @@ resolve_error push_symbol_lookup_level(
     sll->parent = sli->head;
     sll->extends_sc = extends_sc;
     sll->overloaded_sym_head = overloaded_sym_head;
+    sll->am_start = am_start;
+    sll->am_end = am_end;
     sli->head = sll;
     return RE_OK;
 }
@@ -1134,7 +1138,7 @@ resolve_error symbol_lookup_level_run(
         open_symbol* ols = (open_symbol*)((sym_func_overloaded*)sym)->overloads;
         sym = NULL;
         while (ols) {
-            open_symbol* s = overloaded_sym_head;
+            open_symbol* s = ols;
             ols = (open_symbol*)s->sym.next;
             access_modifier am = ast_flags_get_access_mod(s->sym.node.flags);
             if (am < am_start || am > am_end) continue;
@@ -1182,7 +1186,8 @@ resolve_error symbol_lookup_level_run(
     if (!sym) return RE_OK;
     if (overloaded_sym_head || usings_start != usings_end || extends_sc) {
         return push_symbol_lookup_level(
-            sli, usings_start, usings_end, extends_sc, overloaded_sym_head);
+            sli, usings_start, usings_end, extends_sc, overloaded_sym_head,
+            am_start, am_end);
     }
     return RE_OK;
 }
@@ -1263,12 +1268,14 @@ symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res)
                 }
             }
             // lookup level will be done, pop it
-            sll = sll->parent;
+            symbol_table* ext = sll->extends_sc;
+            sli->head = sll->parent;
             if (sll != &sli->sll_prealloc) {
                 sbuffer_remove_back(
                     &sli->r->temp_stack, sizeof(symbol_lookup_level));
             }
-            if (sll->extends_sc) {
+            sll = sli->head;
+            if (ext) {
                 symbol_table* st = sll->extends_sc;
                 sll->extends_sc = NULL;
                 return symbol_lookup_level_run(sli, st, res);
@@ -1316,8 +1323,7 @@ resolve_error resolve_func_call(
         sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
         return re;
     }
-    // TODO: for now we just pick the first applicable overload instead of
-    // having some sort of matching heuristic
+    bool overload_existant = false;
     while (true) {
         symbol* sym;
         re = symbol_lookup_iterator_next(&sli, &sym);
@@ -1327,29 +1333,25 @@ resolve_error resolve_func_call(
             return re;
         }
         if (sym == NULL) {
+            if (overload_existant) break;
             // we use st instead of func_st here because thats the scope that
             // the call is in
             sbuffer_remove_back(
                 &r->temp_stack, c->arg_count * sizeof(ast_elem*));
             return report_unknown_symbol(r, c->lhs, st);
         }
-        if (sym->node.kind == SYM_FUNC_OVERLOADED) {
-            sym_func_overloaded* sfo = (sym_func_overloaded*)sym;
-            scope* o = sfo->overloads;
-            while (o) {
-                re = overload_applicable(
-                    r, call_arg_types, c->arg_count, o, ppl, &applicable,
-                    ctype);
-                if (applicable) tgt = o;
-                if (re || applicable) break;
-                o = (scope*)o->osym.sym.next;
-            }
-        }
-        else if (sym->node.kind == SC_FUNC) {
+        overload_existant = true;
+        if (sym->node.kind == SC_FUNC) {
             re = overload_applicable(
                 r, call_arg_types, c->arg_count, (scope*)sym, ppl, &applicable,
                 ctype);
-            if (applicable) tgt = (scope*)sym;
+            if (applicable) {
+                // TODO: for now we just pick the first applicable overload
+                // instead of
+                // having some sort of matching heuristic
+                tgt = (scope*)sym;
+                break;
+            }
         }
         else {
             // TODO: generic overload resolution and instantation selection
