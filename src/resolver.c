@@ -36,6 +36,9 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress);
 resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn);
 resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn);
 void free_pprns(resolver* r);
+static inline resolve_error resolve_import_symbol(
+    resolver* r, sym_import_symbol* is, symbol_table* st, ureg ppl,
+    ast_elem** value, ast_elem** ctype);
 // must be a macro so value and ctype become lazily evaluated
 #define RETURN_RESOLVED(pvalue, pctype, value, ctype)                          \
     do {                                                                       \
@@ -1251,47 +1254,54 @@ resolve_error symbol_lookup_iterator_init(
     sli->ppl = ppl;
     return RE_OK;
 }
-
+static inline resolve_error symbol_lookup_level_continue(
+    symbol_lookup_iterator* sli, symbol_lookup_level* sll, symbol** res)
+{
+    while (sll->usings_head != sll->usings_end) {
+        symbol_table* t = *sll->usings_head;
+        sll->usings_head++;
+        resolve_error re = symbol_lookup_level_run(sli, t, res);
+        if (re) return re;
+        if (*res) return RE_OK;
+    }
+    while (sll->overloaded_sym_head) {
+        open_symbol* s = sll->overloaded_sym_head;
+        sll->overloaded_sym_head =
+            (open_symbol*)sll->overloaded_sym_head->sym.next;
+        access_modifier am = ast_flags_get_access_mod(s->sym.node.flags);
+        if (am < sll->am_start || am > sll->am_end) continue;
+        if (check_visible_within(sli->looking_st, s->visible_within)) {
+            *res = (symbol*)s;
+            return RE_OK;
+        }
+    }
+    // lookup level will be done, pop it
+    symbol_table* ext = sll->extends_sc;
+    sli->head = sll->parent;
+    if (sll != &sli->sll_prealloc) {
+        sbuffer_remove_back(&sli->r->temp_stack, sizeof(symbol_lookup_level));
+    }
+    sll = sli->head;
+    if (ext) {
+        symbol_table* st = sll->extends_sc;
+        sll->extends_sc = NULL;
+        return symbol_lookup_level_run(sli, st, res);
+    }
+    *res = NULL;
+    return RE_OK;
+}
 resolve_error
 symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res)
 {
-    symbol_lookup_level* sll = sli->head;
     resolve_error re;
+    symbol* sym = NULL;
     while (true) {
-        while (sll) {
-            while (sll->usings_head != sll->usings_end) {
-                symbol_table* t = *sll->usings_head;
-                sll->usings_head++;
-                re = symbol_lookup_level_run(sli, t, res);
-                if (re) return re;
-                if (*res) return RE_OK;
-            }
-            while (sll->overloaded_sym_head) {
-                open_symbol* s = sll->overloaded_sym_head;
-                sll->overloaded_sym_head =
-                    (open_symbol*)sll->overloaded_sym_head->sym.next;
-                access_modifier am =
-                    ast_flags_get_access_mod(s->sym.node.flags);
-                if (am < sll->am_start || am > sll->am_end) continue;
-                if (check_visible_within(sli->looking_st, s->visible_within)) {
-                    *res = (symbol*)s;
-                    return RE_OK;
-                }
-            }
-            // lookup level will be done, pop it
-            symbol_table* ext = sll->extends_sc;
-            sli->head = sll->parent;
-            if (sll != &sli->sll_prealloc) {
-                sbuffer_remove_back(
-                    &sli->r->temp_stack, sizeof(symbol_lookup_level));
-            }
-            sll = sli->head;
-            if (ext) {
-                symbol_table* st = sll->extends_sc;
-                sll->extends_sc = NULL;
-                return symbol_lookup_level_run(sli, st, res);
-            }
+        while (sli->head) {
+            re = symbol_lookup_level_continue(sli, sli->head, &sym);
+            if (re) return re;
+            if (sym) break;
         }
+        if (sym) break;
         symbol_table* nls = sli->next_lookup_st;
         if (!nls) break;
         symbol_table* par = nls->parent;
@@ -1300,11 +1310,25 @@ symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res)
         }
         // TODO: do we need to handle ppls here?
         sli->next_lookup_st = par;
-        re = symbol_lookup_level_run(sli, nls, res);
+        re = symbol_lookup_level_run(sli, nls, &sym);
         if (re) return re;
-        if (*res) return RE_OK;
+        if (sym) break;
     }
-    *res = NULL;
+    if (sym && sli->deref_aliases) {
+        while (sym->node.kind == SYM_IMPORT_SYMBOL) {
+            if (ast_flags_get_resolved(sym->node.flags)) {
+                sym = ((sym_import_symbol*)sym)->target.sym;
+            }
+            else {
+                re = resolve_import_symbol(
+                    sli->r, (sym_import_symbol*)sym, sym->declaring_st,
+                    sym->declaring_st->ppl, (ast_elem**)&sym, NULL);
+                if (re) return re;
+            }
+            assert(ast_elem_is_symbol((ast_elem*)sym));
+        }
+    }
+    *res = sym;
     return RE_OK;
 }
 
@@ -2276,6 +2300,34 @@ static inline resolve_error resolve_expr_block(
     assert(!value);
     RETURN_RESOLVED(value, ctype, NULL, b->ctype);
 }
+static inline resolve_error resolve_import_symbol(
+    resolver* r, sym_import_symbol* is, symbol_table* st, ureg ppl,
+    ast_elem** value, ast_elem** ctype)
+{
+    resolve_error re;
+    if (is->import_group->osym.sym.name == NULL) {
+        re = resolve_ast_node_raw(
+            r, (ast_node*)is->import_group, st, ppl, NULL, NULL);
+        if (re) return re;
+    }
+    symbol* sym;
+    symbol* amb;
+    re = resolver_lookup_single(
+        r, is->import_group->parent_mdgn->symtab, ppl, NULL, st,
+        is->target.name, &sym, &amb);
+    if (re) return re;
+    if (!sym) return report_unknown_symbol(r, (ast_node*)is, st);
+    if (amb) {
+        assert(false); // TODO: report ambiguity
+    }
+    // change the declaring st fom the group to the actual one
+    is->osym.sym.declaring_st = st;
+    re = resolve_ast_node(
+        r, (ast_node*)sym, st, ppl, (ast_elem**)&is->target.sym, NULL);
+    assert(ast_elem_is_symbol((ast_elem*)is->target.sym));
+    ast_flags_set_resolved(&is->osym.sym.node.flags);
+    RETURN_RESOLVED(value, ctype, is->target.sym, NULL);
+}
 static inline resolve_error resolve_ast_node_raw(
     resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
     ast_elem** ctype)
@@ -2476,28 +2528,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (resolved) {
                 RETURN_RESOLVED(value, ctype, is->target.sym, NULL);
             }
-            if (is->import_group->osym.sym.name == NULL) {
-                re = resolve_ast_node_raw(
-                    r, (ast_node*)is->import_group, st, ppl, NULL, NULL);
-                if (re) return re;
-            }
-            symbol* sym;
-            symbol* amb;
-            re = resolver_lookup_single(
-                r, is->import_group->parent_mdgn->symtab, ppl, NULL, st,
-                is->target.name, &sym, &amb);
-            if (re) return re;
-            if (!sym) return report_unknown_symbol(r, n, st);
-            if (amb) {
-                assert(false); // TODO: report ambiguity
-            }
-            // change the declaring st fom the group to the actual one
-            is->osym.sym.declaring_st = st;
-            re = resolve_ast_node(
-                r, (ast_node*)sym, st, ppl, (ast_elem**)&is->target.sym, NULL);
-            assert(ast_elem_is_symbol((ast_elem*)is->target.sym));
-            ast_flags_set_resolved(&n->flags);
-            RETURN_RESOLVED(value, ctype, is->target.sym, NULL);
+            return resolve_import_symbol(r, is, st, ppl, value, ctype);
         }
         case STMT_USING:
         case SYM_NAMED_USING:
