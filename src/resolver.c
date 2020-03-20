@@ -443,9 +443,18 @@ set_parent_symtabs(symbol_table** tgt, symbol_table* parent_st)
         (*tgt)->parent = parent_st;
     }
 }
+// we differentiate between local ast nodes and shared ones
+// local nodes are only visible within the module and can be
+// freed once the module was emitted. shared nodes might be used from
+// other modules and therefore need to stay around for the whole compilation
+static bool is_local_node(ast_flags flags)
+{
+    access_modifier m = ast_flags_get_access_mod(flags);
+    return m != AM_PUBLIC && m != AM_PROTECTED;
+}
 ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st)
 {
-    if (public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED) {
+    if (public_st && !is_local_node(n->flags)) {
         r->public_sym_count++;
     }
     else {
@@ -3150,18 +3159,18 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
     // symbols can never be public
     switch (n->kind) {
         case SC_FUNC: {
-            if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
+            if (is_local_node(n->flags)) return;
             sc_func* fn = (sc_func*)n;
             update_id(r, &fn->id, id_space);
         } break;
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: {
-            if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
+            if (is_local_node(n->flags)) return;
             update_id(r, &((sym_var*)n)->var_id, id_space);
         } break;
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
-            if (ast_flags_get_access_mod(n->flags) < AM_PROTECTED) return;
+            if (is_local_node(n->flags)) return;
             update_id(r, &((sc_struct*)n)->id, id_space);
             adjust_body_ids(r, id_space, &((sc_struct*)n)->sb.sc.body);
         } break;
