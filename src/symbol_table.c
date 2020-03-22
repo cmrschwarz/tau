@@ -15,6 +15,10 @@
 
 symbol_table* GLOBAL_SYMTAB = NULL;
 
+static inline bool symbol_table_should_be_meta(ast_elem* owning_node)
+{
+    return owning_node->kind == STMT_PASTE_EVALUATION;
+}
 int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
     ast_elem* owning_node, ureg ppl)
@@ -25,8 +29,8 @@ int symbol_table_init(
     symbol_table* st = tmalloc(sizeof(symbol_table));
     if (!st) return ERR;
     st->pp_symtab = NULL;
-    st->decl_count = decl_count;
     if (decl_count) {
+        st->decl_count = decl_count;
         ureg table_capacity = (decl_count == 1) ? 2 : ceil_to_pow2(decl_count);
         st->hash_mask = table_capacity - 1;
         st->table = tmallocz(table_capacity * sizeof(symbol*));
@@ -37,7 +41,12 @@ int symbol_table_init(
         memset(st->table, 0, table_capacity * sizeof(symbol*));
     }
     else {
-        if (force_unique) st->decl_count = UREG_MAX;
+        if (symbol_table_should_be_meta(owning_node)) {
+            st->decl_count = UREG_MAX;
+        }
+        else {
+            st->decl_count = 0;
+        }
         st->hash_mask = 0;
         st->table = (symbol**)NULL_PTR_PTR;
     }

@@ -1239,13 +1239,14 @@ resolve_error symbol_lookup_iterator_init(
     sc_struct* struct_inst_lookup, symbol_table* looking_st,
     const char* tgt_name, bool enable_shadowing, bool deref_aliases)
 {
-    looking_st = symbol_table_skip_metatables(looking_st);
     lookup_st = symbol_table_skip_metatables(lookup_st);
+    looking_st = symbol_table_skip_metatables(looking_st);
     sc_struct* looking_struct = NULL;
     symbol_table* looking_mf;
     symbol_table* looking_mod;
     symbol_table* i = looking_st;
     while (true) {
+        assert(i && i->owning_node);
         if (!looking_struct && ast_elem_is_struct(i->owning_node)) {
             looking_struct = (sc_struct*)i->owning_node;
         }
@@ -1265,7 +1266,6 @@ resolve_error symbol_lookup_iterator_init(
             break;
         }
         i = i->parent;
-        assert(i);
     }
     sli->r = r;
     sli->first_hidden_match = NULL;
