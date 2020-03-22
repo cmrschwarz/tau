@@ -345,10 +345,11 @@ int tauc_run(int argc, char** argv)
         if (!r) {
             if (files_found) {
                 TAU_TIME_STAGE_CTX(
-                    &t, tprintf("total "),
+                    &t, ,
                     {
                         r = tauc_run_jobs(&t);
                         tauc_core_fin(&t);
+                        tprintf("total ");
                     },
                     {
                         tputs("\n");

@@ -2433,6 +2433,7 @@ parse_error parse_var_decl(
     v->pprn = NULL;
     v->type = type;
     v->osym.sym.name = ident;
+    v->osym.visible_within = NULL; // TODO: parse this
     if (!v->osym.sym.name) return PE_FATAL;
     v->osym.sym.node.flags = flags;
     *n = (ast_node*)v;
@@ -2569,6 +2570,7 @@ parse_error parse_func_decl(
     else {
         fnb->return_type = NULL;
     }
+    fnb->sc.osym.visible_within = NULL; // TODO: parse this
     PEEK(p, t);
     if (fn && t->kind == TK_SEMICOLON) {
         fn->fnb.sc.body.elements = (ast_node**)NULL_PTR_PTR;
@@ -2655,7 +2657,7 @@ parse_error parse_struct_decl(
     if (!name) return PE_FATAL;
     lx_void(&p->lx);
     PEEK(p, t);
-    symbol* s;
+    open_symbol* s;
     sc_struct_generic* sg = NULL;
     sc_struct* sp;
     if (t->kind == TK_BRACKET_OPEN) {
@@ -2663,11 +2665,11 @@ parse_error parse_struct_decl(
         if (!sg) return PE_FATAL;
         sg->instances = NULL;
         // TODO:  sg->pprn = NULL;
-        s = (symbol*)sg;
+        s = (open_symbol*)sg;
         lx_void(&p->lx);
         pe = parse_param_list(
-            p, s, &sg->generic_params, &sg->generic_param_count, true, start,
-            decl_end, "in this struct declaration");
+            p, &s->sym, &sg->generic_params, &sg->generic_param_count, true,
+            start, decl_end, "in this struct declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -2675,11 +2677,12 @@ parse_error parse_struct_decl(
         sp = alloc_perm(p, sizeof(sc_struct));
         if (!sp) return PE_FATAL;
         sp->sb.pprn = NULL;
-        s = (symbol*)sp;
+        s = (open_symbol*)sp;
     }
     ast_node_init_with_flags(
         (ast_node*)s, sg ? SC_STRUCT_GENERIC : SC_STRUCT, flags);
-    s->name = name;
+    s->sym.name = name;
+    s->visible_within = NULL; // TODO: parse this
     pe = sym_fill_srange(p, s, start, decl_end);
     if (pe) return pe;
 

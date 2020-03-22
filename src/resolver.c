@@ -1084,10 +1084,10 @@ static inline resolve_error resolver_update_ams(
 }
 
 resolve_error push_symbol_lookup_level(
-    symbol_lookup_iterator* sli, symbol_table** usings_head,
-    symbol_table** usings_end, symbol_table* extends_sc,
-    open_symbol* overloaded_sym_head, access_modifier am_start,
-    access_modifier am_end)
+    symbol_lookup_iterator* sli, symbol_table* lookup_st,
+    symbol_table** usings_head, symbol_table** usings_end,
+    symbol_table* extends_sc, open_symbol* overloaded_sym_head,
+    access_modifier am_start, access_modifier am_end)
 {
     symbol_lookup_level* sll;
     if (sli->head == NULL) {
@@ -1098,6 +1098,7 @@ resolve_error push_symbol_lookup_level(
             &sli->r->temp_stack, sizeof(symbol_lookup_level));
         if (!sll) return RE_FATAL;
     }
+    sll->lookup_st = lookup_st;
     sll->usings_head = usings_head;
     sll->usings_end = usings_end;
     sll->parent = sli->head;
@@ -1109,17 +1110,23 @@ resolve_error push_symbol_lookup_level(
     return RE_OK;
 }
 resolve_error symbol_lookup_level_run(
+    symbol_lookup_iterator* sli, symbol_table* lookup_st, symbol** res);
+resolve_error symbol_lookup_level_run_highest_ppl(
+    symbol_lookup_iterator* sli, symbol_table* lookup_st, symbol** res)
+{
+    for (ureg i = 0; i < sli->ppl; i++) {
+        if (!lookup_st->pp_symtab) break;
+        lookup_st = lookup_st->pp_symtab;
+    }
+    return symbol_lookup_level_run(sli, lookup_st, res);
+}
+resolve_error symbol_lookup_level_run(
     symbol_lookup_iterator* sli, symbol_table* lookup_st, symbol** res)
 {
     // access modifiers that would be visible to
     access_modifier am_start = AM_UNKNOWN;
     access_modifier am_end = AM_UNKNOWN;
     resolve_error re;
-    // TODO: handle all pp_sts <= ppl here
-    for (ureg i = 0; i < sli->ppl; i++) {
-        if (!lookup_st->pp_symtab) break;
-        lookup_st = lookup_st->pp_symtab;
-    }
     symbol* sym = symbol_table_lookup_raw(lookup_st, sli->hash, sli->tgt_name);
     if (sym != NULL) {
         access_modifier am = ast_flags_get_access_mod(sym->node.flags);
@@ -1145,6 +1152,7 @@ resolve_error symbol_lookup_level_run(
             sym = NULL;
         }
     }
+
     sym_import_symbol* overloaded_import_symbol = NULL;
     if (sym && sli->deref_aliases) {
         if (sym->node.kind == SYM_IMPORT_SYMBOL) {
@@ -1155,7 +1163,8 @@ resolve_error symbol_lookup_level_run(
             }
             if (is->target_st) {
                 if (sli->enable_shadowing) {
-                    return symbol_lookup_level_run(sli, is->target_st, res);
+                    return symbol_lookup_level_run_highest_ppl(
+                        sli, is->target_st, res);
                 }
                 overloaded_import_symbol = is;
                 sym = NULL;
@@ -1165,6 +1174,7 @@ resolve_error symbol_lookup_level_run(
             }
         }
     }
+
     open_symbol* overloaded_sym_head = NULL;
     if (sym && sym->node.kind == SYM_FUNC_OVERLOADED) {
         open_symbol* ols = (open_symbol*)((sym_func_overloaded*)sym)->overloads;
@@ -1185,10 +1195,12 @@ resolve_error symbol_lookup_level_run(
             if (sli->enable_shadowing) break;
         }
     }
+
     if (sym && sli->enable_shadowing) {
         *res = sym;
         return RE_OK;
     }
+
     symbol_table* extends_sc = NULL;
     if (lookup_st->owning_node && ast_elem_is_struct(lookup_st->owning_node)) {
         sc_struct* st = (sc_struct*)lookup_st->owning_node;
@@ -1204,6 +1216,7 @@ resolve_error symbol_lookup_level_run(
             extends_sc = st->sb.extends->sb.sc.body.symtab;
         }
     }
+
     symbol_table** usings_end = NULL;
     symbol_table** usings_start = NULL;
     if (lookup_st->usings) {
@@ -1214,24 +1227,46 @@ resolve_error symbol_lookup_level_run(
         usings_start = symbol_table_get_usings_start(lookup_st, am_start);
         usings_end = symbol_table_get_usings_end(lookup_st, am_end);
     }
-    if (overloaded_import_symbol) {
-        if (usings_start != usings_end || extends_sc) {
-            re = push_symbol_lookup_level(
-                sli, usings_start, usings_end, extends_sc, overloaded_sym_head,
-                am_start, am_end);
-            if (re) return re;
-        }
-        return symbol_lookup_level_run(
+
+    int responsibility_count =
+        (sym != NULL) + (overloaded_sym_head != NULL) +
+        (overloaded_import_symbol != NULL) + (usings_end != usings_start) +
+        (ptrdiff(usings_start, usings_end) > sizeof(symbol_table*)) +
+        (extends_sc != NULL) + (lookup_st->ppl > 0);
+
+    if (responsibility_count == 0) {
+        *res = NULL;
+        return RE_OK;
+    }
+
+    bool second_resp = false;
+    if (responsibility_count >= 2) {
+        second_resp = true;
+        re = push_symbol_lookup_level(
+            sli, lookup_st, usings_start, usings_end, extends_sc,
+            overloaded_sym_head, am_start, am_end);
+        if (re) return re;
+    }
+    if (sym) {
+        *res = sym;
+        return RE_OK;
+    }
+    // if overloaded_symbol_head was set than sym was set
+    if (overloaded_import_symbol) { // if this is set than sym was NULL
+        return symbol_lookup_level_run_highest_ppl(
             sli, overloaded_import_symbol->target_st, res);
     }
-    *res = sym;
-    if (!sym) return RE_OK;
-    if (overloaded_sym_head || usings_start != usings_end || extends_sc) {
-        return push_symbol_lookup_level(
-            sli, usings_start, usings_end, extends_sc, overloaded_sym_head,
-            am_start, am_end);
+    if (usings_end != usings_start) {
+        if (second_resp) sli->head->usings_head++;
+        return symbol_lookup_level_run_highest_ppl(sli, *usings_start, res);
     }
-    return RE_OK;
+    if (extends_sc) {
+        if (second_resp) sli->head->extends_sc = NULL;
+        return symbol_lookup_level_run_highest_ppl(sli, extends_sc, res);
+    }
+    // otherwise some condition above would have fired
+    assert(lookup_st->ppl > 0 && responsibility_count == 1);
+    return symbol_lookup_level_run(sli, lookup_st->parent, res);
 }
 
 resolve_error symbol_lookup_iterator_init(
@@ -1278,9 +1313,9 @@ resolve_error symbol_lookup_iterator_init(
     sli->enable_shadowing = enable_shadowing;
     sli->deref_aliases = deref_aliases;
     sli->head = NULL;
-    sli->next_lookup_st = lookup_st;
     sli->struct_inst_lookup = struct_inst_lookup;
     sli->ppl = ppl;
+    sli->next_lookup_st = lookup_st;
     return RE_OK;
 }
 static inline resolve_error symbol_lookup_level_continue(
@@ -1299,21 +1334,22 @@ static inline resolve_error symbol_lookup_level_continue(
     while (sll->usings_head != sll->usings_end) {
         symbol_table* t = *sll->usings_head;
         sll->usings_head++;
-        resolve_error re = symbol_lookup_level_run(sli, t, res);
+        resolve_error re = symbol_lookup_level_run_highest_ppl(sli, t, res);
         if (re) return re;
         if (*res) return RE_OK;
     }
-    // lookup level will be done, pop it
-    symbol_table* ext = sll->extends_sc;
-    sli->head = sll->parent;
+    if (sll->extends_sc) {
+        symbol_table* st = sll->extends_sc;
+        sll->extends_sc = NULL;
+        return symbol_lookup_level_run_highest_ppl(sli, st, res);
+    }
+    symbol_table* postpl_st =
+        (sll->lookup_st->ppl > 0) ? sll->lookup_st->parent : NULL;
     if (sll != &sli->sll_prealloc) {
         sbuffer_remove_back(&sli->r->temp_stack, sizeof(symbol_lookup_level));
     }
-    sll = sli->head;
-    if (ext) {
-        symbol_table* st = sll->extends_sc;
-        sll->extends_sc = NULL;
-        return symbol_lookup_level_run(sli, st, res);
+    if (postpl_st) {
+        return symbol_lookup_level_run(sli, postpl_st, res);
     }
     *res = NULL;
     return RE_OK;
@@ -1334,8 +1370,15 @@ symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res)
         }
         symbol_table* nls = sli->next_lookup_st;
         if (!nls) break;
-        sli->next_lookup_st = sli->struct_inst_lookup ? NULL : nls->parent;
-        re = symbol_lookup_level_run(sli, nls, &sym);
+        if (sli->struct_inst_lookup) {
+            sli->next_lookup_st = NULL;
+        }
+        else {
+            symbol_table* pls = nls;
+            while (pls->ppl > 0) pls = pls->parent;
+            sli->next_lookup_st = pls->parent;
+        }
+        re = symbol_lookup_level_run_highest_ppl(sli, nls, &sym);
         if (re) return re;
         if (sym) break;
     }

@@ -29,7 +29,7 @@ typedef enum resolve_error_e {
 
 typedef struct symbol_lookup_level {
     struct symbol_lookup_level* parent;
-    symbol_table* st;
+    symbol_table* lookup_st;
     symbol_table** usings_head;
     symbol_table** usings_end;
     symbol_table* extends_sc;
