@@ -621,21 +621,30 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     _local_value_state.assign(_private_sym_count, NOT_GENERATED);
     return lle;
 }
+// the new id might be global, but the old id will always be local
+// since a once assigned global id will never be remapped
+// we need this remapping because we need (contiguous per module) ids for
+// globals during preprocessing but don't know the final global count yet
 void LLVMBackend::remapLocalID(ureg old_id, ureg new_id)
 {
     assert(isLocalID(old_id));
     old_id -= PRIV_SYMBOL_OFFSET;
-    if (isLocalID(new_id)) {
-        new_id -= PRIV_SYMBOL_OFFSET;
-        _local_value_store[new_id] = _local_value_store[old_id];
-        _local_value_state[new_id] = _local_value_state[old_id];
-    }
-    else {
-        _global_value_store[new_id] = _local_value_store[old_id];
-        _global_value_state[new_id] = _local_value_state[old_id];
-    }
+    assert(old_id < _local_value_store.size());
+    void* val = _local_value_store[old_id];
+    ValueState state = _local_value_state[old_id];
     _local_value_store[old_id] = NULL;
     _local_value_state[old_id] = NOT_GENERATED;
+    if (isLocalID(new_id)) {
+        new_id -= PRIV_SYMBOL_OFFSET;
+        assert(new_id < _global_value_store.size());
+        _local_value_store[new_id] = val;
+        _local_value_state[new_id] = state;
+    }
+    else {
+        assert(new_id < _global_value_store.size());
+        _global_value_store[new_id] = val;
+        _global_value_state[new_id] = state;
+    }
 }
 llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
 {

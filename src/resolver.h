@@ -102,7 +102,7 @@ typedef struct resolver_s {
     u8 allow_type_loops;
     bool retracing_type_loop;
     bool generic_context;
-    // assigning ids
+    // ids distributed during declaration adding starting from PRIV_SYM_OFFSET
     ureg id_space;
     ureg public_sym_count;
     ureg private_sym_count;

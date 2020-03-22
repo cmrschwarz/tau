@@ -3217,6 +3217,8 @@ static inline void update_id(resolver* r, ureg* tgt, ureg* id_space)
     *id_space = *id_space + 1;
     llvm_backend_remap_local_id(r->backend, old, *tgt);
 }
+
+// assign public symbol with the aquired ids from global id space
 static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
 {
     // we don't need to recurse into expressions because the contained
@@ -3288,96 +3290,6 @@ resolve_error resolver_add_mf_decls(resolver* r)
     }
     return RE_OK;
 }
-resolve_error resolver_cleanup(resolver* r, ureg startid)
-{
-    if (r->module_group_constructor) {
-        aseglist_add(&r->tc->t->module_ctors, r->module_group_constructor);
-    }
-    if (r->module_group_destructor) {
-        /* pp_resolve_node* pprn = pp_resolve_node_create(
-             r, (ast_node*)r->module_group_destructor, NULL, false, false,
-         0); if (!pprn) return RE_FATAL; pprn->call_when_done = true;
-         ptrlist_append(&r->pp_resolve_nodes_ready, pprn);
-         resolver_run_pp_resolve_nodes(r);
-         */
-        aseglist_add(&r->tc->t->module_dtors, r->module_group_destructor);
-    }
-    free_pprns(r);
-
-    llvm_error lle;
-    lle = llvm_backend_reserve_symbols(
-        r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
-        startid + r->public_sym_count);
-    if (lle) return RE_ERROR;
-    int res = 0;
-    ureg endid = startid;
-    for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
-        aseglist_iterator it;
-        aseglist_iterator_begin(&it, &(**n).module_frames);
-        for (module_frame* mf = aseglist_iterator_next(&it); mf;
-             mf = aseglist_iterator_next(&it)) {
-            adjust_body_ids(r, &endid, &mf->body);
-        }
-        res |= mdg_node_resolved(*n, r->tc);
-    }
-    if (res) return RE_FATAL;
-    // check for root module
-    mdg_node* root = r->tc->t->mdg.root_node;
-    if (*r->mdgs_begin == root) {
-        symbol* mainfn;
-        symbol* startfn;
-        symbol* amb;
-        resolve_error re = resolver_lookup_single(
-            r, root->symtab, 0, NULL, root->symtab, COND_KW_MAIN, &mainfn,
-            &amb);
-        if (re) return re;
-        if (amb) assert(false); // TODO: report ambiguity
-        re = resolver_lookup_single(
-            r, root->symtab, 0, NULL, root->symtab, COND_KW_START, &startfn,
-            &amb);
-        if (re) return re;
-        if (amb) assert(false); // TODO: report ambiguity
-        if (!mainfn || !startfn) {
-            aseglist_iterator mfs;
-            aseglist_iterator_begin(&mfs, &root->module_frames);
-            for (module_frame* mf = aseglist_iterator_next(&mfs); mf;
-                 mf = aseglist_iterator_next(&mfs)) {
-                if (!mainfn) {
-                    re = resolver_lookup_single(
-                        r, mf->body.symtab, 0, NULL, root->symtab, COND_KW_MAIN,
-                        &mainfn, &amb);
-                    if (re) return re;
-                    if (amb) assert(false); // TODO: report ambiguity
-                }
-                if (!startfn) {
-                    re = resolver_lookup_single(
-                        r, mf->body.symtab, 0, NULL, root->symtab,
-                        COND_KW_START, &startfn, &amb);
-                    if (re) return re;
-                    if (amb) assert(false); // TODO: report ambiguity
-                }
-                if (mainfn && startfn) break;
-            }
-        }
-        if (!mainfn && !startfn) {
-            // TODO: maybe create a separate error kind for this?
-            error_log_report_critical_failiure(
-                r->tc->err_log,
-                "no main or _start function found in root module");
-            return RE_ERROR;
-        }
-        assert(!mainfn || mainfn->node.kind == SC_FUNC);
-        assert(!startfn || startfn->node.kind == SC_FUNC);
-        lle = llvm_backend_generate_entrypoint(
-            r->backend, (sc_func*)mainfn, (sc_func*)startfn,
-            &r->tc->t->module_ctors, &r->tc->t->module_dtors, startid, endid,
-            r->private_sym_count);
-        if (lle) return RE_ERROR;
-    }
-
-    return RE_OK;
-}
-
 // this stuff is just for debugging purposes
 void print_pprnlist(resolver* r, sbuffer* buff, char* msg)
 {
@@ -3682,8 +3594,7 @@ void free_pprns(resolver* r)
     free_pprnlist(r, &r->pp_resolve_nodes_ready);
     free_pprnlist(r, &r->pp_resolve_nodes_waiting);
 }
-int resolver_resolve(
-    resolver* r, mdg_node** start, mdg_node** end, ureg* startid)
+int resolver_resolve(resolver* r)
 {
     r->generic_context = false;
     r->curr_pp_node = NULL;
@@ -3695,8 +3606,6 @@ int resolver_resolve(
     r->public_sym_count = 0;
     r->private_sym_count = 0;
     r->id_space = PRIV_SYMBOL_OFFSET;
-    r->mdgs_begin = start;
-    r->mdgs_end = end;
     r->module_group_constructor = NULL;
     r->module_group_destructor = NULL;
     resolve_error re;
@@ -3708,18 +3617,100 @@ int resolver_resolve(
     if (re) return re;
     re = resolver_handle_post_pp(r);
     if (re) return re;
-    *startid = atomic_ureg_add(&r->tc->t->node_ids, r->public_sym_count);
-    re = resolver_cleanup(r, *startid);
-    if (re) return re;
-
+    free_pprns(r);
     return RE_OK;
 }
-int resolver_emit(resolver* r, ureg startid, llvm_module** module)
+int resolver_emit(resolver* r, llvm_module** module)
 {
+    // add module ctors and dtors
+    if (r->module_group_constructor) {
+        aseglist_add(&r->tc->t->module_ctors, r->module_group_constructor);
+    }
+    if (r->module_group_destructor) {
+        // TODO: figure out when to run these
+        aseglist_add(&r->tc->t->module_dtors, r->module_group_destructor);
+    }
+
+    // reserve symbols and claim ids
+    ureg sym_count = r->private_sym_count + r->public_sym_count;
+    ureg glob_id_start =
+        atomic_ureg_add(&r->tc->t->node_ids, r->public_sym_count);
+    llvm_error lle = llvm_backend_reserve_symbols(
+        r->backend, sym_count, glob_id_start + r->public_sym_count);
+    if (lle) return RE_ERROR;
+
+    // mark nodes as resolved and remap ids
+    int res = 0;
+    ureg glob_id_head = glob_id_start;
+    for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
+        aseglist_iterator it;
+        aseglist_iterator_begin(&it, &(**n).module_frames);
+        for (module_frame* mf = aseglist_iterator_next(&it); mf;
+             mf = aseglist_iterator_next(&it)) {
+            adjust_body_ids(r, &glob_id_head, &mf->body);
+        }
+        res |= mdg_node_resolved(*n, r->tc);
+    }
+    if (res) return RE_FATAL;
+    assert(glob_id_head - glob_id_start == r->public_sym_count);
+
+    // gen entrypoint in case if we are the root module
+    mdg_node* root = r->tc->t->mdg.root_node;
+    if (*r->mdgs_begin == root) {
+        symbol* mainfn;
+        symbol* startfn;
+        symbol* amb;
+        resolve_error re = resolver_lookup_single(
+            r, root->symtab, 0, NULL, root->symtab, COND_KW_MAIN, &mainfn,
+            &amb);
+        if (re) return re;
+        if (amb) assert(false); // TODO: report ambiguity
+        re = resolver_lookup_single(
+            r, root->symtab, 0, NULL, root->symtab, COND_KW_START, &startfn,
+            &amb);
+        if (re) return re;
+        if (amb) assert(false); // TODO: report ambiguity
+        if (!mainfn || !startfn) {
+            aseglist_iterator mfs;
+            aseglist_iterator_begin(&mfs, &root->module_frames);
+            for (module_frame* mf = aseglist_iterator_next(&mfs); mf;
+                 mf = aseglist_iterator_next(&mfs)) {
+                if (!mainfn) {
+                    re = resolver_lookup_single(
+                        r, mf->body.symtab, 0, NULL, root->symtab, COND_KW_MAIN,
+                        &mainfn, &amb);
+                    if (re) return re;
+                    if (amb) assert(false); // TODO: report ambiguity
+                }
+                if (!startfn) {
+                    re = resolver_lookup_single(
+                        r, mf->body.symtab, 0, NULL, root->symtab,
+                        COND_KW_START, &startfn, &amb);
+                    if (re) return re;
+                    if (amb) assert(false); // TODO: report ambiguity
+                }
+                if (mainfn && startfn) break;
+            }
+        }
+        if (!mainfn && !startfn) {
+            // TODO: maybe create a separate error kind for this?
+            error_log_report_critical_failiure(
+                r->tc->err_log,
+                "no main or _start function found in root module");
+            return RE_ERROR;
+        }
+        assert(!mainfn || mainfn->node.kind == SC_FUNC);
+        assert(!startfn || startfn->node.kind == SC_FUNC);
+        lle = llvm_backend_generate_entrypoint(
+            r->backend, (sc_func*)mainfn, (sc_func*)startfn,
+            &r->tc->t->module_ctors, &r->tc->t->module_dtors, glob_id_start,
+            glob_id_head, sym_count);
+        if (lle) return RE_ERROR;
+    }
+
     if (tauc_success_so_far(r->tc->t) && r->tc->t->needs_emit_stage) {
-        ureg endid = startid + r->public_sym_count;
         llvm_error lle = llvm_backend_emit_module(
-            r->backend, startid, endid, r->private_sym_count);
+            r->backend, glob_id_start, glob_id_head, r->private_sym_count);
         if (lle == LLE_FATAL) return RE_FATAL;
         if (lle) return RE_ERROR;
     }
@@ -3745,18 +3736,19 @@ int resolver_emit(resolver* r, ureg startid, llvm_module** module)
 int resolver_resolve_and_emit(
     resolver* r, mdg_node** start, mdg_node** end, llvm_module** module)
 {
-    ureg startid;
+    r->mdgs_begin = start;
+    r->mdgs_end = end;
     int res;
     res = llvm_backend_init_module(r->backend, start, end, module);
     if (res) return ERR;
-    TAU_TIME_STAGE_CTX(r->tc->t, print_debug_info(r);
-                       , res = resolver_resolve(r, start, end, &startid);
-                       , tflush(););
+
+    TAU_TIME_STAGE_CTX(r->tc->t, print_debug_info(r), res = resolver_resolve(r);
+                       , tflush());
     if (res) {
         free_pprns(r);
         return ERR;
     }
-    return resolver_emit(r, startid, module);
+    return resolver_emit(r, module);
 }
 int resolver_partial_fin(resolver* r, int i, int res)
 {

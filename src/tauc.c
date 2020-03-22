@@ -253,6 +253,9 @@ int handle_cmd_args(
         else if (!strcmp(arg, "--debugbreak")) {
             t->trap_on_error = true;
         }
+        else if (!strcmp(arg, "--timings")) {
+            t->verbosity_flags |= VERBOSITY_FLAGS_TIME_STAGES;
+        }
 #if DEBUG
         else if (!strcmp(arg, "--run-unit-tests")) {
             r = run_unit_tests(argc, argv);
