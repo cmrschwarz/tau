@@ -293,8 +293,12 @@ struct mdg_node_s;
 typedef struct sym_import_symbol_s {
     open_symbol osym;
     // PERF: this member is kinda uneccessary since the group already knows,
-    // but this connection gets lost during the insertion into tht target st
+    // but this connection gets lost during the insertion into the target st
     sym_import_group* import_group;
+    // for overloaded symbols, we can't resolve this to a single target symbol
+    // therefore we keep the name and store the st to start overload lookup
+    // for non overlodable symbols (vars, etc.) this is NULL
+    symbol_table* target_st;
     union {
         char* name;
         symbol* sym;

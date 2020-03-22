@@ -36,9 +36,8 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress);
 resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn);
 resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn);
 void free_pprns(resolver* r);
-static inline resolve_error resolve_import_symbol(
-    resolver* r, sym_import_symbol* is, symbol_table* st, ureg ppl,
-    ast_elem** value, ast_elem** ctype);
+static inline resolve_error
+resolve_import_symbol(resolver* r, sym_import_symbol* is);
 // must be a macro so value and ctype become lazily evaluated
 #define RETURN_RESOLVED(pvalue, pctype, value, ctype)                          \
     do {                                                                       \
@@ -1146,6 +1145,26 @@ resolve_error symbol_lookup_level_run(
             sym = NULL;
         }
     }
+    sym_import_symbol* overloaded_import_symbol = NULL;
+    if (sym && sli->deref_aliases) {
+        if (sym->node.kind == SYM_IMPORT_SYMBOL) {
+            sym_import_symbol* is = (sym_import_symbol*)sym;
+            if (!ast_flags_get_resolved(sym->node.flags)) {
+                re = resolve_import_symbol(sli->r, (sym_import_symbol*)sym);
+                if (re) return re;
+            }
+            if (is->target_st) {
+                if (sli->enable_shadowing) {
+                    return symbol_lookup_level_run(sli, is->target_st, res);
+                }
+                overloaded_import_symbol = is;
+                sym = NULL;
+            }
+            else {
+                sym = is->target.sym;
+            }
+        }
+    }
     open_symbol* overloaded_sym_head = NULL;
     if (sym && sym->node.kind == SYM_FUNC_OVERLOADED) {
         open_symbol* ols = (open_symbol*)((sym_func_overloaded*)sym)->overloads;
@@ -1194,6 +1213,16 @@ resolve_error symbol_lookup_level_run(
         if (re) return re;
         usings_start = symbol_table_get_usings_start(lookup_st, am_start);
         usings_end = symbol_table_get_usings_end(lookup_st, am_end);
+    }
+    if (overloaded_import_symbol) {
+        if (usings_start != usings_end || extends_sc) {
+            re = push_symbol_lookup_level(
+                sli, usings_start, usings_end, extends_sc, overloaded_sym_head,
+                am_start, am_end);
+            if (re) return re;
+        }
+        return symbol_lookup_level_run(
+            sli, overloaded_import_symbol->target_st, res);
     }
     *res = sym;
     if (!sym) return RE_OK;
@@ -1257,23 +1286,22 @@ resolve_error symbol_lookup_iterator_init(
 static inline resolve_error symbol_lookup_level_continue(
     symbol_lookup_iterator* sli, symbol_lookup_level* sll, symbol** res)
 {
-    while (sll->usings_head != sll->usings_end) {
-        symbol_table* t = *sll->usings_head;
-        sll->usings_head++;
-        resolve_error re = symbol_lookup_level_run(sli, t, res);
-        if (re) return re;
-        if (*res) return RE_OK;
-    }
     while (sll->overloaded_sym_head) {
         open_symbol* s = sll->overloaded_sym_head;
-        sll->overloaded_sym_head =
-            (open_symbol*)sll->overloaded_sym_head->sym.next;
+        sll->overloaded_sym_head = (open_symbol*)s->sym.next;
         access_modifier am = ast_flags_get_access_mod(s->sym.node.flags);
         if (am < sll->am_start || am > sll->am_end) continue;
         if (check_visible_within(sli->looking_st, s->visible_within)) {
             *res = (symbol*)s;
             return RE_OK;
         }
+    }
+    while (sll->usings_head != sll->usings_end) {
+        symbol_table* t = *sll->usings_head;
+        sll->usings_head++;
+        resolve_error re = symbol_lookup_level_run(sli, t, res);
+        if (re) return re;
+        if (*res) return RE_OK;
     }
     // lookup level will be done, pop it
     symbol_table* ext = sll->extends_sc;
@@ -1296,37 +1324,20 @@ symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res)
     resolve_error re;
     symbol* sym = NULL;
     while (true) {
-        while (sli->head) {
-            re = symbol_lookup_level_continue(sli, sli->head, &sym);
-            if (re) return re;
+        if (sli->head) {
+            while (sli->head) {
+                re = symbol_lookup_level_continue(sli, sli->head, &sym);
+                if (re) return re;
+                if (sym) break;
+            }
             if (sym) break;
         }
-        if (sym) break;
         symbol_table* nls = sli->next_lookup_st;
         if (!nls) break;
-        symbol_table* par = nls->parent;
-        if (sli->struct_inst_lookup) {
-            par = NULL;
-        }
-        // TODO: do we need to handle ppls here?
-        sli->next_lookup_st = par;
+        sli->next_lookup_st = sli->struct_inst_lookup ? NULL : nls->parent;
         re = symbol_lookup_level_run(sli, nls, &sym);
         if (re) return re;
         if (sym) break;
-    }
-    if (sym && sli->deref_aliases) {
-        while (sym->node.kind == SYM_IMPORT_SYMBOL) {
-            if (ast_flags_get_resolved(sym->node.flags)) {
-                sym = ((sym_import_symbol*)sym)->target.sym;
-            }
-            else {
-                re = resolve_import_symbol(
-                    sli->r, (sym_import_symbol*)sym, sym->declaring_st,
-                    sym->declaring_st->ppl, (ast_elem**)&sym, NULL);
-                if (re) return re;
-            }
-            assert(ast_elem_is_symbol((ast_elem*)sym));
-        }
     }
     *res = sym;
     return RE_OK;
@@ -2300,39 +2311,69 @@ static inline resolve_error resolve_expr_block(
     assert(!value);
     RETURN_RESOLVED(value, ctype, NULL, b->ctype);
 }
-static inline resolve_error resolve_import_symbol(
-    resolver* r, sym_import_symbol* is, symbol_table* st, ureg ppl,
-    ast_elem** value, ast_elem** ctype)
+static inline bool is_symbol_kind_overloadable(ast_node_kind k)
 {
+    switch (k) {
+        case SC_FUNC:
+        case SC_FUNC_GENERIC:
+        case SC_STRUCT:
+        case SC_STRUCT_GENERIC:
+        case SC_MACRO: return true;
+        default: return false;
+    }
+}
+static inline resolve_error
+resolve_import_symbol(resolver* r, sym_import_symbol* is)
+{
+    ast_flags* flags = &is->osym.sym.node.flags;
+    if (ast_flags_get_resolved(*flags)) return RE_OK;
+    if (ast_flags_get_resolving(*flags)) {
+        // TOOD: report loop
+        assert(false);
+    }
+    ast_flags_set_resolving(flags);
     resolve_error re;
+    symbol_table* decl_st = is->osym.sym.declaring_st;
+    symbol_table* tgt_st = is->import_group->parent_mdgn->symtab;
     if (is->import_group->osym.sym.name == NULL) {
         re = resolve_ast_node_raw(
-            r, (ast_node*)is->import_group, st, ppl, NULL, NULL);
+            r, (ast_node*)is->import_group, decl_st, decl_st->ppl, NULL, NULL);
         if (re) return re;
     }
     symbol* sym;
     symbol* amb;
     re = resolver_lookup_single(
-        r, is->import_group->parent_mdgn->symtab, ppl, NULL, st,
-        is->target.name, &sym, &amb);
+        r, tgt_st, decl_st->ppl, NULL, decl_st, is->target.name, &sym, &amb);
     if (re) return re;
-    if (!sym) return report_unknown_symbol(r, (ast_node*)is, st);
-    if (amb) {
-        assert(false); // TODO: report ambiguity
+    if (!sym) return report_unknown_symbol(r, (ast_node*)is, decl_st);
+    if (is_symbol_kind_overloadable(sym->node.kind)) {
+        is->target_st = tgt_st;
     }
-    // change the declaring st fom the group to the actual one
-    is->osym.sym.declaring_st = st;
-    re = resolve_ast_node(
-        r, (ast_node*)sym, st, ppl, (ast_elem**)&is->target.sym, NULL);
-    assert(ast_elem_is_symbol((ast_elem*)is->target.sym));
-    ast_flags_set_resolved(&is->osym.sym.node.flags);
-    RETURN_RESOLVED(value, ctype, is->target.sym, NULL);
+    else {
+        if (amb) {
+            assert(false); // TODO: report ambiguity
+        }
+        if (sym->node.kind == SYM_IMPORT_SYMBOL) {
+            sym_import_symbol* tgt_is = (sym_import_symbol*)is;
+            re = resolve_import_symbol(r, tgt_is);
+            if (re) return re;
+            is->target = tgt_is->target;
+            is->target_st = tgt_is->target_st;
+        }
+        else {
+            is->target_st = NULL;
+            is->target.sym = sym;
+        }
+    }
+    ast_flags_set_resolved(flags);
+    return RE_OK;
 }
 static inline resolve_error resolve_ast_node_raw(
     resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
     ast_elem** ctype)
 {
     if (!n) {
+        // TODO: investigate where we need this
         RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
     }
     if (ast_elem_is_module_frame((ast_elem*)n)) {
@@ -2454,7 +2495,7 @@ static inline resolve_error resolve_ast_node_raw(
             return resolve_scoped_identifier(r, esa, st, ppl, value, ctype);
         }
         case SC_STRUCT_GENERIC: {
-            sc_struct_generic* sg = (sc_struct_generic*)n;
+            // sc_struct_generic* sg = (sc_struct_generic*)n;
             if (!resolved) ast_flags_set_resolved(&n->flags);
             // TODO: handle scope escaped pp exprs
             RETURN_RESOLVED(value, ctype, n, GENERIC_TYPE_ELEM);
@@ -2521,14 +2562,6 @@ static inline resolve_error resolve_ast_node_raw(
                 }
             }
             RETURN_RESOLVED(value, ctype, n, NULL);
-        }
-        case SYM_IMPORT_SYMBOL: {
-            sym_import_symbol* is = (sym_import_symbol*)n;
-            assert(!ctype);
-            if (resolved) {
-                RETURN_RESOLVED(value, ctype, is->target.sym, NULL);
-            }
-            return resolve_import_symbol(r, is, st, ppl, value, ctype);
         }
         case STMT_USING:
         case SYM_NAMED_USING:
