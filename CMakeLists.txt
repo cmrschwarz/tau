@@ -6,6 +6,7 @@ set(TAUC_C_SRCS
     ./src/ast_flags.c
     ./src/parser.c
     ./src/resolver.c
+    ./src/symbol_lookup.c
     ./src/symbol_table.c
     ./src/utils/dbuffer.c
     ./src/utils/panic.c
