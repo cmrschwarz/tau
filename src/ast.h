@@ -18,7 +18,7 @@ typedef struct mdg_node_s mdg_node;
 typedef struct pp_resolve_node_s pp_resolve_node;
 typedef struct src_file_s src_file;
 typedef struct file_map_head_s file_map_head;
-typedef struct type_array_s type_array;
+typedef struct type_slice_s type_slice;
 typedef struct sc_func_s sc_func;
 
 typedef enum PACK_ENUM ast_node_kind_e {
@@ -100,13 +100,14 @@ typedef enum PACK_ENUM ast_node_kind_e {
     EXPR_OP_UNARY,
     EXPR_OP_BINARY,
     EXPR_OP_INFIX_FUNC,
-    EXPR_ARRAY_DECL,
-    EXPR_SLICE_DECL,
-    EXPR_LAST_ID = EXPR_SLICE_DECL,
+    EXPR_ARRAY_TYPE,
+    EXPR_SLICE_TYPE,
+    EXPR_LAST_ID = EXPR_SLICE_TYPE,
 
     TYPE_POINTER,
     TYPE_FIRST_ID = TYPE_POINTER,
     TYPE_ARRAY,
+    TYPE_SLICE,
     TYPE_TUPLE,
     TYPE_LAST_ID = TYPE_TUPLE,
 
@@ -165,7 +166,7 @@ typedef enum PACK_ENUM operator_kind_e {
 
     // unary ops
     OP_PP, // only used for precedence, has it's own expr_pp node
-    OP_CONST,
+    // THINK: maybe add OP_POINTER_TO for once we know after resolution?
     OP_DEREF,
     OP_ADDRESS_OF,
     OP_RREF_OF,
@@ -589,19 +590,16 @@ typedef struct expr_op_binary_s {
     ast_elem* op;
 } expr_op_binary;
 
-// TODO
-typedef struct array_decl_s {
+typedef struct expr_slice_type_s {
     ast_node node;
-    ast_node* length_spec; // TODO: NULL in case of [-]
     ast_node* base_type;
-    ast_elem* ctype;
-} array_decl;
+    type_slice* ctype;
+} expr_slice_type;
 
-// TODO
-typedef struct slice_decl_s {
-    ast_node node;
-    ast_node* base_type;
-} slice_decl;
+typedef struct expr_array_type_s {
+    expr_slice_type slice_type;
+    ast_node* length_spec; // NULL in case of [_]
+} expr_array_type;
 
 // TODO
 typedef struct expr_op_infix_func_s {
@@ -689,20 +687,9 @@ typedef struct expr_array_s {
     ast_node node;
     ast_node** elements;
     ureg elem_count;
-    array_decl* explicit_decl;
-    type_array* ctype;
+    expr_slice_type* explicit_decl; // slice or array decl or NULL if implicit
+    type_slice* ctype; // either slice or array
 } expr_array;
-
-typedef struct expr_type_array_s {
-    ast_node node;
-    ast_node* inside;
-    ast_node* rhs;
-} expr_type_array;
-
-typedef struct expr_type_slice_s {
-    ast_node node;
-    ast_node* rhs;
-} expr_type_slice;
 
 typedef struct expr_lambda_s {
     ast_node node;
@@ -740,16 +727,20 @@ typedef struct type_pointer_s {
         ast_node_kind kind;
         ast_elem elem;
     };
-    bool rvalue;
     ast_elem* base;
+    bool rvalue;
 } type_pointer;
 
-typedef struct type_array_s {
+typedef struct type_slice_s {
     union {
         ast_node_kind kind;
         ast_elem elem;
     };
     ast_elem* ctype_members;
+} type_slice;
+
+typedef struct type_array_s {
+    type_slice slice_type;
     ureg length;
 } type_array;
 
@@ -779,6 +770,7 @@ bool ast_elem_is_module_frame(ast_elem* s);
 bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
 bool ast_elem_is_expr(ast_elem* s);
+bool ast_elem_is_type_slice(ast_elem* s);
 bool ast_elem_is_stmt(ast_elem* s);
 bool ast_elem_is_expr_block_base(ast_elem* n);
 bool ast_elem_is_paste_evaluation(ast_elem* s);

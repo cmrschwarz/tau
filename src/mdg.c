@@ -258,10 +258,14 @@ static void free_astn_symtabs(ast_node* n)
             stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
             free_body_symtabs(n, &spe->body);
         } break;
-        case EXPR_ARRAY_DECL: {
-            array_decl* ad = (array_decl*)n;
-            free_astn_symtabs(ad->length_spec);
-            free_astn_symtabs(ad->base_type);
+        case EXPR_ARRAY_TYPE: {
+            expr_array_type* eat = (expr_array_type*)n;
+            free_astn_symtabs(eat->length_spec);
+            free_astn_symtabs(eat->slice_type.base_type);
+        } break;
+        case EXPR_SLICE_TYPE: {
+            expr_slice_type* est = (expr_slice_type*)n;
+            free_astn_symtabs(est->base_type);
         } break;
         case EXPR_ARRAY: {
             expr_array* ea = (expr_array*)n;

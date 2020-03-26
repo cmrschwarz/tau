@@ -34,6 +34,7 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_ERROR_OFFSET 7
 
 // shared bit since applied to different nodes
+#define ASTF_TYPE_OPERATOR_OFFSET 8
 #define ASTF_RELATIVE_IMPORT_OFFSET 8
 #define ASTF_EXTERN_FUNC_OFFSET 8
 #define ASTF_COMPUND_DECL_OFFSET 8
@@ -75,6 +76,9 @@ bool ast_flags_get_virtual(ast_flags f);
 
 void ast_flags_set_static(ast_flags* f);
 bool ast_flags_get_static(ast_flags f);
+
+void ast_flags_set_type_operator(ast_flags* f);
+bool ast_flags_get_type_operator(ast_flags f);
 
 void ast_flags_set_compound_decl(ast_flags* f);
 bool ast_flags_get_compound_decl(ast_flags f);

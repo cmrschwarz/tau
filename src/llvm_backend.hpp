@@ -148,6 +148,10 @@ struct LLVMBackend {
     // we have to avoid pointer invalidation on resize, therefore deque
     std::deque<ControlFlowContext> _control_flow_ctx;
     llvm::Type* _primitive_types[PRIMITIVE_COUNT];
+    llvm::StructType* _slice_struct;
+    ureg _slice_struct_size;
+    ureg _slice_struct_align;
+
     llvm::Module* _module;
     llvm::TargetMachine* _target_machine;
     llvm::DataLayout* _data_layout;
@@ -191,11 +195,13 @@ struct LLVMBackend {
     const char* nameMangle(sc_func_base* func);
 
     void setPPResolveNode(ureg id, pp_resolve_node* pprn);
-    void buildPasteHelpers();
+
     void resetAfterEmit();
 
   private:
-    void addPrimitives();
+    void setupPasteHelpers();
+    void setupPrimitives();
+    void setupSliceStruct();
 
   private:
     bool isIDInModule(ureg id);
@@ -206,6 +212,8 @@ struct LLVMBackend {
     llvm_error genSpecialFunc(const char* name, llvm::Function** func);
 
     llvm_error genSpecialCall(sc_func* fn);
+
+    llvm::Value* arrayToSlice(llvm::Constant* arr, ureg elem_count);
 
   private:
     ControlFlowContext* getTartetCFC(ast_node* target);

@@ -62,7 +62,6 @@ static const unsigned char op_precedence[] = {
     [OP_DEREF] = 14,
     [OP_ADDRESS_OF] = 14,
     [OP_ESCAPE_SCOPE] = 14,
-    [OP_CONST] = 14,
     [OP_PP] = 14,
 
     [OP_BITWISE_AND] = 13,
@@ -232,7 +231,6 @@ static inline operator_kind token_to_prefix_unary_op(token* t)
         case TK_DOLLAR: return OP_RREF_OF;
         case TK_DOUBLE_PLUS: return OP_PRE_INCREMENT;
         case TK_DOUBLE_MINUS: return OP_PRE_DECREMENT;
-        case TK_KW_CONST: return OP_CONST;
         default: return OP_NOOP;
     }
 }
@@ -851,48 +849,105 @@ parse_error parse_expr_node_list(
     if (!*tgt) return PE_FATAL;
     return PE_OK;
 }
-static inline parse_error parse_array_or_slice_decl(parser* p, ast_node** ex)
+static inline parse_error
+parse_array_or_slice(parser* p, ast_node** ex, ureg prec)
 {
     token* t = lx_aquire(&p->lx);
     ureg t_start = t->start;
     ureg t_end = t->end;
     lx_void(&p->lx);
     PEEK(p, t);
+    ast_node* arr_len;
+    parse_error pe = PE_OK;
     if (t->kind == TK_BRACKET_CLOSE) {
-        // TODO: parse as slice
-        assert(false);
-        return PE_OK;
+        arr_len = NULL;
     }
-    array_decl* arr = alloc_perm(p, sizeof(array_decl));
-    if (!arr) return PE_FATAL;
-    ast_node_init((ast_node*)arr, EXPR_ARRAY_DECL);
-    // TODO: [-]
-    parse_error pe = parse_expression(p, &arr->length_spec);
-    if (pe != PE_EOEX) {
-        if (pe) return pe;
+    else if (t->kind == TK_STRING && string_eq_cstr(t->str, "_")) {
+        arr_len = (ast_node*)NULL_PTR_PTR;
+        lx_void(&p->lx);
+        PEEK(p, t);
     }
-    PEEK(p, t);
+    else {
+        pe = parse_expression(p, &arr_len);
+        if (pe && pe != PE_EOEX) return pe;
+        PEEK(p, t);
+    }
     if (pe == PE_EOEX || t->kind != TK_BRACKET_CLOSE) {
         parser_error_2a(
             p, "array brackets missmatch", t->start, t->end,
-            "expected ']' to end array declaration", t_start, t_end,
-            "array declaration started here");
+            "expected ']' to end array bounds", t_start, t_end,
+            "array type expression started here");
         return PE_ERROR;
     }
-    if (ast_node_fill_srange(p, &arr->node, t_start, t->end)) return PE_FATAL;
     lx_void(&p->lx);
-
-    pe = parse_expression(p, &arr->base_type);
+    PEEK(p, t);
+    bool const_arr = false;
+    if (t->kind == TK_KW_CONST) {
+        const_arr = true;
+        lx_void(&p->lx);
+    }
+    ast_node* base_expr;
+    bool dmbc = p->disable_macro_body_call;
+    p->disable_macro_body_call = true;
+    pe = parse_expression_of_prec(p, &base_expr, prec);
+    p->disable_macro_body_call = dmbc;
     if (pe == PE_EOEX) {
         PEEK(p, t);
         parser_error_2a(
-            p, "invalid array declaration", t->start, t->end,
+            p, "invalid array syntax", t->start, t->end,
             "expected array base type expression", t_start, t_end,
             "array declaration started here");
         return PE_ERROR;
     }
     if (pe) return pe;
-    *ex = (ast_node*)arr;
+    ureg type_expr_end;
+    ast_node_get_bounds(base_expr, NULL, &type_expr_end); // PERF: :(
+    expr_slice_type* ste;
+    if (!arr_len) {
+        ste = alloc_perm(p, sizeof(expr_slice_type));
+        if (!ste) return PE_FATAL;
+        ast_node_init(&ste->node, EXPR_SLICE_TYPE);
+    }
+    else {
+        expr_array_type* arr = alloc_perm(p, sizeof(expr_array_type));
+        if (!arr) return PE_FATAL;
+        ste = (expr_slice_type*)arr;
+        ast_node_init((ast_node*)arr, EXPR_ARRAY_TYPE);
+        arr->length_spec = ((void**)arr_len == NULL_PTR_PTR) ? NULL : arr_len;
+    }
+    if (const_arr) ast_flags_set_const(&ste->node.flags);
+    ste->base_type = base_expr;
+    if (ast_node_fill_srange(p, &ste->node, t_start, t->end)) {
+        return PE_FATAL;
+    }
+    PEEK(p, t);
+    if (t->kind != TK_BRACE_OPEN) {
+        *ex = (ast_node*)ste;
+        return PE_OK;
+    }
+    lx_void(&p->lx);
+    ast_node** elems = NULL;
+    ureg elem_count;
+    pe = parse_expr_node_list(
+        p, NULL, &elems, &elem_count, "array", TK_BRACE_CLOSE);
+    if (pe) return pe;
+    t = lx_consume(&p->lx);
+    if (!t) return PE_LX_ERROR;
+    if (t->kind != TK_BRACE_CLOSE) {
+        parser_error_2a(
+            p, "array brace missmatch", t->start, t->end,
+            "expected '}' to end array expression", t_start, t_end,
+            "array declaration started here");
+        return PE_ERROR;
+    }
+    expr_array* ea = alloc_perm(p, sizeof(expr_array));
+    if (!ea) return PE_FATAL;
+    ea->elem_count = elem_count;
+    ea->elements = elems;
+    ea->explicit_decl = ste;
+    ast_node_init(&ea->node, EXPR_ARRAY);
+    ast_node_fill_srange(p, &ea->node, t_start, t->end);
+    *ex = (ast_node*)ea;
     return PE_OK;
 }
 static inline parse_error parse_tuple_after_first_comma(
@@ -1259,13 +1314,20 @@ static inline parse_error parse_paren_group_or_tuple_or_compound_decl(
     return pe;
 }
 static inline parse_error
-parse_prefix_unary_op(parser* p, ast_node_kind op, ast_node** ex)
+parse_prefix_unary_op(parser* p, operator_kind op, ast_node** ex)
 {
     token* t = lx_aquire(&p->lx);
     expr_op_unary* ou = (expr_op_unary*)alloc_perm(p, sizeof(expr_op_unary));
     if (!ou) return PE_FATAL;
     if (ast_node_fill_srange(p, &ou->node, t->start, t->end)) return PE_FATAL;
     lx_void(&p->lx);
+    if (op == OP_DEREF) {
+        PEEK(p, t);
+        if (t->kind == TK_KW_CONST) {
+            ast_flags_set_const(&ou->node.flags);
+            lx_void(&p->lx);
+        }
+    }
     ast_node_init_with_op((ast_node*)ou, EXPR_OP_UNARY, op);
     parse_error pe = parse_expression_of_prec(
         p, &ou->child, op_precedence[op] + is_left_associative(op));
@@ -1750,14 +1812,14 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     *tgt = (ast_node*)sp;
     return pe;
 }
-static inline parse_error parse_value_expr(parser* p, ast_node** ex)
+static inline parse_error parse_value_expr(parser* p, ast_node** ex, ureg prec)
 {
     token* t;
     PEEK(p, t);
     switch (t->kind) {
         case TK_PAREN_OPEN: return parse_paren_group_or_tuple(p, t, ex);
 
-        case TK_BRACKET_OPEN: return parse_array_or_slice_decl(p, ex);
+        case TK_BRACKET_OPEN: return parse_array_or_slice(p, ex, prec);
 
         case TK_BRACE_OPEN: return parse_expr_block_or_array(p, ex);
 
@@ -2068,7 +2130,7 @@ parse_error parse_expression_of_prec(parser* p, ast_node** ex, ureg prec)
         if (pe) return pe;
     }
     else {
-        pe = parse_value_expr(p, ex);
+        pe = parse_value_expr(p, ex, prec);
         if (pe) return pe;
     }
     return parse_expression_of_prec_post_value(p, ex, prec);
@@ -2964,7 +3026,7 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
             pe = parse_expression_of_prec_post_value(p, &ex, OP_PREC_BASELINE);
         }
         else {
-            pe = parse_value_expr(p, &ex);
+            pe = parse_value_expr(p, &ex, OP_PREC_BASELINE);
             if (pe) return pe;
             if (!ast_node_may_drop_semicolon(ex)) {
                 pe = parse_expression_of_prec_post_value(

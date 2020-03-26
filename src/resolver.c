@@ -835,8 +835,8 @@ static inline resolve_error parse_int_literal(
         srl.smap, srl.start, srl.end, "in this integer literal");
     return RE_ERROR;
 }
-static resolve_error
-evaluate_array_bounds(resolver* r, array_decl* ad, symbol_table* st, ureg* res)
+static resolve_error evaluate_array_bounds(
+    resolver* r, expr_array_type* ad, symbol_table* st, ureg* res)
 {
     if (ad->length_spec->kind == EXPR_LITERAL) {
         expr_literal* lit = (expr_literal*)ad->length_spec;
@@ -908,7 +908,8 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
         type_array* aa = (type_array*)a;
         type_array* ab = (type_array*)b;
         return (aa->length == ab->length) &&
-               ctypes_unifiable(aa->ctype_members, ab->ctype_members);
+               ctypes_unifiable(
+                   aa->slice_type.ctype_members, ab->slice_type.ctype_members);
     }
     return false; // TODO
     /*
@@ -970,17 +971,19 @@ resolve_error overload_applicable(
     }
     *applicable = true;
     if (fn) {
-        resolve_error re = resolve_ast_node(
-            r, fn->fnb.return_type, overload->osym.sym.declaring_st, ppl,
-            &fn->fnb.return_ctype, NULL);
+        if (!ast_flags_get_resolved(fn->fnb.sc.osym.sym.node.flags)) {
+            resolve_error re = resolve_ast_node(
+                r, fn->fnb.return_type, overload->osym.sym.declaring_st, ppl,
+                &fn->fnb.return_ctype, NULL);
+            if (re) return re;
+        }
         if (ctype) *ctype = fn->fnb.return_ctype;
-        return re;
     }
     else {
         // TODO: allow non void macros
         *ctype = VOID_ELEM;
-        return RE_OK;
     }
+    return RE_OK;
 }
 
 static inline resolve_error resolve_macro_call(
@@ -1140,6 +1143,7 @@ resolve_error choose_unary_operator_overload(
     if (re) return re;
 
     if (child_type == TYPE_ELEM || child_type == GENERIC_TYPE_ELEM) {
+        ast_flags_set_type_operator(&ou->node.flags);
         if (ou->node.op_kind == OP_DEREF) {
             re = create_pointer_to(r, child_value, false, &child_type);
             if (re) return re;
@@ -2092,14 +2096,13 @@ static inline resolve_error resolve_ast_node_raw(
             expr_op_unary* ou = (expr_op_unary*)n;
             if (resolved) {
                 if (ou->op->kind == SC_FUNC) {
-                    assert(!value);
-                    if (ctype) *ctype = ((sc_func*)ou->op)->fnb.return_ctype;
+                    RETURN_RESOLVED(
+                        value, ctype, ou, ((sc_func*)ou->op)->fnb.return_ctype);
                 }
-                else {
-                    if (value) *value = ou->op;
-                    if (ctype) *ctype = TYPE_ELEM;
+                if (ast_flags_get_type_operator(ou->node.flags)) {
+                    RETURN_RESOLVED(value, ctype, ou->op, TYPE_ELEM);
                 }
-                return RE_OK;
+                RETURN_RESOLVED(value, ctype, ou, ou->op);
             }
             re = choose_unary_operator_overload(r, ou, st, ppl, value, ctype);
             if (re) return re;
@@ -2373,39 +2376,56 @@ static inline resolve_error resolve_ast_node_raw(
             sym_param_generic_inst* pgi = (sym_param_generic_inst*)n;
             RETURN_RESOLVED(value, ctype, pgi->value, pgi->ctype);
         }
-        case EXPR_ARRAY_DECL: {
-            array_decl* ad = (array_decl*)n;
-            if (resolved) RETURN_RESOLVED(value, ctype, ad->ctype, TYPE_ELEM);
+        case EXPR_ARRAY_TYPE:
+        case EXPR_SLICE_TYPE: {
+            expr_slice_type* est = (expr_slice_type*)n;
+            expr_array_type* eat =
+                (expr_array_type*)(n->kind == EXPR_ARRAY_TYPE ? n : NULL);
+            if (resolved) RETURN_RESOLVED(value, ctype, est->ctype, TYPE_ELEM);
             ast_elem* base_type;
             ast_elem* len_ctype;
-            re = resolve_ast_node(r, ad->base_type, st, ppl, &base_type, NULL);
+            re = resolve_ast_node(r, est->base_type, st, ppl, &base_type, NULL);
             if (re) return re;
-            re =
-                resolve_ast_node(r, ad->length_spec, st, ppl, NULL, &len_ctype);
-            if (re) return re;
-
-            type_array* ta =
-                (type_array*)pool_alloc(&r->tc->permmem, sizeof(type_array));
-            if (!ta) return RE_FATAL;
-            ta->ctype_members = base_type;
-            ta->kind = TYPE_ARRAY;
-            re = evaluate_array_bounds(r, ad, st, &ta->length);
-            if (re) return re;
-            ast_flags_set_resolved(&ad->node.flags);
-            ad->ctype = (ast_elem*)ta;
-            RETURN_RESOLVED(value, ctype, ta, TYPE_ELEM);
+            if (!eat) {
+                type_slice* ts = (type_slice*)pool_alloc(
+                    &r->tc->permmem, sizeof(type_slice));
+                if (!ts) return RE_FATAL;
+                est->ctype = ts;
+                ts->ctype_members = base_type;
+                ts->kind = TYPE_SLICE;
+                est->ctype = ts;
+            }
+            else {
+                re = resolve_ast_node(
+                    r, eat->length_spec, st, ppl, NULL, &len_ctype);
+                if (re) return re;
+                type_array* ta = (type_array*)pool_alloc(
+                    &r->tc->permmem, sizeof(type_array));
+                if (!ta) return RE_FATAL;
+                ta->slice_type.ctype_members = base_type;
+                ta->slice_type.kind = TYPE_ARRAY;
+                re = evaluate_array_bounds(r, eat, st, &ta->length);
+                if (re) return re;
+                est->ctype = (type_slice*)ta;
+            }
+            ast_flags_set_resolved(&est->node.flags);
+            RETURN_RESOLVED(value, ctype, est->ctype, TYPE_ELEM);
         }
         case EXPR_ARRAY: {
             expr_array* ea = (expr_array*)n;
             if (resolved) RETURN_RESOLVED(value, ctype, ea, ea->ctype);
             if (ea->explicit_decl && !ea->ctype) {
                 re = resolve_ast_node(
-                    r, (ast_node*)ea->explicit_decl, st, ppl, NULL,
-                    (ast_elem**)&ea->ctype);
+                    r, (ast_node*)ea->explicit_decl, st, ppl,
+                    (ast_elem**)&ea->ctype, NULL);
                 if (re) return re;
-                assert(ea->ctype->kind == TYPE_ARRAY);
-                if (ea->ctype->length != ea->elem_count) {
-                    assert(false); // TODO: error msg
+                if (ea->ctype->kind == TYPE_ARRAY) {
+                    if (((type_array*)ea->ctype)->length != ea->elem_count) {
+                        assert(false); // TODO: error msg
+                    }
+                }
+                else {
+                    assert(ea->ctype->kind == TYPE_SLICE);
                 }
             }
             ast_node** e = ea->elements;
@@ -2420,10 +2440,10 @@ static inline resolve_error resolve_ast_node_raw(
                     type_array* ta = (type_array*)pool_alloc(
                         &r->tc->permmem, sizeof(type_array));
                     if (!ta) return RE_FATAL;
-                    ta->ctype_members = elem_ctype;
-                    ta->kind = TYPE_ARRAY;
+                    ta->slice_type.ctype_members = elem_ctype;
+                    ta->slice_type.kind = TYPE_ARRAY;
                     ta->length = ea->elem_count;
-                    ea->ctype = ta;
+                    ea->ctype = (type_slice*)ta;
                 }
                 else {
                     if (!ctypes_unifiable(
@@ -2472,7 +2492,7 @@ static inline resolve_error resolve_ast_node_raw(
             ast_elem* lhs_val;
             re = resolve_ast_node(r, ea->lhs, st, ppl, &lhs_val, &lhs_ctype);
             if (re) return re;
-            if (ea->arg_count == 1 && lhs_ctype->kind == TYPE_ARRAY) {
+            if (ea->arg_count == 1 && ast_elem_is_type_slice(lhs_ctype)) {
                 ast_elem* rhs_ctype;
                 re =
                     resolve_ast_node(r, ea->args[0], st, ppl, NULL, &rhs_ctype);
@@ -2494,7 +2514,7 @@ static inline resolve_error resolve_ast_node_raw(
                 }
                 ea->node.op_kind = OP_ARRAY_ACCESS;
                 ast_flags_set_resolved(&ea->node.flags);
-                ea->ctype = ((type_array*)lhs_ctype)->ctype_members;
+                ea->ctype = ((type_slice*)lhs_ctype)->ctype_members;
                 RETURN_RESOLVED(value, ctype, NULL, ea->ctype);
             }
             if (lhs_val->kind == SC_STRUCT_GENERIC) {

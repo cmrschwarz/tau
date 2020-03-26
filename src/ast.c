@@ -111,6 +111,10 @@ bool ast_elem_is_expr(ast_elem* s)
 {
     return (s->kind <= EXPR_FIRST_ID && s->kind <= EXPR_LAST_ID);
 }
+bool ast_elem_is_type_slice(ast_elem* s)
+{
+    return (s->kind == TYPE_ARRAY || s->kind == TYPE_SLICE);
+}
 bool ast_elem_is_paste_evaluation(ast_elem* s)
 {
     return s->kind == EXPR_PASTE_EVALUATION || s->kind == STMT_PASTE_EVALUATION;
@@ -216,7 +220,6 @@ char* op_to_str(operator_kind t)
         case OP_PRE_DECREMENT: return "--";
         case OP_POST_INCREMENT: return "++";
         case OP_POST_DECREMENT: return "--";
-        case OP_CONST: return "const ";
         case OP_MEMBER_ACCESS: return ".";
         case OP_PP: return "#";
         default: return "<Unknown Operator>";

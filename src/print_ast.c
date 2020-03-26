@@ -523,12 +523,12 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             print_expr_list(a->elements, a->elem_count, cmdg, indent);
             pc('}');
         } break;
-        case EXPR_ARRAY_DECL: {
-            array_decl* a = (array_decl*)n;
+        case EXPR_ARRAY_TYPE: {
+            expr_array_type* ate = (expr_array_type*)n;
             pc('[');
-            print_ast_node(a->length_spec, cmdg, indent);
+            print_ast_node(ate->length_spec, cmdg, indent);
             pc(']');
-            print_ast_node(a->base_type, cmdg, indent);
+            print_ast_node(ate->slice_type.base_type, cmdg, indent);
         } break;
         case EXPR_TUPLE: {
             expr_tuple* t = (expr_tuple*)n;

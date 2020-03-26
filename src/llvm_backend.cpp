@@ -375,7 +375,7 @@ LLVMBackend::~LLVMBackend()
     delete _data_layout;
     delete _target_machine;
 }
-void LLVMBackend::buildPasteHelpers()
+void LLVMBackend::setupPasteHelpers()
 {
     auto params =
         (llvm::Type**)pool_alloc(&_tc->permmem, sizeof(llvm::Type*) * 3);
@@ -400,8 +400,9 @@ int LLVMBackend::Initialize(LLVMBackend* llvmb, thread_context* tc)
 }
 llvm_error LLVMBackend::setup()
 {
-    addPrimitives();
-    buildPasteHelpers();
+    setupPrimitives();
+    setupPasteHelpers();
+    setupSliceStruct();
     return LLE_OK;
 }
 void LLVMBackend::Finalize(LLVMBackend* llvmb)
@@ -409,7 +410,18 @@ void LLVMBackend::Finalize(LLVMBackend* llvmb)
     llvmb->~LLVMBackend();
 }
 
-void LLVMBackend::addPrimitives()
+// required primitives to be set up already!
+void LLVMBackend::setupSliceStruct()
+{
+    auto members =
+        (llvm::Type**)pool_alloc(&_tc->permmem, sizeof(llvm::Type*) * 2);
+    members[0] = _primitive_types[PT_VOID_PTR];
+    members[1] = _primitive_types[PT_VOID_PTR];
+    llvm::ArrayRef<llvm::Type*> member_types{members, 2};
+
+    _slice_struct = llvm::StructType::create(_context, member_types);
+}
+void LLVMBackend::setupPrimitives()
 {
     for (ureg i = 0; i < PRIMITIVE_COUNT; i++) {
         llvm::Type* t;
@@ -864,14 +876,27 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
         case TYPE_ARRAY: {
             auto ta = (type_array*)e;
             llvm::Type* elem_type;
-            llvm_error lle =
-                lookupCType(ta->ctype_members, &elem_type, NULL, NULL);
+            llvm_error lle = lookupCType(
+                ta->slice_type.ctype_members, &elem_type, NULL, NULL);
             if (lle) return lle;
             auto arr = llvm::ArrayType::get(elem_type, ta->length);
             if (!arr) return LLE_FATAL;
             *t = arr;
             if (align) *align = _data_layout->getPrefTypeAlignment(arr);
             if (size) *size = _data_layout->getTypeAllocSize(arr);
+            return LLE_OK;
+        }
+        case TYPE_SLICE: {
+            // PERF: we might want to cache this
+            if (align) {
+                *align = _data_layout->getStructLayout(_slice_struct)
+                             ->getAlignment();
+            }
+            if (size) {
+                *size = _data_layout->getStructLayout(_slice_struct)
+                            ->getSizeInBytes();
+            }
+            *t = _slice_struct;
             return LLE_OK;
         }
         default: {
@@ -1263,6 +1288,17 @@ llvm_error LLVMBackend::genFuncCall(
     if (vl_loaded) *vl_loaded = call;
     return LLE_OK;
 }
+llvm::Value* LLVMBackend::arrayToSlice(llvm::Constant* arr, ureg elem_count)
+{
+    auto gv = new llvm::GlobalVariable(
+        *_module, arr->getType(), true, llvm::GlobalVariable::InternalLinkage,
+        arr);
+    auto start = _builder.CreateConstInBoundsGEP1_64(gv, 0);
+    auto end = _builder.CreateConstGEP1_64(gv, elem_count);
+    assert(llvm::isa<llvm::Constant>(start) && llvm::isa<llvm::Constant>(end));
+    return llvm::ConstantStruct::get(
+        _slice_struct, (llvm::Constant*)start, (llvm::Constant*)end);
+}
 llvm_error
 LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
@@ -1595,10 +1631,11 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         }
         case EXPR_ARRAY: {
             auto arr = (expr_array*)n;
-            llvm::Type* arr_type;
-            ureg align;
-            lle = lookupCType((ast_elem*)arr->ctype, &arr_type, &align, NULL);
+            llvm::Type* base_type;
+            lle = lookupCType((ast_elem*)arr->ctype, &base_type, NULL, NULL);
             if (lle) return lle;
+            llvm::ArrayType* arr_type =
+                llvm::ArrayType::get(base_type, arr->elem_count);
             if (ast_flags_get_comptime_known(arr->node.flags)) {
                 auto elements = (llvm::Constant**)pool_alloc(
                     &_tc->permmem, arr->elem_count * sizeof(llvm::Constant*));
@@ -1614,11 +1651,18 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                 }
                 llvm::ArrayRef<llvm::Constant*> elems_array_ref{
                     elements, elements + arr->elem_count};
-                assert(llvm::isa<llvm::ArrayType>(arr_type));
-                auto llarr = llvm::ConstantArray::get(
-                    (llvm::ArrayType*)arr_type, elems_array_ref);
-                if (vl) *vl = llarr;
-                if (vl_loaded) *vl_loaded = llarr;
+                auto llarr =
+                    llvm::ConstantArray::get(arr_type, elems_array_ref);
+                if (arr->ctype->kind == TYPE_ARRAY) {
+                    if (vl) *vl = llarr;
+                    if (vl_loaded) *vl_loaded = llarr;
+                    return LLE_OK;
+                }
+                assert(arr->ctype->kind == TYPE_SLICE);
+                auto sl = arrayToSlice(llarr, arr->elem_count);
+                if (!sl) return LLE_FATAL;
+                if (vl) *vl = sl;
+                if (vl_loaded) *vl_loaded = sl;
                 return LLE_OK;
             }
             else {
@@ -1660,20 +1704,42 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (lle) return lle;
             lle = genAstNode(ea->args[0], NULL, &index);
             if (lle) return lle;
-            auto& indexList = *new std::array<llvm::Value*, 2>{
-                llvm::ConstantInt::get(_primitive_types[PT_UINT], 0), index};
-            auto res = _builder.CreateInBoundsGEP(arr, indexList);
-            if (!res) return LLE_FATAL;
-            if (vl) *vl = res;
-            if (vl_loaded) {
-                auto arr_type = arr->getType();
-                assert(llvm::isa<llvm::PointerType>(arr_type));
-                arr_type = ((llvm::PointerType*)arr_type)->getElementType();
-                assert(llvm::isa<llvm::ArrayType>(arr_type));
-                *vl_loaded = _builder.CreateAlignedLoad(
-                    res, _data_layout->getPrefTypeAlignment(
-                             arr_type->getArrayElementType()));
-                if (!*vl_loaded) return LLE_FATAL;
+            ast_elem* lhst = get_resolved_ast_node_ctype(ea->lhs);
+            if (lhst->kind == TYPE_SLICE) {
+                arr = _builder.CreateAlignedLoad(
+                    _builder.CreateConstInBoundsGEP1_64(arr, 0),
+                    PRIMITIVES[PT_VOID_PTR].alignment);
+                llvm::Type* elem_type;
+                ureg elem_align;
+                lookupCType(
+                    ((type_slice*)lhst)->ctype_members, &elem_type, &elem_align,
+                    NULL);
+                arr = _builder.CreateBitCast(arr, elem_type->getPointerTo());
+                auto res = _builder.CreateGEP(arr, index);
+                if (vl) *vl = res;
+                if (vl_loaded) {
+                    *vl_loaded = _builder.CreateAlignedLoad(res, elem_align);
+                    if (!*vl_loaded) return LLE_FATAL;
+                }
+            }
+            else {
+                assert(lhst->kind == TYPE_ARRAY);
+                auto& indexList = *new std::array<llvm::Value*, 2>{
+                    index,
+                    llvm::ConstantInt::get(_primitive_types[PT_UINT], 0)};
+                auto res = _builder.CreateInBoundsGEP(arr, indexList);
+                if (!res) return LLE_FATAL;
+                if (vl) *vl = res;
+                if (vl_loaded) {
+                    auto arr_type = arr->getType();
+                    assert(llvm::isa<llvm::PointerType>(arr_type));
+                    arr_type = ((llvm::PointerType*)arr_type)->getElementType();
+                    assert(llvm::isa<llvm::ArrayType>(arr_type));
+                    *vl_loaded = _builder.CreateAlignedLoad(
+                        res, _data_layout->getPrefTypeAlignment(
+                                 arr_type->getArrayElementType()));
+                    if (!*vl_loaded) return LLE_FATAL;
+                }
             }
             return LLE_OK;
         }

@@ -102,6 +102,15 @@ bool ast_flags_get_static(ast_flags f)
     return bitmask_get_bit(f, ASTF_STATIC_OFFSET);
 }
 
+void ast_flags_set_type_operator(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_TYPE_OPERATOR_OFFSET);
+}
+bool ast_flags_get_type_operator(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_TYPE_OPERATOR_OFFSET);
+}
+
 void ast_flags_set_compound_decl(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_COMPUND_DECL_OFFSET);
