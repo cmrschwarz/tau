@@ -332,7 +332,7 @@ init_bpd(body_parse_data* bpd, ast_node* node, ast_body* body)
     bpd->decl_count = 0;
     bpd->usings_count = 0;
     bpd->shared_decl_count = 0;
-    bpd->shared_usings_count = 0;
+    bpd->shared_uses_count = 0;
 }
 static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
 {
@@ -394,7 +394,7 @@ static inline int pop_bpd_pp(parser* p, parse_error pe)
     bpd->decl_count += bpd_popped.decl_count;
     bpd->usings_count += bpd_popped.usings_count;
     bpd->shared_decl_count += bpd_popped.shared_decl_count;
-    bpd->shared_usings_count += bpd_popped.shared_usings_count;
+    bpd->shared_uses_count += bpd_popped.shared_uses_count;
     return OK;
 }
 static inline int
@@ -441,12 +441,11 @@ static inline int pop_bpd(parser* p, parse_error pe)
         &i, sizeof(body_parse_data));
     assert(bpd.node); // make sure it's not a pp node
     bool is_mf = ast_elem_is_module_frame((ast_elem*)bpd.node);
-    if (bpd.shared_decl_count > 0 || bpd.shared_usings_count > 0) {
+    if (bpd.shared_decl_count > 0 || bpd.shared_uses_count > 0) {
         assert(is_mf);
         // assert(*mf is member of current module*);
         atomic_ureg_add(&p->current_module->decl_count, bpd.shared_decl_count);
-        atomic_ureg_add(
-            &p->current_module->using_count, bpd.shared_usings_count);
+        atomic_ureg_add(&p->current_module->using_count, bpd.shared_uses_count);
     }
     ast_body* bd = bpd.body;
     symbol_table** st = &bd->symtab;
@@ -485,7 +484,7 @@ static inline int pop_bpd(parser* p, parse_error pe)
         bpd2->node = bpd.node;
         bpd = *bpd2;
         // we don't support shared pp decls for now :(
-        assert(bpd.shared_decl_count == 0 && bpd.shared_usings_count == 0);
+        assert(bpd.shared_decl_count == 0 && bpd.shared_uses_count == 0);
     }
     if (*st) *st = NULL;
     return OK;
@@ -520,8 +519,8 @@ char* get_context_msg(parser* p, ast_node* node)
         case SYM_IMPORT_SYMBOL:
         case SYM_IMPORT_GROUP:
         case SYM_IMPORT_MODULE: return "in this import statement";
-        case SYM_NAMED_USING:
-        case STMT_USING: return "in this using statement";
+        case SYM_NAMED_USE:
+        case STMT_USE: return "in this using statement";
         case STMT_COMPOUND_ASSIGN:
             return "in this compound assignment statement";
 
@@ -534,7 +533,7 @@ ast_body* get_current_body(parser* p)
     return get_bpd(p)->body;
 }
 static inline void
-curr_scope_add_usings(parser* p, access_modifier am, ureg count)
+curr_scope_add_uses(parser* p, access_modifier am, ureg count)
 {
     body_parse_data* bpd = get_bpd(p);
     if (am == AM_DEFAULT) {
@@ -542,7 +541,7 @@ curr_scope_add_usings(parser* p, access_modifier am, ureg count)
     }
     else {
         if (ast_elem_is_module_frame((ast_elem*)bpd->node)) {
-            bpd->shared_usings_count += count;
+            bpd->shared_uses_count += count;
         }
         else {
             bpd->usings_count += count;
@@ -3047,7 +3046,7 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
 parse_error parse_import_with_parent(
     parser* p, ast_flags flags, ureg start, ureg kw_end, mdg_node* parent,
     ureg* decl_cnt, symbol** tgt);
-parse_error parse_using(
+parse_error parse_use(
     parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** tgt)
 {
     token* t = lx_aquire(&p->lx);
@@ -3058,9 +3057,9 @@ parse_error parse_using(
         token* t2 = lx_peek_2nd(&p->lx);
         if (!t2) return PE_LX_ERROR;
         if (t2->kind == TK_EQUALS) {
-            sym_named_using* nu = alloc_perm(p, sizeof(sym_named_using));
+            sym_named_use* nu = alloc_perm(p, sizeof(sym_named_use));
             if (!nu) return PE_FATAL;
-            ast_node_init_with_flags((ast_node*)nu, SYM_NAMED_USING, flags);
+            ast_node_init_with_flags((ast_node*)nu, SYM_NAMED_USE, flags);
             nu->osym.sym.name = alloc_string_perm(p, t->str);
             if (!nu->osym.sym.name) return PE_FATAL;
             lx_void_n(&p->lx, 2);
@@ -3082,9 +3081,9 @@ parse_error parse_using(
             return PE_OK;
         }
     }
-    stmt_using* u = alloc_perm(p, sizeof(stmt_using));
+    stmt_use* u = alloc_perm(p, sizeof(stmt_use));
     if (!u) return PE_FATAL;
-    ast_node_init_with_flags((ast_node*)u, STMT_USING, flags);
+    ast_node_init_with_flags((ast_node*)u, STMT_USE, flags);
     parse_error pe = parse_expression(p, &u->target);
     if (pe == PE_EOEX) {
         parser_error_2a(
@@ -3096,7 +3095,7 @@ parse_error parse_using(
             p, (ast_node*)u, start, src_range_get_end(u->target->srange)))
         return PE_FATAL;
     *tgt = (ast_node*)u;
-    curr_scope_add_usings(p, ast_flags_get_access_mod(flags), 1);
+    curr_scope_add_uses(p, ast_flags_get_access_mod(flags), 1);
     return pe;
 }
 parse_error parse_braced_imports(
@@ -3526,8 +3525,7 @@ parse_error parse_statement(parser* p, ast_node** tgt)
             case TK_KW_EXTEND:
                 return parse_module_frame_decl(
                     p, flags, start, flags_end, true, tgt);
-            case TK_KW_USING:
-                return parse_using(p, flags, start, flags_end, tgt);
+            case TK_KW_USE: return parse_use(p, flags, start, flags_end, tgt);
             case TK_KW_REQUIRE:
                 return parse_require(p, flags, start, flags_end);
             case TK_KW_IMPORT:

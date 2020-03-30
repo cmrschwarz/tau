@@ -30,7 +30,7 @@ typedef enum resolve_error_e {
 typedef struct thread_context_s thread_context;
 
 typedef struct pp_resolve_node_s {
-    ast_node* node; // either expr_pp, stmt_using or func
+    ast_node* node; // either expr_pp, stmt_use or func
     symbol_table* declaring_st;
     expr_block_base* parent_ebb;
     ureg ppl;

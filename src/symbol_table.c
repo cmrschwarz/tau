@@ -87,7 +87,7 @@ static inline ureg symbol_table_get_capacity(symbol_table* st)
 {
     return st->hash_mask ? st->hash_mask + 1 : 0;
 }
-void symbol_table_insert_using(
+void symbol_table_insert_use(
     symbol_table* st, access_modifier am, ast_node* using_node,
     symbol_table* used_symtab)
 {
@@ -110,20 +110,20 @@ void symbol_table_insert_using(
 }
 
 symbol_table**
-symbol_table_get_usings_start(symbol_table* st, access_modifier am)
+symbol_table_get_uses_start(symbol_table* st, access_modifier am)
 {
     assert(st->usings);
     if (am == 0)
         return (symbol_table**)ptradd(st->usings, sizeof(usings_table));
     return st->usings->using_ends[am - 1];
 }
-symbol_table** symbol_table_get_usings_end(symbol_table* st, access_modifier am)
+symbol_table** symbol_table_get_uses_end(symbol_table* st, access_modifier am)
 {
     assert(st->usings);
     return st->usings->using_ends[am];
 }
 ast_node**
-symbol_table_get_using_node(symbol_table* st, symbol_table** using_st)
+symbol_table_get_use_node(symbol_table* st, symbol_table** using_st)
 {
     assert(st->usings);
     return (ast_node**)ptradd(

@@ -50,7 +50,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SYM_VAR,
     SYM_FIRST_OPEN_ID = SYM_VAR,
     SYM_VAR_INITIALIZED,
-    SYM_NAMED_USING,
+    SYM_NAMED_USE,
     SYM_IMPORT_MODULE,
     SYM_IMPORT_SYMBOL,
     SYM_IMPORT_GROUP,
@@ -58,8 +58,8 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SYM_FUNC_EXTERN, // TODO
     SYM_LAST_SYM_ID = SYM_FUNC_EXTERN,
 
-    STMT_USING,
-    STMT_FIRST_ID = STMT_USING,
+    STMT_USE,
+    STMT_FIRST_ID = STMT_USE,
     STMT_PASTE_EVALUATION,
     STMT_COMPOUND_ASSIGN,
     STMT_LAST_ID = STMT_COMPOUND_ASSIGN,
@@ -252,15 +252,15 @@ typedef struct scope_s {
     ast_body body;
 } scope;
 
-typedef struct sym_named_using_s {
+typedef struct sym_named_use_s {
     open_symbol osym;
     ast_node* target;
-} sym_named_using;
+} sym_named_use;
 
-typedef struct stmt_using_s {
+typedef struct stmt_use_s {
     ast_node node;
     ast_node* target;
-} stmt_using;
+} stmt_use;
 
 typedef struct sym_import_parent_s {
     open_symbol osym;

@@ -520,7 +520,7 @@ static resolve_error add_ast_node_decls(
             assert(false);
             return RE_OK;
 
-        case STMT_USING: {
+        case STMT_USE: {
             pp_resolve_node* pprn =
                 pp_resolve_node_create(r, n, st, false, false, ppl);
             if (!pprn) return RE_FATAL;
@@ -774,7 +774,7 @@ static resolve_error add_ast_node_decls(
             }
             return RE_OK;
         }
-        case SYM_NAMED_USING: {
+        case SYM_NAMED_USE: {
             return add_symbol(r, st, sst, (symbol*)n);
         }
         default:
@@ -1250,7 +1250,7 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
     switch (s->node.kind) {
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
-        case SYM_NAMED_USING: assert(false); return NULL; // TODO
+        case SYM_NAMED_USE: assert(false); return NULL; // TODO
         case SYM_PRIMITIVE: assert(false); return NULL; // would be ctype "Type"
         default: return (ast_elem*)s;
     }
@@ -1364,7 +1364,7 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
             // symbol_table_inc_decl_count(pst);
         }
         else {
-            symbol_table_insert_using(
+            symbol_table_insert_use(
                 pst, AM_PUBLIC, (ast_node*)s,
                 ((sym_import_module*)s)->target->symtab);
         }
@@ -2220,8 +2220,8 @@ static inline resolve_error resolve_ast_node_raw(
             }
             RETURN_RESOLVED(value, ctype, n, NULL);
         }
-        case STMT_USING:
-        case SYM_NAMED_USING:
+        case STMT_USE:
+        case SYM_NAMED_USE:
         case STMT_COMPOUND_ASSIGN: {
             // TODO
             assert(false);

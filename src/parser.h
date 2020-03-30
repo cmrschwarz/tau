@@ -38,7 +38,7 @@ typedef struct body_parse_data_s {
     ureg decl_count;
     ureg usings_count;
     ureg shared_decl_count;
-    ureg shared_usings_count;
+    ureg shared_uses_count;
 } body_parse_data;
 
 int parser_init(parser* p, thread_context* tc);

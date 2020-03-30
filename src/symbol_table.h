@@ -36,7 +36,7 @@ int symbol_table_init(
     ast_elem* owning_node, ureg ppl);
 void symbol_table_fin(symbol_table* st);
 
-void symbol_table_insert_using(
+void symbol_table_insert_use(
     symbol_table* st, access_modifier am, ast_node* use,
     symbol_table* using_node);
 
@@ -55,11 +55,11 @@ ureg symbol_table_prehash(const char* s);
 
 symbol* symbol_table_lookup_raw(symbol_table* st, ureg hash, const char* name);
 symbol_table**
-symbol_table_get_usings_start(symbol_table* st, access_modifier am);
+symbol_table_get_uses_start(symbol_table* st, access_modifier am);
 symbol_table**
-symbol_table_get_usings_end(symbol_table* st, access_modifier am);
+symbol_table_get_uses_end(symbol_table* st, access_modifier am);
 ast_node**
-symbol_table_get_using_node(symbol_table* st, symbol_table** using_st);
+symbol_table_get_use_node(symbol_table* st, symbol_table** using_st);
 
 // might return NULL, for example for mdg_node symbol tables
 src_map* symbol_table_get_smap(symbol_table* st);

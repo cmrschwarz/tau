@@ -229,8 +229,8 @@ resolve_error symbol_lookup_level_run(
             sli->r, lookup_st, sli->looking_st, sli->looking_struct,
             sli->looking_mf, sli->looking_mod, NULL, NULL, &am_start, &am_end);
         if (re) return re;
-        usings_start = symbol_table_get_usings_start(lookup_st, am_start);
-        usings_end = symbol_table_get_usings_end(lookup_st, am_end);
+        usings_start = symbol_table_get_uses_start(lookup_st, am_start);
+        usings_end = symbol_table_get_uses_end(lookup_st, am_end);
     }
 
     int responsibility_count =

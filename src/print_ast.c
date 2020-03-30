@@ -417,16 +417,16 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             print_ast_node(((expr_paste_str*)n)->value, cmdg, indent);
             pc(')');
         } break;
-        case SYM_NAMED_USING: {
-            sym_named_using* nu = (sym_named_using*)n;
+        case SYM_NAMED_USE: {
+            sym_named_use* nu = (sym_named_use*)n;
             print_ast_node_modifiers(nu->osym.sym.node.flags);
             p("using ");
             p(nu->osym.sym.name);
             p(" = ");
             print_ast_node(nu->target, cmdg, indent);
         } break;
-        case STMT_USING: {
-            stmt_using* u = (stmt_using*)n;
+        case STMT_USE: {
+            stmt_use* u = (stmt_use*)n;
             print_ast_node_modifiers(u->node.flags);
             p("using ");
             print_ast_node(u->target, cmdg, indent);
