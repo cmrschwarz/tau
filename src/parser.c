@@ -2861,8 +2861,8 @@ parse_error parse_module_frame_decl(
         int r = thread_context_preorder_job(p->lx.tc);
         if (r) return RE_FATAL;
     }
-    mdg_node_add_frame(mdgn, (module_frame*)md, p->lx.tc->t);
-    int r = OK;
+    int r = mdg_node_add_frame(mdgn, (module_frame*)md, p->lx.tc);
+    if (r) return RE_FATAL;
     rwlock_read(&mdgn->lock);
     if (atomic_ureg_load(&mdgn->unparsed_files) == 1) {
         rwlock_end_read(&mdgn->lock);
@@ -3368,7 +3368,8 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     }
     file_require rq;
     rq.is_extern = is_extern;
-    rq.in_ppl = p->ppl != 0;
+    rq.is_pp = p->ppl != 0;
+    rq.runtime = false;
     rq.handled = false;
     rq.srange = src_range_pack_lines(p->lx.tc, start, t->end);
     if (rq.srange == SRC_RANGE_INVALID) return PE_FATAL;
@@ -3392,7 +3393,7 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
         rq.fmh = (file_map_head*)l;
         if (needed) {
             int r = src_lib_require(
-                l, p->lx.tc->t, p->lx.smap, rq.srange, rq.in_ppl);
+                l, p->lx.tc->t, p->lx.smap, rq.srange, rq.is_pp);
             if (r == ERR) return PE_FATAL;
         }
     }

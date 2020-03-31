@@ -1,10 +1,10 @@
 public extern func _start();
 module libc{
     require dynamic "/lib64/ld-linux-x86-64.so.2"; 
-    require static "/usr/lib/x86_64-linux-gnu/crt1.o";
-    require static "/usr/lib/x86_64-linux-gnu/crti.o";
-    require static "/usr/lib/x86_64-linux-gnu/crtn.o";
-    require static "/usr/lib/x86_64-linux-gnu/libc_nonshared.a";
+    require  static "/usr/lib/x86_64-linux-gnu/crt1.o";
+    require  static "/usr/lib/x86_64-linux-gnu/crti.o";
+    require  static "/usr/lib/x86_64-linux-gnu/crtn.o";
+    require  static "/usr/lib/x86_64-linux-gnu/libc_nonshared.a";
     require dynamic "/lib/x86_64-linux-gnu/libc.so.6";
 
     public extern func puts(s: string);

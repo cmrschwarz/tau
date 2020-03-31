@@ -26,6 +26,7 @@ typedef enum PACK_ENUM token_kind_e {
     TK_KW_IMPLEMENT,
     TK_KW_EXTERN,
     TK_KW_DYNAMIC,
+    TK_KW_RUNTIME,
     TK_KW_REQUIRE,
     TK_KW_CONST,
     TK_KW_MUT,

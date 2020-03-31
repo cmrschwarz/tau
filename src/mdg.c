@@ -834,7 +834,23 @@ int mdg_node_generated(mdg_node* n, thread_context* tc, bool pp_generated)
     }
     return OK;
 }
-int mdg_node_add_frame(mdg_node* n, module_frame* mf, tauc* t)
+int module_frame_require_requirements(
+    module_frame* mf, mdg_node* n, thread_context* tc, bool in_pp)
+{
+    file_require* r = mf->requires;
+    // TODO: rethink this handled thing and make it apply to the pp
+    while (*(void**)r && (in_pp || !r->handled)) {
+        if (!in_pp && r->is_pp) continue;
+        if (r->runtime && in_pp) continue;
+        int res = file_map_head_require(
+            r->fmh, tc->t, module_frame_get_smap(mf), r->srange, n,
+            r->is_pp || in_pp);
+        r++;
+        if (res) return res;
+    }
+    return OK;
+}
+int mdg_node_add_frame(mdg_node* n, module_frame* mf, thread_context* tc)
 {
     int r;
     bool needed;
@@ -848,15 +864,12 @@ int mdg_node_add_frame(mdg_node* n, module_frame* mf, tauc* t)
     rwlock_end_read(&n->lock);
     if (r) return r;
     if (needed) {
-        file_require* r = mf->requires;
-        while (*(void**)r && !r->handled) {
-            file_map_head_require(
-                r->fmh, t, module_frame_get_smap(mf), r->srange, n, r->in_ppl);
-            r++;
-        }
+        r = module_frame_require_requirements(mf, n, tc, false);
+        if (r) return r;
     }
     return r;
 }
+
 // make sure the required libraries of an mdg node are loaded
 int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp)
 {
@@ -873,14 +886,7 @@ int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp)
     while (true) {
         module_frame* mf = aseglist_iterator_next(&it);
         if (!mf) break;
-        file_require* r = mf->requires;
-        while (*(void**)r) {
-            int res = file_map_head_require(
-                r->fmh, tc->t, module_frame_get_smap(mf), r->srange, n,
-                r->in_ppl || in_pp);
-            r++;
-            if (res) return res;
-        }
+        module_frame_require_requirements(mf, n, tc, in_pp);
     }
     if (in_pp) {
         aseglist_iterator_begin(&it, &n->dependencies);

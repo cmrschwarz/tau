@@ -131,7 +131,7 @@ int mdg_node_generated(mdg_node* n, thread_context* tc, bool pp_generated);
 int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc);
 int mdg_node_add_dependency(
     mdg_node* n, mdg_node* dependency, thread_context* tc);
-int mdg_node_add_frame(mdg_node* n, module_frame* mf, tauc* t);
+int mdg_node_add_frame(mdg_node* n, module_frame* mf, thread_context* tc);
 int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp);
 
 int scc_detector_init(scc_detector* d, pool* mem_src);

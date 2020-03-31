@@ -220,8 +220,9 @@ typedef struct file_require_s {
     file_map_head* fmh;
     src_range srange;
     bool handled;
+    bool runtime;
     bool is_extern;
-    bool in_ppl;
+    bool is_pp;
 } file_require;
 
 typedef struct symbol_s {
