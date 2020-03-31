@@ -3353,11 +3353,23 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     PEEK(p, t);
     bool is_extern = false;
     bool is_dynamic = false;
-    if (t->kind == TK_KW_STATIC || t->kind == TK_KW_DYNAMIC) {
-        is_extern = true;
-        is_dynamic = t->kind == TK_KW_DYNAMIC;
+    bool is_runtime = false;
+    if (t->kind == TK_KW_RUNTIME) {
+        is_runtime = true;
         lx_void(&p->lx);
         PEEK(p, t);
+    }
+    if (t->kind == TK_KW_STATIC || t->kind == TK_KW_DYNAMIC) {
+        is_extern = true;
+        is_dynamic = (t->kind == TK_KW_DYNAMIC);
+        lx_void(&p->lx);
+        PEEK(p, t);
+    }
+    else if (is_runtime) {
+        parser_error_2a(
+            p, "unexpected token", t->start, t->end,
+            "runtime require must be static or dynamic", start, end,
+            "in this require statement");
     }
     if (t->kind != TK_STRING) {
         parser_error_2a(
@@ -3369,7 +3381,7 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     file_require rq;
     rq.is_extern = is_extern;
     rq.is_pp = p->ppl != 0;
-    rq.runtime = false;
+    rq.runtime = is_runtime;
     rq.handled = false;
     rq.srange = src_range_pack_lines(p->lx.tc, start, t->end);
     if (rq.srange == SRC_RANGE_INVALID) return PE_FATAL;

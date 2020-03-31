@@ -178,7 +178,7 @@ static inline llvm_error link_dll(PPRunner* pp, const char* path)
         assert(false);
     }
     PP_RUNNER->addDll(std::move(dll));
-    // printf("linked dll %s\n", path);
+    // printf("pp linked dll %s\n", path);
     return LLE_OK;
 }
 
@@ -195,7 +195,7 @@ static inline llvm_error link_archive(PPRunner* pp, const char* path)
     llvm::object::OwningBinary<llvm::object::Archive> arch_ob{
         std::move(arch.get()), std::move(mb)};
     PP_RUNNER->addArchive(std::move(arch_ob));
-    // printf("linked archive %s\n", path);
+    // printf("pp linked archive %s\n", path);
     return LLE_OK;
 }
 static inline llvm_error link_obj(PPRunner* pp, const char* path)
@@ -208,7 +208,7 @@ static inline llvm_error link_obj(PPRunner* pp, const char* path)
         return link_archive(pp, path); // TODO: make this less ugly
         assert(false);
     }
-    // printf("linked object %s\n", path);
+    // printf("pp linked object %s\n", path);
     return LLE_OK;
 }
 llvm_error llvm_backend_link_for_pp(bool is_dynamic, char* path)

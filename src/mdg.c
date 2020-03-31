@@ -840,8 +840,10 @@ int module_frame_require_requirements(
     file_require* r = mf->requires;
     // TODO: rethink this handled thing and make it apply to the pp
     while (*(void**)r && (in_pp || !r->handled)) {
-        if (!in_pp && r->is_pp) continue;
-        if (r->runtime && in_pp) continue;
+        if ((!in_pp && r->is_pp) || (r->runtime && in_pp)) {
+            r++;
+            continue;
+        }
         int res = file_map_head_require(
             r->fmh, tc->t, module_frame_get_smap(mf), r->srange, n,
             r->is_pp || in_pp);
