@@ -2332,19 +2332,36 @@ llvm_error LLVMBackend::generateEntrypoint(
         assert(mainfn->fnb.param_count == 0); // TODO
         lle = genFunction(mainfn, &mainfnval);
         if (lle) return lle;
-        call = _builder.CreateCall(mainfnval);
-        if (!call) return LLE_FATAL;
+        auto main_call = _builder.CreateCall(mainfnval);
+        if (!main_call) return LLE_FATAL;
         call = _builder.CreateCall(destruct_all_func);
         if (!call) return LLE_FATAL;
         target_platform t = _tc->t->target;
         if (t.arch == ARCH_X86_64) {
             if (t.os == OS_LINUX) {
-                auto func_sig =
-                    llvm::FunctionType::get(_primitive_types[PT_VOID], false);
-                auto myasm = llvm::InlineAsm::get(
-                    func_sig, "movl $$1, %eax;movl $$0, %ebx;int $$0x80", "",
-                    true);
-                call = _builder.CreateCall(myasm);
+                if (mainfn->fnb.return_ctype ==
+                    (ast_elem*)&PRIMITIVES[PT_INT]) {
+                    auto params = llvm::ArrayRef<llvm::Type*>{
+                        &_primitive_types[PT_INT], 1};
+                    auto func_sig = llvm::FunctionType::get(
+                        _primitive_types[PT_VOID], params, false);
+                    auto myasm = llvm::InlineAsm::get(
+                        func_sig, "movq $0, %rbx; movl $$1, %eax; int $$0x80",
+                        "r", true);
+                    auto retval_arg = (llvm::Value**)pool_alloc(
+                        &_tc->permmem, sizeof(llvm::Value*));
+                    *retval_arg = main_call;
+                    auto args = llvm::ArrayRef<llvm::Value*>{retval_arg, 1};
+                    call = _builder.CreateCall(myasm, args);
+                }
+                else {
+                    auto func_sig = llvm::FunctionType::get(
+                        _primitive_types[PT_VOID], false);
+                    auto myasm = llvm::InlineAsm::get(
+                        func_sig, "movl $$1, %eax; movl $$0, %ebx; int $$0x80",
+                        "", true);
+                    call = _builder.CreateCall(myasm);
+                }
                 if (!call) return LLE_FATAL;
             }
             else {
