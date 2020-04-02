@@ -66,24 +66,6 @@ bool ast_flags_get_import_group_module_used(ast_flags f)
     return bitmask_get_bit(f, ASTF_IMPORT_GROUP_MODULE_USED);
 }
 
-void ast_flags_set_sealed(ast_flags* f)
-{
-    bitmask_set_bit(f, ASTF_SEALED_OFFSET);
-}
-bool ast_flags_get_sealed(ast_flags f)
-{
-    return bitmask_get_bit(f, ASTF_SEALED_OFFSET);
-}
-// !!since sealed isn't really used right now we fake share the bit
-void ast_flags_set_virtual(ast_flags* f)
-{
-    bitmask_set_bit(f, ASTF_SEALED_OFFSET);
-}
-bool ast_flags_get_virtual(ast_flags f)
-{
-    return bitmask_get_bit(f, ASTF_SEALED_OFFSET);
-}
-
 void ast_flags_set_pp_stmt_end_unreachabale(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_PP_STMT_END_UNREACHABLE);
@@ -151,15 +133,6 @@ bool ast_flags_get_relative_import(ast_flags f)
     return bitmask_get_bit(f, ASTF_RELATIVE_IMPORT_OFFSET);
 }
 
-void ast_flags_set_pasting_pp_expr(ast_flags* f)
-{
-    bitmask_set_bit(f, ASTF_PASTING_PP_EXPR_OFFSET);
-}
-bool ast_flags_get_pasting_pp_expr(ast_flags f)
-{
-    return bitmask_get_bit(f, ASTF_PASTING_PP_EXPR_OFFSET);
-}
-
 void ast_flags_set_error(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_ERROR_OFFSET);
@@ -211,16 +184,6 @@ bool ast_flags_get_used_in_pp(ast_flags f)
 {
     return bitmask_get_bit(f, ASTF_USED_IN_PP_OFFSET);
 }
-
-void ast_flags_set_comptime_known(ast_flags* f)
-{
-    bitmask_set_bit(f, ASTF_COMPTIME_KNOWN);
-}
-bool ast_flags_get_comptime_known(ast_flags f)
-{
-    return bitmask_get_bit(f, ASTF_COMPTIME_KNOWN);
-}
-
 void ast_flags_set_instance_member(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_INSTANCE_MEMBER_OFFSET);

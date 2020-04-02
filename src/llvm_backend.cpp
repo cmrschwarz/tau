@@ -1636,38 +1636,33 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (lle) return lle;
             llvm::ArrayType* arr_type =
                 llvm::ArrayType::get(base_type, arr->elem_count);
-            if (ast_flags_get_comptime_known(arr->node.flags)) {
-                auto elements = (llvm::Constant**)pool_alloc(
-                    &_tc->permmem, arr->elem_count * sizeof(llvm::Constant*));
-                if (!elements) return LLE_FATAL;
-                ast_node** e = arr->elements;
-                for (ureg i = 0; i < arr->elem_count; i++) {
-                    llvm::Value* vl;
-                    lle = genAstNode(*e, NULL, &vl);
-                    if (lle) return lle;
-                    assert(llvm::isa<llvm::Constant>(vl));
-                    elements[i] = (llvm::Constant*)vl;
-                    e++;
-                }
-                llvm::ArrayRef<llvm::Constant*> elems_array_ref{
-                    elements, elements + arr->elem_count};
-                auto llarr =
-                    llvm::ConstantArray::get(arr_type, elems_array_ref);
-                if (arr->ctype->kind == TYPE_ARRAY) {
-                    if (vl) *vl = llarr;
-                    if (vl_loaded) *vl_loaded = llarr;
-                    return LLE_OK;
-                }
-                assert(arr->ctype->kind == TYPE_SLICE);
-                auto sl = arrayToSlice(llarr, arr->elem_count);
-                if (!sl) return LLE_FATAL;
-                if (vl) *vl = sl;
-                if (vl_loaded) *vl_loaded = sl;
+            auto elements = (llvm::Constant**)pool_alloc(
+                &_tc->permmem, arr->elem_count * sizeof(llvm::Constant*));
+            if (!elements) return LLE_FATAL;
+            ast_node** e = arr->elements;
+            for (ureg i = 0; i < arr->elem_count; i++) {
+                llvm::Value* vl;
+                lle = genAstNode(*e, NULL, &vl);
+                if (lle) return lle;
+                // TODO: handle non constant arrays
+                assert(llvm::isa<llvm::Constant>(vl));
+                elements[i] = (llvm::Constant*)vl;
+                e++;
+            }
+            llvm::ArrayRef<llvm::Constant*> elems_array_ref{
+                elements, elements + arr->elem_count};
+            auto llarr = llvm::ConstantArray::get(arr_type, elems_array_ref);
+            if (arr->ctype->kind == TYPE_ARRAY) {
+                if (vl) *vl = llarr;
+                if (vl_loaded) *vl_loaded = llarr;
                 return LLE_OK;
             }
-            else {
-                assert(false); // TODO
-            }
+            assert(arr->ctype->kind == TYPE_SLICE);
+            auto sl = arrayToSlice(llarr, arr->elem_count);
+            if (!sl) return LLE_FATAL;
+            if (vl) *vl = sl;
+            if (vl_loaded) *vl_loaded = sl;
+            return LLE_OK;
         }
         case EXPR_CAST: {
             auto ec = (expr_cast*)n;

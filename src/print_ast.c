@@ -267,22 +267,16 @@ void print_ast_node_modifiers(ast_flags flags)
 {
     access_modifier am = ast_flags_get_access_mod(flags);
     switch (am) {
+        case AM_LOCAL: p(token_strings[TK_KW_LOCAL]); break;
+        case AM_INTERNAL: p(token_strings[TK_KW_INTERNAL]); break;
         case AM_PRIVATE: p(token_strings[TK_KW_PRIVATE]); break;
         case AM_PROTECTED: p(token_strings[TK_KW_PROTECTED]); break;
         case AM_PUBLIC: p(token_strings[TK_KW_PUBLIC]); break;
         default: break;
     };
     if (am) pc(' ');
-    if (ast_flags_get_virtual(flags)) {
-        p(token_strings[TK_KW_VIRTUAL]);
-        pc(' ');
-    }
     if (ast_flags_get_const(flags)) {
         p(token_strings[TK_KW_CONST]);
-        pc(' ');
-    }
-    if (ast_flags_get_sealed(flags)) {
-        p(token_strings[TK_KW_SEALED]);
         pc(' ');
     }
 }

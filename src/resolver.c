@@ -81,8 +81,8 @@ add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
 {
     sym->declaring_st = st;
     symbol_table* tgtst =
-        (sst && ast_flags_get_access_mod(sym->node.flags) != AM_DEFAULT) ? sst
-                                                                         : st;
+        (sst && ast_flags_get_access_mod(sym->node.flags) != AM_LOCAL) ? sst
+                                                                       : st;
     symbol** conflict;
     conflict = symbol_table_insert(tgtst, sym);
     // symbol_table_inc_decl_count(tgtst);
@@ -612,8 +612,8 @@ static resolve_error add_ast_node_decls(
                 }
             }
             symbol_table* tgtst =
-                (sst && ast_flags_get_access_mod(n->flags) != AM_DEFAULT) ? sst
-                                                                          : st;
+                (sst && ast_flags_get_access_mod(n->flags) != AM_LOCAL) ? sst
+                                                                        : st;
             symbol** conflict;
             symbol* sym = (symbol*)n;
             sym->declaring_st = st;
@@ -835,40 +835,66 @@ static inline resolve_error parse_int_literal(
 static resolve_error evaluate_array_bounds(
     resolver* r, expr_array_type* ad, symbol_table* st, ureg* res)
 {
+    ast_elem* t;
+    resolve_error re = resolve_ast_node(r, ad->length_spec, st, NULL, &t);
+    if (re) return re;
+    bool negative = false;
+    bool incompatible = false;
     if (ad->length_spec->kind == EXPR_LITERAL) {
         expr_literal* lit = (expr_literal*)ad->length_spec;
         if (lit->node.pt_kind == PT_UINT || lit->node.pt_kind == PT_INT) {
-            bool negative;
             resolve_error re = parse_int_literal(r, lit, st, res, &negative);
             if (re) return re;
-            if (negative) {
-                src_range_large bounds_srl;
-                src_range_large array_srl;
-                ast_node_get_src_range(ad->length_spec, st, &bounds_srl);
-                ast_node_get_src_range((ast_node*)ad, st, &array_srl);
-                error_log_report_annotated_twice(
-                    r->tc->err_log, ES_RESOLVER, false,
-                    "array length can't be negative", bounds_srl.smap,
-                    bounds_srl.start, bounds_srl.end,
-                    "expected positive integer", array_srl.smap,
-                    array_srl.start, array_srl.end,
-                    "in the array bounds for this array");
-                return RE_ERROR;
-            }
-            return RE_OK;
+        }
+        else {
+            incompatible = true;
         }
     }
-    src_range_large bounds_srl;
-    src_range_large array_srl;
-    ast_node_get_src_range(ad->length_spec, st, &bounds_srl);
-    ast_node_get_src_range((ast_node*)ad, st, &array_srl);
-    // TODO: different error for negative values
-    error_log_report_annotated_twice(
-        r->tc->err_log, ES_RESOLVER, false, "invalid type for array bounds",
-        bounds_srl.smap, bounds_srl.start, bounds_srl.end, "expected uint",
-        array_srl.smap, array_srl.start, array_srl.end,
-        "in the array bounds for this array");
-    return RE_ERROR;
+    else if (ad->length_spec->kind == EXPR_PP) {
+        expr_pp* epp = (expr_pp*)ad->length_spec;
+        if (!epp->result) return RE_UNREALIZED_PASTE;
+        // HACK
+        if (ctypes_unifiable(epp->ctype, (ast_elem*)&PRIMITIVES[PT_UINT])) {
+            *res = *(ureg*)epp->result;
+        }
+        else if (ctypes_unifiable(epp->ctype, (ast_elem*)&PRIMITIVES[PT_INT])) {
+            sreg i = *(sreg*)epp->result; // HACK
+            if (i < 0) negative = true;
+            *res = (ureg)i;
+        }
+        else {
+            incompatible = true;
+        }
+    }
+    else {
+        incompatible = true;
+    }
+    if (incompatible) {
+        src_range_large bounds_srl;
+        src_range_large array_srl;
+        ast_node_get_src_range(ad->length_spec, st, &bounds_srl);
+        ast_node_get_src_range((ast_node*)ad, st, &array_srl);
+        // TODO: different error for negative values
+        error_log_report_annotated_twice(
+            r->tc->err_log, ES_RESOLVER, false, "invalid type for array bounds",
+            bounds_srl.smap, bounds_srl.start, bounds_srl.end, "expected uint",
+            array_srl.smap, array_srl.start, array_srl.end,
+            "in the array bounds for this array");
+    }
+    if (negative) {
+        src_range_large bounds_srl;
+        src_range_large array_srl;
+        ast_node_get_src_range(ad->length_spec, st, &bounds_srl);
+        ast_node_get_src_range((ast_node*)ad, st, &array_srl);
+        error_log_report_annotated_twice(
+            r->tc->err_log, ES_RESOLVER, false,
+            "array length can't be negative", bounds_srl.smap, bounds_srl.start,
+            bounds_srl.end, "expected positive integer", array_srl.smap,
+            array_srl.start, array_srl.end,
+            "in the array bounds for this array");
+        return RE_ERROR;
+    }
+    return RE_OK;
 }
 resolve_error add_body_decls(
     resolver* r, symbol_table* parent_st, symbol_table* shared_st, ast_body* b,
@@ -1454,7 +1480,7 @@ resolve_error resolve_scoped_identifier(
 }
 access_modifier check_member_access(symbol_table* st, scope* tgt)
 {
-    return AM_DEFAULT; // TODO
+    return AM_LOCAL; // TODO
 }
 resolve_error resolve_expr_member_accesss(
     resolver* r, expr_member_access* ema, symbol_table* st, ast_elem** value,
@@ -2352,7 +2378,6 @@ static inline resolve_error resolve_ast_node_raw(
                 (expr_array_type*)(n->kind == EXPR_ARRAY_TYPE ? n : NULL);
             if (resolved) RETURN_RESOLVED(value, ctype, est->ctype, TYPE_ELEM);
             ast_elem* base_type;
-            ast_elem* len_ctype;
             re = resolve_ast_node(r, est->base_type, st, &base_type, NULL);
             if (re) return re;
             if (!eat) {
@@ -2365,9 +2390,6 @@ static inline resolve_error resolve_ast_node_raw(
                 est->ctype = ts;
             }
             else {
-                re =
-                    resolve_ast_node(r, eat->length_spec, st, NULL, &len_ctype);
-                if (re) return re;
                 type_array* ta = (type_array*)pool_alloc(
                     &r->tc->permmem, sizeof(type_array));
                 if (!ta) return RE_FATAL;
@@ -2398,13 +2420,10 @@ static inline resolve_error resolve_ast_node_raw(
                 }
             }
             ast_node** e = ea->elements;
-            bool comptime_known = true;
             ast_elem* elem_ctype;
             for (ureg i = 0; i < ea->elem_count; i++) {
                 re = resolve_ast_node(r, *e, st, NULL, &elem_ctype);
                 if (re) return re;
-                comptime_known =
-                    comptime_known && ast_flags_get_comptime_known((**e).flags);
                 if (!ea->ctype) {
                     type_array* ta = (type_array*)pool_alloc(
                         &r->tc->permmem, sizeof(type_array));
@@ -2434,7 +2453,6 @@ static inline resolve_error resolve_ast_node_raw(
                 e++;
             }
             ast_flags_set_resolved(&ea->node.flags);
-            if (comptime_known) ast_flags_set_comptime_known(&ea->node.flags);
             RETURN_RESOLVED(value, ctype, ea, ea->ctype);
         }
         case EXPR_CAST: {

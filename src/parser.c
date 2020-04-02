@@ -446,7 +446,7 @@ static inline void
 curr_scope_add_uses(parser* p, access_modifier am, ureg count)
 {
     body_parse_data* bpd = get_bpd(p);
-    if (am == AM_DEFAULT) {
+    if (am == AM_LOCAL) {
         bpd->usings_count += count;
     }
     else {
@@ -462,7 +462,7 @@ static inline void
 curr_scope_add_decls(parser* p, access_modifier am, ureg count)
 {
     body_parse_data* bpd = get_bpd(p);
-    if (am == AM_DEFAULT) {
+    if (am == AM_LOCAL) {
         bpd->decl_count += count;
     }
     else {
@@ -586,7 +586,7 @@ sym_fill_srange(parser* p, symbol* s, ureg start, ureg end)
     srl.start = start;
     srl.end = end;
     srl.smap = NULL;
-    if (ast_flags_get_access_mod(s->node.flags) != AM_DEFAULT) {
+    if (ast_flags_get_access_mod(s->node.flags) != AM_LOCAL) {
         if (ast_elem_is_module_frame((ast_elem*)get_bpd(p)->node)) {
             srl.smap = p->lx.smap;
         }
@@ -602,7 +602,6 @@ parse_literal(parser* p, ast_node_kind nk, primitive_kind pk, ast_node** tgt)
     expr_literal* l = (expr_literal*)alloc_perm(p, sizeof(expr_literal));
     if (!l) return PE_FATAL;
     ast_node_init_with_pk(&l->node, nk, pk);
-    ast_flags_set_comptime_known(&l->node.flags);
     l->value.str = alloc_string_temp(p, t->str);
     if (!l->value.str) return PE_FATAL;
     if (ast_node_fill_srange(p, &l->node, t->start, t->end)) return PE_FATAL;
@@ -1685,7 +1684,6 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     sp->ctype = NULL;
     ast_node_init(&sp->node, EXPR_PP);
     ast_flags_set_pp_expr_res_used(&sp->node.flags);
-    ast_flags_set_comptime_known(&sp->node.flags);
     sp->result_buffer.state.pprn = NULL;
     sp->result_buffer.paste_result.last_next =
         &sp->result_buffer.paste_result.first;
@@ -2278,7 +2276,7 @@ static inline parse_error ast_flags_from_kw_set_access_mod(
     parser* p, ast_flags* f, access_modifier am, ureg start, ureg end)
 {
     access_modifier old_am = ast_flags_get_access_mod(*f);
-    if (old_am != AM_DEFAULT) {
+    if (old_am != AM_LOCAL) {
         if (old_am == am) {
             report_redundant_specifier(
                 p, access_modifier_string(am), start, end);
@@ -2521,7 +2519,7 @@ parse_error parse_func_decl(
         fn->fnb.sc.body.srange = SRC_RANGE_INVALID;
         fn->fnb.sc.body.symtab = NULL;
         if (push_bpd(p, (ast_node*)fn, &fn->fnb.sc.body)) return PE_FATAL;
-        curr_scope_add_decls(p, AM_DEFAULT, fn->fnb.param_count);
+        curr_scope_add_decls(p, AM_LOCAL, fn->fnb.param_count);
         if (pop_bpd(p, PE_OK)) return PE_FATAL;
         return PE_OK;
     }
@@ -2574,7 +2572,7 @@ parse_error parse_macro_decl(
         m->sc.body.srange = SRC_RANGE_INVALID;
         m->sc.body.symtab = NULL;
         if (push_bpd(p, (ast_node*)m, &m->sc.body)) return PE_FATAL;
-        curr_scope_add_decls(p, AM_DEFAULT, m->param_count);
+        curr_scope_add_decls(p, AM_LOCAL, m->param_count);
         if (pop_bpd(p, PE_OK)) return PE_FATAL;
         return PE_OK;
     }
@@ -2864,7 +2862,7 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
                 if (!t) return PE_LX_ERROR;
                 if (t->kind == TK_EQUALS) {
                     lx_void_n(&p->lx, 2);
-                    curr_scope_add_decls(p, AM_DEFAULT, decl_count);
+                    curr_scope_add_decls(p, AM_LOCAL, decl_count);
                     return parse_compound_assignment_after_equals(
                         p, t_start, t->end, elems, elem_count, tgt, true);
                 }
@@ -2872,7 +2870,7 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
             if (t->kind == TK_EQUALS) {
                 lx_void(&p->lx);
                 turn_ident_nodes_to_exprs(elems, elem_count);
-                curr_scope_add_decls(p, AM_DEFAULT, decl_count);
+                curr_scope_add_decls(p, AM_LOCAL, decl_count);
                 return parse_compound_assignment_after_equals(
                     p, t_start, t->end, elems, elem_count, tgt, false);
             }
@@ -3327,22 +3325,6 @@ ast_flags_from_kw(parser* p, ast_flags* f, token_kind kw, ureg start, ureg end)
             }
             ast_flags_set_const(f);
         } break;
-        case TK_KW_SEALED: {
-            if (ast_flags_get_sealed(*f) != false) {
-                report_redundant_specifier(
-                    p, token_strings[TK_KW_SEALED], start, end);
-                return PE_ERROR;
-            }
-            ast_flags_set_sealed(f);
-        } break;
-        case TK_KW_VIRTUAL: {
-            if (ast_flags_get_virtual(*f) != false) {
-                report_redundant_specifier(
-                    p, token_strings[TK_KW_VIRTUAL], start, end);
-                return PE_ERROR;
-            }
-            ast_flags_set_virtual(f);
-        } break;
         case TK_KW_STATIC: {
             if (ast_flags_get_static(*f) != false) {
                 report_redundant_specifier(
@@ -3376,12 +3358,14 @@ static inline parse_error parse_pp_stmt(
     if (!sp) return PE_FATAL;
     sp->ctype = NULL;
     ast_node_init(&sp->node, EXPR_PP);
-    ast_flags_set_comptime_known(&sp->node.flags);
     sp->result_buffer.state.pprn = NULL;
     sp->result_buffer.paste_result.last_next =
         &sp->result_buffer.paste_result.first;
     pe = parse_statement(p, &sp->pp_expr);
     if (pe) return pe;
+    if (ast_elem_is_var((ast_elem*)sp->pp_expr)) {
+        ast_flags_set_comptime(&sp->pp_expr->flags);
+    }
     pe = ast_node_fill_srange(
         p, (ast_node*)sp, start, src_range_get_end(sp->pp_expr->srange));
     *tgt = (ast_node*)sp;
@@ -3518,7 +3502,7 @@ static inline parse_error parse_delimited_body(
             ((expr_block_base*)first_stmt)->parent = parent;
         }
     }
-    curr_scope_add_decls(p, AM_DEFAULT, param_count);
+    curr_scope_add_decls(p, AM_LOCAL, param_count);
     while (t->kind != delimiter) {
         if (t->kind != TK_EOF) {
             pe = parse_statement(p, &target);

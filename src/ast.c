@@ -244,6 +244,10 @@ bool ast_elem_is_struct(ast_elem* s)
 {
     return s->kind == SC_STRUCT || s->kind == SC_STRUCT_GENERIC_INST;
 }
+bool ast_elem_is_var(ast_elem* s)
+{
+    return s->kind == SYM_VAR || s->kind == SYM_VAR_INITIALIZED;
+}
 bool symbol_table_is_public(symbol_table* st)
 {
     ast_elem* owner = symbol_table_skip_metatables(st)->owning_node;

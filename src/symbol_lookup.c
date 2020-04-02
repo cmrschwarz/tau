@@ -17,7 +17,7 @@ static inline access_modifier resolver_get_am_start(
 {
     for (symbol_table* t = lookup_st; t != NULL; t = t->parent) {
         if (t == looking_mf) {
-            return AM_DEFAULT;
+            return AM_LOCAL;
         }
         if (t == looking_mod) {
             return AM_INTERNAL;
