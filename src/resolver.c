@@ -13,25 +13,24 @@
 #include "symbol_lookup.h"
 
 resolve_error resolver_run_pp_resolve_nodes(resolver* r);
-resolve_error resolve_param(
-    resolver* r, sym_param* p, bool generic, ureg ppl, ast_elem** ctype);
 resolve_error
-resolve_body(resolver* r, ast_node* block_owner, ast_body* b, ureg ppl);
+resolve_param(resolver* r, sym_param* p, bool generic, ast_elem** ctype);
+resolve_error resolve_body(resolver* r, ast_node* block_owner, ast_body* b);
 static inline resolve_error resolve_ast_node_raw(
-    resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
+    resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
     ast_elem** ctype);
-resolve_error resolve_func(
-    resolver* r, sc_func_base* fnb, ureg ppl, ast_node** continue_block);
+resolve_error
+resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block);
 resolve_error resolve_expr_body(
-    resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b, ureg ppl,
+    resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b,
     pp_resolve_node** block_pprn, bool* end_reachable);
 resolve_error resolve_expr_scope_access(
-    resolver* r, expr_scope_access* esa, symbol_table* st, ureg ppl,
+    resolver* r, expr_scope_access* esa, symbol_table* st,
     access_modifier* access, ast_elem** value, ast_elem** ctype);
 resolve_error
 get_resolved_symbol_symtab(resolver* r, symbol* s, symbol_table** tgt_st);
 resolve_error
-resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl, ast_elem** ctype);
+resolve_func_from_call(resolver* r, sc_func* fn, ast_elem** ctype);
 resolve_error
 pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress);
 resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn);
@@ -108,22 +107,25 @@ void remove_pprn_from_waiting_list(resolver* r, pp_resolve_node* pprn)
 }
 void pprn_fin(resolver* r, pp_resolve_node* pprn)
 {
-    assert(pprn->node);
     ast_node* n = pprn->node;
+    assert(n);
     if (pprn->waiting_list_entry) {
         remove_pprn_from_waiting_list(r, pprn);
     }
-    switch (pprn->node->kind) {
+    switch (n->kind) {
         case SC_FUNC:
         case SC_FUNC_GENERIC: ((sc_func_base*)n)->pprn = NULL; break;
-        case SYM_VAR: ((sym_var*)n)->pprn = NULL; break;
+        case SYM_VAR:
+        case SYM_VAR_INITIALIZED: ((sym_var*)n)->pprn = NULL; break;
         case EXPR_BLOCK: ((expr_block*)n)->pprn = NULL; break;
         case EXPR_LOOP: ((expr_loop*)n)->pprn = NULL; break;
         case SC_STRUCT: ((sc_struct*)n)->sb.pprn = NULL; break;
         case SYM_IMPORT_GROUP: ((sym_import_group*)n)->pprn = NULL; break;
         case SYM_IMPORT_MODULE: ((sym_import_module*)n)->pprn = NULL; break;
+        case EXPR_PASTE_EVALUATION:
+        case STMT_PASTE_EVALUATION:
         case EXPR_PP: break;
-        default: assert(false); panic("incalid pprn node type");
+        default: assert(false); panic("invalid pprn node type");
     }
     aseglist_fin(&pprn->notify_when_done);
     aseglist_fin(&pprn->notify_when_ready);
@@ -131,7 +133,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn)
 }
 static pp_resolve_node* pp_resolve_node_create(
     resolver* r, ast_node* n, symbol_table* declaring_st, bool res_used,
-    bool run_when_ready, ureg ppl)
+    bool run_when_ready)
 {
     pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
     if (!pprn) return NULL;
@@ -150,7 +152,6 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->node = n;
     assert(n->kind != MF_MODULE);
     pprn->continue_block = NULL;
-    pprn->ppl = ppl;
     pprn->next = NULL;
     pprn->parent = NULL;
     pprn->run_when_ready = run_when_ready;
@@ -177,7 +178,7 @@ static inline resolve_error get_curr_pprn(
         *curr_pprn = pp_resolve_node_create(
             r, (ast_node*)r->curr_var_decl,
             ast_elem_get_body((ast_elem*)r->curr_var_decl_block_owner)->symtab,
-            false, false, 0);
+            false, false);
         if (!*curr_pprn) return RE_FATAL;
         r->curr_var_pp_node = *curr_pprn;
         return RE_OK;
@@ -195,8 +196,7 @@ static inline resolve_error get_curr_pprn(
     }
     *curr_pprn = pp_resolve_node_create(
         r, r->curr_block_owner,
-        ast_elem_get_body((ast_elem*)r->curr_block_owner)->symtab, true, true,
-        0);
+        ast_elem_get_body((ast_elem*)r->curr_block_owner)->symtab, true, true);
     if (!*curr_pprn) return RE_FATAL;
     r->curr_block_pp_node = *curr_pprn;
     return RE_OK;
@@ -247,10 +247,9 @@ resolve_error
 pp_resolve_node_activate(resolver* r, pp_resolve_node* pprn, bool resolved)
 {
     if (pprn->dep_count == 0 && r->module_group_constructor) {
-        resolve_func_from_call(r, r->module_group_constructor, 0, NULL);
+        resolve_func_from_call(r, r->module_group_constructor, NULL);
     }
     if (pprn->dep_count == 0) {
-
         if (resolved) {
             return pp_resolve_node_ready(r, pprn);
         }
@@ -478,7 +477,7 @@ ureg claim_symbol_id(resolver* r, symbol* s, bool public_st)
 }
 
 static resolve_error add_ast_node_decls(
-    resolver* r, symbol_table* st, symbol_table* sst, ureg ppl, ast_node* n,
+    resolver* r, symbol_table* st, symbol_table* sst, ast_node* n,
     bool public_st)
 {
     if (n == NULL) return RE_OK;
@@ -522,7 +521,7 @@ static resolve_error add_ast_node_decls(
 
         case STMT_USE: {
             pp_resolve_node* pprn =
-                pp_resolve_node_create(r, n, st, false, false, ppl);
+                pp_resolve_node_create(r, n, st, false, false);
             if (!pprn) return RE_FATAL;
             if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn))
                 return RE_FATAL;
@@ -531,17 +530,16 @@ static resolve_error add_ast_node_decls(
         case EXPR_PP: {
             expr_pp* epp = (expr_pp*)n;
             if (public_st) {
-                pp_resolve_node* pprn =
-                    pp_resolve_node_create(r, n, st, false, true, ppl);
+                bool is_expr = ast_elem_is_expr((ast_elem*)epp->pp_expr);
+                pp_resolve_node* pprn = pp_resolve_node_create(
+                    r, is_expr ? n : epp->pp_expr, st, false, is_expr);
                 if (!pprn) return RE_FATAL;
                 re = pp_resolve_node_activate(r, pprn, false);
                 if (re) return re;
                 r->curr_pp_node = pprn;
                 epp->result_buffer.state.pprn = pprn;
             }
-            if (st && st->pp_symtab) st = st->pp_symtab;
-            if (sst && sst->pp_symtab) sst = sst->pp_symtab;
-            re = add_ast_node_decls(r, st, sst, ppl + 1, epp->pp_expr, false);
+            re = add_ast_node_decls(r, st, sst, epp->pp_expr, false);
             // no need to reset curr_pp_node here, since we are nested
             if (re) return re;
             if (public_st) r->curr_pp_node = NULL;
@@ -571,8 +569,7 @@ static resolve_error add_ast_node_decls(
             // so members can inc this and we get a member id
             // s->id = ast_node_claim_id(r, n, public_st);
 
-            re = add_body_decls(
-                r, st, NULL, ppl, &sb->sc.body, members_public_st);
+            re = add_body_decls(r, st, NULL, &sb->sc.body, members_public_st);
             if (n->kind == SC_STRUCT) {
                 ((sc_struct*)n)->id = claim_symbol_id(r, (symbol*)n, public_st);
             }
@@ -686,7 +683,7 @@ static resolve_error add_ast_node_decls(
                         return RE_ERROR;
                     }
                     pp_resolve_node* pprn = pp_resolve_node_create(
-                        r, (ast_node*)fn, st, true, true, 0);
+                        r, (ast_node*)fn, st, true, true);
                     if (!pprn) return RE_FATAL;
                     fn->fnb.pprn = pprn;
                     pprn->call_when_done = false;
@@ -717,7 +714,7 @@ static resolve_error add_ast_node_decls(
                         return RE_ERROR;
                     }
                     pp_resolve_node* pprn = pp_resolve_node_create(
-                        r, (ast_node*)fn, st, true, true, 0);
+                        r, (ast_node*)fn, st, true, true);
                     if (!pprn) return RE_FATAL;
                     fn->fnb.pprn = pprn;
                     r->module_group_destructor = fn;
@@ -768,8 +765,8 @@ static resolve_error add_ast_node_decls(
         case STMT_PASTE_EVALUATION: {
             stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
             for (ast_node** e = spe->body.elements; *e; e++) {
-                re = add_ast_node_decls(
-                    r, spe->body.symtab, sst, ppl, *e, public_st);
+                re =
+                    add_ast_node_decls(r, spe->body.symtab, sst, *e, public_st);
                 if (re) return re;
             }
             return RE_OK;
@@ -874,13 +871,13 @@ static resolve_error evaluate_array_bounds(
     return RE_ERROR;
 }
 resolve_error add_body_decls(
-    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
-    ast_body* b, bool public_st)
+    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ast_body* b,
+    bool public_st)
 {
     set_parent_symtabs(&b->symtab, parent_st);
     for (ast_node** n = b->elements; *n; n++) {
         resolve_error re =
-            add_ast_node_decls(r, b->symtab, shared_st, ppl, *n, public_st);
+            add_ast_node_decls(r, b->symtab, shared_st, *n, public_st);
         r->curr_pp_node = NULL;
         if (re) return re;
     }
@@ -919,8 +916,8 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
      */
 }
 resolve_error operator_func_applicable(
-    resolver* r, sc_func* f, ureg op_ppl, ast_elem* lhs, ast_elem* rhs,
-    bool* applicable, ast_elem** ctype)
+    resolver* r, sc_func* f, ast_elem* lhs, ast_elem* rhs, bool* applicable,
+    ast_elem** ctype)
 {
     // ensure func has exactly 2 parameters
     // [varargs not allowed for operators]
@@ -929,14 +926,13 @@ resolve_error operator_func_applicable(
         return RE_OK;
     }
     ast_elem* param_ctype;
-    resolve_error re =
-        resolve_param(r, &f->fnb.params[0], false, op_ppl, &param_ctype);
+    resolve_error re = resolve_param(r, &f->fnb.params[0], false, &param_ctype);
     if (re) return re;
     if (!ctypes_unifiable(lhs, param_ctype)) {
         *applicable = false;
         return RE_OK;
     }
-    re = resolve_param(r, &f->fnb.params[0], false, op_ppl, &param_ctype);
+    re = resolve_param(r, &f->fnb.params[0], false, &param_ctype);
     if (re) return re;
     if (!ctypes_unifiable(rhs, param_ctype)) {
         *applicable = false;
@@ -948,7 +944,7 @@ resolve_error operator_func_applicable(
 }
 resolve_error overload_applicable(
     resolver* r, ast_elem** call_arg_types, ureg arg_count, scope* overload,
-    ureg ppl, bool* applicable, ast_elem** ctype)
+    bool* applicable, ast_elem** ctype)
 {
     sc_macro* m =
         (overload->osym.sym.node.kind == SC_MACRO) ? (sc_macro*)overload : NULL;
@@ -962,7 +958,7 @@ resolve_error overload_applicable(
     }
     for (ureg i = 0; i < arg_count; i++) {
         ast_elem* ctype;
-        resolve_error re = resolve_param(r, &params[i], false, ppl, &ctype);
+        resolve_error re = resolve_param(r, &params[i], false, &ctype);
         if (re) return re;
         if (!ctypes_unifiable(ctype, call_arg_types[i])) {
             *applicable = false;
@@ -973,7 +969,7 @@ resolve_error overload_applicable(
     if (fn) {
         if (!ast_flags_get_resolved(fn->fnb.sc.osym.sym.node.flags)) {
             resolve_error re = resolve_ast_node(
-                r, fn->fnb.return_type, overload->osym.sym.declaring_st, ppl,
+                r, fn->fnb.return_type, overload->osym.sym.declaring_st,
                 &fn->fnb.return_ctype, NULL);
             if (re) return re;
         }
@@ -1004,20 +1000,20 @@ static inline resolve_error resolve_no_block_macro_call(
 // for ex. wth foo::bar() func_st is foo's st, st is the table to look up
 // args
 resolve_error resolve_func_call(
-    resolver* r, expr_call* c, symbol_table* st, ureg ppl, char* func_name,
+    resolver* r, expr_call* c, symbol_table* st, char* func_name,
     symbol_table* func_st, ast_elem** ctype)
 {
     ast_elem** call_arg_types =
         sbuffer_append(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
     resolve_error re = RE_OK;
     for (ureg i = 0; i < c->arg_count; i++) {
-        re = resolve_ast_node(r, c->args[i], st, ppl, NULL, &call_arg_types[i]);
+        re = resolve_ast_node(r, c->args[i], st, NULL, &call_arg_types[i]);
         if (re) return re;
     }
     scope* tgt;
     symbol_lookup_iterator sli;
     re = symbol_lookup_iterator_init(
-        &sli, r, func_st, ppl, NULL, st, func_name, false, true);
+        &sli, r, func_st, NULL, st, func_name, false, true);
     bool applicable = false;
     if (re) {
         sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
@@ -1043,7 +1039,7 @@ resolve_error resolve_func_call(
         overload_existant = true;
         if (sym->node.kind == SC_FUNC) {
             re = overload_applicable(
-                r, call_arg_types, c->arg_count, (scope*)sym, ppl, &applicable,
+                r, call_arg_types, c->arg_count, (scope*)sym, &applicable,
                 ctype);
             if (applicable) {
                 // TODO: for now we just pick the first applicable overload
@@ -1080,42 +1076,40 @@ resolve_error resolve_func_call(
         ast_flags_set_resolved(&c->node.flags);
         // we sadly need to do this so the resolved flag means
         //"ready to emit and run" which we need for the pp
-        re = resolve_func_from_call(r, (sc_func*)tgt, ppl, ctype);
+        re = resolve_func_from_call(r, (sc_func*)tgt, ctype);
     }
     return re;
 }
 
-resolve_error resolve_call(
-    resolver* r, expr_call* c, symbol_table* st, ureg ppl, ast_elem** ctype)
+resolve_error
+resolve_call(resolver* r, expr_call* c, symbol_table* st, ast_elem** ctype)
 {
     if (c->lhs->kind == EXPR_IDENTIFIER) {
         return resolve_func_call(
-            r, c, st, ppl, ((expr_identifier*)c->lhs)->value.str, st, ctype);
+            r, c, st, ((expr_identifier*)c->lhs)->value.str, st, ctype);
     }
     if (c->lhs->kind == EXPR_SCOPE_ACCESS) {
         expr_scope_access* esa = (expr_scope_access*)c->lhs;
         ast_elem* esa_lhs;
         symbol_table* lhs_st;
-        resolve_error re =
-            resolve_ast_node(r, esa->lhs, st, ppl, &esa_lhs, NULL);
+        resolve_error re = resolve_ast_node(r, esa->lhs, st, &esa_lhs, NULL);
         if (re) return re;
         assert(ast_elem_is_symbol(esa_lhs));
         re = get_resolved_symbol_symtab(r, (symbol*)esa_lhs, &lhs_st);
         if (re) return re;
-        return resolve_func_call(
-            r, c, st, ppl, esa->target.name, lhs_st, ctype);
+        return resolve_func_call(r, c, st, esa->target.name, lhs_st, ctype);
     }
     if (c->lhs->kind == EXPR_MEMBER_ACCESS) {
         expr_member_access* esa = (expr_member_access*)c->lhs;
         ast_elem* esa_lhs;
         ast_elem* esa_lhs_ctype;
         resolve_error re =
-            resolve_ast_node(r, esa->lhs, st, ppl, &esa_lhs, &esa_lhs_ctype);
+            resolve_ast_node(r, esa->lhs, st, &esa_lhs, &esa_lhs_ctype);
         if (re) return re;
         assert(ast_elem_is_struct(esa_lhs_ctype)); // TODO: error
         ast_flags_set_instance_member(&c->node.flags);
         return resolve_func_call(
-            r, c, st, ppl, esa->target.name,
+            r, c, st, esa->target.name,
             ((sc_struct*)esa_lhs_ctype)->sb.sc.body.symtab, ctype);
     }
     assert(false); // TODO
@@ -1134,12 +1128,12 @@ resolve_error create_pointer_to(
     return RE_OK;
 }
 resolve_error choose_unary_operator_overload(
-    resolver* r, expr_op_unary* ou, symbol_table* st, ureg ppl,
-    ast_elem** value, ast_elem** ctype)
+    resolver* r, expr_op_unary* ou, symbol_table* st, ast_elem** value,
+    ast_elem** ctype)
 {
     ast_elem *child_type, *child_value;
     resolve_error re =
-        resolve_ast_node(r, ou->child, st, ppl, &child_value, &child_type);
+        resolve_ast_node(r, ou->child, st, &child_value, &child_type);
     if (re) return re;
 
     if (child_type == TYPE_ELEM || child_type == GENERIC_TYPE_ELEM) {
@@ -1199,13 +1193,13 @@ bool is_lvalue(ast_node* expr)
     return false;
 }
 resolve_error choose_binary_operator_overload(
-    resolver* r, expr_op_binary* ob, symbol_table* st, ureg ppl,
-    ast_elem** value, ast_elem** ctype)
+    resolver* r, expr_op_binary* ob, symbol_table* st, ast_elem** value,
+    ast_elem** ctype)
 {
     ast_elem *lhs_ctype, *rhs_ctype;
-    resolve_error re = resolve_ast_node(r, ob->lhs, st, ppl, NULL, &lhs_ctype);
+    resolve_error re = resolve_ast_node(r, ob->lhs, st, NULL, &lhs_ctype);
     if (re) return re;
-    re = resolve_ast_node(r, ob->rhs, st, ppl, NULL, &rhs_ctype);
+    re = resolve_ast_node(r, ob->rhs, st, NULL, &rhs_ctype);
     if (re) return re;
     if (ob->node.op_kind == OP_ASSIGN) {
         assert(is_lvalue(ob->lhs)); // TODO: error
@@ -1224,18 +1218,16 @@ resolve_error choose_binary_operator_overload(
     symbol* s;
     symbol_lookup_iterator sli;
     re = symbol_lookup_iterator_init(
-        &sli, r, st, ppl, NULL, st, op_to_str(ob->node.op_kind), false, true);
+        &sli, r, st, NULL, st, op_to_str(ob->node.op_kind), false, true);
     if (re) return re;
     while (true) {
         re = symbol_lookup_iterator_next(&sli, &s);
         if (re) return re;
         if (!s) break;
         bool applicable;
-        ureg op_ppl = s->declaring_st->ppl;
         if (s->node.kind == SC_FUNC) {
             re = operator_func_applicable(
-                r, (sc_func*)s, op_ppl, lhs_ctype, rhs_ctype, &applicable,
-                ctype);
+                r, (sc_func*)s, lhs_ctype, rhs_ctype, &applicable, ctype);
             if (re) return re;
             if (applicable) return RE_OK;
         }
@@ -1348,7 +1340,7 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
     } while (s);
     assert(children_count > 0);
     symbol_table* pst;
-    if (symbol_table_init(&pst, children_count, use, true, (ast_elem*)ip, 0)) {
+    if (symbol_table_init(&pst, children_count, use, true, (ast_elem*)ip)) {
         return RE_FATAL;
     }
     pst->parent = NULL;
@@ -1373,8 +1365,8 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
     ast_flags_set_resolved(&ip->osym.sym.node.flags);
     return RE_OK;
 }
-resolve_error resolve_param(
-    resolver* r, sym_param* p, bool generic, ureg ppl, ast_elem** ctype)
+resolve_error
+resolve_param(resolver* r, sym_param* p, bool generic, ast_elem** ctype)
 {
     if (ast_flags_get_resolved(p->sym.node.flags)) {
         if (ctype) *ctype = p->ctype;
@@ -1383,13 +1375,12 @@ resolve_error resolve_param(
     ast_flags_set_resolving(&p->sym.node.flags);
     resolve_error re;
     if (p->type) {
-        re = resolve_ast_node(
-            r, p->type, p->sym.declaring_st, ppl, &p->ctype, NULL);
+        re = resolve_ast_node(r, p->type, p->sym.declaring_st, &p->ctype, NULL);
         if (re) return re;
         if (p->default_value) {
             ast_elem* val;
             re = resolve_ast_node(
-                r, (ast_node*)p->default_value, p->sym.declaring_st, ppl, NULL,
+                r, (ast_node*)p->default_value, p->sym.declaring_st, NULL,
                 &val);
             if (re) return re;
             if (!ctypes_unifiable(p->ctype, val)) {
@@ -1408,7 +1399,7 @@ resolve_error resolve_param(
         }
         else {
             re = resolve_ast_node(
-                r, p->default_value, p->sym.declaring_st, ppl, NULL, &p->ctype);
+                r, p->default_value, p->sym.declaring_st, NULL, &p->ctype);
             if (re) return re;
         }
     }
@@ -1417,26 +1408,26 @@ resolve_error resolve_param(
     return PE_OK;
 }
 resolve_error resolver_lookup_single(
-    resolver* r, symbol_table* st, ureg ppl, sc_struct* struct_inst,
+    resolver* r, symbol_table* st, sc_struct* struct_inst,
     symbol_table* looking_st, const char* tgt_name, symbol** res,
     symbol** ambiguity)
 {
     symbol_lookup_iterator sli;
     resolve_error re = symbol_lookup_iterator_init(
-        &sli, r, st, ppl, struct_inst, looking_st, tgt_name, true, true);
+        &sli, r, st, struct_inst, looking_st, tgt_name, true, true);
     if (re) return re;
     re = symbol_lookup_iterator_next(&sli, res);
     if (re) return re;
     return symbol_lookup_iterator_next(&sli, ambiguity);
 }
 resolve_error resolve_scoped_identifier(
-    resolver* r, expr_scope_access* esa, symbol_table* st, ureg ppl,
-    ast_elem** value, ast_elem** ctype)
+    resolver* r, expr_scope_access* esa, symbol_table* st, ast_elem** value,
+    ast_elem** ctype)
 {
     resolve_error re;
     symbol_table* lhs_st;
     ast_elem* lhs_val;
-    re = resolve_ast_node(r, esa->lhs, st, ppl, &lhs_val, NULL);
+    re = resolve_ast_node(r, esa->lhs, st, &lhs_val, NULL);
     if (re) return re;
     assert(lhs_val != NULL && ast_elem_is_symbol(lhs_val)); // TODO: log error
     re = get_resolved_symbol_symtab(r, (symbol*)lhs_val, &lhs_st);
@@ -1444,7 +1435,7 @@ resolve_error resolve_scoped_identifier(
     symbol* idf;
     symbol* amb;
     re = resolver_lookup_single(
-        r, lhs_st, ppl, NULL, st, esa->target.name, &idf, &amb);
+        r, lhs_st, NULL, st, esa->target.name, &idf, &amb);
     if (re) return re;
     if (!idf) {
         return report_unknown_symbol(r, (ast_node*)esa, st);
@@ -1454,9 +1445,7 @@ resolve_error resolve_scoped_identifier(
     }
     ast_elem* idf_val;
 
-    resolve_ast_node(
-        r, (ast_node*)idf, idf->declaring_st, idf->declaring_st->ppl, &idf_val,
-        ctype);
+    resolve_ast_node(r, (ast_node*)idf, idf->declaring_st, &idf_val, ctype);
     assert(idf_val != NULL && ast_elem_is_symbol(idf_val)); // TODO: log error
     esa->target.sym = idf;
     if (value) *value = idf_val;
@@ -1468,11 +1457,11 @@ access_modifier check_member_access(symbol_table* st, scope* tgt)
     return AM_DEFAULT; // TODO
 }
 resolve_error resolve_expr_member_accesss(
-    resolver* r, expr_member_access* ema, symbol_table* st, ureg ppl,
-    ast_elem** value, ast_elem** ctype)
+    resolver* r, expr_member_access* ema, symbol_table* st, ast_elem** value,
+    ast_elem** ctype)
 {
     ast_elem* lhs_type;
-    resolve_error re = resolve_ast_node(r, ema->lhs, st, ppl, NULL, &lhs_type);
+    resolve_error re = resolve_ast_node(r, ema->lhs, st, NULL, &lhs_type);
     if (re) return re;
     if (!ast_elem_is_struct(lhs_type)) { // TODO: pointers
         // TODO: errror
@@ -1483,31 +1472,20 @@ resolve_error resolve_expr_member_accesss(
     symbol* amb;
     symbol_table* struct_st = ((scope*)lhs_type)->body.symtab;
     re = resolver_lookup_single(
-        r, struct_st, ppl, (sc_struct*)lhs_type, st, ema->target.name, &mem,
-        &amb);
+        r, struct_st, (sc_struct*)lhs_type, st, ema->target.name, &mem, &amb);
     if (re) return re;
     if (!mem) return report_unknown_symbol(r, (ast_node*)ema, struct_st);
     if (amb) {
         assert(false); // TODO: report ambiguity
     }
     ema->target.sym = mem;
-    re = resolve_ast_node(
-        r, (ast_node*)mem, mem->declaring_st, mem->declaring_st->ppl, value,
-        ctype);
+    re = resolve_ast_node(r, (ast_node*)mem, mem->declaring_st, value, ctype);
     if (re) return re;
     ast_flags_set_resolved(&ema->node.flags);
     return RE_OK;
 }
-resolve_error check_var_ppl(resolver* r, sym_var* v, ureg ppl)
-{
-    if (v->osym.sym.declaring_st->ppl != ppl) {
-        stack_push(&r->error_stack, v);
-        return RE_DIFFERENT_PP_LEVEL;
-    }
-    return RE_OK;
-}
 static inline resolve_error resolve_var(
-    resolver* r, symbol_table* st, ureg ppl, sym_var* v, ast_elem** value,
+    resolver* r, symbol_table* st, sym_var* v, ast_elem** value,
     ast_elem** ctype)
 {
     resolve_error re;
@@ -1528,18 +1506,17 @@ static inline resolve_error resolve_var(
     }
     if (v->osym.sym.node.kind == SYM_VAR) {
         ast_elem* type;
-        re = resolve_ast_node(r, v->type, st, ppl, &type, NULL);
+        re = resolve_ast_node(r, v->type, st, &type, NULL);
         if (!re) v->ctype = type;
     }
     else {
         sym_var_initialized* vi = (sym_var_initialized*)v;
         if (vi->var.type) {
-            re = resolve_ast_node(
-                r, vi->var.type, st, ppl, &vi->var.ctype, NULL);
+            re = resolve_ast_node(r, vi->var.type, st, &vi->var.ctype, NULL);
             if (!re) {
                 ast_elem* val_type;
-                re = resolve_ast_node(
-                    r, vi->initial_value, st, ppl, NULL, &val_type);
+                re =
+                    resolve_ast_node(r, vi->initial_value, st, NULL, &val_type);
                 if (!re) {
                     if (!ctypes_unifiable(vi->var.ctype, val_type)) {
                         src_range_large vi_type_srl, vi_val_srl;
@@ -1560,7 +1537,7 @@ static inline resolve_error resolve_var(
         }
         else {
             re = resolve_ast_node(
-                r, vi->initial_value, st, ppl, NULL, &vi->var.ctype);
+                r, vi->initial_value, st, NULL, &vi->var.ctype);
             // this could become needed again once we support typeof,
             // it allows one retry in cases of a variable initially
             // assigned to a self referential expr block
@@ -1570,11 +1547,11 @@ static inline resolve_error resolve_var(
                      ast_flags_set_resolved(&n->flags);
                      stack_clear(&r->error_stack);
                      re = resolve_ast_node(
-                         r, vi->initial_value, st, ppl, NULL,
+                         r, vi->initial_value, st, NULL,
                          &vi->var.ctype);
                 }
                 else{
-                    report_type_loop(r, n, st, ppl);
+                    report_type_loop(r, n, st);
                 }
                 }
             }*/
@@ -1615,10 +1592,10 @@ static inline resolve_error resolve_return_target(resolver* r, ast_node** tgt)
 }
 
 static inline resolve_error
-resolve_return(resolver* r, symbol_table* st, ureg ppl, expr_return* er)
+resolve_return(resolver* r, symbol_table* st, expr_return* er)
 {
     resolve_error re =
-        resolve_ast_node(r, er->value, st, ppl, NULL, &er->value_ctype);
+        resolve_ast_node(r, er->value, st, NULL, &er->value_ctype);
     if (re) return re;
     ast_flags_set_resolved(&er->node.flags);
     ast_elem* tgt_type;
@@ -1663,10 +1640,9 @@ resolve_return(resolver* r, symbol_table* st, ureg ppl, expr_return* er)
     return RE_OK;
 }
 static inline resolve_error
-resolve_break(resolver* r, symbol_table* st, ureg ppl, expr_break* b)
+resolve_break(resolver* r, symbol_table* st, expr_break* b)
 {
-    resolve_error re =
-        resolve_ast_node(r, b->value, st, ppl, NULL, &b->value_ctype);
+    resolve_error re = resolve_ast_node(r, b->value, st, NULL, &b->value_ctype);
     if (re) return re;
     ast_flags_set_resolved(&b->node.flags);
     ast_elem** tgt_ctype;
@@ -1696,20 +1672,20 @@ resolve_break(resolver* r, symbol_table* st, ureg ppl, expr_break* b)
 }
 
 static inline resolve_error resolve_identifier(
-    resolver* r, symbol_table* st, ureg ppl, expr_identifier* e,
-    ast_elem** value, ast_elem** ctype)
+    resolver* r, symbol_table* st, expr_identifier* e, ast_elem** value,
+    ast_elem** ctype)
 {
     symbol* sym;
     symbol* amb;
     resolve_error re =
-        resolver_lookup_single(r, st, ppl, NULL, st, e->value.str, &sym, &amb);
+        resolver_lookup_single(r, st, NULL, st, e->value.str, &sym, &amb);
     if (re) return re;
     if (!sym) return report_unknown_symbol(r, (ast_node*)e, st);
     if (amb) {
         assert(false); // TODO: report ambiguity
     }
     re = resolve_ast_node(
-        r, (ast_node*)sym, sym->declaring_st, ppl, (ast_elem**)&sym, ctype);
+        r, (ast_node*)sym, sym->declaring_st, (ast_elem**)&sym, ctype);
     if (re == RE_DIFFERENT_PP_LEVEL) {
         sym = stack_pop(&r->error_stack);
         assert(ast_elem_is_symbol((ast_elem*)sym));
@@ -1731,28 +1707,28 @@ static inline resolve_error resolve_identifier(
     return RE_OK;
 }
 static inline resolve_error resolve_if(
-    resolver* r, symbol_table* st, ureg ppl, expr_if* ei, ast_elem** value,
+    resolver* r, symbol_table* st, expr_if* ei, ast_elem** value,
     ast_elem** ctype)
 {
     ast_elem *ctype_if, *ctype_else;
     bool cond_type_loop = false;
     bool if_branch_type_loop = false;
     bool else_branch_type_loop = false;
-    resolve_error re = resolve_ast_node(r, ei->condition, st, ppl, NULL, NULL);
+    resolve_error re = resolve_ast_node(r, ei->condition, st, NULL, NULL);
     if (re == RE_TYPE_LOOP) {
         cond_type_loop = true;
     }
     else {
         if (re) return re;
     }
-    re = resolve_ast_node(r, ei->if_body, st, ppl, NULL, &ctype_if);
+    re = resolve_ast_node(r, ei->if_body, st, NULL, &ctype_if);
     if (re == RE_TYPE_LOOP) {
         if_branch_type_loop = true;
     }
     else {
         if (re) return re;
     }
-    re = resolve_ast_node(r, ei->else_body, st, ppl, NULL, &ctype_else);
+    re = resolve_ast_node(r, ei->else_body, st, NULL, &ctype_else);
     if (re == RE_TYPE_LOOP) {
         else_branch_type_loop = true;
         if (if_branch_type_loop || ctype_if == UNREACHABLE_ELEM) {
@@ -1790,7 +1766,7 @@ static inline resolve_error resolve_if(
     return RE_OK;
 }
 static inline resolve_error resolve_expr_pp(
-    resolver* r, symbol_table* st, ureg ppl, expr_pp* ppe, ast_elem** value,
+    resolver* r, symbol_table* st, expr_pp* ppe, ast_elem** value,
     ast_elem** ctype)
 {
     bool is_stmt = !ast_flags_get_pp_expr_res_used(ppe->node.flags);
@@ -1798,8 +1774,8 @@ static inline resolve_error resolve_expr_pp(
         *ppe->result_buffer.paste_result.last_next = NULL;
         parse_error pe;
         if (!is_stmt) {
-            pe = parser_parse_paste_expr(
-                &r->tc->p, ppe, st, ppl, get_current_ebb(r));
+            pe =
+                parser_parse_paste_expr(&r->tc->p, ppe, st, get_current_ebb(r));
         }
         else {
             ast_body* b = ast_elem_get_body((ast_elem*)r->curr_block_owner);
@@ -1808,7 +1784,7 @@ static inline resolve_error resolve_expr_pp(
                 b->symtab->owning_node == (ast_elem*)r->curr_block_owner);
         }
         if (pe) return RE_ERROR;
-        return resolve_ast_node_raw(r, (ast_node*)ppe, st, ppl, value, ctype);
+        return resolve_ast_node_raw(r, (ast_node*)ppe, st, value, ctype);
     }
     pp_resolve_node* pprn = NULL;
     if (r->curr_pp_node == NULL) {
@@ -1816,8 +1792,7 @@ static inline resolve_error resolve_expr_pp(
             pprn = ppe->result_buffer.state.pprn;
         }
         else {
-            pprn = pp_resolve_node_create(
-                r, (ast_node*)ppe, st, is_stmt, true, ppl);
+            pprn = pp_resolve_node_create(r, (ast_node*)ppe, st, is_stmt, true);
             if (!pprn) return RE_FATAL;
             ppe->result_buffer.state.pprn = pprn;
             if (curr_pp_block_add_child(r, pprn)) return RE_FATAL;
@@ -1825,7 +1800,7 @@ static inline resolve_error resolve_expr_pp(
         r->curr_pp_node = pprn;
     }
     resolve_error re =
-        resolve_ast_node_raw(r, ppe->pp_expr, st, ppl + 1, value, &ppe->ctype);
+        resolve_ast_node_raw(r, ppe->pp_expr, st, value, &ppe->ctype);
     if (pprn) {
         r->curr_pp_node = NULL;
         if (pprn->pending_pastes) {
@@ -1856,15 +1831,15 @@ static inline resolve_error resolve_expr_pp(
     return RE_OK;
 }
 static inline resolve_error resolve_expr_paste_str(
-    resolver* r, symbol_table* st, ureg ppl, expr_paste_str* eps,
-    ast_elem** value, ast_elem** ctype)
+    resolver* r, symbol_table* st, expr_paste_str* eps, ast_elem** value,
+    ast_elem** ctype)
 {
     ast_elem* val_type;
-    resolve_error re =
-        resolve_ast_node(r, eps->value, st, ppl, NULL, &val_type);
+    resolve_error re = resolve_ast_node(r, eps->value, st, NULL, &val_type);
     if (re) return re;
     ast_flags_set_resolved(&eps->node.flags);
-
+    assert(r->curr_pp_node->node->kind == EXPR_PP); // TODO: error
+    eps->target = (expr_pp*)r->curr_pp_node->node;
     if (!ctypes_unifiable(val_type, (ast_elem*)&PRIMITIVES[PT_STRING])) {
         src_range_large paste_srl, val_srl;
         ast_node_get_src_range((ast_node*)eps, st, &paste_srl);
@@ -1879,13 +1854,12 @@ static inline resolve_error resolve_expr_paste_str(
     r->curr_pp_node->pending_pastes++;
     RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
 }
-static inline void
-report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl);
+static inline void report_type_loop(resolver* r, ast_node* n, symbol_table* st);
 // the symbol table is not the one that contains the symbol, but the one
 // where it was declared and where the type name loopup should start
 
 static inline resolve_error require_module_in_pp(
-    resolver* r, ast_node* n, symbol_table* st, ureg ppl, mdg_node* mdg,
+    resolver* r, ast_node* n, symbol_table* st, mdg_node* mdg,
     atomic_boolean* done, pp_resolve_node** tgt_pprn)
 {
     resolve_error re;
@@ -1930,8 +1904,7 @@ static inline resolve_error require_module_in_pp(
     }
     rwlock_end_write(&mdg->lock);
     if (!pp_done || diy) {
-        pp_resolve_node* pprn =
-            pp_resolve_node_create(r, n, st, false, false, ppl);
+        pp_resolve_node* pprn = pp_resolve_node_create(r, n, st, false, false);
         if (!pprn) return PE_FATAL;
         *tgt_pprn = pprn;
         re = pp_resolve_node_activate(r, pprn, false);
@@ -1948,12 +1921,12 @@ static inline resolve_error require_module_in_pp(
     return RE_OK;
 }
 static inline resolve_error resolve_expr_block(
-    resolver* r, expr_block* b, symbol_table* st, ureg ppl, ast_elem** value,
+    resolver* r, expr_block* b, symbol_table* st, ast_elem** value,
     ast_elem** ctype)
 {
     bool end_reachable;
     resolve_error re = resolve_expr_body(
-        r, st, (ast_node*)b, &b->body, ppl, &b->pprn, &end_reachable);
+        r, st, (ast_node*)b, &b->body, &b->pprn, &end_reachable);
     if (re == RE_UNREALIZED_PASTE) {
         if (b->ctype || !end_reachable) re = RE_OK;
     }
@@ -1995,13 +1968,13 @@ resolve_error resolve_import_symbol(resolver* r, sym_import_symbol* is)
     symbol_table* tgt_st = is->import_group->parent_mdgn->symtab;
     if (is->import_group->osym.sym.name == NULL) {
         re = resolve_ast_node_raw(
-            r, (ast_node*)is->import_group, decl_st, decl_st->ppl, NULL, NULL);
+            r, (ast_node*)is->import_group, decl_st, NULL, NULL);
         if (re) return re;
     }
     symbol* sym;
     symbol* amb;
     re = resolver_lookup_single(
-        r, tgt_st, decl_st->ppl, NULL, decl_st, is->target.name, &sym, &amb);
+        r, tgt_st, NULL, decl_st, is->target.name, &sym, &amb);
     if (re) return re;
     if (!sym) return report_unknown_symbol(r, (ast_node*)is, decl_st);
     if (is_symbol_kind_overloadable(sym->node.kind)) {
@@ -2027,7 +2000,7 @@ resolve_error resolve_import_symbol(resolver* r, sym_import_symbol* is)
     return RE_OK;
 }
 static inline resolve_error resolve_ast_node_raw(
-    resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
+    resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
     ast_elem** ctype)
 {
     if (!n) {
@@ -2072,7 +2045,7 @@ static inline resolve_error resolve_ast_node_raw(
                     value, ctype, e->value.sym,
                     get_resolved_symbol_ctype(e->value.sym));
             }
-            return resolve_identifier(r, st, ppl, e, value, ctype);
+            return resolve_identifier(r, st, e, value, ctype);
         }
         case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
@@ -2080,7 +2053,7 @@ static inline resolve_error resolve_ast_node_raw(
                 RETURN_RESOLVED(
                     value, ctype, c, c->target.fn->fnb.return_ctype);
             }
-            return resolve_call(r, c, st, ppl, ctype);
+            return resolve_call(r, c, st, ctype);
         }
         case EXPR_NO_BLOCK_MACRO_CALL: {
             expr_call* c = (expr_call*)n;
@@ -2104,7 +2077,7 @@ static inline resolve_error resolve_ast_node_raw(
                 }
                 RETURN_RESOLVED(value, ctype, ou, ou->op);
             }
-            re = choose_unary_operator_overload(r, ou, st, ppl, value, ctype);
+            re = choose_unary_operator_overload(r, ou, st, value, ctype);
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
             return RE_OK;
@@ -2114,7 +2087,7 @@ static inline resolve_error resolve_ast_node_raw(
             // required values anyways, so at least make it tail recursive
             ast_flags_set_resolved(&n->flags);
             return resolve_ast_node(
-                r, ((expr_parentheses*)n)->child, st, ppl, value, ctype);
+                r, ((expr_parentheses*)n)->child, st, value, ctype);
         }
         case EXPR_OP_BINARY: {
             expr_op_binary* ob = (expr_op_binary*)n;
@@ -2128,7 +2101,7 @@ static inline resolve_error resolve_ast_node_raw(
                 }
                 return RE_OK;
             }
-            re = choose_binary_operator_overload(r, ob, st, ppl, value, ctype);
+            re = choose_binary_operator_overload(r, ob, st, value, ctype);
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
             return RE_OK;
@@ -2140,7 +2113,7 @@ static inline resolve_error resolve_ast_node_raw(
                     value, ctype, n,
                     get_resolved_symbol_ctype(ema->target.sym));
             }
-            return resolve_expr_member_accesss(r, ema, st, ppl, value, ctype);
+            return resolve_expr_member_accesss(r, ema, st, value, ctype);
         }
         case EXPR_SCOPE_ACCESS: {
             expr_scope_access* esa = (expr_scope_access*)n;
@@ -2149,7 +2122,7 @@ static inline resolve_error resolve_ast_node_raw(
                     value, ctype, n,
                     get_resolved_symbol_ctype(esa->target.sym));
             }
-            return resolve_scoped_identifier(r, esa, st, ppl, value, ctype);
+            return resolve_scoped_identifier(r, esa, st, value, ctype);
         }
         case SC_STRUCT_GENERIC: {
             // sc_struct_generic* sg = (sc_struct_generic*)n;
@@ -2160,7 +2133,7 @@ static inline resolve_error resolve_ast_node_raw(
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
             if (resolved) RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
-            re = resolve_body(r, n, &((scope*)n)->body, ppl);
+            re = resolve_body(r, n, &((scope*)n)->body);
             if (re) return re;
             ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
@@ -2170,7 +2143,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (value) *value = (ast_elem*)n;
             if (ctype) *ctype = VOID_ELEM;
             if (resolved) return RE_OK;
-            return resolve_func(r, (sc_func_base*)n, ppl, NULL);
+            return resolve_func(r, (sc_func_base*)n, NULL);
         }
         case SYM_IMPORT_PARENT: {
             if (!resolved) {
@@ -2186,7 +2159,7 @@ static inline resolve_error resolve_ast_node_raw(
             }
             if (ast_flags_get_import_group_module_used(n->flags)) {
                 re = require_module_in_pp(
-                    r, n, st, ppl, ig->parent_mdgn, &ig->done, &ig->pprn);
+                    r, n, st, ig->parent_mdgn, &ig->done, &ig->pprn);
                 if (re) return re;
                 if (!ig->pprn) {
                     // we can't mark it as resolved since we need to go
@@ -2205,7 +2178,7 @@ static inline resolve_error resolve_ast_node_raw(
             sym_import_module* im = (sym_import_module*)n;
             if (!resolved) {
                 re = require_module_in_pp(
-                    r, n, st, ppl, im->target, &im->done, &im->pprn);
+                    r, n, st, im->target, &im->done, &im->pprn);
                 if (re) return re;
                 if (!im->pprn) {
                     // we can't mark it as resolved since we need to go
@@ -2230,8 +2203,6 @@ static inline resolve_error resolve_ast_node_raw(
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: {
             sym_var* v = (sym_var*)n;
-            re = check_var_ppl(r, v, ppl);
-            if (re) return re;
             if (resolved) {
                 if (v->pprn) {
                     re = curr_pprn_run_with(r, v->pprn);
@@ -2239,19 +2210,19 @@ static inline resolve_error resolve_ast_node_raw(
                 }
                 RETURN_RESOLVED(value, ctype, v, v->ctype);
             }
-            return resolve_var(r, st, ppl, v, value, ctype);
+            return resolve_var(r, st, v, value, ctype);
         }
         case EXPR_RETURN: {
             if (ctype) *ctype = UNREACHABLE_ELEM;
             if (value) *value = UNREACHABLE_ELEM;
             if (resolved) return RE_OK;
-            return resolve_return(r, st, ppl, (expr_return*)n);
+            return resolve_return(r, st, (expr_return*)n);
         }
         case EXPR_BREAK: {
             if (ctype) *ctype = UNREACHABLE_ELEM;
             if (value) *value = UNREACHABLE_ELEM;
             if (resolved) return RE_OK;
-            return resolve_break(r, st, ppl, (expr_break*)n);
+            return resolve_break(r, st, (expr_break*)n);
         }
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
@@ -2259,12 +2230,12 @@ static inline resolve_error resolve_ast_node_raw(
                 assert(!value);
                 RETURN_RESOLVED(value, ctype, NULL, b->ctype);
             }
-            return resolve_expr_block(r, b, st, ppl, value, ctype);
+            return resolve_expr_block(r, b, st, value, ctype);
         }
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
             if (resolved) RETURN_RESOLVED(value, ctype, n, ei->ctype);
-            return resolve_if(r, st, ppl, ei, value, ctype);
+            return resolve_if(r, st, ei, value, ctype);
         }
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)n;
@@ -2273,8 +2244,8 @@ static inline resolve_error resolve_ast_node_raw(
                 RETURN_RESOLVED(value, ctype, NULL, l->ctype);
             }
             bool end_reachable;
-            re = resolve_expr_body(
-                r, st, n, &l->body, ppl, &l->pprn, &end_reachable);
+            re =
+                resolve_expr_body(r, st, n, &l->body, &l->pprn, &end_reachable);
             if (re == RE_UNREALIZED_PASTE) {
                 if (l->ctype || !end_reachable) re = RE_OK;
             }
@@ -2287,7 +2258,7 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_PASTE_EVALUATION: {
             expr_paste_evaluation* epe = (expr_paste_evaluation*)n;
-            re = resolve_ast_node_raw(r, epe->expr, st, ppl, value, ctype);
+            re = resolve_ast_node_raw(r, epe->expr, st, value, ctype);
             if (!resolved && !re) ast_flags_set_resolved(&epe->pe.node.flags);
             return re;
         }
@@ -2302,8 +2273,7 @@ static inline resolve_error resolve_ast_node_raw(
                         : VOID_ELEM);
             }
             bool end_reachable;
-            re = resolve_expr_body(
-                r, st, n, &spe->body, ppl, NULL, &end_reachable);
+            re = resolve_expr_body(r, st, n, &spe->body, NULL, &end_reachable);
             if (re == RE_UNREALIZED_PASTE) {
                 if (!end_reachable) re = RE_OK;
             }
@@ -2335,7 +2305,7 @@ static inline resolve_error resolve_ast_node_raw(
                 if (ctype) *ctype = ppe->ctype;
                 return RE_OK;
             }
-            return resolve_expr_pp(r, st, ppl, ppe, value, ctype);
+            return resolve_expr_pp(r, st, ppe, value, ctype);
         }
         case EXPR_PASTE_STR: {
             if (resolved) {
@@ -2344,20 +2314,20 @@ static inline resolve_error resolve_ast_node_raw(
                 return RE_OK;
             }
             return resolve_expr_paste_str(
-                r, st, ppl, (expr_paste_str*)n, value, ctype);
+                r, st, (expr_paste_str*)n, value, ctype);
         } break;
         case EXPR_MATCH: {
             // TODO ctype
             if (ctype) *ctype = NULL;
             if (resolved) return RE_OK;
             expr_match* em = (expr_match*)n;
-            re = resolve_ast_node(r, em->match_expr, st, ppl, NULL, NULL);
+            re = resolve_ast_node(r, em->match_expr, st, NULL, NULL);
             if (re) return re;
             for (match_arm** ma = (match_arm**)em->body.elements; *ma != NULL;
                  ma++) {
-                re = resolve_ast_node(r, (**ma).condition, st, ppl, NULL, NULL);
+                re = resolve_ast_node(r, (**ma).condition, st, NULL, NULL);
                 if (re) return re;
-                re = resolve_ast_node(r, (**ma).value, st, ppl, NULL, NULL);
+                re = resolve_ast_node(r, (**ma).value, st, NULL, NULL);
                 if (re) return re;
             }
             return RE_OK;
@@ -2366,8 +2336,7 @@ static inline resolve_error resolve_ast_node_raw(
         case SYM_PARAM: {
             sym_param* p = (sym_param*)n;
             if (resolved) RETURN_RESOLVED(value, ctype, p, p->ctype);
-            re =
-                resolve_param(r, p, (n->kind == SYM_GENERIC_PARAM), ppl, ctype);
+            re = resolve_param(r, p, (n->kind == SYM_GENERIC_PARAM), ctype);
             if (value) *value = (ast_elem*)n;
             return re;
         }
@@ -2384,7 +2353,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (resolved) RETURN_RESOLVED(value, ctype, est->ctype, TYPE_ELEM);
             ast_elem* base_type;
             ast_elem* len_ctype;
-            re = resolve_ast_node(r, est->base_type, st, ppl, &base_type, NULL);
+            re = resolve_ast_node(r, est->base_type, st, &base_type, NULL);
             if (re) return re;
             if (!eat) {
                 type_slice* ts = (type_slice*)pool_alloc(
@@ -2396,8 +2365,8 @@ static inline resolve_error resolve_ast_node_raw(
                 est->ctype = ts;
             }
             else {
-                re = resolve_ast_node(
-                    r, eat->length_spec, st, ppl, NULL, &len_ctype);
+                re =
+                    resolve_ast_node(r, eat->length_spec, st, NULL, &len_ctype);
                 if (re) return re;
                 type_array* ta = (type_array*)pool_alloc(
                     &r->tc->permmem, sizeof(type_array));
@@ -2416,8 +2385,8 @@ static inline resolve_error resolve_ast_node_raw(
             if (resolved) RETURN_RESOLVED(value, ctype, ea, ea->ctype);
             if (ea->explicit_decl && !ea->ctype) {
                 re = resolve_ast_node(
-                    r, (ast_node*)ea->explicit_decl, st, ppl,
-                    (ast_elem**)&ea->ctype, NULL);
+                    r, (ast_node*)ea->explicit_decl, st, (ast_elem**)&ea->ctype,
+                    NULL);
                 if (re) return re;
                 if (ea->ctype->kind == TYPE_ARRAY) {
                     if (((type_array*)ea->ctype)->length != ea->elem_count) {
@@ -2432,7 +2401,7 @@ static inline resolve_error resolve_ast_node_raw(
             bool comptime_known = true;
             ast_elem* elem_ctype;
             for (ureg i = 0; i < ea->elem_count; i++) {
-                re = resolve_ast_node(r, *e, st, ppl, NULL, &elem_ctype);
+                re = resolve_ast_node(r, *e, st, NULL, &elem_ctype);
                 if (re) return re;
                 comptime_known =
                     comptime_known && ast_flags_get_comptime_known((**e).flags);
@@ -2476,9 +2445,9 @@ static inline resolve_error resolve_ast_node_raw(
                 RETURN_RESOLVED(value, ctype, NULL, ec->target_ctype);
             }
             re = resolve_ast_node(
-                r, ec->target_type, st, ppl, &ec->target_ctype, NULL);
+                r, ec->target_type, st, &ec->target_ctype, NULL);
             if (re) return re;
-            re = resolve_ast_node(r, ec->value, st, ppl, NULL, NULL);
+            re = resolve_ast_node(r, ec->value, st, NULL, NULL);
             if (re) return re;
             ast_flags_set_resolved(&ec->node.flags);
             RETURN_RESOLVED(value, ctype, NULL, ec->target_ctype);
@@ -2490,12 +2459,11 @@ static inline resolve_error resolve_ast_node_raw(
             }
             ast_elem* lhs_ctype;
             ast_elem* lhs_val;
-            re = resolve_ast_node(r, ea->lhs, st, ppl, &lhs_val, &lhs_ctype);
+            re = resolve_ast_node(r, ea->lhs, st, &lhs_val, &lhs_ctype);
             if (re) return re;
             if (ea->arg_count == 1 && ast_elem_is_type_slice(lhs_ctype)) {
                 ast_elem* rhs_ctype;
-                re =
-                    resolve_ast_node(r, ea->args[0], st, ppl, NULL, &rhs_ctype);
+                re = resolve_ast_node(r, ea->args[0], st, NULL, &rhs_ctype);
                 if (!ctypes_unifiable(
                         (ast_elem*)&PRIMITIVES[PT_INT], rhs_ctype)) {
                     src_range_large array_srl;
@@ -2519,7 +2487,7 @@ static inline resolve_error resolve_ast_node_raw(
             }
             if (lhs_val->kind == SC_STRUCT_GENERIC) {
                 return resolve_generic_struct(
-                    r, ea, (sc_struct_generic*)lhs_val, st, ppl, value, ctype);
+                    r, ea, (sc_struct_generic*)lhs_val, st, value, ctype);
             }
             assert(false); // TODO operator overloading / generics
             return RE_FATAL;
@@ -2536,8 +2504,7 @@ static inline resolve_error resolve_ast_node_raw(
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
-static inline void
-report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl)
+static inline void report_type_loop(resolver* r, ast_node* n, symbol_table* st)
 {
     if (r->tc->t->trap_on_error) debugbreak();
     ureg stack_s = stack_size(&r->error_stack);
@@ -2547,7 +2514,7 @@ report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl)
         r->retracing_type_loop = true;
         stack_clear(&r->error_stack);
         ast_flags_clear_resolving(&n->flags);
-        resolve_ast_node(r, n, st, ppl, NULL, NULL);
+        resolve_ast_node(r, n, st, NULL, NULL);
         stack_pop(&r->error_stack);
         stack_pop(&r->error_stack);
         stack_s = stack_size(&r->error_stack);
@@ -2575,15 +2542,15 @@ report_type_loop(resolver* r, ast_node* n, symbol_table* st, ureg ppl)
     error_log_report(r->tc->err_log, e);
 }
 resolve_error resolve_ast_node(
-    resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
+    resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
     ast_elem** ctype)
 {
-    resolve_error re = resolve_ast_node_raw(r, n, st, ppl, value, ctype);
+    resolve_error re = resolve_ast_node_raw(r, n, st, value, ctype);
     if (!re) return RE_OK;
     if (re == RE_TYPE_LOOP) {
         if (!r->allow_type_loops) {
             if (n == r->type_loop_start && !r->retracing_type_loop) {
-                report_type_loop(r, n, st, ppl);
+                report_type_loop(r, n, st);
             }
             else {
                 stack_push(&r->error_stack, st);
@@ -2602,7 +2569,7 @@ resolve_error resolve_ast_node(
     return re;
 }
 resolve_error resolve_expr_body(
-    resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b, ureg ppl,
+    resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b,
     pp_resolve_node** block_pprn, bool* end_reachable)
 {
     ast_node* parent_block_owner = r->curr_block_owner;
@@ -2632,9 +2599,9 @@ resolve_error resolve_expr_body(
     }
     ast_node** n = continue_at;
     for (; *n != NULL; n++) {
-        re = add_ast_node_decls(r, b->symtab, NULL, ppl, *n, false);
+        re = add_ast_node_decls(r, b->symtab, NULL, *n, false);
         if (re) break;
-        re = resolve_ast_node(r, *n, b->symtab, ppl, NULL, stmt_ctype_ptr);
+        re = resolve_ast_node(r, *n, b->symtab, NULL, stmt_ctype_ptr);
         if (r->curr_block_pp_node && r->curr_block_pp_node->pending_pastes) {
             r->curr_block_pp_node->continue_block = n;
             re = RE_SYMBOL_NOT_FOUND_YET;
@@ -2675,7 +2642,6 @@ resolve_error resolve_expr_body(
     if (pprn) {
         pprn->block_pos_reachable = *end_reachable;
         pprn->declaring_st = parent_st;
-        pprn->ppl = ppl;
         if (re) {
             pprn->continue_block = n;
         }
@@ -2696,10 +2662,8 @@ resolve_error resolve_expr_body(
     return re;
 }
 
-resolve_error
-resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl, ast_elem** ctype)
+resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ast_elem** ctype)
 {
-    ureg fnppl = fn->fnb.sc.osym.sym.declaring_st->ppl;
     resolve_error re;
     if (ast_flags_get_resolved(fn->fnb.sc.osym.sym.node.flags)) {
         if (ctype) *ctype = fn->fnb.return_ctype;
@@ -2713,11 +2677,11 @@ resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl, ast_elem** ctype)
         if (!fn->fnb.pprn) {
             fn->fnb.pprn = pp_resolve_node_create(
                 r, (ast_node*)fn, fn->fnb.sc.osym.sym.declaring_st, false,
-                false, fnppl);
+                false);
             if (!fn->fnb.pprn) return RE_FATAL;
         }
         re = resolve_ast_node(
-            r, fn->fnb.return_type, fn->fnb.sc.osym.sym.declaring_st, fnppl,
+            r, fn->fnb.return_type, fn->fnb.sc.osym.sym.declaring_st,
             &fn->fnb.return_ctype, NULL);
         if (re) return re;
         if (ctype) *ctype = fn->fnb.return_ctype;
@@ -2728,10 +2692,10 @@ resolve_func_from_call(resolver* r, sc_func* fn, ureg ppl, ast_elem** ctype)
     return RE_OK;
 }
 // TODO: make sure we return!
-resolve_error resolve_func(
-    resolver* r, sc_func_base* fnb, ureg ppl, ast_node** continue_block)
+resolve_error
+resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
 {
-    bool generic = (fnb->sc.osym.sym.node.kind == SC_FUNC);
+    bool generic = (fnb->sc.osym.sym.node.kind == SC_FUNC_GENERIC);
     bool generic_parent = r->generic_context;
     r->generic_context = generic || generic_parent;
     ast_body* b = &fnb->sc.body;
@@ -2749,8 +2713,9 @@ resolve_error resolve_func(
             }
         }
         if (generic) {
-            for (ureg i = 0; i < fnb->param_count; i++) {
-                re = resolve_param(r, &fnb->params[i], false, ppl, NULL);
+            sc_func_generic* fng = (sc_func_generic*)fnb;
+            for (ureg i = 0; i < fng->generic_param_count; i++) {
+                re = resolve_param(r, &fng->generic_params[i], false, NULL);
                 if (re) {
                     r->curr_block_owner = parent_block_owner;
                     r->generic_context = generic_parent;
@@ -2759,15 +2724,15 @@ resolve_error resolve_func(
             }
         }
         for (ureg i = 0; i < fnb->param_count; i++) {
-            re = resolve_param(r, &fnb->params[i], false, ppl, NULL);
+            re = resolve_param(r, &fnb->params[i], false, NULL);
             if (re) {
                 r->curr_block_owner = parent_block_owner;
                 r->generic_context = generic_parent;
                 return re;
             }
         }
-        re = resolve_ast_node(
-            r, fnb->return_type, st, ppl, &fnb->return_ctype, NULL);
+        re =
+            resolve_ast_node(r, fnb->return_type, st, &fnb->return_ctype, NULL);
         if (re) {
             r->curr_block_owner = parent_block_owner;
             r->generic_context = generic_parent;
@@ -2804,9 +2769,9 @@ resolve_error resolve_func(
                 srl.end, "after return statement");
             return RE_ERROR;
         }
-        re = add_ast_node_decls(r, st, NULL, ppl, *n, false);
+        re = add_ast_node_decls(r, st, NULL, *n, false);
         if (re) break;
-        re = resolve_ast_node(r, *n, st, ppl, NULL, stmt_ctype_ptr);
+        re = resolve_ast_node(r, *n, st, NULL, stmt_ctype_ptr);
         if (re) break;
         r->curr_pp_node = NULL;
         if (r->curr_block_pp_node && r->curr_block_pp_node->pending_pastes) {
@@ -2864,14 +2829,13 @@ resolve_error resolve_func(
     ast_flags_set_resolved(&fnb->sc.osym.sym.node.flags);
     return RE_OK;
 }
-resolve_error
-resolve_body(resolver* r, ast_node* block_owner, ast_body* b, ureg ppl)
+resolve_error resolve_body(resolver* r, ast_node* block_owner, ast_body* b)
 {
     resolve_error re = RE_OK;
     ast_node* parent_block_owner = r->curr_block_owner;
     r->curr_block_owner = block_owner;
     for (ast_node** n = b->elements; *n != NULL; n++) {
-        re = resolve_ast_node(r, *n, b->symtab, ppl, NULL, NULL);
+        re = resolve_ast_node(r, *n, b->symtab, NULL, NULL);
         if (re) break;
     }
     r->curr_block_owner = parent_block_owner;
@@ -2938,7 +2902,7 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
         // TODO: init pp symtabs
         int res = symbol_table_init(
             &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
-            atomic_ureg_load(&(**i).using_count), true, (ast_elem*)*i, 0);
+            atomic_ureg_load(&(**i).using_count), true, (ast_elem*)*i);
         if (res) return RE_FATAL;
         if (!(**i).symtab) return RE_FATAL;
         set_parent_symtabs(&(**i).symtab, r->tc->t->root_symtab);
@@ -2953,8 +2917,8 @@ resolve_error resolver_add_mf_decls(resolver* r)
         aseglist_iterator_begin(&asi, &(**i).module_frames);
         for (module_frame* mf = aseglist_iterator_next(&asi); mf != NULL;
              mf = aseglist_iterator_next(&asi)) {
-            resolve_error re = add_body_decls(
-                r, (**i).symtab, (**i).symtab, 0, &mf->body, true);
+            resolve_error re =
+                add_body_decls(r, (**i).symtab, (**i).symtab, &mf->body, true);
             if (re) return re;
             if (r->curr_pp_node) {
                 re = pp_resolve_node_activate(r, r->curr_pp_node, false);
@@ -3165,13 +3129,11 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 progress = true;
                 if (rn->node->kind == SC_FUNC) {
                     re = resolve_func(
-                        r, (sc_func_base*)rn->node, rn->ppl,
-                        rn->continue_block);
+                        r, (sc_func_base*)rn->node, rn->continue_block);
                 }
                 else if (rn->node->kind == EXPR_BLOCK) {
                     re = resolve_expr_block(
-                        r, (expr_block*)rn->node, rn->declaring_st, rn->ppl,
-                        NULL, NULL);
+                        r, (expr_block*)rn->node, rn->declaring_st, NULL, NULL);
                 }
                 else {
                     assert(false);
@@ -3190,8 +3152,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 r->curr_block_owner = (ast_node*)rn->declaring_st->owning_node;
             }
             ast_node* astn = rn->node;
-            re = resolve_ast_node(
-                r, rn->node, rn->declaring_st, rn->ppl, NULL, NULL);
+            re = resolve_ast_node(r, rn->node, rn->declaring_st, NULL, NULL);
             if (re == RE_UNREALIZED_PASTE) {
                 pli_prev(&it);
                 ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
@@ -3239,7 +3200,7 @@ resolve_error resolver_handle_post_pp(resolver* r)
              mf = aseglist_iterator_next(&asi)) {
             r->curr_mf = mf;
             r->curr_block_owner = (ast_node*)mf;
-            re = resolve_body(r, (ast_node*)mf, &mf->body, 0);
+            re = resolve_body(r, (ast_node*)mf, &mf->body);
             if (re) return re;
             ast_flags_set_resolved(&mf->node.flags);
         }
@@ -3335,13 +3296,11 @@ int resolver_emit(resolver* r, llvm_module** module)
         symbol* startfn;
         symbol* amb;
         resolve_error re = resolver_lookup_single(
-            r, root->symtab, 0, NULL, root->symtab, COND_KW_MAIN, &mainfn,
-            &amb);
+            r, root->symtab, NULL, root->symtab, COND_KW_MAIN, &mainfn, &amb);
         if (re) return re;
         if (amb) assert(false); // TODO: report ambiguity
         re = resolver_lookup_single(
-            r, root->symtab, 0, NULL, root->symtab, COND_KW_START, &startfn,
-            &amb);
+            r, root->symtab, NULL, root->symtab, COND_KW_START, &startfn, &amb);
         if (re) return re;
         if (amb) assert(false); // TODO: report ambiguity
         if (!mainfn || !startfn) {
@@ -3351,15 +3310,15 @@ int resolver_emit(resolver* r, llvm_module** module)
                  mf = aseglist_iterator_next(&mfs)) {
                 if (!mainfn) {
                     re = resolver_lookup_single(
-                        r, mf->body.symtab, 0, NULL, root->symtab, COND_KW_MAIN,
+                        r, mf->body.symtab, NULL, root->symtab, COND_KW_MAIN,
                         &mainfn, &amb);
                     if (re) return re;
                     if (amb) assert(false); // TODO: report ambiguity
                 }
                 if (!startfn) {
                     re = resolver_lookup_single(
-                        r, mf->body.symtab, 0, NULL, root->symtab,
-                        COND_KW_START, &startfn, &amb);
+                        r, mf->body.symtab, NULL, root->symtab, COND_KW_START,
+                        &startfn, &amb);
                     if (re) return re;
                     if (amb) assert(false); // TODO: report ambiguity
                 }
@@ -3471,6 +3430,6 @@ ast_elem* get_resolved_ast_node_ctype(ast_node* n)
 {
     // we could optimize this but it's currently not worth it
     ast_elem* ctype;
-    resolve_ast_node_raw(NULL, n, NULL, 0, NULL, &ctype);
+    resolve_ast_node_raw(NULL, n, NULL, NULL, &ctype);
     return ctype;
 }

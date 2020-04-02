@@ -20,7 +20,7 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_RESOLVING_OFFSET 1
 #define ASTF_RESOLVED_OFFSET 2
 #define ASTF_STATIC_OFFSET 3
-#define ASTF_VIRTUAL_OFFSET 4
+#define ASTF_COMPTIME_OFFSET 4
 
 // shared bit since applied to different nodes
 #define ASTF_SEALED_OFFSET 5

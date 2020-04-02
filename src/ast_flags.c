@@ -74,6 +74,15 @@ bool ast_flags_get_sealed(ast_flags f)
 {
     return bitmask_get_bit(f, ASTF_SEALED_OFFSET);
 }
+// !!since sealed isn't really used right now we fake share the bit
+void ast_flags_set_virtual(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_SEALED_OFFSET);
+}
+bool ast_flags_get_virtual(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_SEALED_OFFSET);
+}
 
 void ast_flags_set_pp_stmt_end_unreachabale(ast_flags* f)
 {
@@ -84,13 +93,13 @@ bool ast_flags_get_pp_stmt_end_unreachabale(ast_flags f)
     return bitmask_get_bit(f, ASTF_PP_STMT_END_UNREACHABLE);
 }
 
-void ast_flags_set_virtual(ast_flags* f)
+void ast_flags_set_comptime(ast_flags* f)
 {
-    bitmask_set_bit(f, ASTF_VIRTUAL_OFFSET);
+    bitmask_set_bit(f, ASTF_COMPTIME_OFFSET);
 }
-bool ast_flags_get_virtual(ast_flags f)
+bool ast_flags_get_comptime(ast_flags f)
 {
-    return bitmask_get_bit(f, ASTF_VIRTUAL_OFFSET);
+    return bitmask_get_bit(f, ASTF_COMPTIME_OFFSET);
 }
 
 void ast_flags_set_static(ast_flags* f)

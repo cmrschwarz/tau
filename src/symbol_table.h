@@ -24,8 +24,6 @@ typedef struct symbol_table_s {
     symbol_table* parent;
     usings_table* usings;
     ast_elem* owning_node;
-    symbol_table* pp_symtab;
-    ureg ppl;
     // this stores the requested decl count, not the actual present amount
     // it is only updated during init and amend
     ureg decl_count;
@@ -33,7 +31,8 @@ typedef struct symbol_table_s {
 
 int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
-    ast_elem* owning_node, ureg ppl);
+    ast_elem* owning_node);
+
 void symbol_table_fin(symbol_table* st);
 
 void symbol_table_insert_use(
@@ -56,10 +55,8 @@ ureg symbol_table_prehash(const char* s);
 symbol* symbol_table_lookup_raw(symbol_table* st, ureg hash, const char* name);
 symbol_table**
 symbol_table_get_uses_start(symbol_table* st, access_modifier am);
-symbol_table**
-symbol_table_get_uses_end(symbol_table* st, access_modifier am);
-ast_node**
-symbol_table_get_use_node(symbol_table* st, symbol_table** using_st);
+symbol_table** symbol_table_get_uses_end(symbol_table* st, access_modifier am);
+ast_node** symbol_table_get_use_node(symbol_table* st, symbol_table** using_st);
 
 // might return NULL, for example for mdg_node symbol tables
 src_map* symbol_table_get_smap(symbol_table* st);

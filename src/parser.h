@@ -17,7 +17,6 @@ typedef enum parse_error_e {
 } parse_error;
 
 typedef struct parser_s {
-    ureg ppl;
     lexer lx;
     // ! when parsing a paste, this is the file that contained the paste expr
     src_file* current_file;
@@ -45,7 +44,7 @@ int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
 parse_error parser_parse_file(parser* p, job_parse* j);
 parse_error parser_parse_paste_expr(
-    parser* p, expr_pp* epp, symbol_table* st, ureg ppl, ast_node* parent_ebb);
+    parser* p, expr_pp* epp, symbol_table* st, ast_node* parent_ebb);
 parse_error parser_parse_paste_stmt(
     parser* p, expr_pp* epp, symbol_table** st, ast_node* parent_ebb,
     bool owned_st);

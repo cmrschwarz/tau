@@ -41,7 +41,7 @@ resolve_error instantiate_body(
             src->symtab->usings ? src->symtab->usings->usings_count : 0;
         int r = symbol_table_init(
             &tgt->symtab, src->symtab->decl_count, using_count, false,
-            (ast_elem*)inst_owner, src->symtab->ppl);
+            (ast_elem*)inst_owner);
         if (r) return RE_FATAL;
         tgt->symtab->parent = NULL;
     }
@@ -143,8 +143,7 @@ instantiate_ast_node(resolver* r, ast_node* n, ast_node** tgt, symbol_table* st)
 }
 resolve_error instantiate_generic_struct(
     resolver* r, expr_access* ea, ast_elem** args, ast_elem** ctypes,
-    sc_struct_generic* sg, symbol_table* st, ureg ppl,
-    sc_struct_generic_inst** tgt)
+    sc_struct_generic* sg, symbol_table* st, sc_struct_generic_inst** tgt)
 {
     resolve_error re;
     sc_struct_generic_inst* sgi =
@@ -189,7 +188,7 @@ resolve_error instantiate_generic_struct(
 // PERF: create a hashmap for this
 resolve_error resolve_generic_struct(
     resolver* r, expr_access* ea, sc_struct_generic* sg, symbol_table* st,
-    ureg ppl, ast_elem** value, ast_elem** ctype)
+    ast_elem** value, ast_elem** ctype)
 {
     if (ea->arg_count != sg->generic_param_count) {
         assert(false); // TODO: error / varargs
@@ -202,7 +201,7 @@ resolve_error resolve_generic_struct(
     if (!ctypes) return RE_FATAL;
     resolve_error re;
     for (ureg i = 0; i < ea->arg_count; i++) {
-        re = resolve_ast_node(r, ea->args[i], st, ppl, &args[i], &ctypes[i]);
+        re = resolve_ast_node(r, ea->args[i], st, &args[i], &ctypes[i]);
         if (re) return re;
     }
     for (sc_struct_generic_inst* sgi = sg->instances; sgi;
@@ -225,18 +224,17 @@ resolve_error resolve_generic_struct(
         }
     }
     sc_struct_generic_inst* sgi;
-    re = instantiate_generic_struct(r, ea, args, ctypes, sg, st, ppl, &sgi);
+    re = instantiate_generic_struct(r, ea, args, ctypes, sg, st, &sgi);
     sbuffer_remove_back(&r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
     sbuffer_remove_back(&r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
     if (re) return re;
     re = add_body_decls(
-        r, sgi->st.sb.sc.osym.sym.declaring_st, NULL, ppl, &sgi->st.sb.sc.body,
+        r, sgi->st.sb.sc.osym.sym.declaring_st, NULL, &sgi->st.sb.sc.body,
         false);
     if (re) return re;
     sgi->st.id = claim_symbol_id(
         r, (symbol*)sgi,
         symbol_table_is_public(sg->sb.sc.osym.sym.declaring_st));
     return resolve_ast_node(
-        r, (ast_node*)sgi, sgi->st.sb.sc.osym.sym.declaring_st, ppl, value,
-        ctype);
+        r, (ast_node*)sgi, sgi->st.sb.sc.osym.sym.declaring_st, value, ctype);
 }

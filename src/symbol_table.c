@@ -21,14 +21,13 @@ static inline bool symbol_table_should_be_meta(ast_elem* owning_node)
 }
 int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
-    ast_elem* owning_node, ureg ppl)
+    ast_elem* owning_node)
 {
     if (!force_unique && decl_count == 0 && using_count == 0) {
         *tgt = NULL;
     }
     symbol_table* st = tmalloc(sizeof(symbol_table));
     if (!st) return ERR;
-    st->pp_symtab = NULL;
     if (decl_count) {
         st->decl_count = decl_count;
         ureg table_capacity = (decl_count == 1) ? 2 : ceil_to_pow2(decl_count);
@@ -51,7 +50,6 @@ int symbol_table_init(
         st->table = (symbol**)NULL_PTR_PTR;
     }
     st->owning_node = owning_node;
-    st->ppl = ppl;
     *tgt = st;
 
     if (using_count != 0) {
@@ -109,8 +107,7 @@ void symbol_table_insert_use(
     ut->using_ends[am]++;
 }
 
-symbol_table**
-symbol_table_get_uses_start(symbol_table* st, access_modifier am)
+symbol_table** symbol_table_get_uses_start(symbol_table* st, access_modifier am)
 {
     assert(st->usings);
     if (am == 0)
@@ -122,8 +119,7 @@ symbol_table** symbol_table_get_uses_end(symbol_table* st, access_modifier am)
     assert(st->usings);
     return st->usings->using_ends[am];
 }
-ast_node**
-symbol_table_get_use_node(symbol_table* st, symbol_table** using_st)
+ast_node** symbol_table_get_use_node(symbol_table* st, symbol_table** using_st)
 {
     assert(st->usings);
     return (ast_node**)ptradd(
@@ -132,7 +128,6 @@ symbol_table_get_use_node(symbol_table* st, symbol_table** using_st)
 void symbol_table_fin(symbol_table* st)
 {
     if (st != NULL) {
-        symbol_table_fin(st->pp_symtab);
         // avoid throwing of our allocation counter
         if (st->usings) tfree(st->usings);
         // avoid freeing NULL_PTR_PTR
@@ -221,8 +216,9 @@ src_map* symbol_table_get_smap(symbol_table* st)
 }
 int init_root_symtab(symbol_table** root_symtab)
 {
-    if (symbol_table_init(root_symtab, PRIMITIVE_COUNT + 1, 0, true, NULL, 0))
+    if (symbol_table_init(root_symtab, PRIMITIVE_COUNT + 1, 0, true, NULL)) {
         return ERR;
+    }
     (**root_symtab).parent = NULL;
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {
         if (symbol_table_insert(*root_symtab, (symbol*)&PRIMITIVES[i])) {

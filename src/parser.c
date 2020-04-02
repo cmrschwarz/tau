@@ -344,73 +344,12 @@ static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
     init_bpd(bpd, n, b);
     return OK;
 }
-static inline int push_bpd_pp(parser* p, ast_node* n)
-{
-    p->ppl++;
-    sbuffer_iterator i = sbuffer_iterator_begin_at_end(&p->body_stack);
-    body_parse_data* prev =
-        sbuffer_iterator_previous(&i, sizeof(body_parse_data));
-    assert(prev);
-    body_parse_data* bpd =
-        sbuffer_append(&p->body_stack, sizeof(body_parse_data));
-    if (bpd == NULL) return ERR;
-    init_bpd(bpd, n, prev->body);
-    return OK;
-}
-static inline int pop_bpd_pp(parser* p, parse_error pe)
-{
-    assert(p->ppl);
-    p->ppl--;
-    body_parse_data bpd_popped;
-    body_parse_data* bpd;
-    sbuffer_iterator it = sbuffer_iterator_begin_at_end(&p->body_stack);
-    bpd_popped = *(body_parse_data*)sbuffer_iterator_previous(
-        &it, sizeof(body_parse_data));
-    sbuffer_remove(&p->body_stack, &it, sizeof(body_parse_data));
-    bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
-    // since we are a pp node there must at least be the base node
-    assert(bpd->body == bpd_popped.body);
-    ureg pp_level = 0;
-    do {
-        pp_level++;
-        bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
-    } while (bpd && bpd->body == bpd_popped.body && bpd->node != NULL);
-    while (true) {
-        if (!bpd || bpd->node != NULL) {
-            if (bpd) sbuffer_iterator_next(&it, sizeof(body_parse_data));
-            while (pp_level > 0) {
-                bpd = sbuffer_insert(
-                    &p->body_stack, &it, sizeof(body_parse_data));
-                if (!bpd) return ERR;
-                init_bpd(bpd, NULL, bpd_popped.body);
-                pp_level--;
-            }
-            break;
-        }
-        pp_level--;
-        if (pp_level == 0) break;
-        bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
-    }
-    bpd->decl_count += bpd_popped.decl_count;
-    bpd->usings_count += bpd_popped.usings_count;
-    bpd->shared_decl_count += bpd_popped.shared_decl_count;
-    bpd->shared_uses_count += bpd_popped.shared_uses_count;
-    return OK;
-}
 static inline int
-handle_paste_bpd(parser* p, body_parse_data* bpd, ureg ppl, symbol_table*** st)
+handle_paste_bpd(parser* p, body_parse_data* bpd, symbol_table*** st)
 {
     if (bpd->decl_count || bpd->usings_count) {
         if (p->paste_parent_owns_st) {
             symbol_table** s = p->paste_parent_symtab;
-            while ((**s).ppl < ppl) {
-                if (!(**s).pp_symtab) {
-                    assert(false); // TODO: handle inserting (!) symbol tables
-                }
-                else {
-                    s = &(**s).pp_symtab;
-                }
-            }
             if (!*s) {
                 assert(false); // TODO: handle inserting (!) symbol tables
                 return OK;
@@ -425,7 +364,7 @@ handle_paste_bpd(parser* p, body_parse_data* bpd, ureg ppl, symbol_table*** st)
             p->paste_parent_owns_st = true;
         }
     }
-    if (symbol_table_init(*st, 0, 0, true, (ast_elem*)bpd->node, ppl)) {
+    if (symbol_table_init(*st, 0, 0, true, (ast_elem*)bpd->node)) {
         return ERR;
     }
     return OK;
@@ -439,7 +378,6 @@ static inline int pop_bpd(parser* p, parse_error pe)
     sbuffer_iterator i = sbuffer_iterator_begin_at_end(&p->body_stack);
     body_parse_data bpd = *(body_parse_data*)sbuffer_iterator_previous(
         &i, sizeof(body_parse_data));
-    assert(bpd.node); // make sure it's not a pp node
     bool is_mf = ast_elem_is_module_frame((ast_elem*)bpd.node);
     if (bpd.shared_decl_count > 0 || bpd.shared_uses_count > 0) {
         assert(is_mf);
@@ -449,44 +387,16 @@ static inline int pop_bpd(parser* p, parse_error pe)
     }
     ast_body* bd = bpd.body;
     symbol_table** st = &bd->symtab;
-    symbol_table* postp_st = NULL;
-    ureg ppl = p->ppl;
-    while (true) {
-        sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
-        body_parse_data* bpd2 = (body_parse_data*)sbuffer_iterator_previous(
-            &i, sizeof(body_parse_data));
-        bool has_pp = (bpd2 && bpd2->node == NULL);
-        if (bpd.body == p->paste_block) {
-            if (handle_paste_bpd(p, &bpd, ppl, &st)) return ERR;
-            if (!postp_st) postp_st = *p->paste_parent_symtab;
-        }
-        else {
-            if (!pe) {
-                bool force_unique = has_pp;
-                if (ppl == 0 && is_mf) force_unique = true;
-                if (symbol_table_init(
-                        st, bpd.decl_count, bpd.usings_count, force_unique,
-                        (ast_elem*)bpd.node, ppl)) {
-                    return ERR;
-                }
-            }
-            else {
-                *st = NULL;
-            }
-        }
-        if (*st) {
-            (*st)->parent = postp_st;
-            postp_st = *st;
-            st = &(**st).pp_symtab;
-        }
-        if (!has_pp) break;
-        ppl++;
-        bpd2->node = bpd.node;
-        bpd = *bpd2;
-        // we don't support shared pp decls for now :(
-        assert(bpd.shared_decl_count == 0 && bpd.shared_uses_count == 0);
+    if (bpd.body == p->paste_block) {
+        if (handle_paste_bpd(p, &bpd, &st)) return ERR;
     }
-    if (*st) *st = NULL;
+    else if (symbol_table_init(
+                 st, bpd.decl_count, bpd.usings_count, is_mf,
+                 (ast_elem*)bpd.node)) {
+        return ERR;
+    }
+    (**st).parent = NULL;
+    sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
     return OK;
 }
 
@@ -654,7 +564,6 @@ int parser_init(parser* p, thread_context* tc)
     }
     p->paste_block = NULL;
     p->disable_macro_body_call = false;
-    p->ppl = 0;
     return OK;
 }
 void parser_fin(parser* p)
@@ -1345,25 +1254,6 @@ parse_prefix_unary_op(parser* p, operator_kind op, ast_node** ex)
     *ex = (ast_node*)ou;
     return PE_OK;
 }
-parse_error get_pasting_target(
-    parser* p, ureg paste_start, ureg paste_end, expr_pp** target)
-{
-    sbuffer_iterator it = sbuffer_iterator_begin_at_end(&p->body_stack);
-    while (true) {
-        body_parse_data* bpd =
-            sbuffer_iterator_previous(&it, sizeof(body_parse_data));
-        if (!bpd) {
-            parser_error_1a(
-                p, "invalid paste", paste_start, paste_end,
-                "not inside a suitable preprocessor expression");
-            return PE_ERROR;
-        }
-        if (bpd->node->kind == EXPR_PP) {
-            *target = (expr_pp*)bpd->node;
-            return PE_OK;
-        }
-    }
-}
 parse_error get_breaking_target(
     parser* p, ast_node* requiring, ureg req_start, ureg req_end, char** label,
     ureg* lbl_end)
@@ -1576,8 +1466,6 @@ parse_error parse_paste(parser* p, ast_node** tgt)
     ast_node_init((ast_node*)ps, EXPR_PASTE_STR);
     ps->value = NULL;
     pe = ast_node_fill_srange(p, (ast_node*)ps, start, t->end);
-    if (pe) return pe;
-    pe = get_pasting_target(p, start, t->end, &ps->target);
     if (pe) return pe;
     ps->value = expr;
     *tgt = (ast_node*)ps;
@@ -1801,10 +1689,8 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     sp->result_buffer.state.pprn = NULL;
     sp->result_buffer.paste_result.last_next =
         &sp->result_buffer.paste_result.first;
-    if (push_bpd_pp(p, (ast_node*)sp)) return PE_FATAL;
     parse_error pe =
         parse_expression_of_prec(p, &sp->pp_expr, op_precedence[OP_PP]);
-    if (pop_bpd_pp(p, pe)) return PE_FATAL;
     if (pe) return pe;
     pe = ast_node_fill_srange(
         p, (ast_node*)sp, start, src_range_get_end(sp->pp_expr->srange));
@@ -2289,7 +2175,6 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     }
     p->current_module = p->lx.tc->t->mdg.root_node;
     p->file_root = &j->file->root;
-    p->ppl = 0;
     ast_node_init((ast_node*)&j->file->root, MF_EXTEND);
     parse_error pe = parse_eof_delimited_module_frame(p, &j->file->root);
     lx_close_file(&p->lx);
@@ -2305,7 +2190,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     return pe;
 }
 parse_error init_paste_evaluation_parse(
-    parser* p, expr_pp* epp, ureg ppl, ast_node_kind kind, symbol_table* st,
+    parser* p, expr_pp* epp, ast_node_kind kind, symbol_table* st,
     ast_node* parent_ebb, paste_evaluation** eval)
 {
     paste_evaluation* pe = (paste_evaluation*)epp;
@@ -2328,8 +2213,6 @@ parse_error init_paste_evaluation_parse(
     int r = lx_open_paste(&p->lx, pe, smap);
     if (r) return PE_LX_ERROR;
     pe->node.srange = src_range_pack(p->lx.tc, 0, 0, p->lx.smap);
-
-    p->ppl = ppl;
     *eval = pe;
     p->file_root = NULL;
     if (p->lx.tc->t->verbosity_flags & VERBOSITY_FLAGS_TIME_STAGES) {
@@ -2338,12 +2221,12 @@ parse_error init_paste_evaluation_parse(
     return PE_OK;
 }
 parse_error parser_parse_paste_expr(
-    parser* p, expr_pp* epp, symbol_table* st, ureg ppl, ast_node* parent_ebb)
+    parser* p, expr_pp* epp, symbol_table* st, ast_node* parent_ebb)
 {
     assert(sizeof(expr_pp) >= sizeof(expr_paste_evaluation));
     expr_paste_evaluation* eval;
     parse_error pe = init_paste_evaluation_parse(
-        p, epp, ppl, EXPR_PASTE_EVALUATION, st, parent_ebb,
+        p, epp, EXPR_PASTE_EVALUATION, st, parent_ebb,
         (paste_evaluation**)&eval);
     if (pe) return pe;
     pe = parse_expression(p, &eval->expr);
@@ -2362,7 +2245,7 @@ parse_error parser_parse_paste_stmt(
     assert(sizeof(expr_pp) >= sizeof(stmt_paste_evaluation));
     stmt_paste_evaluation* eval;
     parse_error pe = init_paste_evaluation_parse(
-        p, epp, (**st).ppl, STMT_PASTE_EVALUATION, *st, parent_ebb,
+        p, epp, STMT_PASTE_EVALUATION, *st, parent_ebb,
         (paste_evaluation**)&eval);
     if (pe) return pe;
     p->paste_block = &eval->body;
@@ -2744,7 +2627,7 @@ parse_error parse_struct_decl(
         (ast_node*)s, sg ? SC_STRUCT_GENERIC : SC_STRUCT, flags);
     s->sym.name = name;
     s->visible_within = NULL; // TODO: parse this
-    pe = sym_fill_srange(p, s, start, decl_end);
+    pe = sym_fill_srange(p, &s->sym, start, decl_end);
     if (pe) return pe;
 
     *n = (ast_node*)s;
@@ -3302,7 +3185,7 @@ parse_error parse_import_with_parent(
         ast_node_fill_srange(p, (ast_node*)ig, istart, end);
         if (name) {
             symbol_table* st;
-            if (symbol_table_init(&st, ndecl_cnt, 0, false, (ast_elem*)ig, 0)) {
+            if (symbol_table_init(&st, ndecl_cnt, 0, false, (ast_elem*)ig)) {
                 return RE_FATAL;
             }
             st->parent = NULL;
@@ -3380,7 +3263,8 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     }
     file_require rq;
     rq.is_extern = is_extern;
-    rq.is_pp = p->ppl != 0;
+    rq.is_pp = false;
+    // rq.is_pp = p->ppl != 0; // FIXME: handle this properly again
     rq.runtime = is_runtime;
     rq.handled = false;
     rq.srange = src_range_pack_lines(p->lx.tc, start, t->end);
@@ -3496,9 +3380,7 @@ static inline parse_error parse_pp_stmt(
     sp->result_buffer.state.pprn = NULL;
     sp->result_buffer.paste_result.last_next =
         &sp->result_buffer.paste_result.first;
-    if (push_bpd_pp(p, (ast_node*)sp)) return PE_FATAL;
     pe = parse_statement(p, &sp->pp_expr);
-    if (pop_bpd_pp(p, pe)) return PE_FATAL;
     if (pe) return pe;
     pe = ast_node_fill_srange(
         p, (ast_node*)sp, start, src_range_get_end(sp->pp_expr->srange));

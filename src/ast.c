@@ -109,7 +109,7 @@ bool ast_elem_is_stmt(ast_elem* s)
 }
 bool ast_elem_is_expr(ast_elem* s)
 {
-    return (s->kind <= EXPR_FIRST_ID && s->kind <= EXPR_LAST_ID);
+    return (s->kind >= EXPR_FIRST_ID && s->kind <= EXPR_LAST_ID);
 }
 bool ast_elem_is_type_slice(ast_elem* s)
 {

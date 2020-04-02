@@ -17,7 +17,6 @@ typedef struct symbol_lookup_iterator {
     symbol_lookup_level sll_prealloc;
     resolver* r;
     symbol_lookup_level* head;
-    ureg ppl;
     symbol_table* next_lookup_st;
     symbol_table* looking_st;
     sc_struct* struct_inst_lookup;
@@ -35,7 +34,7 @@ typedef struct symbol_lookup_iterator {
 } symbol_lookup_iterator;
 
 resolve_error symbol_lookup_iterator_init(
-    symbol_lookup_iterator* sli, resolver* r, symbol_table* lookup_st, ureg ppl,
+    symbol_lookup_iterator* sli, resolver* r, symbol_table* lookup_st,
     sc_struct* struct_inst_lookup, symbol_table* looking_st,
     const char* tgt_name, bool enable_shadowing, bool deref_aliases);
 

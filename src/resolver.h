@@ -33,7 +33,6 @@ typedef struct pp_resolve_node_s {
     ast_node* node; // either expr_pp, stmt_use or func
     symbol_table* declaring_st;
     expr_block_base* parent_ebb;
-    ureg ppl;
     // PERF: use a non threadsafe list here
     aseglist notify_when_done;
     aseglist notify_when_ready;
@@ -106,12 +105,12 @@ int resolver_resolve_and_emit(
 ast_elem* get_resolved_ast_node_ctype(ast_node* n);
 
 resolve_error resolve_ast_node(
-    resolver* r, ast_node* n, symbol_table* st, ureg ppl, ast_elem** value,
+    resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
     ast_elem** ctype);
 resolve_error resolve_import_symbol(resolver* r, sym_import_symbol* is);
 resolve_error add_body_decls(
-    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ureg ppl,
-    ast_body* b, bool public_st);
+    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ast_body* b,
+    bool public_st);
 ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st);
 resolve_error report_redeclaration_error(
     resolver* r, symbol* redecl, symbol* prev, symbol_table* st);
