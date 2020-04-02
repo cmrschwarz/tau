@@ -11,6 +11,9 @@ typedef struct freelist_s {
     freelist_node* free_nodes;
     ureg node_size;
     pool* p;
+#if DEBUG
+    sreg alloc_count;
+#endif
 } freelist;
 
 static inline int freelist_init(freelist* f, pool* p, ureg node_size)
@@ -18,6 +21,7 @@ static inline int freelist_init(freelist* f, pool* p, ureg node_size)
     f->free_nodes = NULL;
     f->node_size = node_size;
     f->p = p;
+    f->alloc_count = 0;
     return 0;
 }
 static inline void* freelist_alloc(freelist* f)
@@ -31,19 +35,26 @@ static inline void* freelist_alloc(freelist* f)
         // if this returns NULL, we propagate that
         res = pool_alloc(f->p, f->node_size);
     }
+#if DEBUG
+    f->alloc_count++;
+#endif
     return res;
 }
 static inline void freelist_free(freelist* f, void* n)
 {
     ((freelist_node*)n)->next = f->free_nodes;
     f->free_nodes = (freelist_node*)n;
+#if DEBUG
+    f->alloc_count--;
+#endif
 }
 static inline void freelist_fin(freelist* p)
 {
 }
 // release "ownership" of all nodes, useful after the pool was reset
-static inline void freelist_clear(freelist* p)
+static inline void freelist_clear(freelist* f)
 {
-    p->free_nodes = NULL;
+    f->free_nodes = NULL;
+    f->alloc_count = 0;
 }
 #endif
