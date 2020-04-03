@@ -267,7 +267,8 @@ void print_ast_node_modifiers(ast_flags flags)
 {
     access_modifier am = ast_flags_get_access_mod(flags);
     switch (am) {
-        case AM_LOCAL: p(token_strings[TK_KW_LOCAL]); break;
+        // TODO: properly check for the default in this context
+        case AM_LOCAL: break;
         case AM_INTERNAL: p(token_strings[TK_KW_INTERNAL]); break;
         case AM_PRIVATE: p(token_strings[TK_KW_PRIVATE]); break;
         case AM_PROTECTED: p(token_strings[TK_KW_PROTECTED]); break;

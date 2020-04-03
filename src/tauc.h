@@ -72,7 +72,9 @@ void tauc_core_fin(tauc* t);
 void tauc_core_fin_no_run(tauc* t);
 void tauc_scaffolding_fin(tauc* t);
 
-#define VERBOSITY_FLAGS_TIME_STAGES 1
+#define VERBOSITY_FLAGS_TIME_STAGES 0x1
+#define VERBOSITY_FLAGS_PPRNS 0x2
+
 #define TAU_TIME_STAGE_CTX(t, before, code, after)                             \
     do {                                                                       \
         if ((t)->verbosity_flags & VERBOSITY_FLAGS_TIME_STAGES) {              \

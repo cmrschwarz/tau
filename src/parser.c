@@ -3261,8 +3261,7 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     }
     file_require rq;
     rq.is_extern = is_extern;
-    rq.is_pp = false;
-    // rq.is_pp = p->ppl != 0; // FIXME: handle this properly again
+    rq.is_pp = false; // FIXME: set this to true in parse pp statement
     rq.runtime = is_runtime;
     rq.handled = false;
     rq.srange = src_range_pack_lines(p->lx.tc, start, t->end);
@@ -3354,6 +3353,17 @@ static inline parse_error parse_pp_stmt(
     parse_error pe = require_default_flags(p, t, flags, start, flags_end);
     lx_void(&p->lx);
     if (pe) return pe;
+    ast_node* pp_stmt;
+    pe = parse_statement(p, &pp_stmt);
+    if (pe) return pe;
+    ast_elem* ppe = (ast_elem*)pp_stmt;
+    // TODO: handle pp modules, pp requires etc.
+    if (ast_elem_is_var(ppe) || ast_elem_is_struct_base(ppe) ||
+        ast_elem_is_func_base(ppe)) {
+        ast_flags_set_comptime(&pp_stmt->flags);
+        *tgt = pp_stmt;
+        return RE_OK;
+    }
     expr_pp* sp = alloc_perm(p, sizeof(expr_pp));
     if (!sp) return PE_FATAL;
     sp->ctype = NULL;
@@ -3361,11 +3371,7 @@ static inline parse_error parse_pp_stmt(
     sp->result_buffer.state.pprn = NULL;
     sp->result_buffer.paste_result.last_next =
         &sp->result_buffer.paste_result.first;
-    pe = parse_statement(p, &sp->pp_expr);
-    if (pe) return pe;
-    if (ast_elem_is_var((ast_elem*)sp->pp_expr)) {
-        ast_flags_set_comptime(&sp->pp_expr->flags);
-    }
+    sp->pp_expr = pp_stmt;
     pe = ast_node_fill_srange(
         p, (ast_node*)sp, start, src_range_get_end(sp->pp_expr->srange));
     *tgt = (ast_node*)sp;

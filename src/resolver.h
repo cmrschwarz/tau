@@ -22,7 +22,7 @@ typedef enum resolve_error_e {
     RE_OVERLOADED,
     // returned by the first # on the way up to let the parent know he can't
     // continue until the paste was evaluated
-    RE_UNREALIZED_PASTE,
+    RE_UNREALIZED_COMPTIME, // could be paste or a value needed for a type
     RE_REQUIRES_BODY_TYPE,
     RE_SYMBOL_NOT_FOUND_YET,
 } resolve_error;
@@ -30,7 +30,7 @@ typedef enum resolve_error_e {
 typedef struct thread_context_s thread_context;
 
 typedef struct pp_resolve_node_s {
-    ast_node* node; // either expr_pp, stmt_use or func
+    ast_node* node; // either expr_pp, stmt_use or func or var
     symbol_table* declaring_st;
     expr_block_base* parent_ebb;
     // PERF: use a non threadsafe list here

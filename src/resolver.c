@@ -36,6 +36,7 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress);
 resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn);
 resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn);
 void free_pprns(resolver* r);
+void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident);
 // must be a macro so value and ctype become lazily evaluated
 #define RETURN_RESOLVED(pvalue, pctype, value, ctype)                          \
     do {                                                                       \
@@ -135,6 +136,7 @@ static pp_resolve_node* pp_resolve_node_create(
     resolver* r, ast_node* n, symbol_table* declaring_st, bool res_used,
     bool run_when_ready)
 {
+    // print_pprns(r);
     pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
     if (!pprn) return NULL;
     if (aseglist_init(&pprn->notify_when_ready)) {
@@ -159,6 +161,10 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->call_when_done = false;
     pprn->first_unresolved_child = NULL;
     pprn->waiting_list_entry = NULL;
+    if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
+        printf("allocated pprn: ");
+        print_pprn(r, pprn, false, 0);
+    }
     return pprn;
 }
 static inline resolve_error get_curr_pprn(
@@ -852,7 +858,7 @@ static resolve_error evaluate_array_bounds(
     }
     else if (ad->length_spec->kind == EXPR_PP) {
         expr_pp* epp = (expr_pp*)ad->length_spec;
-        if (!epp->result) return RE_UNREALIZED_PASTE;
+        if (!epp->result) return RE_UNREALIZED_COMPTIME;
         // HACK
         if (ctypes_unifiable(epp->ctype, (ast_elem*)&PRIMITIVES[PT_UINT])) {
             *res = *(ureg*)epp->result;
@@ -1223,10 +1229,20 @@ resolve_error choose_binary_operator_overload(
     ast_elem** ctype)
 {
     ast_elem *lhs_ctype, *rhs_ctype;
+    bool unrealized_comptime = false;
     resolve_error re = resolve_ast_node(r, ob->lhs, st, NULL, &lhs_ctype);
-    if (re) return re;
+    // evaluate rhs even if lhs is #'ed so we can eval #foo + #bar
+    // in one run_pp
+    if (re == RE_UNREALIZED_COMPTIME) {
+        unrealized_comptime = true;
+    }
+    else if (re) {
+        return re;
+    }
     re = resolve_ast_node(r, ob->rhs, st, NULL, &rhs_ctype);
     if (re) return re;
+    if (unrealized_comptime) return RE_UNREALIZED_COMPTIME;
+
     if (ob->node.op_kind == OP_ASSIGN) {
         assert(is_lvalue(ob->lhs)); // TODO: error
         assert(ctypes_unifiable(lhs_ctype, rhs_ctype)); // TODO: error
@@ -1516,6 +1532,7 @@ static inline resolve_error resolve_var(
 {
     resolve_error re;
     bool public_scope = symbol_table_is_public(st);
+    bool comptime = ast_flags_get_comptime(v->osym.sym.node.flags);
     sym_var* prev_var_decl;
     pp_resolve_node* prev_var_pp_node;
     ast_node* prev_var_decl_block_owner;
@@ -1528,7 +1545,7 @@ static inline resolve_error resolve_var(
         r->curr_var_decl_block_owner = r->curr_block_owner;
     }
     else {
-        v->pprn = NULL;
+        assert(v->pprn == NULL);
     }
     if (v->osym.sym.node.kind == SYM_VAR) {
         ast_elem* type;
@@ -1847,12 +1864,12 @@ static inline resolve_error resolve_expr_pp(
             return RE_FATAL;
         }
     }
-    if (re == RE_UNREALIZED_PASTE) {
+    if (re == RE_UNREALIZED_COMPTIME) {
         assert(false); // TODO: figure out if this is possible?
     }
     if (re) return re;
     if (ctype) *ctype = ppe->ctype;
-    if (pprn && pprn->pending_pastes) return RE_UNREALIZED_PASTE;
+    if (pprn && pprn->pending_pastes) return RE_UNREALIZED_COMPTIME;
     ast_flags_set_resolved(&ppe->node.flags);
     return RE_OK;
 }
@@ -1953,7 +1970,7 @@ static inline resolve_error resolve_expr_block(
     bool end_reachable;
     resolve_error re = resolve_expr_body(
         r, st, (ast_node*)b, &b->body, &b->pprn, &end_reachable);
-    if (re == RE_UNREALIZED_PASTE) {
+    if (re == RE_UNREALIZED_COMPTIME) {
         if (b->ctype || !end_reachable) re = RE_OK;
     }
     if (ctype) *ctype = b->ctype;
@@ -2272,7 +2289,7 @@ static inline resolve_error resolve_ast_node_raw(
             bool end_reachable;
             re =
                 resolve_expr_body(r, st, n, &l->body, &l->pprn, &end_reachable);
-            if (re == RE_UNREALIZED_PASTE) {
+            if (re == RE_UNREALIZED_COMPTIME) {
                 if (l->ctype || !end_reachable) re = RE_OK;
             }
             if (ctype) *ctype = l->ctype;
@@ -2300,7 +2317,7 @@ static inline resolve_error resolve_ast_node_raw(
             }
             bool end_reachable;
             re = resolve_expr_body(r, st, n, &spe->body, NULL, &end_reachable);
-            if (re == RE_UNREALIZED_PASTE) {
+            if (re == RE_UNREALIZED_COMPTIME) {
                 if (!end_reachable) re = RE_OK;
             }
             if (ctype) {
@@ -2581,7 +2598,8 @@ resolve_error resolve_ast_node(
         }
     }
     else {
-        if (re != RE_UNREALIZED_PASTE && r->tc->t->trap_on_error) debugbreak();
+        if (re != RE_UNREALIZED_COMPTIME && r->tc->t->trap_on_error)
+            debugbreak();
         ast_flags_clear_resolving(&n->flags);
     }
     return re;
@@ -2644,7 +2662,7 @@ resolve_error resolve_expr_body(
             re = RE_OK;
         }
         else {
-            if (re) break; // this includes RE_UNREALIZED_PASTE
+            if (re) break; // this includes RE_UNREALIZED_COMPTIME
         }
     }
     if (saved_decl_count) {
@@ -2810,7 +2828,7 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
     r->curr_block_pp_node = prev_block_pprn;
     r->generic_context = generic_parent;
     if (re) {
-        if (re == RE_UNREALIZED_PASTE) {
+        if (re == RE_UNREALIZED_COMPTIME) {
             assert(bpprn);
             if (ptrlist_append(&r->pp_resolve_nodes_ready, bpprn))
                 return RE_FATAL;
@@ -2946,49 +2964,60 @@ resolve_error resolver_add_mf_decls(resolver* r)
     }
     return RE_OK;
 }
-// this stuff is just for debugging purposes
-void print_pprnlist(resolver* r, sbuffer* buff, char* msg)
+void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident)
 {
-    puts(msg);
+    assert(pprn->node != NULL);
+    if (verbose) {
+        aseglist_iterator it;
+        aseglist_iterator_begin(&it, &pprn->notify_when_done);
+        ureg done_nots = aseglist_iterator_get_remaining_count(&it);
+        aseglist_iterator_begin(&it, &pprn->notify_when_ready);
+        ureg ready_nots = aseglist_iterator_get_remaining_count(&it);
+        printf("    dependencies: %zu\n", pprn->dep_count);
+        printf("    nofify ready: %zu\n", ready_nots);
+        printf("    notify done:  %zu\n", done_nots);
+    }
+
+    pp_resolve_node* child = pprn->first_unresolved_child;
+    print_indent(ident);
+    if (ast_elem_is_func_base((ast_elem*)pprn->node)) {
+        printf("func %s", ((sc_func_base*)pprn->node)->sc.osym.sym.name);
+    }
+    else {
+        print_ast_node(pprn->node, r->curr_mdg, ident);
+    }
+    puts("");
+    if (child && verbose) {
+        puts("        children:");
+        print_indent(ident + 1);
+        while (child) {
+            print_ast_node(child->node, r->curr_mdg, ident);
+            puts("");
+            print_indent(ident + 1);
+            child = child->next;
+        }
+    }
+    puts("");
+}
+// this stuff is just for debugging purposes
+void print_pprnlist(resolver* r, sbuffer* buff, char* msg, bool verbose)
+{
     if (sbuffer_get_used_size(buff) == 0) return;
+    puts(msg);
     sbuffer_iterator sbi = sbuffer_iterator_begin(buff);
     for (pp_resolve_node** rn =
              sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
          rn; rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*))) {
-        assert((**rn).node != NULL);
-        aseglist_iterator it;
-        aseglist_iterator_begin(&it, &(**rn).notify_when_done);
-        ureg done_nots = aseglist_iterator_get_remaining_count(&it);
-        aseglist_iterator_begin(&it, &(**rn).notify_when_ready);
-        ureg ready_nots = aseglist_iterator_get_remaining_count(&it);
-        printf("    dependencies: %zu\n", (**rn).dep_count);
-        printf("    nofify ready: %zu\n", ready_nots);
-        printf("    notify done:  %zu\n", done_nots);
-
-        pp_resolve_node* child = (**rn).first_unresolved_child;
-
-        if (child) {
-            puts("        children:");
-            print_indent(3);
-            while (child) {
-                print_ast_node(child->node, r->curr_mdg, 2);
-                puts("");
-                print_indent(3);
-                child = child->next;
-            }
-        }
-        else {
-            print_indent(2);
-            print_ast_node((**rn).node, r->curr_mdg, 2);
-        }
-        puts("");
+        print_pprn(r, *rn, verbose, 2);
     }
 }
-void print_pprns(resolver* r)
+void print_pprns(resolver* r, char* msg, bool verbose)
 {
-    print_pprnlist(r, &r->pp_resolve_nodes_ready, "resady:");
-    print_pprnlist(r, &r->pp_resolve_nodes_pending, "pending:");
-    print_pprnlist(r, &r->pp_resolve_nodes_waiting, "waiting:");
+    if (!(r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS)) return;
+    printf(msg);
+    print_pprnlist(r, &r->pp_resolve_nodes_ready, "ready:", verbose);
+    print_pprnlist(r, &r->pp_resolve_nodes_pending, "pending:", verbose);
+    print_pprnlist(r, &r->pp_resolve_nodes_waiting, "waiting:", verbose);
 }
 resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn)
 {
@@ -3098,8 +3127,7 @@ resolve_error report_cyclic_pp_deps(resolver* r)
         if (!ast_elem_is_any_import_symbol((ast_elem*)(**rn).node)) {
             if (err == false) {
                 err = true;
-                puts("error:");
-                print_pprns(r);
+                print_pprns(r, "error: \n", true);
             }
             src_range_large srl;
             ast_node_get_src_range((**rn).node, (**rn).declaring_st, &srl);
@@ -3127,7 +3155,9 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
         import_pprns = false;
         non_import_pprns = false;
         if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
-            // print_pprns(r);
+
+            print_pprns(r, "running ", false);
+
             lle = llvm_backend_run_pp(
                 r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
                 &r->pp_resolve_nodes_ready);
@@ -3171,7 +3201,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             }
             ast_node* astn = rn->node;
             re = resolve_ast_node(r, rn->node, rn->declaring_st, NULL, NULL);
-            if (re == RE_UNREALIZED_PASTE) {
+            if (re == RE_UNREALIZED_COMPTIME) {
                 pli_prev(&it);
                 ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
                 progress = true;
@@ -3246,6 +3276,7 @@ void free_pprns(resolver* r)
     free_pprnlist(r, &r->pp_resolve_nodes_pending);
     free_pprnlist(r, &r->pp_resolve_nodes_ready);
     free_pprnlist(r, &r->pp_resolve_nodes_waiting);
+    assert(r->pp_resolve_nodes.alloc_count == 0);
 }
 int resolver_resolve(resolver* r)
 {

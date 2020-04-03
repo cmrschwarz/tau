@@ -256,6 +256,9 @@ int handle_cmd_args(
         else if (!strcmp(arg, "--timings")) {
             t->verbosity_flags |= VERBOSITY_FLAGS_TIME_STAGES;
         }
+        else if (!strcmp(arg, "--pprns")) {
+            t->verbosity_flags |= VERBOSITY_FLAGS_PPRNS;
+        }
 #if DEBUG
         else if (!strcmp(arg, "--run-unit-tests")) {
             r = run_unit_tests(argc, argv);
@@ -349,7 +352,9 @@ int tauc_run(int argc, char** argv)
                     {
                         r = tauc_run_jobs(&t);
                         tauc_core_fin(&t);
-                        tprintf("total ");
+                        if (t.verbosity_flags & VERBOSITY_FLAGS_TIME_STAGES) {
+                            tprintf("total ");
+                        }
                     },
                     {
                         tputs("\n");

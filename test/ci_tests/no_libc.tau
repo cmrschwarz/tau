@@ -1,4 +1,5 @@
-public extern func main(){
-    x:=3;
-    x++;
+public extern func main() -> int{
+    x := 1;
+    x --;
+    return x;
 }

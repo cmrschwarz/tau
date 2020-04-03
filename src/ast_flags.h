@@ -24,7 +24,8 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_STATIC_OFFSET 3 // on sym_var
 #define ASTF_PP_STMT_END_UNREACHABLE 3 // on stmt_paste_evaluation
 
-#define ASTF_COMPTIME_OFFSET 4 // on sym_var
+// basically on any symbol
+#define ASTF_COMPTIME_OFFSET 4
 
 // free slot: 5
 

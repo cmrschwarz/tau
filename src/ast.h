@@ -216,6 +216,8 @@ typedef struct ast_node_s {
     src_range srange;
 } ast_node;
 
+// TODO: make this a proper ast stmt so we can print it, use it in pp parsing
+// etc.
 typedef struct file_require_s {
     file_map_head* fmh;
     src_range srange;
@@ -560,6 +562,8 @@ typedef struct sym_var_s {
     open_symbol osym;
     ast_node* type; // may be NULL in sym_var_initialized or compound_assignment
     ast_elem* ctype;
+    // PERF: maybe use a scheme to share pprn* and id memory
+    // (e.g. put id in pprn, calc id after pp...)
     pp_resolve_node* pprn;
     ureg var_id;
 } sym_var;
