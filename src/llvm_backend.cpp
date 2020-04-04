@@ -535,6 +535,7 @@ void LLVMBackend::resetAfterEmit()
                 *state = STUB_GENERATED;
             }
             else if (*state == PP_IMPL_ADDED) {
+                // TODO: maybe avoid regeneration?
                 ((llvm::Function*)*val)->deleteBody();
                 *state = PP_STUB_GENERATED;
             }
@@ -696,6 +697,9 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
             lle = genAstNode(expr->pp_expr, NULL, NULL);
             if (lle) return lle;
         }
+    }
+    else if (ast_elem_is_var((ast_elem*)n->node)) {
+        return genVariable(n->node, NULL, NULL);
     }
     else if (n->first_unresolved_child) {
         for (pp_resolve_node* cn = n->first_unresolved_child; cn;
@@ -1101,6 +1105,10 @@ LLVMBackend::buildConstant(ast_elem* ctype, void* data, llvm::Constant** res)
 llvm_error
 LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
+    if (!_pp_mode && ast_flags_get_comptime(n->flags)) {
+        assert(!vl && !vl_loaded);
+        return LLE_OK;
+    }
     if (ast_flags_get_const(n->flags)) assert(false); // TODO (ctfe)
     sym_var* var = (sym_var*)n;
     llvm::Type* t;

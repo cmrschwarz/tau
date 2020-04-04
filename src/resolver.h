@@ -39,6 +39,7 @@ typedef struct pp_resolve_node_s {
     ast_node** continue_block;
     ureg dep_count;
     ureg pending_pastes;
+    bool ready;
     bool run_when_ready; // false for exprs in functions
     bool block_pos_reachable;
     bool call_when_done;
