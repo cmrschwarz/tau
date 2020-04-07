@@ -1,5 +1,3 @@
-require "support/libc.tau";
-import libc::(printf);
 require "bigtest/foo.tau";
 require "bigtest/bar.tau";
 require "bigtest/baz.tau";
@@ -9,6 +7,6 @@ import foo;
 
 
 public func main() -> int{
-    printf("foo: %i\n", foo::f10000() + bar::f10000() + baz::f10000());
-    return 0;
+    if (foo::f10000() + bar::f10000() + baz::f10000() == 30000) return 0;
+    return 1;
 }

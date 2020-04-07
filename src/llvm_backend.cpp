@@ -349,7 +349,6 @@ LLVMBackend::LLVMBackend(thread_context* tc)
     opt.DataSections = true;
     opt.ExceptionModel = llvm::ExceptionHandling::None;
     opt.EnableFastISel = true;
-
     llvm::Optional<llvm::CodeModel::Model> CM = llvm::CodeModel::Small;
     llvm::CodeGenOpt::Level OptLevel = llvm::CodeGenOpt::None;
     llvm::Optional<llvm::Reloc::Model> rm{llvm::Reloc::Model::PIC_};
@@ -358,18 +357,29 @@ LLVMBackend::LLVMBackend(thread_context* tc)
         std::move(rm), CM, OptLevel);
     _data_layout = new llvm::DataLayout(_target_machine->createDataLayout());
     _mod_dylib = NULL;
+    _curr_this = NULL;
 }
 LLVMBackend::~LLVMBackend()
 {
     ureg f = 0;
     std::sort(_globals_not_to_free.begin(), _globals_not_to_free.end());
-    _globals_not_to_free.push_back(_global_value_store.size());
-    for (ureg i : _globals_not_to_free) {
-        while (f != i) {
+    ureg* i = &_globals_not_to_free[0];
+    ureg* end = &_globals_not_to_free.back() + 1;
+    while (true) {
+        ureg skip;
+        if (i == end) {
+            skip = _global_value_state.size();
+        }
+        else {
+            skip = *i;
+            i++;
+        }
+        while (f != skip) {
             auto val = (llvm::Value*)_global_value_store[f];
             if (val) val->deleteValue();
             f++;
         }
+        if (i == end) break;
         f++; // skip the one we're not supposed to free
     }
     delete _data_layout;
@@ -771,6 +781,7 @@ llvm_error LLVMBackend::genModules()
 }
 llvm_error LLVMBackend::genStructuralAstBody(ast_body* b)
 {
+    _curr_this = NULL;
     for (ast_node** n = b->elements; *n; n++) {
         llvm_error lle = genAstNode(*n, NULL, NULL);
         if (lle) return lle;
@@ -1127,6 +1138,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     llvm_error lle = lookupCType(var->ctype, &t, &align, NULL);
     if (lle) return lle;
     if (instance_member) {
+        assert(vl || vl_loaded);
         auto gep = _builder.CreateStructGEP(_curr_this, var->var_id);
         if (vl_loaded) {
             *vl_loaded = _builder.CreateAlignedLoad(gep, align);
@@ -1656,8 +1668,10 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         }
         case EXPR_ARRAY: {
             auto arr = (expr_array*)n;
+            auto ta = (type_array*)arr->ctype;
             llvm::Type* base_type;
-            lle = lookupCType((ast_elem*)arr->ctype, &base_type, NULL, NULL);
+            lle = lookupCType(
+                ta->slice_type.ctype_members, &base_type, NULL, NULL);
             if (lle) return lle;
             llvm::ArrayType* arr_type =
                 llvm::ArrayType::get(base_type, arr->elem_count);
@@ -1745,8 +1759,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             else {
                 assert(lhst->kind == TYPE_ARRAY);
                 auto& indexList = *new std::array<llvm::Value*, 2>{
-                    index,
-                    llvm::ConstantInt::get(_primitive_types[PT_UINT], 0)};
+                    llvm::ConstantInt::get(_primitive_types[PT_UINT], 0),
+                    index};
                 auto res = _builder.CreateInBoundsGEP(arr, indexList);
                 if (!res) return LLE_FATAL;
                 if (vl) *vl = res;
@@ -1794,6 +1808,13 @@ llvm_error LLVMBackend::genUnaryOp(
     llvm_error lle;
     llvm::Value* child;
     switch (u->node.op_kind) {
+        case OP_UNARY_MINUS: {
+            lle = genAstNode(u->child, NULL, &child);
+            child = _builder.CreateNeg(child);
+            if (vl) *vl = child;
+            if (vl_loaded) *vl_loaded = child;
+            return LLE_OK;
+        }
         case OP_POST_INCREMENT:
         case OP_POST_DECREMENT: {
             llvm::Value* child_loaded;
@@ -1872,6 +1893,7 @@ llvm_error LLVMBackend::genBinaryOp(
         case OP_GREATER_THAN: v = _builder.CreateICmpSGT(lhs, rhs); break;
         case OP_LESS_THAN: v = _builder.CreateICmpSLT(lhs, rhs); break;
         case OP_EQUAL: v = _builder.CreateICmpEQ(lhs, rhs); break;
+        case OP_UNEQAL: v = _builder.CreateICmpNE(lhs, rhs); break;
         case OP_ASSIGN: {
             ureg align;
             lookupCType(
@@ -2098,6 +2120,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         _curr_this = NULL;
     }
     lle = genExecutableAstBody(&fn->fnb.sc.body, false, &end_reachable);
+    _curr_this = NULL;
     if (ctx.following_block) {
         if (_builder.GetInsertBlock() != ctx.following_block) {
             // _builder.CreateBr(ctx.following_block);

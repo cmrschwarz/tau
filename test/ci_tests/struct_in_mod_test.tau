@@ -1,0 +1,14 @@
+module a{
+    public struct Foo{
+        x: int;
+        public op test() -> int{
+            return 0;
+        }
+    }
+}
+import a::(Foo);
+
+public func main() -> int{
+    f: Foo;
+    return f.test();
+}

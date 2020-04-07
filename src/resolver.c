@@ -486,7 +486,8 @@ ureg claim_symbol_id(resolver* r, symbol* s, bool public_st)
 {
     symbol_table* decl_st = symbol_table_skip_metatables(s->declaring_st);
     ast_elem* on = decl_st->owning_node;
-    if (!ast_flags_get_static(s->node.flags) && ast_elem_is_struct(on)) {
+    if (ast_elem_is_var((ast_elem*)s) && !ast_flags_get_static(s->node.flags) &&
+        ast_elem_is_struct(on)) {
         // here we use the cheated 0 initialized id of the struct
         // to get a struct instance member id
         // TODO: Traits etc.

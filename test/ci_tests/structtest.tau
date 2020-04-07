@@ -1,19 +1,20 @@
-require "support/libc.tau";
-import libc::(printf);
-
 struct foo{
     lorem : int;
-    ipsum: int;
     struct bar{
         x: int;
-        y: string;
+        y: int;
+    }
+    ipsum: bar;
+    func sum() -> int{
+        return lorem + ipsum.x + ipsum.y;
     }
 }
 
 public func main() -> int{
     f: foo;
     fp := &f;
-    (*fp).ipsum = 17;
-    printf("ipsum: %i\n", (*fp).ipsum);
-    return 0;
+    (*fp).lorem = 17;
+    f.ipsum.x = -15;
+    (*fp).ipsum.y = -2;
+    return if((*fp).sum() == 0) 0 else 1;
 }

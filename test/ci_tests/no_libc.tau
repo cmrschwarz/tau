@@ -1,5 +1,0 @@
-public extern func main() -> int{
-    x := 1;
-    x --;
-    return x;
-}
