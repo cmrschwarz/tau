@@ -1974,7 +1974,7 @@ static inline resolve_error require_module_in_pp(
         if (!pprn) return PE_FATAL;
         *tgt_pprn = pprn;
         re = pp_resolve_node_activate(r, pprn, false);
-        pprn->parent = pprn;
+        pprn->parent = pprn; // HACK //NOCKECKIN
         if (re) return re;
     }
     else {
@@ -2865,6 +2865,18 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
     fnb->pprn = bpprn;
     r->curr_block_pp_node = prev_block_pprn;
     r->generic_context = generic_parent;
+    if (bpprn) {
+        if (!re) bpprn->continue_block = NULL;
+        if (!fnb->pprn->first_unresolved_child &&
+            fnb != (sc_func_base*)r->module_group_constructor) {
+            bpprn->run_when_ready = false;
+        }
+        resolve_error re2 = pp_resolve_node_activate(r, fnb->pprn, re == RE_OK);
+        if (re2) {
+            assert(re2 == RE_FATAL);
+            return re2;
+        }
+    }
     if (re) {
         if (re == RE_UNREALIZED_COMPTIME) {
             assert(bpprn);
@@ -2878,15 +2890,6 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
         }
         return re;
     }
-    if (bpprn) {
-        if (!re) bpprn->continue_block = NULL;
-        if (!fnb->pprn->first_unresolved_child &&
-            fnb != (sc_func_base*)r->module_group_constructor) {
-            bpprn->run_when_ready = false;
-        }
-        re = pp_resolve_node_activate(r, fnb->pprn, re == RE_OK);
-    }
-    if (re) return re;
     if (stmt_ctype_ptr && fnb->return_ctype != VOID_ELEM) {
         ureg brace_end = src_range_get_end(fnb->sc.body.srange);
         src_map* smap =
@@ -3323,6 +3326,7 @@ void free_pprnlist(resolver* r, sbuffer* buff)
 }
 void free_pprns(resolver* r)
 {
+    print_pprns(r, "freeing: ", true); // nockeckin
     free_pprnlist(r, &r->pp_resolve_nodes_pending);
     free_pprnlist(r, &r->pp_resolve_nodes_ready);
     free_pprnlist(r, &r->pp_resolve_nodes_waiting);
