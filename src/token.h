@@ -39,6 +39,8 @@ typedef enum PACK_ENUM token_kind_e {
     TK_KW_STATIC,
     TK_KW_AS,
     TK_KW_FUNC,
+    TK_KW_OP,
+    TK_KW_IMPLICIT,
     TK_KW_STRUCT,
     TK_KW_TRAIT,
     TK_KW_INTERFACE,

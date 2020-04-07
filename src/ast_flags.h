@@ -24,13 +24,12 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_STATIC_OFFSET 3 // on sym_var
 #define ASTF_PP_STMT_END_UNREACHABLE 3 // on stmt_paste_evaluation
 
-// basically on any symbol
-#define ASTF_COMPTIME_OFFSET 4
+#define ASTF_COMPTIME_OFFSET 4 // basically on any symbol
 
-// free slot: 5
+#define ASTF_IMPLICIT_OFFSET 5 // on ops / funcs
 
 // shared bit since applied to different nodes
-#define ASTF_CONST_OFFSET 6 // on sym_var
+#define ASTF_CONST_OFFSET 6 // on vars and funcs
 #define ASTF_PP_EXPR_RES_USED 6 // on expr_pp
 #define ASTF_IMPORT_GROUP_MODULE_USED 6 // om sym_import_group ({(),..} or not)
 
@@ -40,16 +39,18 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_COMPUND_DECL_OFFSET 8 // on sym_var
 #define ASTF_TYPE_OPERATOR_OFFSET 8 // on op_binary / op_unary
 #define ASTF_RELATIVE_IMPORT_OFFSET 8 // on sym_import_module (when not ::xx)
-#define ASTF_EXTERN_FUNC_OFFSET 8 // on sc_func
+#define ASTF_EXTERN_FUNC_OFFSET 8 // on funcs
 
-#define ASTF_OVERLOADED_IN_PP_OFFSET 9 // TODO: implement use xor change rule
+#define ASTF_OVERLOADED_IN_PP_OFFSET 9 // TODO: implement "use xor change" rule
+
 #define ASTF_USED_IN_PP_OFFSET 10
 
-// free slot: 11
+#define ASTF_FUNC_IS_OP_OFFSET 11 // on funcs / ops
 
-#define ASTF_INSTANCE_MEMBER_OFFSET 12 // on sym_var
+#define ASTF_INSTANCE_MEMBER_OFFSET 12 // on funcs and vars
 
-#define ASTF_ACCESS_MODIFIER_OFFSET 13 // on sym_var
+// needs 3 bits (13 - 15)
+#define ASTF_ACCESS_MODIFIER_OFFSET 13 // on any symbol
 #define ASTF_ACCESS_MODIFIER_MASK (0x7 << ASTF_ACCESS_MODIFIER_OFFSET)
 
 void ast_flags_set_access_mod(ast_flags* f, access_modifier m);
@@ -69,6 +70,12 @@ bool ast_flags_get_import_group_module_used(ast_flags f);
 
 void ast_flags_set_comptime(ast_flags* f);
 bool ast_flags_get_comptime(ast_flags f);
+
+void ast_flags_set_implicit(ast_flags* f);
+bool ast_flags_get_implicit(ast_flags f);
+
+void ast_flags_set_func_is_op(ast_flags* f);
+bool ast_flags_get_func_is_op(ast_flags f);
 
 void ast_flags_set_pp_stmt_end_unreachabale(ast_flags* f);
 bool ast_flags_get_pp_stmt_end_unreachabale(ast_flags f);

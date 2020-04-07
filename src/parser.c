@@ -3340,6 +3340,14 @@ ast_flags_from_kw(parser* p, ast_flags* f, token_kind kw, ureg start, ureg end)
             }
             ast_flags_set_extern_func(f);
         } break;
+        case TK_KW_IMPLICIT: {
+            if (ast_flags_get_extern_func(*f) != false) {
+                report_redundant_specifier(
+                    p, token_strings[TK_KW_EXTERN], start, end);
+                return PE_ERROR;
+            }
+            ast_flags_set_extern_func(f);
+        } break;
         default: {
             return PE_EOEX;
         } break;
@@ -3396,6 +3404,9 @@ parse_error parse_statement(parser* p, ast_node** tgt)
         }
         if (pe != PE_EOEX) return pe;
         switch (t->kind) {
+            case TK_KW_OP: {
+                ast_flags_set_func_is_op(&flags);
+            } // fallthrough
             case TK_KW_FUNC:
                 return parse_func_decl(p, flags, start, flags_end, tgt);
             case TK_KW_MACRO:

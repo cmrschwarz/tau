@@ -93,6 +93,24 @@ bool ast_flags_get_static(ast_flags f)
     return bitmask_get_bit(f, ASTF_STATIC_OFFSET);
 }
 
+void ast_flags_set_implicit(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_IMPLICIT_OFFSET);
+}
+bool ast_flags_get_implicit(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_IMPLICIT_OFFSET);
+}
+
+void ast_flags_set_func_is_op(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_FUNC_IS_OP_OFFSET);
+}
+bool ast_flags_get_func_is_op(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_FUNC_IS_OP_OFFSET);
+}
+
 void ast_flags_set_type_operator(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_TYPE_OPERATOR_OFFSET);
