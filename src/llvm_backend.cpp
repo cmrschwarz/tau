@@ -237,7 +237,7 @@ PPRunner::PPRunner()
         llvm::orc::SymbolNameSet added;
         llvm::orc::SymbolMap new_symbols;
         for (auto& sym : symbols) {
-            printf("looking for symbol '%s'\n", (*sym).str().c_str());
+            // printf("looking for symbol '%s'\n", (*sym).str().c_str());
             bool found = false;
             for (auto& arch_obs : this->archives) {
                 auto& arch = *arch_obs.getBinary();
@@ -267,7 +267,7 @@ PPRunner::PPRunner()
                         break;
                     }
                     else {
-                        printf("bin type: %i\n", ChildBin->getType());
+                        // printf("bin type: %i\n", ChildBin->getType());
                     }
                 }
             }

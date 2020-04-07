@@ -1,4 +1,6 @@
-public extern func _start();
+//we might need to require the lib for _start already in root later
+public extern func _start(); 
+
 module libc{
     require dynamic "/lib64/ld-linux-x86-64.so.2"; 
     require runtime static "/usr/lib/x86_64-linux-gnu/crt1.o";
@@ -17,5 +19,11 @@ module libc{
     }
     public func printf(fmt: string){
         printf(fmt, 0);
+    }
+    public extern func open(path: string, flags: int, mode: int) -> int;
+    public extern func close(fd: int) -> int;
+    public func debug_silence_stdout(){
+        close(1);
+        open("/dev/null", 1025 /* O_WONLY | O_APPEND*/, 0);
     }
 }
