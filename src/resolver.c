@@ -34,7 +34,8 @@ resolve_func_from_call(resolver* r, sc_func* fn, ast_elem** ctype);
 resolve_error
 pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress);
 resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn);
-resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn);
+resolve_error
+pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn, bool fin_independant);
 void free_pprns(resolver* r);
 void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident);
 // must be a macro so value and ctype become lazily evaluated
@@ -110,6 +111,10 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn)
 {
     ast_node* n = pprn->node;
     assert(n);
+    if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
+        printf("freeing pprn: ");
+        print_pprn(r, pprn, false, 0);
+    }
     if (pprn->waiting_list_entry) {
         remove_pprn_from_waiting_list(r, pprn);
     }
@@ -266,7 +271,7 @@ pp_resolve_node_activate(resolver* r, pp_resolve_node* pprn, bool resolved)
     }
     if (pprn->dep_count == 0) {
         if (resolved) {
-            return pp_resolve_node_ready(r, pprn);
+            return pp_resolve_node_ready(r, pprn, true);
         }
         if (!pprn->parent) {
             if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
@@ -1932,7 +1937,7 @@ static inline resolve_error require_module_in_pp(
     if (*tgt_pprn) {
         if (atomic_boolean_load(done)) {
             atomic_boolean_fin(done);
-            re = pp_resolve_node_ready(r, *tgt_pprn);
+            re = pp_resolve_node_ready(r, *tgt_pprn, false);
             if (re) return re;
             *tgt_pprn = NULL;
         }
@@ -1974,7 +1979,6 @@ static inline resolve_error require_module_in_pp(
         if (!pprn) return PE_FATAL;
         *tgt_pprn = pprn;
         re = pp_resolve_node_activate(r, pprn, false);
-        pprn->parent = pprn; // HACK //NOCKECKIN
         if (re) return re;
     }
     else {
@@ -2865,6 +2869,16 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
     fnb->pprn = bpprn;
     r->curr_block_pp_node = prev_block_pprn;
     r->generic_context = generic_parent;
+    if (re == RE_UNREALIZED_COMPTIME) {
+        assert(bpprn);
+        if (bpprn->dep_count == 0) {
+            if (ptrlist_append(&r->pp_resolve_nodes_ready, bpprn))
+                return RE_FATAL;
+        }
+        bpprn->continue_block = n;
+        bpprn->block_pos_reachable = (stmt_ctype_ptr != NULL);
+        return RE_OK;
+    }
     if (bpprn) {
         if (!re) bpprn->continue_block = NULL;
         if (!fnb->pprn->first_unresolved_child &&
@@ -2877,19 +2891,7 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
             return re2;
         }
     }
-    if (re) {
-        if (re == RE_UNREALIZED_COMPTIME) {
-            assert(bpprn);
-            if (bpprn->dep_count == 0) {
-                if (ptrlist_append(&r->pp_resolve_nodes_ready, bpprn))
-                    return RE_FATAL;
-            }
-            bpprn->continue_block = n;
-            bpprn->block_pos_reachable = (stmt_ctype_ptr != NULL);
-            return RE_OK;
-        }
-        return re;
-    }
+    if (re) return re;
     if (stmt_ctype_ptr && fnb->return_ctype != VOID_ELEM) {
         ureg brace_end = src_range_get_end(fnb->sc.body.srange);
         src_map* smap =
@@ -3073,7 +3075,8 @@ void print_pprns(resolver* r, char* msg, bool verbose)
     print_pprnlist(r, &r->pp_resolve_nodes_pending, "pending:", verbose);
     print_pprnlist(r, &r->pp_resolve_nodes_waiting, "waiting:", verbose);
 }
-resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn)
+resolve_error
+pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn, bool fin_independent)
 {
     resolve_error re;
     pprn->ready = true;
@@ -3090,7 +3093,7 @@ resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn)
     if (pprn->run_when_ready) {
         if (ptrlist_append(&r->pp_resolve_nodes_ready, pprn)) return RE_FATAL;
     }
-    else if (!pprn->parent) {
+    else if (fin_independent && !pprn->parent) {
         re = pp_resolve_node_done(r, pprn, NULL);
         if (re) return re;
     }
@@ -3100,7 +3103,7 @@ resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn)
 {
     pprn->dep_count--;
     if (pprn->dep_count == 0) {
-        resolve_error re = pp_resolve_node_ready(r, pprn);
+        resolve_error re = pp_resolve_node_ready(r, pprn, true);
         if (re) return re;
     }
     return RE_OK;
@@ -3148,7 +3151,7 @@ pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
     pprn->dep_count--;
     if (pprn->dep_count == 0) {
         if (progress) *progress = true;
-        resolve_error re = pp_resolve_node_ready(r, pprn);
+        resolve_error re = pp_resolve_node_ready(r, pprn, true);
         if (re) return re;
     }
     return RE_OK;
@@ -3326,7 +3329,6 @@ void free_pprnlist(resolver* r, sbuffer* buff)
 }
 void free_pprns(resolver* r)
 {
-    print_pprns(r, "freeing: ", true); // nockeckin
     free_pprnlist(r, &r->pp_resolve_nodes_pending);
     free_pprnlist(r, &r->pp_resolve_nodes_ready);
     free_pprnlist(r, &r->pp_resolve_nodes_waiting);
