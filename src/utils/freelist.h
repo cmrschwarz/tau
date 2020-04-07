@@ -21,7 +21,9 @@ static inline int freelist_init(freelist* f, pool* p, ureg node_size)
     f->free_nodes = NULL;
     f->node_size = node_size;
     f->p = p;
+#if DEBUG
     f->alloc_count = 0;
+#endif
     return 0;
 }
 static inline void* freelist_alloc(freelist* f)
@@ -55,6 +57,8 @@ static inline void freelist_fin(freelist* p)
 static inline void freelist_clear(freelist* f)
 {
     f->free_nodes = NULL;
+#if DEBUG
     f->alloc_count = 0;
+#endif
 }
 #endif

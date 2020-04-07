@@ -2574,6 +2574,7 @@ static inline resolve_error resolve_ast_node_raw(
             assert(emsc->lhs->kind == EXPR_IDENTIFIER);
             expr_identifier* id = (expr_identifier*)emsc->lhs;
             assert(cstr_eq(id->value.str, "asm"));
+            UNUSED(id); // make release build happy
             ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
         }
@@ -2749,6 +2750,7 @@ resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ast_elem** ctype)
                                fn->fnb.sc.osym.sym.declaring_st)
                                ->owning_node;
         assert(fn_mdg == r->curr_mdg);
+        UNUSED(fn_mdg); // make Release build happy
     }
     else {
         if (!fn->fnb.pprn) {

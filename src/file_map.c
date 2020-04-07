@@ -206,6 +206,7 @@ int file_map_head_require(
     else {
         assert(false);
     }
+    return ERR;
 }
 
 static inline void src_file_fin(src_file* f)

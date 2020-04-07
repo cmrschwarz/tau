@@ -39,4 +39,7 @@ void debug_utils_free_res();
 #endif
 #define TIME(code) TIME_MSG("", "\n", code)
 
+// for variables only used in asserts to get rid of -Wunused-variable
+#define UNUSED(x) ((void)(x))
+
 #endif

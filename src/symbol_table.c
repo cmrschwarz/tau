@@ -153,6 +153,7 @@ int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings)
             for (symbol* s = symtab_it_next(&it); s; s = symtab_it_next(&it)) {
                 symbol** r = symbol_table_insert(st, s);
                 assert(r == NULL);
+                UNUSED(r); // make Release build happy
             }
             tfree(table_old);
         }

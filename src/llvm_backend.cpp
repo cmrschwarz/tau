@@ -1783,6 +1783,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             assert(emsc->lhs->kind == EXPR_IDENTIFIER);
             auto id = (expr_identifier*)emsc->lhs;
             assert(cstr_eq(id->value.str, "asm"));
+            UNUSED(id); // make Release build happy
             auto func_sig =
                 llvm::FunctionType::get(_primitive_types[PT_VOID], false);
             auto myasm = llvm::InlineAsm::get(
@@ -1899,7 +1900,13 @@ llvm_error LLVMBackend::genBinaryOp(
             lookupCType(
                 get_resolved_ast_node_ctype(b->lhs), NULL, &align, NULL);
             _builder.CreateAlignedStore(rhs, lhs_flat, align);
-            if (vl_loaded) v = _builder.CreateAlignedLoad(lhs_flat, align);
+            if (vl_loaded) {
+                v = _builder.CreateAlignedLoad(lhs_flat, align);
+            }
+            else {
+                assert(!vl); // this is always an rvalue
+                v = NULL; // to get rid of -Wmaybe-uninitialized warning
+            }
         } break;
         case OP_ADD_ASSIGN: {
             ureg align;
@@ -2140,7 +2147,9 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         _builder.CreateRetVoid();
     }
     _control_flow_ctx.pop_back();
+    // ensure the stack size is the same before and after the function
     assert(_control_flow_ctx.size() == cfcsize);
+    UNUSED(cfcsize); // make Release build happy
     _curr_fn = prev_fn;
     _curr_fn_ast_node = prev_fn_ast_node;
     _curr_fn_control_flow_ctx = prev_fn_cfc;
