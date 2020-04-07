@@ -370,7 +370,7 @@ LLVMBackend::~LLVMBackend()
             if (val) val->deleteValue();
             f++;
         }
-        f++;
+        f++; // skip the one we're not supposed to free
     }
     delete _data_layout;
     delete _target_machine;
@@ -649,7 +649,7 @@ void LLVMBackend::remapLocalID(ureg old_id, ureg new_id)
     _local_value_state[old_id] = NOT_GENERATED;
     if (isLocalID(new_id)) {
         new_id -= PRIV_SYMBOL_OFFSET;
-        assert(new_id < _global_value_store.size());
+        assert(new_id < _local_value_store.size());
         _local_value_store[new_id] = val;
         _local_value_state[new_id] = state;
     }
@@ -763,15 +763,21 @@ llvm_error LLVMBackend::genModules()
         aseglist_iterator_begin(&it, &(**n).module_frames);
         for (module_frame* mf = (module_frame*)aseglist_iterator_next(&it); mf;
              mf = (module_frame*)aseglist_iterator_next(&it)) {
-            for (ast_node** n = mf->body.elements; *n; n++) {
-                llvm_error lle = genAstNode(*n, NULL, NULL);
-                if (lle) return lle;
-            }
+            llvm_error lle = genStructuralAstBody(&mf->body);
+            if (lle) return lle;
         }
     }
     return LLE_OK;
 }
-llvm_error LLVMBackend::genAstBody(
+llvm_error LLVMBackend::genStructuralAstBody(ast_body* b)
+{
+    for (ast_node** n = b->elements; *n; n++) {
+        llvm_error lle = genAstNode(*n, NULL, NULL);
+        if (lle) return lle;
+    }
+    return LLE_OK;
+}
+llvm_error LLVMBackend::genExecutableAstBody(
     ast_body* b, bool continues_afterwards, bool* end_reachable)
 {
     ControlFlowContext& ctx = _control_flow_ctx.back();
@@ -824,7 +830,7 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
                 if (t) *t = *tp;
             }
             else {
-                if (isGlobalID(id) && isIDInModule(id)) {
+                if (isGlobalID(id)) {
                     _globals_not_to_free.push_back(id);
                 }
                 // PERF: we could steal the array of
@@ -991,7 +997,7 @@ llvm_error LLVMBackend::genIfBranch(ast_node* branch)
         auto eb = (expr_block*)branch;
         eb->control_flow_ctx = &ctx;
         ret = (eb->ctype != UNREACHABLE_ELEM);
-        lle = genAstBody(&eb->body, ret);
+        lle = genExecutableAstBody(&eb->body, ret);
         if (lle) return lle;
     }
     else if (ctx.value) {
@@ -1105,6 +1111,11 @@ LLVMBackend::buildConstant(ast_elem* ctype, void* data, llvm::Constant** res)
 llvm_error
 LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
+    bool instance_member = ast_flags_get_instance_member(n->flags);
+    if (instance_member && !_curr_this) {
+        assert(!vl && !vl_loaded);
+        return LLE_OK;
+    }
     if (!_pp_mode && ast_flags_get_comptime(n->flags)) {
         assert(!vl && !vl_loaded);
         return LLE_OK;
@@ -1115,8 +1126,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     ureg align;
     llvm_error lle = lookupCType(var->ctype, &t, &align, NULL);
     if (lle) return lle;
-    if (ast_flags_get_instance_member(n->flags)) {
-        assert(_curr_this);
+    if (instance_member) {
         auto gep = _builder.CreateStructGEP(_curr_this, var->var_id);
         if (vl_loaded) {
             *vl_loaded = _builder.CreateAlignedLoad(gep, align);
@@ -1204,6 +1214,8 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             else if (isLocalID(var->var_id)) {
                 if (_pp_mode) {
                     _reset_after_emit.push_back(var->var_id);
+                    // HACK: we just make everything external to
+                    // get stuff to work for now
                     lt = llvm::GlobalVariable::ExternalLinkage;
                 }
                 else {
@@ -1328,14 +1340,19 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     epp->ctype, epp->result, (llvm::Constant**)vl_loaded);
             }
         }
+        case SC_STRUCT_GENERIC: // TODO: emit instances somewhere somhow
         case MF_MODULE:
         case MF_EXTEND:
-        case SC_STRUCT_GENERIC:
             // no codegen required
             assert(!vl);
             return LLE_OK;
 
-        case SC_STRUCT: return lookupCType((ast_elem*)n, NULL, NULL, NULL);
+        case SC_STRUCT: {
+            lle = lookupCType((ast_elem*)n, NULL, NULL, NULL);
+            if (lle) return lle;
+            auto sb = (sc_struct_base*)n;
+            return genStructuralAstBody(&sb->sc.body);
+        }
         case SC_FUNC: return genFunction((sc_func*)n, vl);
         case EXPR_OP_BINARY:
             return genBinaryOp((expr_op_binary*)n, vl, vl_loaded);
@@ -1493,7 +1510,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (!ctx->first_block) return LLE_FATAL;
             if (!_builder.CreateBr(ctx->first_block)) return LLE_FATAL;
             _builder.SetInsertPoint(ctx->first_block);
-            lle = genAstBody(&l->body, true);
+            lle = genExecutableAstBody(&l->body, true);
             if (lle) return lle;
             if (!_builder.CreateBr(ctx->first_block)) return LLE_FATAL;
             _builder.SetInsertPoint(following_block);
@@ -1518,7 +1535,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             lle = genScopeValue(b->ctype, *ctx);
             if (lle) return lle;
             ctx->first_block = _builder.GetInsertBlock();
-            lle = genAstBody(&b->body, true);
+            lle = genExecutableAstBody(&b->body, true);
             if (lle) return lle;
             if (!_builder.CreateBr(following_block)) return LLE_FATAL;
             _builder.SetInsertPoint(following_block);
@@ -2040,6 +2057,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     }
     llvm::GlobalValue::LinkageTypes lt;
     if (_pp_mode) {
+        // HACK: make everyting external
         lt = llvm::Function::ExternalLinkage;
     }
     else {
@@ -2079,7 +2097,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     else {
         _curr_this = NULL;
     }
-    lle = genAstBody(&fn->fnb.sc.body, false, &end_reachable);
+    lle = genExecutableAstBody(&fn->fnb.sc.body, false, &end_reachable);
     if (ctx.following_block) {
         if (_builder.GetInsertBlock() != ctx.following_block) {
             // _builder.CreateBr(ctx.following_block);

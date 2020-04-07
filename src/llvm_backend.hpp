@@ -237,8 +237,9 @@ struct LLVMBackend {
   private:
     llvm_error genModules();
 
-    llvm_error
-    genAstBody(ast_body* n, bool continues_after, bool* end_reachable = NULL);
+    llvm_error genStructuralAstBody(ast_body* b);
+    llvm_error genExecutableAstBody(
+        ast_body* n, bool continues_after, bool* end_reachable = NULL);
 
     llvm_error genIfBranch(ast_node* branch);
 

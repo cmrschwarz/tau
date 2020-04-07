@@ -482,6 +482,8 @@ ureg claim_symbol_id(resolver* r, symbol* s, bool public_st)
     symbol_table* decl_st = symbol_table_skip_metatables(s->declaring_st);
     ast_elem* on = decl_st->owning_node;
     if (!ast_flags_get_static(s->node.flags) && ast_elem_is_struct(on)) {
+        // here we use the cheated 0 initialized id of the struct
+        // to get a struct instance member id
         // TODO: Traits etc.
         ast_flags_set_instance_member(&s->node.flags);
         return ((sc_struct*)decl_st->owning_node)->id++;
@@ -571,18 +573,18 @@ static resolve_error add_ast_node_decls(
         case SC_STRUCT_GENERIC_INST: {
             sc_struct_base* sb = (sc_struct_base*)n;
             re = add_symbol(r, st, sst, (symbol*)n);
-            bool members_public_st =
-                public_st && ast_flags_get_access_mod(n->flags) >= AM_PROTECTED;
+            // so instance members can inc this and we get a member id
             if (n->kind == SC_STRUCT) {
                 ((sc_struct*)n)->id = 0;
             }
             else if (n->kind == SC_STRUCT_GENERIC_INST) {
                 ((sc_struct_generic_inst*)n)->id = 0;
             }
-            // so members can inc this and we get a member id
-            // s->id = ast_node_claim_id(r, n, public_st);
-
+            bool members_public_st = public_st && !is_local_node(n->flags);
             re = add_body_decls(r, st, NULL, &sb->sc.body, members_public_st);
+            if (re) return re;
+
+            // after the members are done we give the struct a real id
             if (n->kind == SC_STRUCT) {
                 ((sc_struct*)n)->id = claim_symbol_id(r, (symbol*)n, public_st);
             }
@@ -590,8 +592,6 @@ static resolve_error add_ast_node_decls(
                 ((sc_struct_generic_inst*)n)->id =
                     claim_symbol_id(r, (symbol*)n, public_st);
             }
-            if (re) return re;
-
             return RE_OK;
         }
         case SC_MACRO:
