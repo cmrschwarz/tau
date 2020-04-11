@@ -27,6 +27,7 @@ typedef enum PACK_ENUM access_modifier_e {
 #define ASTF_COMPTIME_OFFSET 4 // basically on any symbol
 
 #define ASTF_IMPLICIT_OFFSET 5 // on ops / funcs
+#define ASTF_EXPLICIT_OFFSET 5 // on variables
 
 // shared bit since applied to different nodes
 #define ASTF_CONST_OFFSET 6 // on vars and funcs
@@ -73,6 +74,9 @@ bool ast_flags_get_comptime(ast_flags f);
 
 void ast_flags_set_implicit(ast_flags* f);
 bool ast_flags_get_implicit(ast_flags f);
+
+void ast_flags_set_explicit(ast_flags* f);
+bool ast_flags_get_explicit(ast_flags f);
 
 void ast_flags_set_func_is_op(ast_flags* f);
 bool ast_flags_get_func_is_op(ast_flags f);

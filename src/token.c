@@ -29,6 +29,7 @@ const char* token_strings[255] = {
     [TK_KW_FUNC] = "func",
     [TK_KW_OP] = "op",
     [TK_KW_IMPLICIT] = "implicit",
+    [TK_KW_EXPLICIT] = "explicit",
     [TK_KW_STRUCT] = "struct",
     [TK_KW_SELF] = "self",
     [TK_KW_TRAIT] = "trait",

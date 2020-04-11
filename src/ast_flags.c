@@ -102,6 +102,15 @@ bool ast_flags_get_implicit(ast_flags f)
     return bitmask_get_bit(f, ASTF_IMPLICIT_OFFSET);
 }
 
+void ast_flags_set_explicit(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_EXPLICIT_OFFSET);
+}
+bool ast_flags_get_explicit(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_EXPLICIT_OFFSET);
+}
+
 void ast_flags_set_func_is_op(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_FUNC_IS_OP_OFFSET);
