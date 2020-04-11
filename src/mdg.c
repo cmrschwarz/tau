@@ -165,22 +165,28 @@ static void free_astn_symtabs(ast_node* n)
 
         case EXPR_BLOCK: free_body_symtabs(n, &((expr_block*)n)->body); break;
 
-        case SYM_IMPORT_PARENT:
-        case SYM_IMPORT_GROUP: {
-            // skip unnamed groups
-            if (((symbol*)n)->name == NULL) break;
-            // TODO: handle non resolved case
-            symbol_table* st = (n->kind == SYM_IMPORT_PARENT)
-                                   ? (((sym_import_parent*)n)->children.symtab)
-                                   : (((sym_import_group*)n)->children.symtab);
-            symtab_it it = symtab_it_make(st);
+        case SYM_IMPORT_PARENT: {
+            sym_import_parent* ip = (sym_import_parent*)n;
+            if (!ast_flags_get_resolved(n->flags)) break;
+            if (ip->children.symtab->owning_node != (ast_elem*)ip) break;
+            symtab_it it = symtab_it_make(ip->children.symtab);
             for (symbol* s = symtab_it_next(&it); s != NULL;
                  s = symtab_it_next(&it)) {
                 free_astn_symtabs((ast_node*)s);
             }
-            symbol_table_fin(st);
+            symbol_table_fin(ip->children.symtab);
         } break;
-
+        case SYM_IMPORT_GROUP: {
+            sym_import_group* ig = (sym_import_group*)n;
+            if (!ast_flags_get_resolved(n->flags)) break;
+            if (ig->children.symtab->owning_node != (ast_elem*)ig) break;
+            symtab_it it = symtab_it_make(ig->children.symtab);
+            for (symbol* s = symtab_it_next(&it); s != NULL;
+                 s = symtab_it_next(&it)) {
+                free_astn_symtabs((ast_node*)s);
+            }
+            symbol_table_fin(ig->children.symtab);
+        } break;
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
             free_astn_symtabs(ei->condition);
@@ -248,6 +254,7 @@ static void free_astn_symtabs(ast_node* n)
         }
         case EXPR_IDENTIFIER:
         case SYM_IMPORT_MODULE:
+        case SYM_IMPORT_SYMBOL:
         case EXPR_LITERAL: break;
         case EXPR_PASTE_EVALUATION: {
             expr_paste_evaluation* epe = (expr_paste_evaluation*)n;
