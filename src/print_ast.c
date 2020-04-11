@@ -192,15 +192,25 @@ void print_ast_elem_name(ast_elem* n)
         pu("<unknown node>");
     }
 }
-void print_import_group(
-    sym_import_group* g, mdg_node* block_parents_parent, ureg indent)
+void print_import_group(sym_import_group* g, mdg_node* curr_mdg, ureg indent)
 {
+    if (g->osym.sym.name) {
+        p(g->osym.sym.name);
+        p(" = ");
+    }
+    if (ast_flags_get_relative_import(g->osym.sym.node.flags)) {
+        p("self::");
+        if (print_mdg_node_until(g->parent_mdgn, curr_mdg)) p("::");
+    }
+    else {
+        if (print_mdg_node_until(g->parent_mdgn, NULL)) p("::");
+    }
     // TODO: improve this mess, we can't even preserve import order right now
-    if (print_mdg_node_until(g->parent_mdgn, block_parents_parent)) p("::");
+
     symtab_it stit;
     symbol* c;
     bool use_stit = false;
-    if (ast_flags_get_resolved(g->osym.sym.node.flags)) {
+    if (ast_flags_get_declared(g->osym.sym.node.flags)) {
         use_stit = true;
         stit = symtab_it_make(g->children.symtab);
         c = symtab_it_next(&stit);
@@ -211,49 +221,58 @@ void print_import_group(
     bool syms = (c->node.kind == SYM_IMPORT_SYMBOL);
     p(syms ? "(" : "{\n");
     while (c) {
+        bool skip = false;
         char* tgt_str = c->name;
         if (!syms) print_indent(indent + 1);
         if (c->node.kind == SYM_IMPORT_GROUP) {
             print_import_group(
-                (sym_import_group*)c, g->parent_mdgn->parent, indent + 1);
+                (sym_import_group*)c, g->parent_mdgn, indent + 1);
         }
         else if (c->node.kind == SYM_IMPORT_MODULE) {
-            print_mdg_node_until(
-                ((sym_import_module*)c)->target, g->parent_mdgn->parent);
-        }
-        else if (c->node.kind == SYM_IMPORT_SYMBOL) {
-            char* name = NULL;
-            // TODO: remove if aboce by fixing unnamed group containing parent
-            // st
-            assert(c->node.kind == SYM_IMPORT_SYMBOL);
-            sym_import_symbol* sym = (sym_import_symbol*)c;
-
-            if (ast_flags_get_resolved(sym->osym.sym.node.flags)) {
-                if (!cstr_eq(sym->target.sym->name, sym->osym.sym.name)) {
-                    tgt_str = sym->target.sym->name;
-                    name = sym->osym.sym.name;
-                }
-            }
-            // not comparing the string is fine here since we alloc only
-            // once
-            else if (sym->osym.sym.name != sym->target.name) {
-                tgt_str = sym->target.name;
-                name = sym->osym.sym.name;
-            }
-            if (name) {
-                p(name);
+            sym_import_module* im = (sym_import_module*)c;
+            // TODO: figure out if it's really ours
+            if (!cstr_eq(c->name, im->target->name)) {
+                p(c->name);
                 p(" = ");
             }
+            print_mdg_node_until(im->target, g->parent_mdgn->parent);
         }
-        p(tgt_str);
+        else if (c->node.kind == SYM_IMPORT_SYMBOL) {
+            sym_import_symbol* is = (sym_import_symbol*)c;
+            if (is->import_group == g) {
+                char* name = is->osym.sym.name;
+                if (ast_flags_get_resolved(is->osym.sym.node.flags) &&
+                    !is->target_st) {
+                    tgt_str = is->target.sym->name;
+                }
+                else {
+                    tgt_str = is->target.name;
+                }
+                if (!cstr_eq(name, tgt_str)) {
+                    p(name);
+                    p(" = ");
+                }
+            }
+            else {
+                skip = true;
+            }
+        }
+        else {
+            skip = true;
+        }
+        if (!skip) {
+            p(tgt_str);
+        }
         if (use_stit) {
             c = symtab_it_next(&stit);
         }
         else {
             c = c->next;
         }
-        if (c) p(", ");
-        if (!syms) pc('\n');
+        if (!skip) {
+            if (c) p(", ");
+            if (!syms) pc('\n');
+        }
     }
     if (!syms) {
         print_indent(indent);
@@ -298,13 +317,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_IMPORT_GROUP: {
             p("import ");
-            if (ast_flags_get_relative_import(n->flags)) {
-                p("self::");
-                print_import_group((sym_import_group*)n, cmdg->parent, indent);
-            }
-            else {
-                print_import_group((sym_import_group*)n, NULL, indent);
-            }
+            print_import_group((sym_import_group*)n, cmdg, indent);
         } break;
         case STMT_COMPOUND_ASSIGN: {
             stmt_compound_assignment* ca = (stmt_compound_assignment*)n;
@@ -395,7 +408,8 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case MF_EXTEND_GENERIC: {
             module_frame_generic* mf = (module_frame_generic*)n;
             p(n->kind == MF_EXTEND_GENERIC ? "extend " : "module ");
-            // pinn(mf->frame.oscope.sc.osym.sym.name); //TODO: get name here?
+            // pinn(mf->frame.oscope.sc.osym.sym.name); //TODO: get name
+            // here?
             pinn("?");
             p("[");
             print_sym_params(

@@ -391,6 +391,7 @@ resolve_error add_sym_import_module_decl(
         *tgt = (symbol*)im;
         im->osym.sym.next = next;
     }
+    ast_flags_set_declared(&im->osym.sym.node.flags);
     return RE_OK;
 }
 resolve_error add_import_group_decls(
@@ -440,6 +441,7 @@ resolve_error add_import_group_decls(
             if (re) return re;
         }
     }
+    ast_flags_set_declared(&ig->osym.sym.node.flags);
     return RE_OK;
 }
 static inline void
