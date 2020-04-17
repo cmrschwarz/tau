@@ -34,13 +34,16 @@ void* sbuffer_back(sbuffer* sb, ureg size);
 ureg sbuffer_get_used_size(sbuffer* sb);
 bool sbuffer_is_empty(sbuffer* sb);
 
-// the following methods invalidate all iterators, except for the passed one
+// the following methods invalidate all iterators to elements after the
+// removed / inserted one
 void sbuffer_remove(sbuffer* sb, sbuffer_iterator* sbi, ureg size);
 void sbuffer_remove_prev(sbuffer* sb, sbuffer_iterator* sbi, ureg size);
 void* sbuffer_insert(sbuffer* sb, sbuffer_iterator* sbi, ureg size);
 
-// the following methods invalidate all iterators
+// invalidates all iterators
 void sbuffer_remove_front(sbuffer* sb, ureg size);
+
+// invalidates no iterators
 void sbuffer_remove_back(sbuffer* sb, ureg size);
 
 void sbuffer_compact(sbuffer* sb);

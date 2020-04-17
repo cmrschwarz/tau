@@ -8,6 +8,7 @@
 #include "utils/freelist.h"
 #include "utils/ptrlist.h"
 #include "llvm_backend_api.h"
+#include "post_resolution_pass.h"
 typedef enum resolve_error_e {
     RE_FATAL = -1,
     RE_OK = 0,
@@ -53,6 +54,7 @@ typedef struct pp_resolve_node_s {
 typedef struct resolver_s {
     // general stuff
     thread_context* tc;
+    post_resolution_pass prp;
     llvm_backend* backend;
     // current context
     mdg_node** mdgs_begin;

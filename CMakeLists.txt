@@ -7,6 +7,7 @@ set(TAUC_C_SRCS
     ./src/parser.c
     ./src/resolver.c
     ./src/symbol_lookup.c
+    ./src/post_resolution_pass.c
     ./src/symbol_table.c
     ./src/utils/dbuffer.c
     ./src/utils/panic.c

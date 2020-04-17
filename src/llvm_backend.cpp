@@ -462,6 +462,8 @@ void LLVMBackend::setupPrimitives()
             case PT_TYPE:
             case PT_PASTED_EXPR:
             case PT_GENERIC_TYPE:
+            case PT_DEFINED:
+            case PT_UNDEFINED:
             case PT_UNREACHABLE: t = NULL; break;
             default: assert(false); return;
         }
@@ -931,18 +933,8 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
 }
 ControlFlowContext* LLVMBackend::getTartetCFC(ast_node* target)
 {
-    switch (target->kind) {
-        case EXPR_BLOCK: {
-            return (ControlFlowContext*)((expr_block*)target)->control_flow_ctx;
-        }
-        case EXPR_LOOP: {
-            return (ControlFlowContext*)((expr_loop*)target)->control_flow_ctx;
-        }
-        default: {
-            assert(false);
-            return (ControlFlowContext*)NULL;
-        }
-    }
+    assert(target->kind == EXPR_BLOCK || target->kind == EXPR_LOOP);
+    return (ControlFlowContext*)((expr_block_base*)target)->control_flow_ctx;
 }
 bool LLVMBackend::isIDInModule(ureg id)
 {
@@ -1006,8 +998,8 @@ llvm_error LLVMBackend::genIfBranch(ast_node* branch)
         // TODO: we might need to cast the expr block
         // return type?
         auto eb = (expr_block*)branch;
-        eb->control_flow_ctx = &ctx;
-        ret = (eb->ctype != UNREACHABLE_ELEM);
+        eb->ebb.control_flow_ctx = &ctx;
+        ret = (eb->ebb.ctype != UNREACHABLE_ELEM);
         lle = genExecutableAstBody(&eb->body, ret);
         if (lle) return lle;
     }
@@ -1513,9 +1505,9 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (lle) return lle;
             _control_flow_ctx.emplace_back();
             ControlFlowContext* ctx = &_control_flow_ctx.back();
-            l->control_flow_ctx = ctx;
+            l->ebb.control_flow_ctx = ctx;
             ctx->following_block = following_block;
-            lle = genScopeValue(l->ctype, *ctx);
+            lle = genScopeValue(l->ebb.ctype, *ctx);
             if (lle) return lle;
             ctx->first_block = llvm::BasicBlock::Create(
                 _context, "", _curr_fn, following_block);
@@ -1542,9 +1534,9 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (lle) return lle;
             _control_flow_ctx.emplace_back();
             ControlFlowContext* ctx = &_control_flow_ctx.back();
-            b->control_flow_ctx = ctx;
+            b->ebb.control_flow_ctx = ctx;
             ctx->following_block = following_block;
-            lle = genScopeValue(b->ctype, *ctx);
+            lle = genScopeValue(b->ebb.ctype, *ctx);
             if (lle) return lle;
             ctx->first_block = _builder.GetInsertBlock();
             lle = genExecutableAstBody(&b->body, true);

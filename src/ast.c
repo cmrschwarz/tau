@@ -18,6 +18,8 @@ primitive PRIMITIVES[] = {
     mk_prim(PT_VOID, "void"),
     mk_prim(PT_GENERIC_TYPE, "generic type"),
     mk_prim(PT_UNREACHABLE, "unreachable"),
+    mk_prim(PT_UNDEFINED, "undefined"),
+    mk_prim(PT_DEFINED, "defined"),
     mk_prim(PT_INT, "int"),
     mk_prim(PT_UINT, "uint"),
     mk_prim(PT_FLOAT, "float"),

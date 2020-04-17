@@ -123,8 +123,8 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn)
         case SC_FUNC_GENERIC: ((sc_func_base*)n)->pprn = NULL; break;
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: ((sym_var*)n)->pprn = NULL; break;
-        case EXPR_BLOCK: ((expr_block*)n)->pprn = NULL; break;
-        case EXPR_LOOP: ((expr_loop*)n)->pprn = NULL; break;
+        case EXPR_BLOCK: ((expr_block*)n)->ebb.pprn = NULL; break;
+        case EXPR_LOOP: ((expr_loop*)n)->ebb.pprn = NULL; break;
         case SC_STRUCT: ((sc_struct*)n)->sb.pprn = NULL; break;
         case SYM_IMPORT_GROUP: ((sym_import_group*)n)->pprn = NULL; break;
         case SYM_IMPORT_MODULE: ((sym_import_module*)n)->pprn = NULL; break;
@@ -1307,9 +1307,9 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
 ast_elem** get_break_target_ctype(ast_node* n)
 {
     switch (n->kind) {
-        case EXPR_BLOCK: return &((expr_block*)n)->ctype;
+        case EXPR_BLOCK: return &((expr_block*)n)->ebb.ctype;
         case EXPR_IF: return &((expr_if*)n)->ctype;
-        case EXPR_LOOP: return &((expr_loop*)n)->ctype;
+        case EXPR_LOOP: return &((expr_loop*)n)->ebb.ctype;
         default: return NULL;
     }
 }
@@ -1827,7 +1827,7 @@ static inline resolve_error resolve_if(
     if (cond_type_loop || if_branch_type_loop || else_branch_type_loop) {
         return RE_TYPE_LOOP;
     }
-    ast_flags_set_resolved(&ei->ebb.node.flags);
+    ast_flags_set_resolved(&ei->node.flags);
     return RE_OK;
 }
 static inline resolve_error resolve_expr_pp(
@@ -1999,22 +1999,22 @@ static inline resolve_error resolve_expr_block(
 {
     bool end_reachable;
     resolve_error re = resolve_expr_body(
-        r, st, (ast_node*)b, &b->body, &b->pprn, &end_reachable);
+        r, st, (ast_node*)b, &b->body, &b->ebb.pprn, &end_reachable);
     if (re == RE_UNREALIZED_COMPTIME) {
-        if (b->ctype || !end_reachable) re = RE_OK;
+        if (b->ebb.ctype || !end_reachable) re = RE_OK;
     }
-    if (ctype) *ctype = b->ctype;
+    if (ctype) *ctype = b->ebb.ctype;
     if (re) return re;
     if (end_reachable) {
-        assert(!b->ctype); // TODO: error
-        b->ctype = VOID_ELEM;
+        assert(!b->ebb.ctype); // TODO: error
+        b->ebb.ctype = VOID_ELEM;
     }
     else {
-        if (!b->ctype) b->ctype = UNREACHABLE_ELEM;
+        if (!b->ebb.ctype) b->ebb.ctype = UNREACHABLE_ELEM;
     }
     ast_flags_set_resolved(&b->ebb.node.flags);
     assert(!value);
-    RETURN_RESOLVED(value, ctype, NULL, b->ctype);
+    RETURN_RESOLVED(value, ctype, NULL, b->ebb.ctype);
 }
 static inline bool is_symbol_kind_overloadable(ast_node_kind k)
 {
@@ -2131,7 +2131,7 @@ static inline resolve_error resolve_ast_node_raw(
         case EXPR_NO_BLOCK_MACRO_CALL: {
             expr_call* c = (expr_call*)n;
             assert(resolved); // otherwise this would still be a EXPR_CALL
-            RETURN_RESOLVED(value, ctype, c, c->target.macro_block->ctype);
+            RETURN_RESOLVED(value, ctype, c, c->target.macro_block->ebb.ctype);
         }
         case SYM_FUNC_OVERLOADED: { // used during import resolution
             assert(!ctype);
@@ -2314,7 +2314,7 @@ static inline resolve_error resolve_ast_node_raw(
             expr_block* b = (expr_block*)n;
             if (resolved) {
                 assert(!value);
-                RETURN_RESOLVED(value, ctype, NULL, b->ctype);
+                RETURN_RESOLVED(value, ctype, NULL, b->ebb.ctype);
             }
             return resolve_expr_block(r, b, st, value, ctype);
         }
@@ -2327,20 +2327,20 @@ static inline resolve_error resolve_ast_node_raw(
             expr_loop* l = (expr_loop*)n;
             if (resolved) {
                 assert(!value);
-                RETURN_RESOLVED(value, ctype, NULL, l->ctype);
+                RETURN_RESOLVED(value, ctype, NULL, l->ebb.ctype);
             }
             bool end_reachable;
-            re =
-                resolve_expr_body(r, st, n, &l->body, &l->pprn, &end_reachable);
+            re = resolve_expr_body(
+                r, st, n, &l->body, &l->ebb.pprn, &end_reachable);
             if (re == RE_UNREALIZED_COMPTIME) {
-                if (l->ctype || !end_reachable) re = RE_OK;
+                if (l->ebb.ctype || !end_reachable) re = RE_OK;
             }
-            if (ctype) *ctype = l->ctype;
+            if (ctype) *ctype = l->ebb.ctype;
             if (re) return re;
             assert(end_reachable); // TODO: error: why loop then?
-            if (!l->ctype) l->ctype = UNREACHABLE_ELEM;
+            if (!l->ebb.ctype) l->ebb.ctype = UNREACHABLE_ELEM;
             ast_flags_set_resolved(&n->flags);
-            RETURN_RESOLVED(value, ctype, value, l->ctype);
+            RETURN_RESOLVED(value, ctype, value, l->ebb.ctype);
         }
         case EXPR_PASTE_EVALUATION: {
             expr_paste_evaluation* epe = (expr_paste_evaluation*)n;
@@ -3363,6 +3363,7 @@ int resolver_resolve(resolver* r)
     re = resolver_handle_post_pp(r);
     if (re) return re;
     free_pprns(r);
+    prp_run_modules(&r->prp, r->mdgs_begin, r->mdgs_end);
     return RE_OK;
 }
 int resolver_emit(resolver* r, llvm_module** module)
@@ -3497,7 +3498,8 @@ int resolver_partial_fin(resolver* r, int i, int res)
 {
     switch (i) {
         case -1:
-        case 7: llvm_backend_delete(r->backend); // fallthrough
+        case 8: llvm_backend_delete(r->backend); // fallthrough
+        case 7: prp_fin(&r->prp); // fallthrough
         case 6: ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
         case 5: ptrlist_fin(&r->pp_resolve_nodes_pending); // fallthrough
         case 4: sbuffer_fin(&r->pp_resolve_nodes_waiting); // fallthrough
@@ -3529,8 +3531,10 @@ int resolver_init(resolver* r, thread_context* tc)
     if (e) return resolver_partial_fin(r, 4, e);
     e = ptrlist_init(&r->pp_resolve_nodes_ready, 16);
     if (e) return resolver_partial_fin(r, 5, e);
+    e = prp_init(&r->prp);
+    if (e) return resolver_partial_fin(r, 6, e);
     r->backend = llvm_backend_new(r->tc);
-    if (!r->backend) return resolver_partial_fin(r, 6, ERR);
+    if (!r->backend) return resolver_partial_fin(r, 7, ERR);
     r->allow_type_loops = false;
     r->type_loop_start = NULL;
     r->curr_block_owner = NULL;

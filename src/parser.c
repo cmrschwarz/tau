@@ -1366,8 +1366,8 @@ static inline parse_error parse_expr_block(
     if (!first_stmt) lx_void(&p->lx);
     expr_block* b = alloc_perm(p, sizeof(expr_block));
     if (!b) return PE_FATAL;
-    b->pprn = NULL;
-    b->ctype = NULL;
+    b->ebb.pprn = NULL;
+    b->ebb.ctype = NULL;
     ast_node_init((ast_node*)b, EXPR_BLOCK);
     *ex = (ast_node*)b;
     init_expr_block_base(
@@ -1430,8 +1430,8 @@ parse_error parse_loop(parser* p, ast_node** tgt)
     lx_void(&p->lx);
     expr_loop* l = alloc_perm(p, sizeof(expr_loop));
     if (!l) return PE_FATAL;
-    l->ctype = NULL;
-    l->pprn = NULL;
+    l->ebb.ctype = NULL;
+    l->ebb.pprn = NULL;
     if (ast_node_fill_srange(p, (ast_node*)l, start, t->end)) return PE_FATAL;
     ast_node_init((ast_node*)l, EXPR_LOOP);
     *tgt = (ast_node*)l;

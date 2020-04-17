@@ -16,10 +16,13 @@
 
 typedef struct mdg_node_s mdg_node;
 typedef struct pp_resolve_node_s pp_resolve_node;
+typedef struct prp_var_node_s prp_var_node;
+typedef struct prp_block_node_s prp_block_node;
 typedef struct src_file_s src_file;
 typedef struct file_map_head_s file_map_head;
 typedef struct type_slice_s type_slice;
 typedef struct sc_func_s sc_func;
+typedef struct expr_block_s expr_block;
 
 typedef enum PACK_ENUM ast_node_kind_e {
     ELEM_INVALID, // make 0 invalid for debugging
@@ -185,6 +188,8 @@ typedef enum PACK_ENUM operator_kind_e {
 typedef enum PACK_ENUM primitive_kind_e {
     PT_VOID,
     PT_UNREACHABLE,
+    PT_UNDEFINED,
+    PT_DEFINED,
     PT_GENERIC_TYPE,
     PT_INT,
     PT_UINT,
@@ -311,11 +316,38 @@ typedef struct sym_import_symbol_s {
 
 typedef struct expr_block_base_s {
     ast_node node;
-    ast_node* parent;
+    ast_node* parent; // either another expr_block_base or a function
     char* name;
+    union {
+        prp_block_node* prpbn;
+        void* control_flow_ctx;
+        // this works, since the block ITSELF (not its children)
+        // won't be touched by the backend until its fully resolved
+        // and then we don't need the pprn anymore
+        pp_resolve_node* pprn;
+    };
+    ast_elem* ctype;
 } expr_block_base;
 
-// expr_return also uses this struct
+// these two are currently identical, so this is a little silly
+typedef struct expr_block_s {
+    expr_block_base ebb;
+    ast_body body;
+} expr_block;
+
+typedef struct expr_loop_s {
+    expr_block_base ebb;
+    ast_body body;
+} expr_loop;
+
+typedef struct expr_continue_s {
+    ast_node node;
+    union {
+        expr_block_base* ebb;
+        char* label;
+    } target;
+} expr_continue;
+
 typedef struct expr_break_s {
     ast_node node;
     union {
@@ -333,44 +365,19 @@ typedef struct expr_return_s {
     ast_elem* value_ctype; // void if value not provided
 } expr_return;
 
-typedef struct expr_continue_s {
-    ast_node node;
-    union {
-        expr_block_base* ebb;
-        char* label;
-    } target;
-} expr_continue;
-
-typedef struct expr_block_s {
-    expr_block_base ebb;
-    ast_body body;
-    ast_elem* ctype;
-    union {
-        void* control_flow_ctx;
-        // this works, since the block ITSELF (not its children)
-        // won't be touched by the backend until its fully resolved
-        // and then we don't need the pprn anymore
-        pp_resolve_node* pprn;
-    };
-} expr_block;
-
+// this does not have a name or a control_flow_context member since it is not a
+// break target. only if the if/else branches contains a block these blocks
+// are break targets and can have a (potentially different) name.
+// x := if (true) break 4; is an error (unless there's a parent block)
+// During resolution both if and else block point to the same shared control
+// flow context since the if/else expression results in one value
 typedef struct expr_if_s {
-    expr_block_base ebb;
+    ast_node node;
     ast_node* condition;
     ast_node* if_body;
     ast_node* else_body;
     ast_elem* ctype;
 } expr_if;
-
-typedef struct expr_loop_s {
-    expr_block_base ebb;
-    ast_body body;
-    ast_elem* ctype;
-    union {
-        void* control_flow_ctx;
-        pp_resolve_node* pprn; // see expr_block on why this works
-    };
-} expr_loop;
 
 typedef struct sym_param_s {
     symbol sym;
@@ -564,7 +571,10 @@ typedef struct sym_var_s {
     ast_elem* ctype;
     // PERF: maybe use a scheme to share pprn* and id memory
     // (e.g. put id in pprn, calc id after pp...)
-    pp_resolve_node* pprn;
+    union {
+        pp_resolve_node* pprn;
+        prp_var_node* prpvn;
+    };
     ureg var_id;
 } sym_var;
 
