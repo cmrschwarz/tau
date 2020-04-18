@@ -27,33 +27,33 @@ typedef struct prp_var_data_s prp_var_data;
 
 typedef struct prp_block_node_s {
     prp_block_node* parent;
-    prp_block_node* prev;
     prp_block_node* children;
     ast_node* node; // NULL for meta blocks (if/else)
     ast_node** next;
     prp_var_data* owned_vars;
+    // we use this for if/else meta blocks to store the owned vars of the
+    // currently deactivated branch
+    prp_var_data* twin_owned_vars;
     prp_var_data* used_vars;
-    prp_block_node* twin_branch;
     bool is_else;
-    bool second_pass;
-    bool inside_loop;
+    bool second_pass; // for loops
+    bool final_attempt; // for all blocks to signify that this is the final pass
 } prp_block_node;
 
 typedef struct prp_var_data_s {
     prp_var_data* parent;
-    prp_var_node* prev;
-    prp_var_data* branch_twin; // points to the else version in if
-    prp_var_state state_before_block;
+    prp_var_node* var_node;
+    prp_block_node* block;
+    prp_var_data* prev;
     prp_var_state curr_state_in_block;
+    prp_var_state exit_states;
     ast_node* curr_state_inducing_expr;
-    prp_var_state exit_state;
     ast_node* breaking_expr;
 } prp_var_data;
 
 typedef struct prp_var_node_s {
     sym_var* var;
     prp_var_data* curr_data;
-    prp_block_node* curr_block;
     prp_var_data owner_var_data;
 } prp_var_node;
 

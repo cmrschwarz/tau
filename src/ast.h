@@ -377,6 +377,7 @@ typedef struct expr_if_s {
     ast_node* if_body;
     ast_node* else_body;
     ast_elem* ctype;
+    prp_block_node* prpbn;
 } expr_if;
 
 typedef struct sym_param_s {
@@ -574,6 +575,7 @@ typedef struct sym_var_s {
     union {
         pp_resolve_node* pprn;
         prp_var_node* prpvn;
+        ureg rt_initialization_tracker_id;
     };
     ureg var_id;
 } sym_var;
@@ -790,6 +792,7 @@ bool ast_elem_is_type_slice(ast_elem* s);
 bool ast_elem_is_stmt(ast_elem* s);
 bool ast_elem_is_expr_block_base(ast_elem* n);
 bool ast_elem_is_paste_evaluation(ast_elem* s);
+bool assignment_is_meta_assignment(expr_op_binary* ob, bool* defined);
 ast_body* ast_elem_get_body(ast_elem* s);
 char* ast_elem_get_label(ast_elem* n, bool* lbl);
 src_map* scope_get_smap(scope* s);

@@ -1026,6 +1026,7 @@ llvm_error LLVMBackend::genIfBranch(ast_node* branch)
 }
 llvm_error LLVMBackend::genScopeValue(ast_elem* ctype, ControlFlowContext& ctx)
 {
+    // HACK: find a better way to set the ctype to void in case of undefined
     if (ctype != VOID_ELEM && ctype != UNREACHABLE_ELEM) {
         llvm::Type* t;
         llvm_error lle = lookupCType(ctype, &t, &ctx.value_align, NULL);
@@ -1863,6 +1864,10 @@ llvm_error LLVMBackend::genBinaryOp(
     llvm::Value *lhs, *lhs_flat, *rhs;
     llvm_error lle;
     if (b->node.op_kind == OP_ASSIGN) {
+        if (assignment_is_meta_assignment(b, NULL)) {
+            assert(!vl && !vl_loaded);
+            return LLE_OK;
+        }
         lle = genAstNode(b->lhs, &lhs_flat, NULL);
     }
     else if (
@@ -1872,9 +1877,8 @@ llvm_error LLVMBackend::genBinaryOp(
     else {
         lle = genAstNode(b->lhs, NULL, &lhs);
     }
-    lle = genAstNode(b->rhs, NULL, &rhs);
     if (lle) return lle;
-
+    lle = genAstNode(b->rhs, NULL, &rhs);
     if (lle) return lle;
     llvm::Value* v;
     switch (b->node.op_kind) {
@@ -1892,13 +1896,9 @@ llvm_error LLVMBackend::genBinaryOp(
             lookupCType(
                 get_resolved_ast_node_ctype(b->lhs), NULL, &align, NULL);
             _builder.CreateAlignedStore(rhs, lhs_flat, align);
-            if (vl_loaded) {
-                v = _builder.CreateAlignedLoad(lhs_flat, align);
-            }
-            else {
-                assert(!vl); // this is always an rvalue
-                v = NULL; // to get rid of -Wmaybe-uninitialized warning
-            }
+            assert(!vl && !vl_loaded); // op assign is type void
+            v = NULL; // to get rid of -Wmaybe-uninitialized warning
+
         } break;
         case OP_ADD_ASSIGN: {
             ureg align;

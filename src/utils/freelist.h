@@ -50,8 +50,11 @@ static inline void freelist_free(freelist* f, void* n)
     f->alloc_count--;
 #endif
 }
-static inline void freelist_fin(freelist* p)
+static inline void freelist_fin(freelist* f)
 {
+#if DEBUG
+    assert(f->alloc_count == 0);
+#endif
 }
 // release "ownership" of all nodes, useful after the pool was reset
 static inline void freelist_clear(freelist* f)

@@ -121,6 +121,22 @@ bool ast_elem_is_paste_evaluation(ast_elem* s)
 {
     return s->kind == EXPR_PASTE_EVALUATION || s->kind == STMT_PASTE_EVALUATION;
 }
+bool assignment_is_meta_assignment(expr_op_binary* ob, bool* defined)
+{
+    assert(ast_flags_get_resolved(ob->node.flags));
+    if (ob->rhs->kind == EXPR_IDENTIFIER) {
+        expr_identifier* id = (expr_identifier*)ob->rhs;
+        if (id->value.sym == (symbol*)&PRIMITIVES[PT_UNDEFINED]) {
+            if (defined) *defined = false;
+            return true;
+        }
+        if (id->value.sym == (symbol*)&PRIMITIVES[PT_DEFINED]) {
+            if (defined) *defined = true;
+            return true;
+        }
+    }
+    return false;
+}
 bool ast_body_is_braced(ast_body* b)
 {
     if (b->elements[0] && !b->elements[1]) {

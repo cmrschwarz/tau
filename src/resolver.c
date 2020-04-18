@@ -955,6 +955,7 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
                ctypes_unifiable(
                    aa->slice_type.ctype_members, ab->slice_type.ctype_members);
     }
+    if (b == (ast_elem*)&PRIMITIVES[PT_UNDEFINED]) return true;
     return false; // TODO
     /*
     switch (a->kind) {
@@ -1261,7 +1262,7 @@ resolve_error choose_binary_operator_overload(
     if (ob->node.op_kind == OP_ASSIGN) {
         assert(is_lvalue(ob->lhs)); // TODO: error
         assert(ctypes_unifiable(lhs_ctype, rhs_ctype)); // TODO: error
-        if (ctype) *ctype = lhs_ctype;
+        if (ctype) *ctype = VOID_ELEM;
         ob->op = lhs_ctype;
         return RE_OK;
     }
@@ -1803,7 +1804,11 @@ static inline resolve_error resolve_if(
     else {
         if (re) return re;
     }
-    if (if_branch_type_loop || ctype_if == UNREACHABLE_ELEM) {
+    if (!ei->else_body) {
+        // TODO: maybe check for breaks and cause an error here
+        ei->ctype = VOID_ELEM;
+    }
+    else if (if_branch_type_loop || ctype_if == UNREACHABLE_ELEM) {
         ei->ctype = ctype_else; // TODO: this could lead to void instead
     }
     else if (else_branch_type_loop || ctype_else == UNREACHABLE_ELEM) {
@@ -2105,7 +2110,19 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case SYM_PRIMITIVE: {
             if (!resolved) ast_flags_set_resolved(&n->flags);
-            RETURN_RESOLVED(value, ctype, &PRIMITIVES[n->pt_kind], TYPE_ELEM);
+            if (value) *value = (ast_elem*)&PRIMITIVES[n->pt_kind];
+            if (ctype) {
+                switch (n->pt_kind) {
+                    case PT_DEFINED:
+                    case PT_UNDEFINED: {
+                        *ctype = (ast_elem*)&PRIMITIVES[n->pt_kind];
+                    } break;
+                    default: {
+                        *ctype = TYPE_ELEM;
+                    } break;
+                }
+            }
+            return RE_OK;
         }
         case EXPR_LITERAL: {
             if (!resolved) ast_flags_set_resolved(&n->flags);
