@@ -146,7 +146,7 @@ bool ast_body_is_braced(ast_body* b)
 }
 bool ast_elem_is_expr_block_base(ast_elem* n)
 {
-    return n->kind == EXPR_BLOCK || n->kind == EXPR_IF || n->kind == EXPR_LOOP;
+    return n->kind == EXPR_BLOCK || n->kind == EXPR_LOOP;
 }
 bool is_unary_op_postfix(operator_kind t)
 {

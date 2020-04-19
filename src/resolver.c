@@ -955,7 +955,10 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
                ctypes_unifiable(
                    aa->slice_type.ctype_members, ab->slice_type.ctype_members);
     }
-    if (b == (ast_elem*)&PRIMITIVES[PT_UNDEFINED]) return true;
+    if (b == (ast_elem*)&PRIMITIVES[PT_UNDEFINED] ||
+        (ast_elem*)&PRIMITIVES[PT_DEFINED]) {
+        return true;
+    }
     return false; // TODO
     /*
     switch (a->kind) {
@@ -2354,7 +2357,6 @@ static inline resolve_error resolve_ast_node_raw(
             }
             if (ctype) *ctype = l->ebb.ctype;
             if (re) return re;
-            assert(end_reachable); // TODO: error: why loop then?
             if (!l->ebb.ctype) l->ebb.ctype = UNREACHABLE_ELEM;
             ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, value, l->ebb.ctype);

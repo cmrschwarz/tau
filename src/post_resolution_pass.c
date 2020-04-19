@@ -40,7 +40,12 @@ prp_error prp_var_data_push(post_resolution_pass* prp, sym_var* v)
     prp_var_data* vd = (prp_var_data*)freelist_alloc(&prp->var_data_mem);
     if (!vd) return PRPE_FATAL;
     vd->breaking_expr = NULL;
-    vd->exit_states = VAR_STATE_UNKNOWN;
+    if (prp->curr_block->is_else) {
+        vd->exit_states = v->prpvn->curr_data->curr_state_in_block;
+    }
+    else {
+        vd->exit_states = VAR_STATE_UNKNOWN;
+    }
     vd->curr_state_in_block = VAR_STATE_UNKNOWN;
     vd->curr_state_inducing_expr = NULL;
     vd->parent = v->prpvn->curr_data;
@@ -66,6 +71,8 @@ prp_error prp_var_node_create(post_resolution_pass* prp, sym_var* v)
         initial_state = VAR_STATE_DEFINED;
     }
     vn->var = v;
+    vn->next_in_break_chain = NULL;
+    vn->top_data_on_break_path = NULL;
     vn->curr_data = &vn->owner_var_data;
     vn->owner_var_data.var_node = vn;
     vn->owner_var_data.exit_states = VAR_STATE_UNKNOWN;
@@ -88,13 +95,15 @@ void prp_block_node_activate(post_resolution_pass* prp, prp_block_node* b)
         vd->var_node->curr_data = vd;
     }
 }
-prp_error
-prp_block_node_push(post_resolution_pass* prp, ast_node* node, ast_body* body)
+prp_error prp_block_node_push(
+    post_resolution_pass* prp, ast_node* node, ast_body* body,
+    prp_block_node** tgt)
 {
     prp_block_node* bn = (prp_block_node*)freelist_alloc(&prp->block_node_mem);
     if (!bn) return PRPE_FATAL;
     bn->node = node;
     bn->parent = prp->curr_block;
+    bn->depth = prp->curr_block ? prp->curr_block->depth + 1 : 0;
     bn->final_attempt = (bn->parent == NULL || bn->parent->final_attempt);
     bn->owned_vars = NULL;
     bn->used_vars = NULL;
@@ -107,6 +116,7 @@ prp_block_node_push(post_resolution_pass* prp, ast_node* node, ast_body* body)
         assert(node->kind == EXPR_IF);
         bn->next = (ast_node**)NULL_PTR_PTR;
     }
+    if (tgt) *tgt = bn;
     return PRPE_OK;
 }
 prp_error prp_handle_assign(post_resolution_pass* prp, expr_op_binary* assign)
@@ -127,7 +137,10 @@ prp_error prp_handle_assign(post_resolution_pass* prp, expr_op_binary* assign)
     else {
         // TODO: make this valid for POD's because we are nice citizens
         // TODO: error
-        assert(vd->curr_state_in_block == VAR_STATE_DEFINED);
+        assert(
+            vd->var_node->var->ctype->kind == SYM_PRIMITIVE ||
+            vd->curr_state_in_block == VAR_STATE_DEFINED);
+        new_state = VAR_STATE_DEFINED;
     }
     if (new_state != prev_state) {
         if (v->prpvn->curr_data->block != prp->curr_block) {
@@ -136,6 +149,68 @@ prp_error prp_handle_assign(post_resolution_pass* prp, expr_op_binary* assign)
         }
         v->prpvn->curr_data->curr_state_in_block = new_state;
         v->prpvn->curr_data->curr_state_inducing_expr = (ast_node*)assign;
+    }
+    return PRPE_OK;
+}
+prp_error prp_handle_break(post_resolution_pass* prp, expr_break* b)
+{
+    prp_block_node* bn = prp->curr_block;
+    prp_block_node* break_bn = b->target.ebb->prpbn;
+    // the exit state of the vars in this link chain will be updated for the
+    // block that we break from
+    prp_var_node* break_chain = NULL;
+    assert(break_bn); // we don't do expr prp mode for now
+    while (true) {
+        for (prp_var_data* vd = bn->owned_vars; vd; vd = vd->prev) {
+            vd->exit_states |= vd->var_node->curr_data->curr_state_in_block;
+        }
+        for (prp_var_data* vd = bn->used_vars; vd; vd = vd->prev) {
+            // we only want to add this to the break chain
+            // if the var has not been visited yet (top_data == NULL)
+            // and it is  owned by a block outside the block we
+            // break from (depth < break_bn->depth)
+            if (!vd->var_node->top_data_on_break_path &&
+                vd->var_node->owner_var_data.block->depth < break_bn->depth) {
+                vd->var_node->next_in_break_chain = break_chain;
+                break_chain = vd->var_node;
+            }
+            vd->var_node->top_data_on_break_path = vd;
+        }
+        if (bn == break_bn) break;
+        bn = bn->parent;
+    }
+    prp_var_node* vn = break_chain;
+    while (true) {
+        if (!vn) break;
+        if (vn->top_data_on_break_path->block == break_bn) {
+            // the break block already has a var data for this, so we update
+            // that
+            vn->top_data_on_break_path->exit_states |=
+                vn->curr_data->curr_state_in_block;
+        }
+        else {
+            // no var data in the block, so we need to insert one
+            prp_var_data* vd =
+                (prp_var_data*)freelist_alloc(&prp->var_data_mem);
+            if (!vd) return PRPE_FATAL;
+            vd->breaking_expr = (ast_node*)b;
+            vd->exit_states = vn->curr_data->curr_state_in_block;
+            // otherwise it would own it -> have a var data
+            assert(vn->top_data_on_break_path->parent);
+            vd->curr_state_in_block =
+                vn->top_data_on_break_path->parent->curr_state_in_block;
+            vd->parent = vn->top_data_on_break_path->parent;
+            vn->top_data_on_break_path->parent = vd;
+            vd->curr_state_inducing_expr = NULL;
+            vd->block = break_bn;
+            vd->prev = break_bn->used_vars;
+            break_bn->used_vars = vd;
+            vd->var_node = vn;
+        }
+        prp_var_node* vn_next = vn->next_in_break_chain;
+        vn->next_in_break_chain = NULL;
+        vn->top_data_on_break_path = NULL;
+        vn = vn_next;
     }
     return PRPE_OK;
 }
@@ -156,13 +231,20 @@ prp_error prp_handle_node(post_resolution_pass* prp, ast_node* n)
         case EXPR_CALL: {
             // TODO
         } break;
+        case EXPR_BREAK: {
+            return prp_handle_break(prp, (expr_break*)n);
+        }
+        case EXPR_CONTINUE: {
+            assert(false); // TODO
+        }
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
             if (b->ebb.prpbn) {
                 prp_block_node_activate(prp, b->ebb.prpbn);
                 return PRPE_OK;
             }
-            return prp_block_node_push(prp, n, &((expr_block*)n)->body);
+            return prp_block_node_push(
+                prp, n, &((expr_block*)n)->body, &b->ebb.prpbn);
         }
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)n;
@@ -170,7 +252,8 @@ prp_error prp_handle_node(post_resolution_pass* prp, ast_node* n)
                 prp_block_node_activate(prp, l->ebb.prpbn);
                 return PRPE_OK;
             }
-            return prp_block_node_push(prp, n, &((expr_loop*)n)->body);
+            return prp_block_node_push(
+                prp, n, &((expr_loop*)n)->body, &l->ebb.prpbn);
         }
         case EXPR_IF: {
             expr_if* i = (expr_if*)n;
@@ -179,7 +262,7 @@ prp_error prp_handle_node(post_resolution_pass* prp, ast_node* n)
                 return PRPE_OK;
             }
             else {
-                err = prp_block_node_push(prp, n, NULL);
+                err = prp_block_node_push(prp, n, NULL, &i->prpbn);
                 if (err) return err;
             }
             return prp_handle_node(prp, ((expr_if*)n)->if_body);
@@ -207,6 +290,7 @@ prp_error prp_leave_var_data(
     if (vd->parent->curr_state_in_block != vd->exit_states) {
         prp_var_data* true_parent;
         if (vd->parent->block != block->parent) {
+            vd->var_node->curr_data = vd->var_node->curr_data->parent;
             prp_error err = prp_var_data_push(prp, vd->var_node->var);
             if (err) return err;
             true_parent = vd->var_node->curr_data;
@@ -264,32 +348,25 @@ prp_error prp_handle_if_exit(post_resolution_pass* prp, expr_if* ei)
 {
     // TODO: fin everyting even in case of error
     prp_block_node* bn = prp->curr_block;
+    assert(!bn->owned_vars);
     prp_error err;
     if (!bn->is_else) {
         if (ei->else_body) {
-            prp_block_release_owned(prp, true);
             for (prp_var_data* vd = bn->used_vars; vd; vd = vd->prev) {
                 vd->exit_states |= vd->curr_state_in_block;
                 vd->curr_state_in_block = vd->parent->curr_state_in_block;
-            }
-            prp_var_data* tov = bn->twin_owned_vars;
-            bn->twin_owned_vars = bn->owned_vars;
-            bn->owned_vars = tov;
-            for (prp_var_data* vd = tov; vd; vd = vd->prev) {
-                vd->var_node->curr_data = vd;
             }
             bn->is_else = true;
             return prp_handle_node(prp, ei->else_body);
         }
         // no else block
-        prp_block_release_owned(prp, false);
+        prp->curr_block = bn->parent;
         for (prp_var_data* vd = bn->used_vars; vd; vd = vd->prev) {
             vd->exit_states |=
                 vd->curr_state_in_block | vd->parent->curr_state_in_block;
             err = prp_leave_var_data(prp, vd, bn, false);
             if (err) return err;
         }
-        prp->curr_block = bn->parent;
         if (bn->final_attempt) {
             freelist_free(&prp->block_node_mem, bn);
         }
@@ -297,13 +374,12 @@ prp_error prp_handle_if_exit(post_resolution_pass* prp, expr_if* ei)
     }
     // we just did the else block
     bn->is_else = false;
-    prp_block_release_owned(prp, false);
+    prp->curr_block = bn->parent;
     for (prp_var_data* vd = bn->used_vars; vd; vd = vd->prev) {
         vd->exit_states |= vd->curr_state_in_block;
         err = prp_leave_var_data(prp, vd, bn, false);
         if (err) return err;
     }
-    prp->curr_block = bn->parent;
     if (bn->final_attempt) {
         freelist_free(&prp->block_node_mem, bn);
     }
@@ -339,7 +415,7 @@ prp_error prp_run_func(post_resolution_pass* prp, sc_func_base* fn)
 {
     prp->curr_fn = fn;
     prp_error e;
-    e = prp_block_node_push(prp, (ast_node*)fn, &fn->sc.body);
+    e = prp_block_node_push(prp, (ast_node*)fn, &fn->sc.body, NULL);
     if (e) return e;
     while (prp->curr_block) {
         e = prp_step(prp);
@@ -384,6 +460,7 @@ prp_run_modules(post_resolution_pass* prp, mdg_node** start, mdg_node** end)
     stack_init(&prp->nested_funcs, &prp->mem);
     prp_error err;
     prp->module_mode = true;
+    prp->curr_block = NULL;
     for (mdg_node** n = start; n != end; n++) {
         aseglist_iterator it;
         aseglist_iterator_begin(&it, &(**n).module_frames);

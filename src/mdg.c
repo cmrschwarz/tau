@@ -163,7 +163,9 @@ static void free_astn_symtabs(ast_node* n)
         case EXPR_BREAK:
         case EXPR_RETURN: free_astn_symtabs(((expr_break*)n)->value); break;
 
-        case EXPR_BLOCK: free_body_symtabs(n, &((expr_block*)n)->body); break;
+        case EXPR_BLOCK: {
+            free_body_symtabs(n, &((expr_block*)n)->body);
+        } break;
 
         case SYM_IMPORT_PARENT: {
             sym_import_parent* ip = (sym_import_parent*)n;
