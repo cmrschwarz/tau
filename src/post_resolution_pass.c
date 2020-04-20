@@ -103,7 +103,12 @@ bool prp_block_node_activate_on_demand(
             vd->curr_state = VAR_STATE_UNKNOWN;
         }
         prp->curr_block = b;
-        if (b->body) b->next_expr = b->body->elements;
+        if (b->node->kind == EXPR_IF) {
+            b->next_expr = (ast_node**)NULL_PTR_PTR;
+        }
+        else {
+            b->next_expr = b->body->elements;
+        }
         b->outermost_break_target = NULL;
         b->barrier_node = NULL;
         b->is_rerun = true;
@@ -311,7 +316,10 @@ prp_error prp_leave_var_data(
 {
     assert(prp->curr_block == leaving_block->parent);
     vd->var_node->curr_data = vd->parent;
-    return prp_var_set_state(prp, vd->var_node->var, vd->exit_states);
+    if (leaving_block->node->kind != EXPR_LOOP) {
+        return prp_var_set_state(prp, vd->var_node->var, vd->exit_states);
+    }
+    return PRPE_OK;
 }
 
 void prp_block_release_owned(post_resolution_pass* prp, prp_block_node* bn)
