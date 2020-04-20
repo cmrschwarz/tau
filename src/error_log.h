@@ -17,7 +17,7 @@ typedef enum PACK_ENUM error_stage_e {
     ES_TOKENIZER,
     ES_PARSER,
     ES_RESOLVER,
-    ES_SIZER,
+    ES_LIFETIMES,
     //...
 } error_stage;
 

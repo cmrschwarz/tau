@@ -46,6 +46,12 @@ src_map* ast_node_get_smap(ast_node* n, symbol_table* st)
     assert(smap);
     return smap;
 }
+void ast_node_get_full_src_range(
+    ast_node* n, symbol_table* st, src_range_large* srl)
+{
+    srl->smap = ast_node_get_smap(n, st);
+    ast_node_get_bounds(n, &srl->start, &srl->end);
+}
 void ast_node_get_src_range(ast_node* n, symbol_table* st, src_range_large* srl)
 {
     src_range_unpack(n->srange, srl);

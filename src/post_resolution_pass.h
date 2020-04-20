@@ -24,20 +24,22 @@ typedef enum prp_var_state_e {
 typedef struct prp_var_node_s prp_var_node;
 typedef struct prp_block_node_s prp_block_node;
 typedef struct prp_var_data_s prp_var_data;
+typedef struct thread_context_s thread_context;
 
 typedef struct prp_block_node_s {
     prp_block_node* parent;
-    prp_block_node* children;
     ast_node* node; // NULL for meta blocks (if/else)
-    ast_node** next;
-    prp_var_data* owned_vars;
+    ast_body* body;
+    ast_node** next_expr; // body->elements iterator
+    prp_var_data* owned_vars; // always NULL for meta blocks
     prp_var_data* used_vars;
     // so we can check wether a block is 'above' or 'beneath' another in the
     // scope tree
     ureg depth;
+    prp_block_node* outermost_break_target;
     bool is_else;
-    bool second_pass; // for loops
-    bool final_attempt; // for all blocks to signify that this is the final pass
+    bool check_rerun;
+    bool force_rerun;
 } prp_block_node;
 
 typedef struct prp_var_data_s {
@@ -45,10 +47,9 @@ typedef struct prp_var_data_s {
     prp_var_node* var_node;
     prp_block_node* block;
     prp_var_data* prev;
-    prp_var_state curr_state_in_block;
+    prp_var_state applied_entry_states;
+    prp_var_state curr_state;
     prp_var_state exit_states;
-    ast_node* curr_state_inducing_expr;
-    ast_node* breaking_expr;
 } prp_var_data;
 
 typedef struct prp_var_node_s {
@@ -61,16 +62,14 @@ typedef struct prp_var_node_s {
 
 typedef struct post_resolution_pass_s {
     pool mem;
-    freelist var_node_mem;
-    freelist var_data_mem;
-    freelist block_node_mem;
     sc_func_base* curr_fn;
     prp_block_node* curr_block;
     stack nested_funcs;
     bool module_mode;
+    thread_context* tc;
 } post_resolution_pass;
 
-int prp_init(post_resolution_pass* prp);
+int prp_init(post_resolution_pass* prp, thread_context* tc);
 void prp_fin(post_resolution_pass* prp);
 prp_error
 prp_run_modules(post_resolution_pass* prp, mdg_node** start, mdg_node** end);

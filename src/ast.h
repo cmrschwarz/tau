@@ -800,6 +800,8 @@ src_map* module_frame_get_smap(module_frame* mf);
 src_map* ast_node_get_smap(ast_node* n, symbol_table* st);
 void ast_node_get_src_range(
     ast_node* n, symbol_table* st, src_range_large* srl);
+void ast_node_get_full_src_range(
+    ast_node* n, symbol_table* st, src_range_large* srl);
 bool ast_body_is_braced(ast_body* b);
 bool symbol_table_is_public(symbol_table* st);
 

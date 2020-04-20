@@ -2014,7 +2014,7 @@ static inline resolve_error resolve_expr_block(
     if (ctype) *ctype = b->ebb.ctype;
     if (re) return re;
     if (end_reachable) {
-        assert(!b->ebb.ctype); // TODO: error
+        assert(!b->ebb.ctype || b->ebb.ctype == VOID_ELEM); // TODO: error
         b->ebb.ctype = VOID_ELEM;
     }
     else {
@@ -3550,7 +3550,7 @@ int resolver_init(resolver* r, thread_context* tc)
     if (e) return resolver_partial_fin(r, 4, e);
     e = ptrlist_init(&r->pp_resolve_nodes_ready, 16);
     if (e) return resolver_partial_fin(r, 5, e);
-    e = prp_init(&r->prp);
+    e = prp_init(&r->prp, r->tc);
     if (e) return resolver_partial_fin(r, 6, e);
     r->backend = llvm_backend_new(r->tc);
     if (!r->backend) return resolver_partial_fin(r, 7, ERR);
