@@ -28,7 +28,9 @@ typedef struct thread_context_s thread_context;
 
 typedef struct prp_block_node_s {
     prp_block_node* parent;
-    ast_node* node; // NULL for meta blocks (if/else)
+    ast_node* node;
+    // for if/else we use the parent block
+    // that way we have a symtab for error reporting
     ast_body* body;
     ast_node** next_expr; // body->elements iterator
     prp_var_data* owned_vars; // always NULL for meta blocks
@@ -37,9 +39,12 @@ typedef struct prp_block_node_s {
     // scope tree
     ureg depth;
     prp_block_node* outermost_break_target;
+    ast_node* barrier_node; // the last reachable node in the block
     bool is_else;
+    bool if_end_unreachable;
     bool check_rerun;
     bool force_rerun;
+    bool is_rerun; // used to avoid double warnings :/
 } prp_block_node;
 
 typedef struct prp_var_data_s {
@@ -48,6 +53,7 @@ typedef struct prp_var_data_s {
     prp_block_node* block;
     prp_var_data* prev;
     prp_var_state applied_entry_states;
+    prp_var_state possible_entry_states; // TODO: use this for continue
     prp_var_state curr_state;
     prp_var_state exit_states;
 } prp_var_data;

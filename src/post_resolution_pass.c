@@ -105,6 +105,8 @@ bool prp_block_node_activate_on_demand(
         prp->curr_block = b;
         if (b->body) b->next_expr = b->body->elements;
         b->outermost_break_target = NULL;
+        b->barrier_node = NULL;
+        b->is_rerun = true;
         b->check_rerun = false;
         b->force_rerun = false;
         return true;
@@ -125,16 +127,17 @@ prp_error prp_block_node_push(
     bn->owned_vars = NULL;
     bn->used_vars = NULL;
     bn->force_rerun = false;
+    bn->barrier_node = NULL;
     bn->outermost_break_target = NULL;
     bn->check_rerun = false;
     bn->is_else = false;
+    bn->is_rerun = false;
     prp->curr_block = bn;
-    if (body) {
-        bn->next_expr = body->elements;
+    if (node->kind == EXPR_IF) {
+        bn->next_expr = (ast_node**)NULL_PTR_PTR;
     }
     else {
-        assert(node->kind == EXPR_IF);
-        bn->next_expr = (ast_node**)NULL_PTR_PTR;
+        bn->next_expr = body->elements;
     }
     if (tgt) *tgt = bn;
     return PRPE_OK;
@@ -240,23 +243,7 @@ prp_error prp_handle_break(post_resolution_pass* prp, expr_break* b)
         vn->top_data_on_break_path = NULL;
         vn = vn_next;
     }
-    if (*prp->curr_block->next_expr) {
-        // TODO: generalize this warning to work for
-        // if(...) break else break; foo(); //<- unreachable
-        src_range_large break_srl;
-        src_range_large following_srl;
-        symbol_table* st =
-            ast_elem_get_body((ast_elem*)prp->curr_block->node)->symtab;
-        ast_node_get_src_range((ast_node*)b, st, &break_srl);
-        ast_node_get_full_src_range(
-            *prp->curr_block->next_expr, st, &following_srl);
-        error_log_report_annotated_twice(
-            prp->tc->err_log, ES_LIFETIMES, true, "dead code",
-            following_srl.smap, following_srl.start, following_srl.end,
-            "this code will never be executed", break_srl.smap, break_srl.start,
-            break_srl.end, "control flow is redirected by this break");
-        prp->curr_block->next_expr = (ast_node**)NULL_PTR_PTR;
-    }
+    prp->curr_block->barrier_node = (ast_node*)b;
     return PRPE_OK;
 }
 prp_error prp_handle_node(post_resolution_pass* prp, ast_node* n)
@@ -308,7 +295,8 @@ prp_error prp_handle_node(post_resolution_pass* prp, ast_node* n)
                 }
             }
             else {
-                err = prp_block_node_push(prp, n, NULL, &i->prpbn);
+                err = prp_block_node_push(
+                    prp, n, prp->curr_block->body, &i->prpbn);
                 if (err) return err;
             }
             return prp_handle_node(prp, ((expr_if*)n)->if_body);
@@ -355,6 +343,10 @@ prp_error prp_handle_if_exit(post_resolution_pass* prp, expr_if* ei)
     assert(!bn->owned_vars);
     prp_error err;
     if (!bn->is_else) {
+        if (bn->barrier_node) {
+            bn->if_end_unreachable = true;
+            bn->barrier_node = NULL;
+        }
         if (ei->else_body) {
             for (prp_var_data* vd = bn->used_vars; vd; vd = vd->prev) {
                 vd->exit_states |= vd->curr_state;
@@ -380,6 +372,9 @@ prp_error prp_handle_if_exit(post_resolution_pass* prp, expr_if* ei)
         err = prp_leave_var_data(prp, vd, bn);
         if (err) return err;
     }
+    if (bn->if_end_unreachable && bn->barrier_node) {
+        bn->parent->barrier_node = (ast_node*)ei;
+    }
     return PRPE_OK;
 }
 prp_error prp_handle_loop_exit(post_resolution_pass* prp, expr_loop* l)
@@ -388,11 +383,31 @@ prp_error prp_handle_loop_exit(post_resolution_pass* prp, expr_loop* l)
     assert(false);
     return PRPE_OK;
 }
+void prp_warn_dead_code(post_resolution_pass* prp)
+{
+    if (prp->curr_block->is_rerun) return;
+    src_range_large barrier_srl;
+    src_range_large following_srl;
+    symbol_table* st = prp->curr_block->body->symtab;
+    ast_node_get_src_range(prp->curr_block->barrier_node, st, &barrier_srl);
+    ast_node_get_full_src_range(
+        *prp->curr_block->next_expr, st, &following_srl);
+    error_log_report_annotated_twice(
+        prp->tc->err_log, ES_LIFETIMES, true, "dead code", following_srl.smap,
+        following_srl.start, following_srl.end,
+        "this code will never be executed", barrier_srl.smap, barrier_srl.start,
+        barrier_srl.end, "control flow doesn't get past this statement");
+    prp->curr_block->next_expr = (ast_node**)NULL_PTR_PTR;
+}
 prp_error prp_step(post_resolution_pass* prp)
 {
     prp_error err;
     prp_block_node* bn = prp->curr_block;
     ast_node* curr = *bn->next_expr;
+    if (curr && prp->curr_block->barrier_node) {
+        prp_warn_dead_code(prp);
+        curr = NULL;
+    }
     if (!curr) {
         if (bn->node->kind == EXPR_IF) {
             return prp_handle_if_exit(prp, (expr_if*)bn->node);
@@ -407,9 +422,13 @@ prp_error prp_step(post_resolution_pass* prp)
             while (true) {
                 if (!v) break;
                 v->exit_states |= v->curr_state;
-                if (check_redo &&
-                    ~v->applied_entry_states & v->parent->curr_state)
-                    break;
+                if (check_redo) {
+                    prp_var_state entry_states = v->parent->curr_state;
+                    if (loop_with_reachable_end) {
+                        entry_states |= v->exit_states;
+                    }
+                    if (~v->applied_entry_states & entry_states) break;
+                }
                 err = prp_leave_var_data(prp, v, bn);
                 if (err) return err;
                 v = v->prev;
@@ -420,6 +439,7 @@ prp_error prp_step(post_resolution_pass* prp)
             for (prp_var_data* v2 = bn->used_vars; v2 != v; v2 = v2->prev) {
                 v2->var_node->curr_data = v2;
                 v2->curr_state = v2->parent->curr_state;
+                if (loop_with_reachable_end) v2->curr_state |= v2->exit_states;
                 v2->applied_entry_states = v2->curr_state;
             }
             for (prp_var_data* v2 = v; v2; v2 = v2->prev) {
@@ -428,6 +448,8 @@ prp_error prp_step(post_resolution_pass* prp)
             }
             bn->check_rerun = false;
             bn->force_rerun = false;
+            bn->barrier_node = NULL;
+            bn->is_rerun = true;
             bn->outermost_break_target = NULL;
             prp->curr_block = bn;
             bn->next_expr = bn->body->elements;
