@@ -67,7 +67,7 @@ typedef struct prp_var_node_s {
 } prp_var_node;
 
 typedef struct post_resolution_pass_s {
-    pool mem;
+    sbuffer mem;
     sc_func_base* curr_fn;
     prp_block_node* curr_block;
     stack nested_funcs;

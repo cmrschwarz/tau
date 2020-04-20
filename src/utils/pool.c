@@ -55,8 +55,9 @@ void pool_clear(pool* p)
 {
     pool_segment* segs = p->segments;
     while (segs->next != NULL) {
+        pool_segment* next = segs->next;
         pool_free_segment(p, segs);
-        segs = segs->next;
+        segs = next;
     }
     p->segments = segs;
     segs->head = (u8*)ptradd(segs, sizeof(pool_segment));

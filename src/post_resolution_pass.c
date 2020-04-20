@@ -10,16 +10,16 @@ int prp_partial_fin(post_resolution_pass* prp, int i, int r)
 {
     switch (i) {
         case -1: stack_fin(&prp->nested_funcs); // fallthrough
-        case 1: pool_fin(&prp->mem); // fallthrough
+        case 1: sbuffer_fin(&prp->mem); // fallthrough
         case 0: break;
     }
     return r;
 }
 int prp_init(post_resolution_pass* prp, thread_context* tc)
 {
-    int r = pool_init(&prp->mem);
+    int r = sbuffer_init(&prp->mem, plattform_get_page_size());
     if (r) return prp_partial_fin(prp, 0, r);
-    r = stack_init(&prp->nested_funcs, &prp->mem);
+    r = stack_init(&prp->nested_funcs, &tc->permmem);
     if (r) return prp_partial_fin(prp, 1, r);
     prp->tc = tc;
     return OK;
@@ -32,7 +32,7 @@ prp_error
 prp_var_data_push(post_resolution_pass* prp, sym_var* v, prp_var_state state)
 {
     prp_var_data* vd =
-        (prp_var_data*)pool_alloc(&prp->mem, sizeof(prp_var_data));
+        (prp_var_data*)sbuffer_append(&prp->mem, sizeof(prp_var_data));
     if (!vd) return PRPE_FATAL;
     if (prp->curr_block->is_else) {
         vd->exit_states = v->prpvn->curr_data->curr_state;
@@ -61,7 +61,7 @@ prp_var_data_push(post_resolution_pass* prp, sym_var* v, prp_var_state state)
 prp_error prp_var_node_create(post_resolution_pass* prp, sym_var* v)
 {
     prp_var_node* vn =
-        (prp_var_node*)pool_alloc(&prp->mem, sizeof(prp_var_node));
+        (prp_var_node*)sbuffer_append(&prp->mem, sizeof(prp_var_node));
     if (!vn) return PRPE_FATAL;
     assert(v->prpvn == NULL);
     v->prpvn = vn;
@@ -123,7 +123,7 @@ prp_error prp_block_node_push(
     prp_block_node** tgt)
 {
     prp_block_node* bn =
-        (prp_block_node*)pool_alloc(&prp->mem, sizeof(prp_block_node));
+        (prp_block_node*)sbuffer_append(&prp->mem, sizeof(prp_block_node));
     if (!bn) return PRPE_FATAL;
     bn->node = node;
     bn->body = body;
@@ -230,7 +230,7 @@ prp_error prp_handle_break(post_resolution_pass* prp, expr_break* b)
         else {
             // no var data in the block, so we need to insert one
             prp_var_data* vd =
-                (prp_var_data*)pool_alloc(&prp->mem, sizeof(prp_var_data));
+                (prp_var_data*)sbuffer_append(&prp->mem, sizeof(prp_var_data));
             if (!vd) return PRPE_FATAL;
             vd->exit_states = vn->curr_data->curr_state;
             // otherwise it would own it -> have a var data
@@ -341,7 +341,7 @@ void prp_block_release_owned(post_resolution_pass* prp, prp_block_node* bn)
         else {
             dtor_msg = "error in destructor decision";
         }
-        printf("%s for %s\n", dtor_msg, vd->var_node->var->osym.sym.name);
+        // printf("%s for %s\n", dtor_msg, vd->var_node->var->osym.sym.name);
     }
 }
 prp_error prp_handle_if_exit(post_resolution_pass* prp, expr_if* ei)
@@ -478,10 +478,7 @@ prp_error prp_run_func(post_resolution_pass* prp, sc_func_base* fn)
     if (e) return e;
     while (prp->curr_block) {
         e = prp_step(prp);
-        if (e) {
-            pool_clear(&prp->mem);
-            return e;
-        }
+        if (e) return e;
     }
     return PRPE_OK;
 }
@@ -511,9 +508,8 @@ prp_error prp_run_symtab(post_resolution_pass* prp, symbol_table* st)
 prp_error
 prp_run_modules(post_resolution_pass* prp, mdg_node** start, mdg_node** end)
 {
-    stack_fin(&prp->nested_funcs); // TODO: maybe don't realloc this everytime
-    pool_clear(&prp->mem);
-    stack_init(&prp->nested_funcs, &prp->mem);
+    stack_clear(&prp->nested_funcs);
+    sbuffer_clear(&prp->mem);
     prp_error err;
     prp->module_mode = true;
     prp->curr_block = NULL;

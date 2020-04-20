@@ -930,9 +930,9 @@ resolve_error add_body_decls(
     }
     return RE_OK;
 }
-static inline void print_debug_info(resolver* r)
+static inline void print_debug_info(resolver* r, char* flavortext)
 {
-    tprintf("resolving {");
+    tprintf("%s {", flavortext);
     mdg_node** i = r->mdgs_begin;
     for (; i + 1 != r->mdgs_end; i++) {
         tprintf("%s, ", (**i).name);
@@ -3382,7 +3382,6 @@ int resolver_resolve(resolver* r)
     re = resolver_handle_post_pp(r);
     if (re) return re;
     free_pprns(r);
-    prp_run_modules(&r->prp, r->mdgs_begin, r->mdgs_end);
     return RE_OK;
 }
 int resolver_emit(resolver* r, llvm_module** module)
@@ -3505,12 +3504,18 @@ int resolver_resolve_and_emit(
     res = llvm_backend_init_module(r->backend, start, end, module);
     if (res) return ERR;
 
-    TAU_TIME_STAGE_CTX(r->tc->t, print_debug_info(r), res = resolver_resolve(r);
+    TAU_TIME_STAGE_CTX(r->tc->t, print_debug_info(r, "resolving"),
+                       res = resolver_resolve(r);
                        , tflush());
     if (res) {
         free_pprns(r);
         return ERR;
     }
+    TAU_TIME_STAGE_CTX(
+        r->tc->t, print_debug_info(r, "runing post resulition pass for"),
+        res = prp_run_modules(&r->prp, r->mdgs_begin, r->mdgs_end);
+        , tflush());
+    if (res) return ERR;
     return resolver_emit(r, module);
 }
 int resolver_partial_fin(resolver* r, int i, int res)
