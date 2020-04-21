@@ -3503,7 +3503,6 @@ int resolver_resolve_and_emit(
     int res;
     res = llvm_backend_init_module(r->backend, start, end, module);
     if (res) return ERR;
-
     TAU_TIME_STAGE_CTX(r->tc->t, print_debug_info(r, "resolving"),
                        res = resolver_resolve(r);
                        , tflush());
@@ -3511,10 +3510,10 @@ int resolver_resolve_and_emit(
         free_pprns(r);
         return ERR;
     }
-    TAU_TIME_STAGE_CTX(
-        r->tc->t, print_debug_info(r, "runing post resulition pass for"),
-        res = prp_run_modules(&r->prp, r->mdgs_begin, r->mdgs_end);
-        , tflush());
+    TAU_TIME_STAGE_CTX(r->tc->t, print_debug_info(r, "running prp for"),
+                       res =
+                           prp_run_modules(&r->prp, r->mdgs_begin, r->mdgs_end);
+                       , tflush());
     if (res) return ERR;
     return resolver_emit(r, module);
 }

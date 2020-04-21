@@ -1,22 +1,22 @@
 #include "ast_flags.h"
 
-static inline void bitmask_set_bit(u16* data, ureg offs)
+static inline void bitmask_set_bit(ast_flags* data, ureg offs)
 {
     *data = *data | (1 << offs);
 }
-static inline void bitmask_clear_bit(u16* data, ureg offs)
+static inline void bitmask_clear_bit(ast_flags* data, ureg offs)
 {
     *data = *data & ~((u16)1 << offs);
 }
-static inline bool bitmask_get_bit(u16 data, ureg offs)
+static inline bool bitmask_get_bit(ast_flags data, ureg offs)
 {
     return data & (1 << offs);
 }
-static inline void bitmask_set_range(u16* data, ureg offs, u16 value)
+static inline void bitmask_set_range(ast_flags* data, ureg offs, u16 value)
 {
     *data = *data | (value << offs);
 }
-static inline u16 bitmask_get_range(u16 data, ureg offs, ureg mask)
+static inline u16 bitmask_get_range(ast_flags data, ureg offs, ureg mask)
 {
     return (data & mask) >> offs;
 }
@@ -29,6 +29,17 @@ access_modifier ast_flags_get_access_mod(ast_flags f)
 {
     return (access_modifier)(bitmask_get_range(
         f, ASTF_ACCESS_MODIFIER_OFFSET, ASTF_ACCESS_MODIFIER_MASK));
+}
+
+void ast_flags_set_dtor_kind(ast_flags* f, dtor_kind dk)
+{
+    bitmask_set_range(f, ASTF_DTOR_KIND_OFFSET, dk);
+}
+
+dtor_kind ast_flags_get_dtor_kind(ast_flags f)
+{
+    return (dtor_kind)(
+        bitmask_get_range(f, ASTF_DTOR_KIND_OFFSET, ASTF_DTOR_KIND_MASK));
 }
 
 void ast_flags_set_const(ast_flags* f)

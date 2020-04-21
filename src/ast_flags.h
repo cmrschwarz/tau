@@ -16,8 +16,19 @@ typedef enum PACK_ENUM access_modifier_e {
     AM_UNKNOWN = AM_ENUM_ELEMENT_COUNT,
 } access_modifier;
 
-#define ASTF_DECLARED_OFFSET 0
-#define ASTF_RESOLVING_OFFSET 1
+typedef enum PACK_ENUM dtor_kind_e {
+    DTOR_KIND_POD,
+    DTOR_KIND_KNOWN_DEAD,
+    DTOR_KIND_STATIC,
+    DTOR_KIND_DYNAMIC,
+} dtor_kind;
+
+// after the resolver we repurpose these bits
+#define ASTF_DECLARED_OFFSET 0 // on any ast node, during resolvion
+#define ASTF_RESOLVING_OFFSET 1 // on any ast node, during resolvion
+#define ASTF_DTOR_KIND_OFFSET 0 // on sym var, set during prp
+#define ASTF_DTOR_KIND_MASK (0x3 << ASTF_ACCESS_MODIFIER_OFFSET)
+
 #define ASTF_RESOLVED_OFFSET 2
 
 // shared bit since applied to different nodes
@@ -56,6 +67,9 @@ typedef enum PACK_ENUM access_modifier_e {
 
 void ast_flags_set_access_mod(ast_flags* f, access_modifier m);
 access_modifier ast_flags_get_access_mod(ast_flags f);
+
+void ast_flags_set_dtor_kind(ast_flags* f, dtor_kind dk);
+dtor_kind ast_flags_get_dtor_kind(ast_flags f);
 
 void ast_flags_set_const(ast_flags* f);
 bool ast_flags_get_const(ast_flags f);

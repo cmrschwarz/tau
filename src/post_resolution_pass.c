@@ -322,26 +322,11 @@ prp_error prp_leave_var_data(
     return PRPE_OK;
 }
 
-void prp_block_release_owned(post_resolution_pass* prp, prp_block_node* bn)
+void prp_block_leave_owned(post_resolution_pass* prp, prp_block_node* bn)
 {
+    if (bn->node->kind == EXPR_LOOP) return;
     for (prp_var_data* vd = bn->owned_vars; vd; vd = vd->prev) {
         vd->exit_states |= vd->curr_state;
-        // TODO: insert destructors for the initialize ones
-        // on block enter restore var nodes from var data
-        char* dtor_msg;
-        if (vd->exit_states == VAR_STATE_DEFINED) {
-            dtor_msg = "destructor";
-        }
-        else if (vd->exit_states == VAR_STATE_MAYBE_DEFINED) {
-            dtor_msg = "dynamic destructor";
-        }
-        else if (vd->exit_states == VAR_STATE_UNDEFINED) {
-            dtor_msg = "no destructor";
-        }
-        else {
-            dtor_msg = "error in destructor decision";
-        }
-        // printf("%s for %s\n", dtor_msg, vd->var_node->var->osym.sym.name);
     }
 }
 prp_error prp_handle_if_exit(post_resolution_pass* prp, expr_if* ei)
@@ -463,7 +448,7 @@ prp_error prp_step(post_resolution_pass* prp)
             bn->next_expr = bn->body->elements;
             return PRPE_OK;
         }
-        prp_block_release_owned(prp, bn);
+        prp_block_leave_owned(prp, bn);
         return PRPE_OK;
     }
     prp->curr_block->next_expr++;
@@ -490,6 +475,70 @@ prp_error prp_run_nested_funcs(post_resolution_pass* prp)
         if (err) return err;
     }
     return PRPE_OK;
+}
+void prp_free_owned_vars(post_resolution_pass* prp)
+{
+    for (prp_var_data* vd = prp->curr_block->owned_vars; vd; vd = vd->prev) {
+        dtor_kind dk;
+        switch (vd->exit_states) {
+            case VAR_STATE_DEFINED: dk = DTOR_KIND_STATIC; break;
+            case VAR_STATE_MAYBE_DEFINED: dk = DTOR_KIND_DYNAMIC; break;
+            case VAR_STATE_UNDEFINED: dk = DTOR_KIND_KNOWN_DEAD; break;
+            case VAR_STATE_UNKNOWN:
+                assert(false); // well we failed then :/
+                break;
+        }
+        ast_flags_set_dtor_kind(&vd->var_node->var->osym.sym.node.flags, dk);
+        vd->var_node->var->prpvn = NULL;
+    }
+}
+void prp_assign_func_dtors(post_resolution_pass* prp)
+{
+    assert(prp->curr_block->node == (ast_node*)prp->curr_fn);
+    prp_free_owned_vars(prp);
+    prp->curr_block->next_expr = prp->curr_block->body->elements;
+    ast_node* curr = *prp->curr_block->next_expr;
+    do {
+        while (curr) {
+            switch (curr->kind) {
+                case EXPR_IF: {
+                    expr_if* i = (expr_if*)curr;
+                    assert(i->prpbn);
+                    prp->curr_block = i->prpbn;
+                    prp->curr_block->next_expr = (ast_node**)NULL_PTR_PTR;
+                    i->prpbn->is_else = false;
+                    curr = i->if_body;
+                    continue;
+                }
+                case EXPR_LOOP:
+                case EXPR_BLOCK: {
+                    expr_block_base* ebb = (expr_block_base*)curr;
+                    assert(ebb->prpbn);
+                    prp->curr_block = ebb->prpbn;
+                    prp->curr_block->next_expr =
+                        prp->curr_block->body->elements;
+                    ebb->prpbn = NULL;
+                    prp_free_owned_vars(prp);
+                } break;
+                default: break;
+            }
+            prp->curr_block->next_expr++;
+            curr = *prp->curr_block->next_expr;
+        }
+        if (prp->curr_block->node->kind == EXPR_IF) {
+            expr_if* i = (expr_if*)curr;
+            if (!i->prpbn->is_else) {
+                i->prpbn->is_else = true;
+                if (i->else_body) {
+                    curr = i->else_body;
+                    i->prpbn->next_expr = (ast_node**)NULL_PTR_PTR;
+                    continue;
+                }
+            }
+            i->prpbn = NULL;
+        }
+        prp->curr_block = prp->curr_block->parent;
+    } while (prp->curr_block);
 }
 prp_error prp_run_symtab(post_resolution_pass* prp, symbol_table* st)
 {
