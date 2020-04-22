@@ -553,7 +553,6 @@ typedef struct sc_struct_generic_inst_s {
     sym_param_generic_inst* generic_args;
     ureg generic_arg_count;
     sc_struct_generic* base;
-    ureg id;
 } sc_struct_generic_inst;
 
 typedef struct sc_trait_s {

@@ -3365,6 +3365,7 @@ static inline parse_error parse_pp_stmt(
     pe = parse_statement(p, &pp_stmt);
     if (pe) return pe;
     ast_elem* ppe = (ast_elem*)pp_stmt;
+    // for pp symbols we don't want a pp expr node but just the comptime flag
     // TODO: handle pp modules, pp requires etc.
     if (ast_elem_is_var(ppe) || ast_elem_is_struct_base(ppe) ||
         ast_elem_is_func_base(ppe)) {

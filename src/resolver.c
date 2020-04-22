@@ -579,27 +579,16 @@ static resolve_error add_ast_node_decls(
         } // fallthrough
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
-            sc_struct_base* sb = (sc_struct_base*)n;
-            re = add_symbol(r, st, sst, (symbol*)n);
+            // generic inst 'inherits' from struct
+            sc_struct* s = (sc_struct*)n;
+            re = add_symbol(r, st, sst, (symbol*)s);
             // so instance members can inc this and we get a member id
-            if (n->kind == SC_STRUCT) {
-                ((sc_struct*)n)->id = 0;
-            }
-            else if (n->kind == SC_STRUCT_GENERIC_INST) {
-                ((sc_struct_generic_inst*)n)->id = 0;
-            }
+            s->id = 0;
             bool members_public_st = public_st && !is_local_node(n->flags);
-            re = add_body_decls(r, st, NULL, &sb->sc.body, members_public_st);
+            re = add_body_decls(r, st, NULL, &s->sb.sc.body, members_public_st);
             if (re) return re;
-
             // after the members are done we give the struct a real id
-            if (n->kind == SC_STRUCT) {
-                ((sc_struct*)n)->id = claim_symbol_id(r, (symbol*)n, public_st);
-            }
-            else if (n->kind == SC_STRUCT_GENERIC_INST) {
-                ((sc_struct_generic_inst*)n)->id =
-                    claim_symbol_id(r, (symbol*)n, public_st);
-            }
+            s->id = claim_symbol_id(r, (symbol*)s, public_st);
             return RE_OK;
         }
         case SC_MACRO:
