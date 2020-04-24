@@ -1,0 +1,16 @@
+public func main() -> int{
+    f: Foo;
+    b: Bar;
+    f.x = 1;
+    f.y = 2;
+    f.z = 3;
+    b.f = f;
+    return b.f.z - b.f.y - b.f.x;
+}
+struct Bar{
+    #paste("f: Foo;");
+}
+struct Foo{
+    x: int;
+    #paste("y: int; z: int;");
+}

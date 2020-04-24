@@ -1684,7 +1684,7 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     sp->ctype = NULL;
     ast_node_init(&sp->node, EXPR_PP);
     ast_flags_set_pp_expr_res_used(&sp->node.flags);
-    sp->result_buffer.state.pprn = NULL;
+    sp->pprn = NULL;
     sp->result_buffer.paste_result.last_next =
         &sp->result_buffer.paste_result.first;
     parse_error pe =
@@ -3377,7 +3377,7 @@ static inline parse_error parse_pp_stmt(
     if (!sp) return PE_FATAL;
     sp->ctype = NULL;
     ast_node_init(&sp->node, EXPR_PP);
-    sp->result_buffer.state.pprn = NULL;
+    sp->pprn = NULL;
     sp->result_buffer.paste_result.last_next =
         &sp->result_buffer.paste_result.first;
     sp->pp_expr = pp_stmt;
@@ -3446,23 +3446,17 @@ parse_error parse_statement(parser* p, ast_node** tgt)
                 return PE_ERROR;
             }
             default: {
-                if (curr_parent_supports_exprs(p)) {
-                    pe = require_default_flags(p, t, flags, start, flags_end);
-                    if (pe) return pe;
-                    pe = parse_expr_stmt(p, tgt);
-                    if (pe == PE_EOEX) {
-                        PEEK(p, t);
-                        parser_error_1a(
-                            p, "unexpected token while expecting a statement",
-                            t->start, t->end, "expected begin of statement");
-                        return PE_ERROR;
-                    }
-                    return pe;
+                pe = require_default_flags(p, t, flags, start, flags_end);
+                if (pe) return pe;
+                pe = parse_expr_stmt(p, tgt);
+                if (pe == PE_EOEX) {
+                    PEEK(p, t);
+                    parser_error_1a(
+                        p, "unexpected token while expecting a statement",
+                        t->start, t->end, "expected begin of statement");
+                    return PE_ERROR;
                 }
-                parser_error_1a_pc(
-                    p, "unexpected token", t->start, t->end,
-                    "expected a declaration");
-                return PE_ERROR;
+                return pe;
             }
         }
     }

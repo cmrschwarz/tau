@@ -277,3 +277,7 @@ bool symbol_table_is_public(symbol_table* st)
     ast_elem* owner = symbol_table_skip_metatables(st)->owning_node;
     return ast_elem_is_module_frame(owner) || owner->kind == SC_STRUCT;
 }
+bool ast_elem_is_node(ast_elem* e)
+{
+    return e->kind >= ASTN_FIRST_ID && e->kind <= ASTN_LAST_ID;
+}

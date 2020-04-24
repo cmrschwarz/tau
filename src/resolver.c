@@ -15,12 +15,15 @@
 resolve_error resolver_run_pp_resolve_nodes(resolver* r);
 resolve_error
 resolve_param(resolver* r, sym_param* p, bool generic, ast_elem** ctype);
-resolve_error resolve_body(resolver* r, ast_node* block_owner, ast_body* b);
+resolve_error
+resolve_module_frame(resolver* r, module_frame* block_owner, ast_body* b);
 static inline resolve_error resolve_ast_node_raw(
     resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
     ast_elem** ctype);
 resolve_error
 resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block);
+resolve_error
+resolve_struct(resolver* r, sc_struct* st, ast_elem** value, ast_elem** ctype);
 resolve_error resolve_expr_body(
     resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b,
     pp_resolve_node** block_pprn, bool* end_reachable);
@@ -111,6 +114,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn)
 {
     ast_node* n = pprn->node;
     assert(n);
+    assert(pprn->dep_count == 0);
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
         printf("freeing pprn: ");
         print_pprn(r, pprn, false, 0);
@@ -128,9 +132,9 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn)
         case SC_STRUCT: ((sc_struct*)n)->sb.pprn = NULL; break;
         case SYM_IMPORT_GROUP: ((sym_import_group*)n)->pprn = NULL; break;
         case SYM_IMPORT_MODULE: ((sym_import_module*)n)->pprn = NULL; break;
+        case EXPR_PP: ((expr_pp*)n)->pprn = NULL; break;
         case EXPR_PASTE_EVALUATION:
         case STMT_PASTE_EVALUATION:
-        case EXPR_PP: break;
         default: assert(false); panic("invalid pprn node type");
     }
     aseglist_fin(&pprn->notify_when_done);
@@ -245,6 +249,11 @@ curr_pprn_run_after(resolver* r, pp_resolve_node* dependency)
 static resolve_error
 curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
 {
+    // for structs we want the block to depend on the children but the children
+    // should run indivitually
+    if (ast_elem_is_struct((ast_elem*)r->curr_block_owner)) {
+        return curr_pprn_run_after(r, child);
+    }
     pp_resolve_node* parent;
     resolve_error re = get_curr_block_pprn(r, &parent);
     if (re) return re;
@@ -257,7 +266,6 @@ curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
         parent->last_unresolved_child->next = child;
         parent->last_unresolved_child = child;
     }
-    child->run_when_ready = false;
     child->parent = parent;
     return RE_OK;
 }
@@ -490,11 +498,10 @@ ureg claim_symbol_id(resolver* r, symbol* s, bool public_st)
     ast_elem* on = decl_st->owning_node;
     if (ast_elem_is_var((ast_elem*)s) && !ast_flags_get_static(s->node.flags) &&
         ast_elem_is_struct(on)) {
-        // here we use the cheated 0 initialized id of the struct
-        // to get a struct instance member id
-        // TODO: Traits etc.
         ast_flags_set_instance_member(&s->node.flags);
-        return ((sc_struct*)decl_st->owning_node)->id++;
+        // since these are per instance we don't give them a variable id
+        // the backend will assign struct member ids starting from 0
+        return UREG_MAX;
     }
     else {
         return ast_node_claim_id(r, (ast_node*)s, public_st);
@@ -562,7 +569,7 @@ static resolve_error add_ast_node_decls(
                 re = pp_resolve_node_activate(r, pprn, false);
                 if (re) return re;
                 r->curr_pp_node = pprn;
-                epp->result_buffer.state.pprn = pprn;
+                epp->pprn = pprn;
             }
             re = add_ast_node_decls(r, st, sst, epp->pp_expr, false);
             if (re) return re;
@@ -582,12 +589,9 @@ static resolve_error add_ast_node_decls(
             // generic inst 'inherits' from struct
             sc_struct* s = (sc_struct*)n;
             re = add_symbol(r, st, sst, (symbol*)s);
-            // so instance members can inc this and we get a member id
-            s->id = 0;
             bool members_public_st = public_st && !is_local_node(n->flags);
             re = add_body_decls(r, st, NULL, &s->sb.sc.body, members_public_st);
             if (re) return re;
-            // after the members are done we give the struct a real id
             s->id = claim_symbol_id(r, (symbol*)s, public_st);
             return RE_OK;
         }
@@ -1316,6 +1320,9 @@ ast_node* get_current_ebb(resolver* r)
         r->curr_block_owner->kind == SC_FUNC_GENERIC) {
         return r->curr_block_owner;
     }
+    else if (ast_elem_is_struct((ast_elem*)r->curr_block_owner)) {
+        return r->curr_block_owner;
+    }
     else {
         assert(ast_elem_is_expr_block_base((ast_elem*)r->curr_block_owner));
         return r->curr_block_owner;
@@ -1831,6 +1838,7 @@ static inline resolve_error resolve_expr_pp(
     resolver* r, symbol_table* st, expr_pp* ppe, ast_elem** value,
     ast_elem** ctype)
 {
+    if (ppe->pprn && ppe->pprn->pending_pastes) return RE_UNREALIZED_COMPTIME;
     bool is_stmt = !ast_flags_get_pp_expr_res_used(ppe->node.flags);
     if (ppe->ctype == PASTED_EXPR_ELEM) {
         *ppe->result_buffer.paste_result.last_next = NULL;
@@ -1850,21 +1858,27 @@ static inline resolve_error resolve_expr_pp(
     }
     pp_resolve_node* pprn = NULL;
     resolve_error re;
-    if (ppe->result_buffer.state.pprn) {
-        pprn = ppe->result_buffer.state.pprn;
+    if (ppe->pprn) {
+        pprn = ppe->pprn;
     }
     else {
         pprn = pp_resolve_node_create(r, (ast_node*)ppe, st, is_stmt, true);
         if (!pprn) return RE_FATAL;
-        ppe->result_buffer.state.pprn = pprn;
+        ppe->pprn = pprn;
         if (r->curr_pp_node) {
             if (curr_pprn_run_after(r, pprn)) return RE_FATAL;
         }
         // disable run_when_ready even if we don't add this immediately
         // to avoid it being run once the deps are done
-        re = get_curr_block_pprn(r, &pprn->parent);
-        if (pprn->parent) pprn->run_when_ready = false;
-        if (re) return re;
+        // for structs the children run individually, so we actually want it to
+        // run
+        if (!ast_elem_is_struct((ast_elem*)r->curr_block_owner)) {
+            re = get_curr_block_pprn(r, &pprn->parent);
+            if (pprn->parent) {
+                pprn->run_when_ready = false;
+            }
+            if (re) return re;
+        }
     }
     pp_resolve_node* parent_pprn = r->curr_pp_node;
     r->curr_pp_node = pprn;
@@ -2215,10 +2229,7 @@ static inline resolve_error resolve_ast_node_raw(
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
             if (resolved) RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
-            re = resolve_body(r, n, &((scope*)n)->body);
-            if (re) return re;
-            ast_flags_set_resolved(&n->flags);
-            RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
+            return resolve_struct(r, (sc_struct*)n, value, ctype);
         }
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
@@ -2650,8 +2661,9 @@ resolve_error resolve_ast_node(
         }
     }
     else {
-        if (re != RE_UNREALIZED_COMPTIME && r->tc->t->trap_on_error)
+        if (re != RE_UNREALIZED_COMPTIME && r->tc->t->trap_on_error) {
             debugbreak();
+        }
         ast_flags_clear_resolving(&n->flags);
     }
     return re;
@@ -2739,8 +2751,17 @@ resolve_error resolve_expr_body(
         if (!pprn->first_unresolved_child) {
             pprn->run_when_ready = false;
         }
-        if (curr_pp_block_add_child(r, pprn)) return RE_FATAL;
-        resolve_error re2 = pp_resolve_node_activate(r, pprn, re == RE_OK);
+        resolve_error re2;
+        if (!pprn->first_unresolved_child && pprn->dep_count == 0) {
+            // this is a rerun and everyting got resolved
+            // detach this from parent and free it individually
+            pprn->parent = NULL;
+            re2 = pp_resolve_node_ready(r, pprn, true);
+        }
+        else {
+            if (curr_pp_block_add_child(r, pprn)) return RE_FATAL;
+            re2 = pp_resolve_node_activate(r, pprn, re == RE_OK);
+        }
         if (re2) return re2;
     }
     if (re) return re; // This includes unrealized paste
@@ -2779,6 +2800,48 @@ resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ast_elem** ctype)
     re = curr_pprn_run_after(r, fn->fnb.pprn);
     if (re) return re;
     return RE_OK;
+}
+resolve_error
+resolve_struct(resolver* r, sc_struct* st, ast_elem** value, ast_elem** ctype)
+{
+    resolve_error re = RE_OK;
+    if (st->sb.pprn && st->sb.pprn->dep_count) {
+        re = curr_pprn_run_after(r, st->sb.pprn);
+        if (re) return re;
+        return RE_UNREALIZED_COMPTIME;
+    }
+    ast_node* parent_block_owner = r->curr_block_owner;
+    pp_resolve_node* parent_pprn = r->curr_block_pp_node;
+    r->curr_block_pp_node = st->sb.pprn;
+    r->curr_block_owner = (ast_node*)st;
+    ast_body* b = &st->sb.sc.body;
+    bool unrealized_comptime = false;
+    for (ast_node** n = b->elements; *n != NULL; n++) {
+        re = resolve_ast_node(r, *n, b->symtab, NULL, NULL);
+        if (re == RE_UNREALIZED_COMPTIME) {
+            unrealized_comptime = true;
+            re = RE_OK;
+        }
+        else if (re) {
+            break;
+        }
+    }
+    st->sb.pprn = r->curr_block_pp_node;
+    r->curr_block_owner = parent_block_owner;
+    r->curr_block_pp_node = parent_pprn;
+    if (st->sb.pprn) {
+        resolve_error re2 = curr_pprn_run_after(r, st->sb.pprn);
+        if (!re2) re2 = pp_resolve_node_activate(r, st->sb.pprn, re == RE_OK);
+        if (re2) {
+            assert(re2 == RE_FATAL);
+            return re2;
+        }
+    }
+
+    if (re) return re;
+    if (unrealized_comptime) return RE_UNREALIZED_COMPTIME;
+    ast_flags_set_resolved(&st->sb.sc.osym.sym.node.flags);
+    RETURN_RESOLVED(value, ctype, st, TYPE_ELEM);
 }
 // TODO: make sure we return!
 resolve_error
@@ -2851,6 +2914,7 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
     pp_resolve_node* prev_pprn = r->curr_pp_node;
     r->curr_pp_node = NULL;
     while (*n) {
+        // TODO: move this kind of error into the prp
         if (stmt_ctype_ptr == NULL && n != continue_block) {
             src_range_large srl;
             ast_node_get_src_range(*n, st, &srl);
@@ -2923,13 +2987,14 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
     ast_flags_set_resolved(&fnb->sc.osym.sym.node.flags);
     return RE_OK;
 }
-resolve_error resolve_body(resolver* r, ast_node* block_owner, ast_body* b)
+resolve_error resolve_module_frame(resolver* r, module_frame* mf, ast_body* b)
 {
     resolve_error re = RE_OK;
     ast_node* parent_block_owner = r->curr_block_owner;
-    r->curr_block_owner = block_owner;
+    r->curr_block_owner = (ast_node*)mf;
     for (ast_node** n = b->elements; *n != NULL; n++) {
         re = resolve_ast_node(r, *n, b->symtab, NULL, NULL);
+        if (re == RE_UNREALIZED_COMPTIME) re = RE_OK;
         if (re) break;
     }
     r->curr_block_owner = parent_block_owner;
@@ -3057,12 +3122,12 @@ void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident)
     }
     puts("");
     if (child && verbose) {
-        puts("        children:");
-        print_indent(ident + 1);
+        print_indent(ident);
+        puts("children:");
         while (child) {
-            print_ast_node(child->node, r->curr_mdg, ident);
-            puts("");
             print_indent(ident + 1);
+            print_ast_node(child->node, r->curr_mdg, ident + 1);
+            puts("");
             child = child->next;
         }
     }
@@ -3317,7 +3382,7 @@ resolve_error resolver_handle_post_pp(resolver* r)
              mf = aseglist_iterator_next(&asi)) {
             r->curr_mf = mf;
             r->curr_block_owner = (ast_node*)mf;
-            re = resolve_body(r, (ast_node*)mf, &mf->body);
+            re = resolve_module_frame(r, mf, &mf->body);
             if (re) return re;
             ast_flags_set_resolved(&mf->node.flags);
         }

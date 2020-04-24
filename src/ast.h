@@ -28,6 +28,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     ELEM_INVALID, // make 0 invalid for debugging
     MF_MODULE,
     MF_FIRST_ID = MF_MODULE,
+    ASTN_FIRST_ID = MF_FIRST_ID,
     MF_MODULE_GENERIC,
     MF_EXTEND,
     MF_EXTEND_GENERIC,
@@ -106,6 +107,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     EXPR_ARRAY_TYPE,
     EXPR_SLICE_TYPE,
     EXPR_LAST_ID = EXPR_SLICE_TYPE,
+    ASTN_LAST_ID = EXPR_LAST_ID,
 
     TYPE_POINTER,
     TYPE_FIRST_ID = TYPE_POINTER,
@@ -436,15 +438,12 @@ typedef struct expr_pp_s {
     ast_node node;
     ast_node* pp_expr;
     ast_elem* ctype;
+    struct pp_resolve_node_s* pprn;
     void* result;
     union result_buffer_u {
         // this must be big enough that
-        // sizeof(expr_paste_evaluation) >= sizeof(expr_pp)
+        // sizeof(expr_paste_evaluation) <= sizeof(expr_pp)
         ureg data[6];
-        struct state_s {
-            struct pp_resolve_node_s* pprn;
-            void* true_res_buffer;
-        } state;
         struct paste_result_s {
             pasted_str* first;
             pasted_str** last_next;
@@ -537,6 +536,7 @@ typedef struct sc_struct_base_s {
 typedef struct sc_struct_s {
     sc_struct_base sb;
     ureg id;
+    sc_func* dtor;
 } sc_struct;
 
 typedef struct sc_struct_generic_inst_s sc_struct_generic_inst;
@@ -789,6 +789,7 @@ bool ast_elem_is_symbol(ast_elem* s);
 bool ast_elem_is_expr(ast_elem* s);
 bool ast_elem_is_type_slice(ast_elem* s);
 bool ast_elem_is_stmt(ast_elem* s);
+bool ast_elem_is_node(ast_elem* e);
 bool ast_elem_is_expr_block_base(ast_elem* n);
 bool ast_elem_is_paste_evaluation(ast_elem* s);
 bool assignment_is_meta_assignment(expr_op_binary* ob, bool* defined);

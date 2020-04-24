@@ -685,23 +685,20 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
             if (lle) return lle;
             assert(align <= REG_BYTES); // TODO
             if (size <= sizeof(expr->result_buffer)) {
-                expr->result_buffer.state.true_res_buffer =
-                    (void*)&expr->result_buffer.data[0];
+                expr->result = (void*)&expr->result_buffer.data[0];
             }
             else {
                 // TODO: use tempmem for this
-                expr->result_buffer.state.true_res_buffer = malloc(size);
+                expr->result = malloc(size);
             }
             llvm::Value* val;
             lle = genAstNode(expr->pp_expr, NULL, &val);
             if (lle) return lle;
             auto res = llvm::ConstantInt::get(
-                _primitive_types[PT_UINT],
-                (ureg)expr->result_buffer.state.true_res_buffer);
+                _primitive_types[PT_UINT], (ureg)expr->result);
             auto resptr =
                 llvm::ConstantExpr::getBitCast(res, ret_type->getPointerTo());
             if (!_builder.CreateStore(val, resptr)) return LLE_FATAL;
-            expr->result = expr->result_buffer.state.true_res_buffer;
         }
         else {
             // so we don't ever regenerate it in genAstNode
@@ -827,6 +824,9 @@ llvm::Type** LLVMBackend::lookupTypeRaw(ureg id)
 llvm_error
 LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
 {
+    assert(
+        !ast_elem_is_node(e) || ast_flags_get_resolved(((ast_node*)e)->flags));
+    llvm_error lle;
     switch (e->kind) {
         case SYM_PRIMITIVE: {
             primitive_kind kind = ((primitive*)e)->sym.node.pt_kind;
@@ -855,19 +855,26 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
                     &_tc->permmem,
                     sizeof(llvm::Type*) * sb->sc.body.symtab->decl_count);
                 ureg memcnt = 0;
-                for (ast_node** i = sb->sc.body.elements; *i; i++) {
+                symtab_it it = symtab_it_make(sb->sc.body.symtab);
+                for (ast_node* s = (ast_node*)symtab_it_next(&it); s;
+                     s = (ast_node*)symtab_it_next(&it)) {
                     // TODO: usings, static members,
                     // etc.
-                    if ((**i).kind == SYM_VAR ||
-                        (**i).kind == SYM_VAR_INITIALIZED) {
-                        if (ast_flags_get_static((**i).flags)) {
-                            llvm_error lle = genAstNode(*i, NULL, NULL);
+                    if (s->kind == SYM_VAR || s->kind == SYM_VAR_INITIALIZED) {
+                        if (ast_flags_get_static(s->flags)) {
+                            llvm_error lle =
+                                genAstNode((ast_node*)s, NULL, NULL);
                             if (lle) return lle;
                         }
-                        lookupCType(
-                            ((sym_var*)*i)->ctype, &members[memcnt], NULL,
-                            NULL);
-                        memcnt++;
+                        else {
+                            assert(ast_flags_get_instance_member(s->flags));
+                            ((sym_var*)s)->var_id = memcnt;
+                            lle = lookupCType(
+                                ((sym_var*)s)->ctype, &members[memcnt], NULL,
+                                NULL);
+                            if (lle) return lle;
+                            memcnt++;
+                        }
                     }
                 }
                 llvm::ArrayRef<llvm::Type*> member_types{members, memcnt};
@@ -878,8 +885,9 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
                 if (t) *t = strct;
             }
             if (align) {
-                *align = _data_layout->getStructLayout((llvm::StructType*)*tp)
-                             ->getAlignment();
+                auto sl = _data_layout->getStructLayout((llvm::StructType*)*tp);
+                assert(sl);
+                *align = sl->getAlignment();
             }
             if (size) {
                 *size = _data_layout->getTypeAllocSize((llvm::StructType*)*t);
@@ -1235,8 +1243,9 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (n->kind == SYM_VAR_INITIALIZED && !gen_stub) {
                 llvm::Value* v;
                 // TODO: we get some dumb crashes here if the var is used
-                // in its own initialization. we will eventually have to check
-                // for the const'ness of the initializer in the resolver
+                // in its own initialization. we will eventually have to
+                // check for the const'ness of the initializer in the
+                // resolver
                 lle = genAstNode(
                     ((sym_var_initialized*)n)->initial_value, NULL, &v);
                 if (lle) return lle;
@@ -1570,7 +1579,9 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             lle = genAstNode(ema->lhs, &v, NULL);
 
             if (lle) return lle;
-            auto st = (sc_struct*)ema->target.sym->declaring_st->owning_node;
+            auto st = (sc_struct*)symbol_table_skip_metatables(
+                          ema->target.sym->declaring_st)
+                          ->owning_node;
             assert(ast_elem_is_struct((ast_elem*)st));
             ureg align;
             lle = lookupCType((ast_elem*)st, NULL, &align, NULL);
