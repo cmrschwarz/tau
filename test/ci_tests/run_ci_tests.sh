@@ -5,7 +5,7 @@ errors=0
 success=0
 for taufile in *.tau ; do
     [ -e "$taufile" ] || continue
-    #printf "\033[0;33mcompiling $taufile\033[0m\n"
+    time_before="$(date +%s.%3N)"
     ok=true
     $TAUC "$taufile" || ok=false
     if $ok; then
@@ -14,7 +14,15 @@ for taufile in *.tau ; do
             ./a.out
             res=$?
             if [ $res -eq 0 ]; then
-                printf "\033[0;32m$taufile succeeded\033[0m\n"
+                time_after="$(date +%s.%3N)"
+                time=$(bc <<< "( $time_after - $time_before ) * 1000 / 1")
+                if [ $time -gt 1000 ]; then
+                    time=$(bc <<< "scale=2; ( $time_after - $time_before )  / 1")
+                    time="$time s"
+                else
+                    time="$time ms"
+                fi
+                printf "\033[0;32m$taufile succeeded [$time] \033[0m\n"
             else
                 printf "\033[0;32mcompiling $taufile succeeded\033[0;31m but the run returned $res!\033[0m\n"
                 ok=false
