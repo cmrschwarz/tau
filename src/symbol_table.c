@@ -12,9 +12,8 @@
 #include "utils/error.h"
 #include "tauc.h"
 #define USING_BIT (((ureg)1) << (REG_BITS - 1))
-
-symbol_table* GLOBAL_SYMTAB = NULL;
-
+#define EMPTY_TABLE ((symbol**)&NULL_BYTES[0])
+#define META_TABLE ((symbol**)&NULL_BYTES[1])
 static inline bool symbol_table_should_be_meta(ast_elem* owning_node)
 {
     return owning_node->kind == STMT_PASTE_EVALUATION;
@@ -28,8 +27,8 @@ int symbol_table_init(
     }
     symbol_table* st = tmalloc(sizeof(symbol_table));
     if (!st) return ERR;
+    st->decl_count = decl_count;
     if (decl_count) {
-        st->decl_count = decl_count;
         ureg table_capacity = (decl_count == 1) ? 2 : ceil_to_pow2(decl_count);
         st->hash_mask = table_capacity - 1;
         st->table = tmallocz(table_capacity * sizeof(symbol*));
@@ -40,14 +39,13 @@ int symbol_table_init(
         memset(st->table, 0, table_capacity * sizeof(symbol*));
     }
     else {
+        st->hash_mask = 0;
         if (symbol_table_should_be_meta(owning_node)) {
-            st->decl_count = UREG_MAX;
+            st->table = META_TABLE;
         }
         else {
-            st->decl_count = 0;
+            st->table = EMPTY_TABLE;
         }
-        st->hash_mask = 0;
-        st->table = (symbol**)NULL_PTR_PTR;
     }
     st->owning_node = owning_node;
     *tgt = st;
@@ -71,10 +69,13 @@ int symbol_table_init(
 
     return OK;
 }
-symbol_table* symbol_table_skip_metatables(symbol_table* st)
+static inline bool symbol_table_is_metatable(symbol_table* st)
 {
-    while (st->decl_count == UREG_MAX) st = st->parent;
-    return st;
+    return (st->table == META_TABLE);
+}
+symbol_table* symbol_table_nonmeta(symbol_table* st)
+{
+    return (st->table == META_TABLE) ? st->non_meta_parent : st;
 }
 symbol_table* symbol_table_get_module_table(symbol_table* st)
 {
@@ -85,11 +86,18 @@ static inline ureg symbol_table_get_capacity(symbol_table* st)
 {
     return st->hash_mask ? st->hash_mask + 1 : 0;
 }
+void symbol_table_set_parent(symbol_table* st, symbol_table* parent)
+{
+    st->parent = parent;
+    if (symbol_table_is_metatable(st)) {
+        st->non_meta_parent = symbol_table_nonmeta(parent);
+    }
+}
 void symbol_table_insert_use(
     symbol_table* st, access_modifier am, ast_node* using_node,
     symbol_table* used_symtab)
 {
-    st = symbol_table_skip_metatables(st);
+    st = symbol_table_nonmeta(st);
     // reverse the am so it goes from public to unspecified upwars in
     // memory
     am = AM_ENUM_ELEMENT_COUNT - am;
@@ -137,7 +145,7 @@ void symbol_table_fin(symbol_table* st)
 }
 int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings)
 {
-    st = symbol_table_skip_metatables(st);
+    st = symbol_table_nonmeta(st);
     st->decl_count += decl_count;
     if (st->decl_count > symbol_table_get_capacity(st)) {
         ureg cap_new = (st->decl_count == 1) ? 2 : ceil_to_pow2(st->decl_count);
@@ -165,7 +173,7 @@ int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings)
 }
 symbol** symbol_table_find_insert_position(symbol_table* st, char* name)
 {
-    st = symbol_table_skip_metatables(st);
+    st = symbol_table_nonmeta(st);
     ureg idx = fnv_hash_str(FNV_START_HASH, name) & st->hash_mask;
     symbol** tgt = &st->table[idx];
     while (*tgt) {
@@ -176,7 +184,7 @@ symbol** symbol_table_find_insert_position(symbol_table* st, char* name)
 }
 symbol** symbol_table_insert(symbol_table* st, symbol* s)
 {
-    st = symbol_table_skip_metatables(st);
+    st = symbol_table_nonmeta(st);
     ureg idx = fnv_hash_str(FNV_START_HASH, s->name) & st->hash_mask;
     symbol** tgt = &st->table[idx];
     while (*tgt) {

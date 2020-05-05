@@ -274,7 +274,7 @@ bool ast_elem_is_var(ast_elem* s)
 }
 bool symbol_table_is_public(symbol_table* st)
 {
-    ast_elem* owner = symbol_table_skip_metatables(st)->owning_node;
+    ast_elem* owner = symbol_table_nonmeta(st)->owning_node;
     return ast_elem_is_module_frame(owner) || owner->kind == SC_STRUCT;
 }
 bool ast_elem_is_node(ast_elem* e)

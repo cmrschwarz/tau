@@ -263,8 +263,8 @@ resolve_error symbol_lookup_iterator_init(
     sc_struct* struct_inst_lookup, symbol_table* looking_st,
     const char* tgt_name, bool enable_shadowing, bool deref_aliases)
 {
-    lookup_st = symbol_table_skip_metatables(lookup_st);
-    looking_st = symbol_table_skip_metatables(looking_st);
+    lookup_st = symbol_table_nonmeta(lookup_st);
+    looking_st = symbol_table_nonmeta(looking_st);
     sc_struct* looking_struct = NULL;
     symbol_table* looking_mf;
     symbol_table* looking_mod;

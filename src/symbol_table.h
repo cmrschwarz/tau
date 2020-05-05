@@ -20,13 +20,15 @@ typedef struct symbol_table_s {
     // pointers on grow (grow is unavoidable due to the pp / macros)
     symbol** table;
     ureg hash_mask;
-    // for ppsts, this points to the 'post'processing symtab
     symbol_table* parent;
     usings_table* usings;
     ast_elem* owning_node;
-    // this stores the requested decl count, not the actual present amount
-    // it is only updated during init and amend
-    ureg decl_count;
+    union {
+        // this stores the requested decl count, not the actual present amount
+        // it is only updated during init and amend
+        ureg decl_count;
+        struct symbol_table_s* non_meta_parent;
+    };
 } symbol_table;
 
 int symbol_table_init(
@@ -66,7 +68,8 @@ int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings);
 
 int init_root_symtab(symbol_table** root_st);
 void fin_root_symtab(symbol_table* root_st);
-symbol_table* symbol_table_skip_metatables(symbol_table* st);
+symbol_table* symbol_table_nonmeta(symbol_table* st);
+void symbol_table_set_parent(symbol_table* st, symbol_table* parent);
 symbol_table* symbol_table_get_module_table(symbol_table* st);
 
 typedef struct symtab_it {

@@ -459,18 +459,11 @@ set_parent_symtabs(symbol_table** tgt, symbol_table* parent_st)
     if (*tgt == NULL) {
         *tgt = parent_st;
     }
-    else if (parent_st->parent == NULL) {
-        (*tgt)->parent = parent_st;
-    }
     else {
-        // go to ppl 0
-        while (parent_st->parent->owning_node == parent_st->owning_node) {
-            parent_st = parent_st->parent;
-        }
         assert(
             (*tgt)->parent == NULL ||
             (*tgt)->owning_node->kind == STMT_PASTE_EVALUATION);
-        (*tgt)->parent = parent_st;
+        symbol_table_set_parent(*tgt, parent_st);
     }
 }
 // we differentiate between local ast nodes and shared ones
@@ -494,7 +487,7 @@ ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st)
 }
 ureg claim_symbol_id(resolver* r, symbol* s, bool public_st)
 {
-    symbol_table* decl_st = symbol_table_skip_metatables(s->declaring_st);
+    symbol_table* decl_st = symbol_table_nonmeta(s->declaring_st);
     ast_elem* on = decl_st->owning_node;
     if (ast_elem_is_var((ast_elem*)s) && !ast_flags_get_static(s->node.flags) &&
         ast_elem_is_struct(on)) {
@@ -2859,7 +2852,7 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
     if (!continue_block) {
         if (!ast_flags_get_static(fnb->sc.osym.sym.node.flags)) {
             if (ast_elem_is_struct(
-                    symbol_table_skip_metatables(fnb->sc.osym.sym.declaring_st)
+                    symbol_table_nonmeta(fnb->sc.osym.sym.declaring_st)
                         ->owning_node)) {
                 ast_flags_set_instance_member(&fnb->sc.osym.sym.node.flags);
             }
@@ -3063,7 +3056,7 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
             &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
             atomic_ureg_load(&(**i).using_count), true, (ast_elem*)*i);
         if (res) return RE_FATAL;
-        if (!(**i).symtab) return RE_FATAL;
+        (**i).symtab->parent = NULL; // assertion in set parent symtabs
         set_parent_symtabs(&(**i).symtab, r->tc->t->root_symtab);
     }
     if (!contains_root) atomic_ureg_inc(&r->tc->t->linking_holdups);

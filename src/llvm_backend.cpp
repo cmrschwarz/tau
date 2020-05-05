@@ -1215,8 +1215,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     }
     if (generate) {
         ast_node_kind k =
-            symbol_table_skip_metatables(var->osym.sym.declaring_st)
-                ->owning_node->kind;
+            symbol_table_nonmeta(var->osym.sym.declaring_st)->owning_node->kind;
         llvm::Value* var_val;
         if (k == ELEM_MDG_NODE || k == MF_MODULE || k == MF_EXTEND) {
             // global var
@@ -1579,9 +1578,9 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             lle = genAstNode(ema->lhs, &v, NULL);
 
             if (lle) return lle;
-            auto st = (sc_struct*)symbol_table_skip_metatables(
-                          ema->target.sym->declaring_st)
-                          ->owning_node;
+            auto st =
+                (sc_struct*)symbol_table_nonmeta(ema->target.sym->declaring_st)
+                    ->owning_node;
             assert(ast_elem_is_struct((ast_elem*)st));
             ureg align;
             lle = lookupCType((ast_elem*)st, NULL, &align, NULL);
@@ -2033,7 +2032,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         ureg i = 0;
         if (mem_func) {
             ast_elem* owner =
-                symbol_table_skip_metatables(fn->fnb.sc.osym.sym.declaring_st)
+                symbol_table_nonmeta(fn->fnb.sc.osym.sym.declaring_st)
                     ->owning_node;
             assert(ast_elem_is_struct_base(owner));
             llvm::Type* struct_type;
