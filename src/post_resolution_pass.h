@@ -15,10 +15,10 @@ typedef enum prp_error_e {
 
 typedef enum prp_var_state_e {
     VAR_STATE_UNKNOWN = 0,
-    VAR_STATE_UNDEFINED = 1,
-    VAR_STATE_DEFINED = 2,
+    VAR_STATE_VALID = 1,
+    VAR_STATE_INVALID = 2,
     // if (foo) x.init(); --> maybe defined afterwards
-    VAR_STATE_MAYBE_DEFINED = VAR_STATE_UNDEFINED | VAR_STATE_DEFINED
+    VAR_STATE_MAYBE_VALID = VAR_STATE_VALID | VAR_STATE_INVALID
 } prp_var_state;
 
 typedef struct prp_var_node_s prp_var_node;

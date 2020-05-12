@@ -2,6 +2,7 @@
 #include "mdg.h"
 #include "error_log.h"
 #include "thread_context.h"
+#include "print_ast.h"
 prp_error prp_ast_body_insert_dtors(
     post_resolution_pass* prp, prp_block_node* parent, ast_node* node,
     ast_body* body);
@@ -65,11 +66,11 @@ prp_error prp_var_node_create(post_resolution_pass* prp, sym_var* v)
     if (!vn) return PRPE_FATAL;
     assert(v->prpvn == NULL);
     v->prpvn = vn;
-    prp_var_state initial_state = VAR_STATE_UNDEFINED;
+    prp_var_state initial_state = VAR_STATE_VALID;
     if (v->osym.sym.node.kind == SYM_VAR_INITIALIZED &&
         ((sym_var_initialized*)v)->initial_value !=
             (ast_node*)&PRIMITIVES[PT_UNDEFINED]) {
-        initial_state = VAR_STATE_DEFINED;
+        initial_state = VAR_STATE_INVALID;
     }
     vn->var = v;
     vn->next_in_break_chain = NULL;
@@ -172,7 +173,7 @@ prp_error prp_handle_assign(post_resolution_pass* prp, expr_op_binary* assign)
     prp_var_data* vd = v->prpvn->curr_data;
     bool defined;
     if (assignment_is_meta_assignment(assign, &defined)) {
-        new_state = defined ? VAR_STATE_DEFINED : VAR_STATE_UNDEFINED;
+        new_state = defined ? VAR_STATE_INVALID : VAR_STATE_VALID;
     }
     else {
         // TODO: make this valid for POD's because we are nice citizens
@@ -180,8 +181,8 @@ prp_error prp_handle_assign(post_resolution_pass* prp, expr_op_binary* assign)
         // HACK
         assert(
             vd->var_node->var->ctype->kind == SYM_PRIMITIVE ||
-            vd->curr_state == VAR_STATE_DEFINED);
-        new_state = VAR_STATE_DEFINED;
+            vd->curr_state == VAR_STATE_INVALID);
+        new_state = VAR_STATE_INVALID;
     }
     err = prp_var_set_state(prp, v, new_state);
     if (err) return err;
@@ -454,36 +455,31 @@ prp_error prp_step(post_resolution_pass* prp)
     prp->curr_block->next_expr++;
     return prp_handle_node(prp, curr);
 }
-
-prp_error prp_run_func(post_resolution_pass* prp, sc_func_base* fn)
-{
-    prp->curr_fn = fn;
-    prp_error e;
-    e = prp_block_node_push(prp, (ast_node*)fn, &fn->sc.body, NULL);
-    if (e) return e;
-    while (prp->curr_block) {
-        e = prp_step(prp);
-        if (e) return e;
-    }
-    return PRPE_OK;
-}
-prp_error prp_run_nested_funcs(post_resolution_pass* prp)
-{
-    while (!stack_is_empty(&prp->nested_funcs)) {
-        sc_func_base* f = (sc_func_base*)stack_pop(&prp->nested_funcs);
-        prp_error err = prp_run_func(prp, f);
-        if (err) return err;
-    }
-    return PRPE_OK;
-}
 void prp_free_owned_vars(post_resolution_pass* prp)
 {
     for (prp_var_data* vd = prp->curr_block->owned_vars; vd; vd = vd->prev) {
         dtor_kind dk;
+        // TODO: compiler switch for debug output
+        /*print_ast_node(
+            (ast_node*)vd->var_node->var,
+            (mdg_node*)symbol_table_get_module_table(
+                vd->var_node->var->osym.sym.declaring_st)
+                ->owning_node,
+            0);
+        printf(": ");*/
         switch (vd->exit_states) {
-            case VAR_STATE_DEFINED: dk = DTOR_KIND_STATIC; break;
-            case VAR_STATE_MAYBE_DEFINED: dk = DTOR_KIND_DYNAMIC; break;
-            case VAR_STATE_UNDEFINED: dk = DTOR_KIND_KNOWN_DEAD; break;
+            case VAR_STATE_INVALID:
+                dk = DTOR_KIND_STATIC;
+                // puts("static dtor");
+                break;
+            case VAR_STATE_MAYBE_VALID:
+                dk = DTOR_KIND_DYNAMIC;
+                // puts("dynamic dtor");
+                break;
+            case VAR_STATE_VALID:
+                dk = DTOR_KIND_KNOWN_DEAD;
+                // puts("no dtor");
+                break;
             case VAR_STATE_UNKNOWN:
                 assert(false); // well we failed then :/
                 break;
@@ -526,7 +522,7 @@ void prp_assign_func_dtors(post_resolution_pass* prp)
             curr = *prp->curr_block->next_expr;
         }
         if (prp->curr_block->node->kind == EXPR_IF) {
-            expr_if* i = (expr_if*)curr;
+            expr_if* i = (expr_if*)prp->curr_block->node;
             if (!i->prpbn->is_else) {
                 i->prpbn->is_else = true;
                 if (i->else_body) {
@@ -539,6 +535,31 @@ void prp_assign_func_dtors(post_resolution_pass* prp)
         }
         prp->curr_block = prp->curr_block->parent;
     } while (prp->curr_block);
+}
+prp_error prp_run_func(post_resolution_pass* prp, sc_func_base* fn)
+{
+    prp->curr_fn = fn;
+    prp_error e;
+    e = prp_block_node_push(prp, (ast_node*)fn, &fn->sc.body, NULL);
+    prp_block_node* fnbn = prp->curr_block;
+    if (e) return e;
+    while (prp->curr_block) {
+        e = prp_step(prp);
+        if (e) return e;
+    }
+    prp->curr_block = fnbn;
+    prp_assign_func_dtors(prp);
+    sbuffer_clear(&prp->mem);
+    return PRPE_OK;
+}
+prp_error prp_run_nested_funcs(post_resolution_pass* prp)
+{
+    while (!stack_is_empty(&prp->nested_funcs)) {
+        sc_func_base* f = (sc_func_base*)stack_pop(&prp->nested_funcs);
+        prp_error err = prp_run_func(prp, f);
+        if (err) return err;
+    }
+    return PRPE_OK;
 }
 prp_error prp_run_symtab(post_resolution_pass* prp, symbol_table* st)
 {

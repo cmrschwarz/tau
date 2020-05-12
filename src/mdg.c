@@ -266,6 +266,7 @@ static void free_astn_symtabs(ast_node* n)
         case STMT_PASTE_EVALUATION: {
             stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
             free_body_symtabs(n, &spe->body);
+            free_astn_symtabs(spe->pe.source_pp_expr);
         } break;
         case EXPR_ARRAY_TYPE: {
             expr_array_type* eat = (expr_array_type*)n;

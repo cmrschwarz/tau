@@ -139,7 +139,9 @@ void symbol_table_fin(symbol_table* st)
         // avoid throwing of our allocation counter
         if (st->usings) tfree(st->usings);
         // avoid freeing NULL_PTR_PTR
-        if (st->hash_mask != 0) tfree(st->table);
+        if (!symbol_table_is_metatable(st) && st->decl_count) {
+            tfree(st->table);
+        }
         tfree(st);
     }
 }
