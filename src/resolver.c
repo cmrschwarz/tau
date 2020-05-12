@@ -554,7 +554,11 @@ static resolve_error add_ast_node_decls(
         }
         case EXPR_PP: {
             expr_pp* epp = (expr_pp*)n;
+            pp_resolve_node* prevcurr = r->curr_pp_node;
             if (public_st) {
+                // we need to add these during add decls already
+                // because we want to handle these before resolving
+                // any non pp stuff in the scope
                 bool is_expr = ast_elem_is_expr((ast_elem*)epp->pp_expr);
                 pp_resolve_node* pprn = pp_resolve_node_create(
                     r, is_expr ? n : epp->pp_expr, st, false, is_expr);
@@ -565,6 +569,7 @@ static resolve_error add_ast_node_decls(
                 epp->pprn = pprn;
             }
             re = add_ast_node_decls(r, st, sst, epp->pp_expr, false);
+            if (public_st) r->curr_pp_node = prevcurr;
             if (re) return re;
             return RE_OK;
         }
@@ -1303,6 +1308,7 @@ ast_elem** get_break_target_ctype(ast_node* n)
         default: return NULL;
     }
 }
+// might return null if inside module frame
 ast_node* get_current_ebb(resolver* r)
 {
     if (ast_elem_is_paste_evaluation((ast_elem*)r->curr_block_owner)) {
@@ -1315,6 +1321,9 @@ ast_node* get_current_ebb(resolver* r)
     }
     else if (ast_elem_is_struct((ast_elem*)r->curr_block_owner)) {
         return r->curr_block_owner;
+    }
+    else if (ast_elem_is_module_frame((ast_elem*)r->curr_block_owner)) {
+        return NULL;
     }
     else {
         assert(ast_elem_is_expr_block_base((ast_elem*)r->curr_block_owner));
