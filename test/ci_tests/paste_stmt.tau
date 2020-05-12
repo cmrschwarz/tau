@@ -1,0 +1,13 @@
+public func main() -> int{
+	f: int;
+	#if (3 > 2){
+        paste(\\foo"
+            y:= 12;
+            f = 0;
+            return loop {
+                if(y > 2) break f;
+                f = undefined;			
+            };
+		\\foo");
+	}
+}

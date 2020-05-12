@@ -28,6 +28,7 @@ typedef struct thread_context_s thread_context;
 
 typedef struct prp_block_node_s {
     prp_block_node* parent;
+    prp_block_node* non_paste_context;
     ast_node* node;
     // for if/else we use the parent block
     // that way we have a symtab for error reporting
@@ -70,7 +71,6 @@ typedef struct post_resolution_pass_s {
     sbuffer mem;
     sc_func_base* curr_fn;
     prp_block_node* curr_block;
-    prp_block_node* curr_non_paste_block;
     stack nested_funcs;
     bool module_mode;
     thread_context* tc;

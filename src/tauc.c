@@ -259,6 +259,9 @@ int handle_cmd_args(
         else if (!strcmp(arg, "--pprns")) {
             t->verbosity_flags |= VERBOSITY_FLAGS_PPRNS;
         }
+        else if (!strcmp(arg, "--liveness")) {
+            t->verbosity_flags |= VERBOSITY_FLAGS_LIVENESS;
+        }
 #if DEBUG
         else if (!strcmp(arg, "--run-unit-tests")) {
             r = run_unit_tests(argc, argv);

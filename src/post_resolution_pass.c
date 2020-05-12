@@ -3,6 +3,7 @@
 #include "error_log.h"
 #include "thread_context.h"
 #include "print_ast.h"
+#include "tauc.h"
 prp_error prp_ast_body_insert_dtors(
     post_resolution_pass* prp, prp_block_node* parent, ast_node* node,
     ast_body* body);
@@ -81,9 +82,9 @@ prp_error prp_var_node_create(post_resolution_pass* prp, sym_var* v)
     vn->owner_var_data.exit_states = VAR_STATE_UNKNOWN;
     vn->owner_var_data.curr_state = initial_state;
     vn->owner_var_data.parent = NULL;
-    vn->owner_var_data.block = prp->curr_block;
-    vn->owner_var_data.prev = prp->curr_block->owned_vars;
-    prp->curr_block->owned_vars = &vn->owner_var_data;
+    vn->owner_var_data.block = prp->curr_block->non_paste_context;
+    vn->owner_var_data.prev = prp->curr_block->non_paste_context->owned_vars;
+    prp->curr_block->non_paste_context->owned_vars = &vn->owner_var_data;
     return PRPE_OK;
 }
 bool prp_block_node_activate_on_demand(
@@ -104,9 +105,6 @@ bool prp_block_node_activate_on_demand(
             vd->curr_state = VAR_STATE_UNKNOWN;
         }
         prp->curr_block = b;
-        if (b->node->kind != EXPR_PASTE_EVALUATION) {
-            prp->curr_non_paste_block = b;
-        }
         if (b->node->kind == EXPR_IF) {
             b->next_expr = (ast_node**)NULL_PTR_PTR;
         }
@@ -142,8 +140,11 @@ prp_error prp_block_node_push(
     bn->is_else = false;
     bn->is_rerun = false;
     prp->curr_block = bn;
-    if (node->kind != EXPR_PASTE_EVALUATION) {
-        prp->curr_non_paste_block = bn;
+    if (node->kind == STMT_PASTE_EVALUATION) {
+        bn->non_paste_context = bn->parent->non_paste_context;
+    }
+    else {
+        bn->non_paste_context = bn;
     }
     if (node->kind == EXPR_IF) {
         bn->next_expr = (ast_node**)NULL_PTR_PTR;
@@ -476,28 +477,31 @@ prp_error prp_step(post_resolution_pass* prp)
 }
 void prp_free_owned_vars(post_resolution_pass* prp)
 {
+    bool p = (prp->tc->t->verbosity_flags & VERBOSITY_FLAGS_LIVENESS) != 0;
     for (prp_var_data* vd = prp->curr_block->owned_vars; vd; vd = vd->prev) {
         dtor_kind dk;
         // TODO: compiler switch for debug output
-        print_ast_node(
-            (ast_node*)vd->var_node->var,
-            (mdg_node*)symbol_table_get_module_table(
-                vd->var_node->var->osym.sym.declaring_st)
-                ->owning_node,
-            0);
-        printf(": ");
+        if (p) {
+            print_ast_node(
+                (ast_node*)vd->var_node->var,
+                (mdg_node*)symbol_table_get_module_table(
+                    vd->var_node->var->osym.sym.declaring_st)
+                    ->owning_node,
+                0);
+            printf(": ");
+        }
         switch (vd->exit_states) {
             case VAR_STATE_INVALID:
                 dk = DTOR_KIND_STATIC;
-                puts("static dtor");
+                if (p) puts("static dtor");
                 break;
             case VAR_STATE_MAYBE_VALID:
                 dk = DTOR_KIND_DYNAMIC;
-                puts("dynamic dtor");
+                if (p) puts("dynamic dtor");
                 break;
             case VAR_STATE_VALID:
                 dk = DTOR_KIND_KNOWN_DEAD;
-                puts("no dtor");
+                if (p) puts("no dtor");
                 break;
             case VAR_STATE_UNKNOWN:
                 assert(false); // well we failed then :/
@@ -534,7 +538,23 @@ void prp_assign_func_dtors(post_resolution_pass* prp)
                         prp->curr_block->body->elements;
                     ebb->prpbn = NULL;
                     prp_free_owned_vars(prp);
-                } break;
+                    break;
+                }
+                case EXPR_PASTE_EVALUATION: {
+                    expr_paste_evaluation* epe = (expr_paste_evaluation*)curr;
+                    curr = epe->expr;
+                    continue;
+                }
+                case STMT_PASTE_EVALUATION: {
+                    stmt_paste_evaluation* spe = (stmt_paste_evaluation*)curr;
+                    assert(spe->pe.prpbn);
+                    assert(!spe->pe.prpbn->owned_vars);
+                    prp->curr_block = spe->pe.prpbn;
+                    prp->curr_block->next_expr =
+                        prp->curr_block->body->elements;
+                    spe->pe.prpbn = NULL;
+                    break;
+                }
                 default: break;
             }
             prp->curr_block->next_expr++;
