@@ -459,14 +459,19 @@ typedef struct expr_paste_str_s {
     ast_node* value; // ctype shall always be string
 } expr_paste_str;
 
+// we take the existing expr_pp and override it with this to preserve
+// the pointers
 typedef struct paste_evaluation_s {
     ast_node node;
     ast_node* parent_ebb;
     pasted_str* paste_str;
-    pasted_str* read_str;
     char* read_pos;
-    ast_node* source_pp_expr;
-    src_range source_pp_srange;
+    union {
+        pasted_str* read_str;
+        prp_block_node* prpbn;
+    };
+    ast_node* source_pp_expr; // the original expr contained in expr_pp
+    src_range source_pp_srange; // the src range OF the original expr_pp
 } paste_evaluation;
 
 typedef struct expr_paste_evaluation_s {

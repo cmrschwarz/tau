@@ -2915,7 +2915,8 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
                 r->tc->err_log, ES_RESOLVER, false,
                 "unreachable statement in function", srl.smap, srl.start,
                 srl.end, "after return statement");
-            return RE_ERROR;
+            re = RE_TYPE_MISSMATCH;
+            break;
         }
         re = add_ast_node_decls(r, st, NULL, *n, false);
         if (re) break;

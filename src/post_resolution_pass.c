@@ -104,6 +104,9 @@ bool prp_block_node_activate_on_demand(
             vd->curr_state = VAR_STATE_UNKNOWN;
         }
         prp->curr_block = b;
+        if (b->node->kind != EXPR_PASTE_EVALUATION) {
+            prp->curr_non_paste_block = b;
+        }
         if (b->node->kind == EXPR_IF) {
             b->next_expr = (ast_node**)NULL_PTR_PTR;
         }
@@ -139,6 +142,9 @@ prp_error prp_block_node_push(
     bn->is_else = false;
     bn->is_rerun = false;
     prp->curr_block = bn;
+    if (node->kind != EXPR_PASTE_EVALUATION) {
+        prp->curr_non_paste_block = bn;
+    }
     if (node->kind == EXPR_IF) {
         bn->next_expr = (ast_node**)NULL_PTR_PTR;
     }
@@ -307,6 +313,19 @@ prp_error prp_handle_node(post_resolution_pass* prp, ast_node* n)
             }
             return prp_handle_node(prp, ((expr_if*)n)->if_body);
         }
+        case STMT_PASTE_EVALUATION: {
+            stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
+            if (spe->pe.prpbn) {
+                prp_block_node_activate_on_demand(prp, spe->pe.prpbn);
+                return PRPE_OK;
+            }
+            return prp_block_node_push(
+                prp, (ast_node*)spe, &spe->body, &spe->pe.prpbn);
+        }
+        case EXPR_PASTE_EVALUATION: {
+            expr_paste_evaluation* epe = (expr_paste_evaluation*)n;
+            return prp_handle_node(prp, epe->expr);
+        }
         default: break;
     }
     return PRPE_OK;
@@ -460,25 +479,25 @@ void prp_free_owned_vars(post_resolution_pass* prp)
     for (prp_var_data* vd = prp->curr_block->owned_vars; vd; vd = vd->prev) {
         dtor_kind dk;
         // TODO: compiler switch for debug output
-        /*print_ast_node(
+        print_ast_node(
             (ast_node*)vd->var_node->var,
             (mdg_node*)symbol_table_get_module_table(
                 vd->var_node->var->osym.sym.declaring_st)
                 ->owning_node,
             0);
-        printf(": ");*/
+        printf(": ");
         switch (vd->exit_states) {
             case VAR_STATE_INVALID:
                 dk = DTOR_KIND_STATIC;
-                // puts("static dtor");
+                puts("static dtor");
                 break;
             case VAR_STATE_MAYBE_VALID:
                 dk = DTOR_KIND_DYNAMIC;
-                // puts("dynamic dtor");
+                puts("dynamic dtor");
                 break;
             case VAR_STATE_VALID:
                 dk = DTOR_KIND_KNOWN_DEAD;
-                // puts("no dtor");
+                puts("no dtor");
                 break;
             case VAR_STATE_UNKNOWN:
                 assert(false); // well we failed then :/

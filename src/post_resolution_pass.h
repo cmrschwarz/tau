@@ -70,6 +70,7 @@ typedef struct post_resolution_pass_s {
     sbuffer mem;
     sc_func_base* curr_fn;
     prp_block_node* curr_block;
+    prp_block_node* curr_non_paste_block;
     stack nested_funcs;
     bool module_mode;
     thread_context* tc;
