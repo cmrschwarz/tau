@@ -1,5 +1,4 @@
-#ifndef TAUC_SYMBOL_TABLE_H
-#define TAUC_SYMBOL_TABLE_H
+#pragma once
 
 #include "ast_flags.h"
 #include "utils/string.h"
@@ -82,4 +81,3 @@ void symtab_it_begin(symtab_it* stit, symbol_table* st);
 symtab_it symtab_it_make(symbol_table* st);
 symbol* symtab_it_next(symtab_it* stit);
 
-#endif

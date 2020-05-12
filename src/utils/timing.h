@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_TIMING_H
-#define TAUC_UTILS_TIMING_H
+#pragma once
 
 #include "plattform.h"
 #include "types.h"
@@ -73,4 +72,3 @@ freg timespan_get_fminutes(timespan* t);
 freg timespan_get_fhours(timespan* t);
 freg timespan_get_fdays(timespan* t);
 
-#endif

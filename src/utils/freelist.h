@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_FREELIST_H
-#define TAUC_UTILS_FREELIST_H
+#pragma once
 
 #include "pool.h"
 
@@ -64,4 +63,3 @@ static inline void freelist_clear(freelist* f)
     f->alloc_count = 0;
 #endif
 }
-#endif

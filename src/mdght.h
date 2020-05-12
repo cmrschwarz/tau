@@ -1,5 +1,4 @@
-#ifndef TAUC_MDGHT_H
-#define TAUC_MDGHT_H
+#pragma once
 
 #include "ast.h"
 #include "utils/allocator.h"
@@ -55,4 +54,3 @@ mdg_node* mdght_remove_node(mdght* h, mdg_node* n);
 mdg_node* mdght_remove_node_ph(mdght* h, ureg phash, mdg_node* n);
 
 int mdght_grow(mdght* h);
-#endif

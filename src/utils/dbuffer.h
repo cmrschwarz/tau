@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_DBUFFER_H
-#define TAUC_UTILS_DBUFFER_H
+#pragma once
 
 #include "allocator.h"
 #include "types.h"
@@ -54,4 +53,3 @@ int dbuffer_append(dbuffer* db, const void* data, ureg size);
         (*(typeof(val)*)dbuffer_claim(db, sizeof(val))) = (val);               \
     } while (0)
 
-#endif

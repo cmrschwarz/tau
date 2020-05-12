@@ -1,5 +1,4 @@
-#ifndef TAUC_AST_H
-#define TAUC_AST_H
+#pragma once
 
 #include "src_map.h"
 #include "ast_flags.h"
@@ -815,4 +814,3 @@ ast_node* get_parent_body(scope* parent);
 void ast_node_get_bounds(ast_node* n, ureg* start, ureg* end);
 char* op_to_str(operator_kind t);
 
-#endif

@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_FNV_HASH_H
-#define TAUC_UTILS_FNV_HASH_H
+#pragma once
 
 #include "types.h"
 // the FNV-1a hash algorithm
@@ -57,4 +56,3 @@ static inline ureg fnv_fold_bc(ureg hash, ureg bitcount)
     return fnv_fold(hash, bitcount, (1 << bitcount) - 1);
 }
 
-#endif

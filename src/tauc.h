@@ -1,5 +1,4 @@
-#ifndef TAUC_TAUC_H
-#define TAUC_TAUC_H
+#pragma once
 #include "file_map.h"
 #include "job_queue.h"
 #include "thread_context.h"
@@ -90,4 +89,3 @@ void tauc_scaffolding_fin(tauc* t);
 
 #define TAU_TIME_STAGE(t, code) TAU_TIME_STAGE_CTX(t, , code, )
 
-#endif

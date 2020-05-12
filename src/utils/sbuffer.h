@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_SBUFFER_H
-#define TAUC_UTILS_SBUFFER_H
+#pragma once
 
 #include "allocator.h"
 #include "math_utils.h"
@@ -99,4 +98,3 @@ static inline void* sbuffer_iterator_get(sbuffer_iterator* sbi, ureg size)
     return sbi->pos;
 }
 
-#endif

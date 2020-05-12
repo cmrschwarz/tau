@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_TIMING_LINUX_H
-#define TAUC_UTILS_TIMING_LINUX_H
+#pragma once
 
 #include <time.h>
 
@@ -19,4 +18,3 @@ typedef struct multi_timer_s {
     struct timespec real_end;
 } multi_timer;
 
-#endif

@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_PLATTFORM_H
-#define TAUC_UTILS_PLATTFORM_H
+#pragma once
 
 #include "types.h"
 
@@ -28,4 +27,3 @@ void platttform_override_virt_core_count(ureg count);
 #define DEBUG 1
 #endif
 
-#endif

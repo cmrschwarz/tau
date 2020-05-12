@@ -1,5 +1,4 @@
-#ifndef TAUC_TOKEN_H
-#define TAUC_TOKEN_H
+#pragma once
 #include "src_map.h"
 #include "utils/c_extensions.h"
 #include "utils/string.h"
@@ -141,4 +140,3 @@ static inline bool token_is_keyword(token* t)
 token_kind match_kw(string str);
 
 void token_debug_print(src_file* f, token* t);
-#endif

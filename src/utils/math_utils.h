@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_MATH_UTILS_H
-#define TAUC_UTILS_MATH_UTILS_H
+#pragma once
 
 #include "plattform.h"
 #include "types.h"
@@ -90,4 +89,3 @@ static inline ureg ceil_to_mult_of_pow_two(ureg val, ureg pow2)
 {
     return CEIL_TO_MULT_OF_POW2(val, pow2);
 }
-#endif

@@ -1,5 +1,4 @@
-#ifndef TAUC_PARSER_H
-#define TAUC_PARSER_H
+#pragma once
 #include "ast.h"
 #include "lexer.h"
 #include "utils/list_builder.h"
@@ -50,4 +49,3 @@ parse_error parser_parse_paste_stmt(
     bool owned_st);
 
 bool ast_node_may_drop_semicolon(ast_node* n);
-#endif

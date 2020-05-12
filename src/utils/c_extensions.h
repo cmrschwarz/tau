@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_C_EXTENSIONS_H
-#define TAUC_UTILS_C_EXTENSIONS_H
+#pragma once
 
 #include "plattform.h"
 
@@ -19,4 +18,3 @@
 #define STR_CAT(a, b) a b
 #define STR_CAT_3(a, b, c) a b c
 
-#endif

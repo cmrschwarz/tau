@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_ATOMICS_H
-#define TAUC_UTILS_ATOMICS_H
+#pragma once
 
 #include "plattform.h"
 
@@ -53,4 +52,3 @@ sreg atomic_sreg_sub(atomic_sreg* a, sreg v);
 bool atomic_sreg_cas(atomic_sreg* a, sreg* oldval, sreg newval);
 void atomic_sreg_fin(atomic_sreg* a);
 
-#endif

@@ -1,5 +1,4 @@
-#ifndef TAUC_RESOLVER_H
-#define TAUC_RESOLVER_H
+#pragma once
 
 #include "mdg.h"
 #include "ast.h"
@@ -119,4 +118,3 @@ resolve_error report_redeclaration_error(
     resolver* r, symbol* redecl, symbol* prev, symbol_table* st);
 ureg claim_symbol_id(resolver* r, symbol* s, bool public_st);
 bool ctypes_unifiable(ast_elem* a, ast_elem* b);
-#endif

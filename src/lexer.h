@@ -1,5 +1,4 @@
-#ifndef TAUC_LEXER_H
-#define TAUC_LEXER_H
+#pragma once
 
 #include "src_map.h"
 #include "token.h"
@@ -69,4 +68,3 @@ static inline token* lx_aquire(lexer* lx)
     assert(lx->loaded_tokens_start != lx->loaded_tokens_head);
     return lx->loaded_tokens_start;
 }
-#endif

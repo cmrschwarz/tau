@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_ATOMICS_LIBC_H
-#define TAUC_UTILS_ATOMICS_LIBC_H
+#pragma once
 #define USE_LIBC_ATOMICS
 #include "../../types.h"
 typedef struct atomic_ureg_s {
@@ -16,4 +15,3 @@ typedef struct atomic_ptr_s {
 typedef struct atomic_boolean_s {
     volatile bool val;
 } atomic_boolean;
-#endif

@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_LIST_BUILDER_H
-#define TAUC_UTILS_LIST_BUILDER_H
+#pragma once
 #include "pool.h"
 
 typedef struct list_build_segment_s {
@@ -40,4 +39,3 @@ void* list_builder_pop_block_list_zt(
 
 void list_builder_drop_list(list_builder* b, void* list_start);
 
-#endif

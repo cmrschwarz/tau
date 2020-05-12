@@ -1,5 +1,4 @@
-#ifndef TAUC_THREAD_CONTEXT_H
-#define TAUC_THREAD_CONTEXT_H
+#pragma once
 #include "error_log.h"
 #include "job_queue.h"
 #include "mdg.h"
@@ -38,4 +37,3 @@ void thread_context_run(thread_context* tc);
 int thread_context_do_job(thread_context* tc, job* j);
 int thread_context_preorder_job(thread_context* tc);
 
-#endif

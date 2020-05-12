@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_THREADING_LINUX_H
-#define TAUC_UTILS_THREADING_LINUX_H
+#pragma once
 
 #ifndef __USE_UNIX98
 #define __USE_UNIX98
@@ -23,4 +22,3 @@ typedef pthread_mutex_t mutex;
 typedef pthread_cond_t cond_var;
 typedef pthread_rwlock_t rwlock;
 
-#endif

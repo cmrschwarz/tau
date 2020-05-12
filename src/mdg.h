@@ -1,5 +1,4 @@
-#ifndef TAUC_MDG_H
-#define TAUC_MDG_H
+#pragma once
 
 #include "ast.h"
 #include "mdght.h"
@@ -50,7 +49,7 @@ typedef struct mdg_node_s {
     struct mdg_node_s* parent;
     char* name;
     atomic_ureg unparsed_files;
-    // these are used in the scc detector. don't confuse these with
+    // these ids are used in the scc detector. don't confuse these with
     // the symbol ids used in the llvm backend, they don't share an "id space"
     ureg id;
     atomic_ureg decl_count;
@@ -141,4 +140,3 @@ void scc_detector_fin(scc_detector* d);
 int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc);
 
 void free_body_symtabs(ast_node* node, ast_body* b);
-#endif

@@ -1,5 +1,4 @@
-#ifndef TAUC_ERROR_LOG_H
-#define TAUC_ERROR_LOG_H
+#pragma once
 
 #include "utils/aseglist.h"
 #include "src_map.h"
@@ -133,4 +132,3 @@ void error_log_report_allocation_failiure(error_log* el);
 void error_log_report_synchronization_failiure(error_log* el);
 void error_log_report_critical_failiure(error_log* el, const char* msg);
 
-#endif

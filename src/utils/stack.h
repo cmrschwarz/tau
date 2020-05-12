@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_STACK_H
-#define TAUC_UTILS_STACK_H
+#pragma once
 
 #include "allocator.h"
 
@@ -157,4 +156,3 @@ stack_pop_to_list(stack* s, stack_state* start, stack_state* end, void** tgt)
     }
 }
 
-#endif

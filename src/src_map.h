@@ -1,5 +1,4 @@
-#ifndef TAUC_SRC_MAP_H
-#define TAUC_SRC_MAP_H
+#pragma once
 #include "utils/allocator.h"
 #include "utils/dbuffer.h"
 #include "utils/string.h"
@@ -77,4 +76,3 @@ int src_map_read(src_map* smap, ureg size, ureg* read_size, char* tgt);
 int src_map_seek_set(src_map* smap, ureg pos);
 void src_map_close(src_map* smap);
 
-#endif

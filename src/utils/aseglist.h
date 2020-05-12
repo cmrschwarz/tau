@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_ASEGLIST_H
-#define TAUC_UTILS_ASEGLIST_H
+#pragma once
 
 #include "atomic_pool.h"
 #include "utils/error.h"
@@ -130,4 +129,3 @@ static inline int aseglist_add(aseglist* l, void* data)
     }
 }
 
-#endif

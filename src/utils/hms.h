@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_HMS_H
-#define TAUC_UTILS_HMS_H
+#pragma once
 
 #include "allocator.h"
 #include "types.h"
@@ -29,4 +28,3 @@ hms_node* hms_get_node(hms* h, const char* key);
 void* hms_remove(hms* h, const char* key);
 int hms_grow(hms* h);
 
-#endif

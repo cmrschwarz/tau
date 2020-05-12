@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_STRING_H
-#define TAUC_UTILS_STRING_H
+#pragma once
 
 #include "stdio.h"
 #include "types.h"
@@ -156,4 +155,3 @@ static inline int get_utf8_seq_len_from_head(char c)
     return r;
 }
 
-#endif

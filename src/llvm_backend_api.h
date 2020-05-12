@@ -1,5 +1,4 @@
-#ifndef TAUC_LLVM_BACKEND_API_H
-#define TAUC_LLVM_BACKEND_API_H
+#pragma once
 
 #ifdef __cplusplus
 extern "C" {
@@ -63,5 +62,4 @@ int llvm_initialize_primitive_information();
 
 #ifdef __cplusplus
 }
-#endif
 #endif

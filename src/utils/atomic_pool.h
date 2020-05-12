@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_ATOMIC_POOL_H
-#define TAUC_UTILS_ATOMIC_POOL_H
+#pragma once
 
 #include "pool.h"
 #include "threading.h"
@@ -44,4 +43,3 @@ static inline void atomic_pool_clear(atomic_pool* p)
     mutex_unlock(&p->mtx);
 }
 
-#endif

@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_DEBUG_UTILS_H
-#define TAUC_UTILS_DEBUG_UTILS_H
+#pragma once
 
 #include "timing.h"
 #include <stdio.h>
@@ -42,4 +41,3 @@ void debug_utils_free_res();
 // for variables only used in asserts to get rid of -Wunused-variable
 #define UNUSED(x) ((void)(x))
 
-#endif

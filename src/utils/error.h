@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_ERROR_H
-#define TAUC_UTILS_ERROR_H
+#pragma once
 
 #define ERR -1
 // zero to allow error handling like if(res){errorhandling}
@@ -12,4 +11,3 @@
 #define STATUS_4 4
 #define STATUS_5 5
 
-#endif

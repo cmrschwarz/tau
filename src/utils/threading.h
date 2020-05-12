@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_THREADING_H
-#define TAUC_UTILS_THREADING_H
+#pragma once
 
 #include "plattform.h"
 #include "types.h"
@@ -49,4 +48,3 @@ void cond_var_notify_one(cond_var* cv);
 void cond_var_notify_all(cond_var* cv);
 void cond_var_fin(cond_var* cv);
 
-#endif

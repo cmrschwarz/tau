@@ -1,5 +1,4 @@
-#ifndef TAUC_UTILS_POOL_H
-#define TAUC_UTILS_POOL_H
+#pragma once
 
 #include "allocator.h"
 #include "types.h"
@@ -19,4 +18,3 @@ void pool_fin(pool* p);
 void* pool_alloc(pool* p, ureg size);
 void pool_clear(pool* p);
 
-#endif

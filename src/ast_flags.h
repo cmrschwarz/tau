@@ -1,5 +1,4 @@
-#ifndef TAUC_AST_NODE_FLAGS_H
-#define TAUC_AST_NODE_FLAGS_H
+#pragma once
 
 #include "utils/c_extensions.h"
 typedef u16 ast_flags;
@@ -138,4 +137,3 @@ bool ast_flags_get_error(ast_flags f);
 void ast_flags_set_instance_member(ast_flags* f);
 bool ast_flags_get_instance_member(ast_flags f);
 
-#endif

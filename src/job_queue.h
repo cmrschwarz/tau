@@ -1,5 +1,4 @@
-#ifndef TAUC_JOB_QUEUE_H
-#define TAUC_JOB_QUEUE_H
+#pragma once
 
 #include "src_map.h"
 #include "mdg.h"
@@ -74,4 +73,3 @@ int job_queue_try_pop(job_queue* jq, job* j);
 void job_queue_check_waiters(job_queue* jq, ureg break_on_waiter_count);
 
 void job_queue_stop(job_queue* jq);
-#endif
