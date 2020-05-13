@@ -42,7 +42,7 @@ static inline bool module_stage_needed(module_stage ms)
 {
     return ms != MS_UNNEEDED && ms != MS_AWAITING_NEED;
 }
-
+typedef struct partial_resolution_data_s partial_resolution_data;
 typedef struct mdg_node_s {
     // TODO: make this an ast node/element for the symtab owning node to work
     ast_elem elem;
@@ -55,11 +55,15 @@ typedef struct mdg_node_s {
     atomic_ureg decl_count;
     atomic_ureg using_count;
     symbol_table* symtab;
+    partial_resolution_data* partial_res_data;
 
     rwlock lock; // everything below here is under the stage lock
     module_stage stage;
     pp_emission_stage ppe_stage;
-    bool pp_libs_requested;
+    // whether some module (maybe itself) was found to use this in the pp
+    // in that case all deps of this need to be recursively loaded in the pp
+    // when we set this to true (initially false) we do this for all known ones
+    bool requested_for_pp;
     aseglist notify; // only requires stage read lock
     aseglist dependencies; // only requires stage read lock
     aseglist module_frames; // only requires stage read lock

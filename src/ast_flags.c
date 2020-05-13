@@ -86,6 +86,15 @@ bool ast_flags_get_pp_stmt_end_unreachabale(ast_flags f)
     return bitmask_get_bit(f, ASTF_PP_STMT_END_UNREACHABLE);
 }
 
+bool ast_flags_get_emitted_for_pp(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_EMITTED_FOR_PP);
+}
+void ast_flags_set_emitted_for_pp(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_EMITTED_FOR_PP);
+}
+
 void ast_flags_set_comptime(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_COMPTIME_OFFSET);
@@ -206,14 +215,6 @@ bool ast_flags_get_resolving(ast_flags f)
     return bitmask_get_bit(f, ASTF_RESOLVING_OFFSET);
 }
 
-void ast_flags_set_overloaded_in_pp(ast_flags* f)
-{
-    bitmask_set_bit(f, ASTF_OVERLOADED_IN_PP_OFFSET);
-}
-bool ast_flags_get_overloaded_in_pp(ast_flags f)
-{
-    return bitmask_get_bit(f, ASTF_OVERLOADED_IN_PP_OFFSET);
-}
 void ast_flags_set_used_in_pp(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_USED_IN_PP_OFFSET);

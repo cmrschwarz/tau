@@ -38,6 +38,10 @@ typedef struct job_s {
     } concrete;
 } job;
 
+// TODO: have separate job lists per thread so that we can give a
+// thread affinity to partial resolutions (-> no private symbol redo in llvm)
+// also have a 'beta queue' for resolution of mdgs with resolved but ungenerated
+// deps so other jobs are preferred
 typedef struct job_queue_s {
     job* buffer;
     job* buffer_end;

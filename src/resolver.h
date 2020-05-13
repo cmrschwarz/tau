@@ -50,6 +50,21 @@ typedef struct pp_resolve_node_s {
     struct pp_resolve_node_s* next;
 } pp_resolve_node;
 
+typedef struct partial_resolution_data_s {
+    pool pprn_mem;
+    mdg_node** begin;
+    mdg_node** end;
+    mdg_node* single_store;
+    ureg id_space;
+    ureg private_sym_count;
+    ureg public_sym_count;
+    ureg pprn_count;
+    ureg pprn_pending_count;
+    ureg pprn_waiting_count;
+    pp_resolve_node** pending_pprns;
+    pp_resolve_node** waiting_pprns;
+} partial_resolution_data;
+
 typedef struct resolver_s {
     // general stuff
     thread_context* tc;
@@ -96,8 +111,6 @@ typedef struct resolver_s {
     // this is used to determine whether the curr block is inside the decl
     // or the other way round by storing the block the func decl is in
     ast_node* curr_var_decl_block_owner;
-    bool multi_evaluation_ctx;
-    ureg pp_generation;
 } resolver;
 
 int resolver_init(resolver* r, thread_context* tc);

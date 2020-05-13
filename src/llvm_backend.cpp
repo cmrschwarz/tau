@@ -2099,7 +2099,14 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     if (!func) return LLE_FATAL;
     *res = func;
     if (llfn) *llfn = func;
-    *state = (_pp_mode && isLocalID(fn->id)) ? PP_IMPL_ADDED : IMPL_ADDED;
+    if (_pp_mode) {
+        assert(isLocalID(fn->id));
+        *state = PP_IMPL_ADDED;
+        ast_flags_set_emitted_for_pp(&fn->fnb.sc.osym.sym.node.flags);
+    }
+    else {
+        *state = IMPL_ADDED;
+    }
     _reset_after_emit.push_back(fn->id);
     llvm::BasicBlock* func_block = llvm::BasicBlock::Create(_context, "", func);
     if (!func_block) return LLE_FATAL;

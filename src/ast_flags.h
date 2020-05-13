@@ -25,7 +25,7 @@ typedef enum PACK_ENUM dtor_kind_e {
 // after the resolver we repurpose these bits
 #define ASTF_DECLARED_OFFSET 0 // on any ast node, during resolvion
 #define ASTF_RESOLVING_OFFSET 1 // on any ast node, during resolvion
-#define ASTF_DTOR_KIND_OFFSET 0 // on sym var, set during prp
+#define ASTF_DTOR_KIND_OFFSET 0 // on sym var (when in func), set during prp
 #define ASTF_DTOR_KIND_MASK (0x3 << ASTF_ACCESS_MODIFIER_OFFSET)
 
 #define ASTF_RESOLVED_OFFSET 2
@@ -52,13 +52,14 @@ typedef enum PACK_ENUM dtor_kind_e {
 #define ASTF_RELATIVE_IMPORT_OFFSET 8 // on sym_import_module (when not ::xx)
 #define ASTF_EXTERN_FUNC_OFFSET 8 // on funcs
 
-#define ASTF_OVERLOADED_IN_PP_OFFSET 9 // TODO: implement "use xor change" rule
+// on funcs and global vars. needed for interupted resolution
+#define ASTF_EMITTED_FOR_PP 9
 
-#define ASTF_USED_IN_PP_OFFSET 10
+#define ASTF_USED_IN_PP_OFFSET 10 // TODO: used xor overloaded in pp
 
-#define ASTF_FUNC_IS_OP_OFFSET 11 // on funcs / ops
+#define ASTF_FUNC_IS_OP_OFFSET 11 // on funcs --> ops
 
-#define ASTF_INSTANCE_MEMBER_OFFSET 12 // on funcs and vars
+#define ASTF_INSTANCE_MEMBER_OFFSET 12 // on funcs and vars and expr_calls
 
 // needs 3 bits (13 - 15)
 #define ASTF_ACCESS_MODIFIER_OFFSET 13 // on any symbol
@@ -133,7 +134,8 @@ bool ast_flags_get_used_in_pp(ast_flags f);
 void ast_flags_set_error(ast_flags* f);
 bool ast_flags_get_error(ast_flags f);
 
-// used for expr_calls, funcs and vars
 void ast_flags_set_instance_member(ast_flags* f);
 bool ast_flags_get_instance_member(ast_flags f);
 
+bool ast_flags_get_emitted_for_pp(ast_flags f);
+void ast_flags_set_emitted_for_pp(ast_flags* f);

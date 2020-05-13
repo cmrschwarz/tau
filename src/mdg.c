@@ -136,7 +136,8 @@ mdg_node* mdg_node_create(
     n->stage = initial_stage;
     n->symtab = NULL;
     n->ppe_stage = PPES_UNNEEDED;
-    n->pp_libs_requested = false;
+    n->requested_for_pp = false;
+    n->partial_res_data = NULL;
     return n;
 }
 void free_body_symtabs(ast_node* node, ast_body* b);
@@ -888,8 +889,8 @@ int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp)
     if (in_pp) {
         bool pplr;
         rwlock_write(&n->lock);
-        pplr = n->pp_libs_requested;
-        if (!pplr) n->pp_libs_requested = true;
+        pplr = n->requested_for_pp;
+        if (!pplr) n->requested_for_pp = true;
         rwlock_end_write(&n->lock);
         if (pplr) return OK;
     }
