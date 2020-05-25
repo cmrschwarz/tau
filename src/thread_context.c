@@ -9,9 +9,10 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
 {
     switch (i) {
         case -1:
-        case 9: list_builder_fin(&tc->listb2); // fallthrough
-        case 8: list_builder_fin(&tc->listb); // fallthrough
-        case 7: stack_fin(&tc->tempstack); // fallthrough
+        case 10: list_builder_fin(&tc->listb2); // fallthrough
+        case 9: list_builder_fin(&tc->listb); // fallthrough
+        case 8: stack_fin(&tc->temp_stack); // fallthrough
+        case 7: sbuffer_fin(&tc->temp_buffer); // fallthrough
         case 6: scc_detector_fin(&tc->sccd); // fallthrough
         case 5: resolver_fin(&tc->r); // fallthrough
         case 4: parser_fin(&tc->p); // fallthrough
@@ -49,14 +50,16 @@ int thread_context_init(thread_context* tc, tauc* t)
     if (r) return thread_context_partial_fin(tc, r, 3);
     r = resolver_init(&tc->r, tc);
     if (r) return thread_context_partial_fin(tc, r, 4);
-    r = scc_detector_init(&tc->sccd, &tc->permmem);
+    r = scc_detector_init(&tc->sccd, tc);
     if (r) return thread_context_partial_fin(tc, r, 5);
-    r = stack_init(&tc->tempstack, &tc->permmem);
+    r = sbuffer_init(&tc->temp_buffer, 64);
     if (r) return thread_context_partial_fin(tc, r, 6);
-    r = list_builder_init(&tc->listb, &tc->tempmem, 64);
+    r = stack_init(&tc->temp_stack, &tc->permmem);
     if (r) return thread_context_partial_fin(tc, r, 7);
-    r = list_builder_init(&tc->listb2, &tc->tempmem, 64);
+    r = list_builder_init(&tc->listb, &tc->tempmem, 64);
     if (r) return thread_context_partial_fin(tc, r, 8);
+    r = list_builder_init(&tc->listb2, &tc->tempmem, 64);
+    if (r) return thread_context_partial_fin(tc, r, 9);
     tc->has_preordered = false;
     return OK;
 }

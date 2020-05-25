@@ -1,11 +1,13 @@
 #pragma once
 #include "error_log.h"
 #include "job_queue.h"
+#include "scc_detector.h"
 #include "mdg.h"
 #include "parser.h"
 #include "resolver.h"
 #include "utils/pool.h"
 #include "utils/stack.h"
+#include "utils/sbuffer.h"
 typedef struct tauc_s tauc;
 typedef struct thread_context_s {
     tauc* t;
@@ -17,7 +19,8 @@ typedef struct thread_context_s {
     parser p;
     resolver r;
     scc_detector sccd;
-    stack tempstack;
+    sbuffer temp_buffer;
+    stack temp_stack;
     sbuffer modules;
     bool has_preordered;
 } thread_context;
@@ -36,4 +39,3 @@ void thread_context_fin(thread_context* tc);
 void thread_context_run(thread_context* tc);
 int thread_context_do_job(thread_context* tc, job* j);
 int thread_context_preorder_job(thread_context* tc);
-

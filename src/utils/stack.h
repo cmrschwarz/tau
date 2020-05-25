@@ -1,7 +1,8 @@
 #pragma once
 
 #include "allocator.h"
-
+// this gives us 5 elements in the first segment since the metadata is 3 void*
+#define STACK_SEG_MIN_SIZE (sizeof(void*) * 8)
 typedef struct stack_segment_s {
     struct stack_segment_s* prev;
     struct stack_segment_s* next;
@@ -10,29 +11,47 @@ typedef struct stack_segment_s {
 
 typedef struct stack_s {
     stack_segment* curr_seg;
-    void** curr_seg_start;
     void** head;
     pool* mempool;
 } stack;
 
-typedef struct stack_state_s {
+typedef struct stack_iter_s {
     stack_segment* curr_seg;
     void** head;
-} stack_state;
+} stack_iter;
 
-static inline void stack_state_save(stack_state* ss, stack* s)
+static inline bool stack_seg_empty(stack_segment* seg, void** head)
 {
-    ss->curr_seg = s->curr_seg;
-    ss->head = s->head;
+    return ptrdiff(head, seg) == sizeof(stack_segment);
 }
-static inline void stack_state_apply(stack_state* ss, stack* s)
+
+static inline ureg stack_seg_elems(stack_segment* seg, void** head)
 {
-    s->curr_seg = ss->curr_seg;
-    s->head = ss->head;
+    return (ptrdiff(head, seg) - sizeof(stack_segment)) / sizeof(void*);
+}
+static inline void stack_iter_begin(stack_iter* sit, stack* s)
+{
+    sit->curr_seg = s->curr_seg;
+    sit->head = s->head;
+}
+static inline void* stack_iter_prev(stack_iter* sit)
+{
+    if (stack_seg_empty(sit->curr_seg, sit->head)) {
+        if (sit->curr_seg->prev == NULL) return NULL;
+        sit->curr_seg = sit->curr_seg->prev;
+        sit->head = sit->curr_seg->end;
+    }
+    sit->head--;
+    return *sit->head;
+}
+static inline void stack_set_end(stack* s, stack_iter* sit)
+{
+    s->curr_seg = sit->curr_seg;
+    s->head = sit->head;
 }
 static inline ureg stack_is_empty(stack* s)
 {
-    return (s->curr_seg->prev == NULL && s->head == s->curr_seg_start);
+    return s->curr_seg->prev == NULL && stack_seg_empty(s->curr_seg, s->head);
 }
 
 static inline stack_segment*
@@ -44,20 +63,16 @@ stack_alloc_segment(stack* s, ureg size, stack_segment* prev)
     seg->end = (void**)ptradd(seg, size);
     seg->prev = prev;
     seg->next = NULL;
+    prev->next = seg;
     return seg;
 }
-static inline void stack_set_curr_seg(stack* s, stack_segment* seg)
-{
-    s->curr_seg = seg;
-    s->curr_seg_start = (void**)ptradd(seg, sizeof(stack_segment));
-}
+
 static inline int stack_init(stack* s, pool* mempool)
 {
     s->mempool = mempool;
-    s->curr_seg = stack_alloc_segment(s, 16, NULL);
+    s->curr_seg = stack_alloc_segment(s, STACK_SEG_MIN_SIZE, NULL);
     if (!s->curr_seg) return ERR;
-    stack_set_curr_seg(s, s->curr_seg);
-    s->head = s->curr_seg_start;
+    s->head = (void**)ptradd(s->curr_seg, sizeof(stack_segment));
     return OK;
 }
 static inline void stack_fin(stack* s)
@@ -66,13 +81,16 @@ static inline void stack_fin(stack* s)
 static inline int stack_push(stack* s, void* data)
 {
     if (s->head == s->curr_seg->end) {
-        if (!s->curr_seg->next) {
-            s->curr_seg->next = stack_alloc_segment(
-                s, ptrdiff(s->curr_seg->end, s->curr_seg) * 2, s->curr_seg);
-            if (!s->curr_seg->next) return ERR;
-            stack_set_curr_seg(s, s->curr_seg->next);
-            s->head = s->curr_seg_start;
+        if (s->curr_seg->next) {
+            s->curr_seg = s->curr_seg->next;
         }
+        else {
+            stack_segment* ss = stack_alloc_segment(
+                s, ptrdiff(s->curr_seg->end, s->curr_seg) * 2, s->curr_seg);
+            if (!ss) return ERR;
+            s->curr_seg = ss;
+        }
+        s->head = (void**)ptradd(s->curr_seg, sizeof(stack_segment));
     }
     *s->head = data;
     s->head++;
@@ -80,9 +98,9 @@ static inline int stack_push(stack* s, void* data)
 }
 static inline void* stack_pop(stack* s)
 {
-    if (s->head == s->curr_seg_start) {
+    if (stack_seg_empty(s->curr_seg, s->head)) {
         if (s->curr_seg->prev == NULL) return NULL;
-        stack_set_curr_seg(s, s->curr_seg->prev);
+        s->curr_seg = s->curr_seg->prev;
         s->head = s->curr_seg->end;
     }
     s->head--;
@@ -90,21 +108,20 @@ static inline void* stack_pop(stack* s)
 }
 static inline void stack_clear(stack* s)
 {
-    while (s->curr_seg->prev) {
-        s->curr_seg = s->curr_seg->prev;
-    }
-    stack_set_curr_seg(s, s->curr_seg);
-    s->head = s->curr_seg_start;
+    stack_segment* seg = s->curr_seg;
+    while (seg->prev) seg = seg->prev;
+    s->curr_seg = seg;
+    s->head = (void**)ptradd(seg, sizeof(stack_segment));
 }
 static inline void* stack_peek(stack* s)
 {
-    if (s->head != s->curr_seg_start) return *(s->head - 1);
+    if (!stack_seg_empty(s->curr_seg, s->head)) return *(s->head - 1);
     if (s->curr_seg->prev == NULL) return NULL;
     return *(s->curr_seg->prev->end - 1);
 }
 static inline int stack_set(stack* s, void* value)
 {
-    if (s->head != s->curr_seg_start) {
+    if (!stack_seg_empty(s->curr_seg, s->head)) {
         *(s->head - 1) = value;
         return OK;
     }
@@ -114,45 +131,41 @@ static inline int stack_set(stack* s, void* value)
 }
 static inline void* stack_peek_prev(stack* s)
 {
-    if (s->head > s->curr_seg_start + 1) return *(s->head - 2);
+    ureg elems = stack_seg_elems(s->curr_seg, s->head);
+    if (elems > 1) return *(s->head - 2);
     if (s->curr_seg->prev == NULL) return NULL;
-    return *(s->curr_seg->end - 1);
+    return *(s->curr_seg->prev->end - (2 - elems));
 }
-static inline void* stack_peek_nth(stack* s, int i)
+// returns the element at position <stack top element pos> - i
+static inline void* stack_peek_nth(stack* s, ureg i)
 {
-    if (s->head > s->curr_seg_start + i) return *(s->head - i - 1);
-    stack_state ss;
-    void* res;
-    stack_state_save(&ss, s);
-    while (s->head <= s->curr_seg_start + i) {
-        if (s->curr_seg->prev == NULL) return NULL;
-        stack_set_curr_seg(s, s->curr_seg->prev);
-        s->head = s->curr_seg->end;
-        i -= s->head - s->curr_seg_start;
-    }
-    res = *(s->head - i - 1);
-    stack_state_apply(&ss, s);
-    return res;
-}
-
-static inline ureg stack_size(stack* s)
-{
-    ureg size = ptrdiff(s->head, s->curr_seg_start);
-    stack_segment* seg = s->curr_seg->prev;
-    while (seg) {
-        size += ptrdiff(seg->end, seg) - sizeof(stack_segment);
+    stack_segment* seg = s->curr_seg;
+    void** head = s->head;
+    while (true) {
+        ureg elems = stack_seg_elems(seg, head);
+        if (elems >= i) return *(head - i - 1);
         seg = seg->prev;
+        if (!seg) return NULL;
+        i -= elems;
+        head = seg->end;
     }
-    return size / sizeof(void*);
 }
 
-static inline void
-stack_pop_to_list(stack* s, stack_state* start, stack_state* end, void** tgt)
+static inline ureg stack_element_count(stack* s)
 {
-    stack_state_apply(end, s);
-    while (s->head != start->head) {
-        *tgt = stack_pop(s);
-        tgt++;
-    }
+    ureg curr_seg_size = ptrdiff(s->curr_seg->end, s->curr_seg);
+    ureg seg_count = ulog2(curr_seg_size) - ulog2(STACK_SEG_MIN_SIZE) + 1;
+    // size of the segments combined
+    ureg space = (2 * seg_count - 1) * STACK_SEG_MIN_SIZE;
+    // subtract size of the metadata
+    space -= seg_count * sizeof(stack_segment);
+    // subtract unused slots in the current segment
+    space -= (ptrdiff(s->head, s->curr_seg) - sizeof(stack_segment));
+    return space / sizeof(void*);
 }
 
+static inline void stack_pop_til_iter(stack* s, stack_iter* it)
+{
+    s->curr_seg = it->curr_seg;
+    s->head = it->head;
+}

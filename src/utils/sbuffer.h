@@ -94,7 +94,10 @@ static inline void* sbuffer_iterator_previous(sbuffer_iterator* sbi, ureg size)
 }
 static inline void* sbuffer_iterator_get(sbuffer_iterator* sbi, ureg size)
 {
-    if (ptrdiff(sbi->seg->tail, sbi->pos) < size) return NULL;
+    ureg rem_size = ptrdiff(sbi->seg->tail, sbi->pos);
+    if (rem_size < size) {
+        assert(rem_size == 0); // otherwise we would allow partial elements
+        return NULL;
+    }
     return sbi->pos;
 }
-

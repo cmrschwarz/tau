@@ -8,8 +8,8 @@
 #include "utils/evmap2.h"
 #include "utils/rwslock.h"
 #include "utils/threading.h"
+#include "utils/list.h"
 // mdg: module dependency graph
-typedef struct mdg_deps_list_s mdg_deps_list;
 typedef struct thread_context_s thread_context;
 typedef struct tauc_s tauc;
 
@@ -56,6 +56,7 @@ typedef struct mdg_node_s {
     atomic_ureg using_count;
     symbol_table* symtab;
     partial_resolution_data* partial_res_data;
+    aseglist module_frames; // doesn't require any locks
 
     rwlock lock; // everything below here is under the stage lock
     module_stage stage;
@@ -64,24 +65,14 @@ typedef struct mdg_node_s {
     // in that case all deps of this need to be recursively loaded in the pp
     // when we set this to true (initially false) we do this for all known ones
     bool requested_for_pp;
-    aseglist notify; // only requires stage read lock
-    aseglist dependencies; // only requires stage read lock
-    aseglist module_frames; // only requires stage read lock
+    list notify;
+    list dependencies;
 } mdg_node;
 
 typedef struct mdg_new_node_s {
     ureg pos;
     mdg_node* node;
 } mdg_new_node;
-
-#define MDG_DEPS_LIST_CAPACITY                                                 \
-    ((sizeof(mdg_new_node) - sizeof(mdg_deps_list*)) / sizeof(mdg_node*))
-
-typedef struct mdg_deps_list_s {
-    mdg_deps_list* next;
-    atomic_ureg count;
-    mdg_node* deps[MDG_DEPS_LIST_CAPACITY];
-} mdg_deps_list;
 
 #define MDG_MAX_CHANGES 16
 typedef struct module_dependency_graph_s {
@@ -111,20 +102,6 @@ mdg_node* mdg_get_node(
     module_dependency_graph* m, mdg_node* parent, string ident,
     module_stage initial_stage);
 
-typedef struct sccd_node_s {
-    ureg index;
-    ureg lowlink;
-} sccd_node;
-
-typedef struct scc_detector_s {
-    ureg allocated_node_count;
-    ureg dfs_index;
-    ureg dfs_start_index;
-    ureg bucketable_node_capacity;
-    sccd_node** sccd_node_buckets;
-    pool* mem_src;
-} scc_detector;
-
 int mdg_node_parsed(
     module_dependency_graph* m, mdg_node* n, thread_context* tc);
 int mdg_node_file_parsed(
@@ -136,10 +113,6 @@ int mdg_node_add_dependency(
     mdg_node* n, mdg_node* dependency, thread_context* tc);
 int mdg_node_add_frame(mdg_node* n, module_frame* mf, thread_context* tc);
 int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp);
-
-int scc_detector_init(scc_detector* d, pool* mem_src);
-int scc_detector_run(thread_context* tc, mdg_node* n);
-void scc_detector_fin(scc_detector* d);
 
 int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc);
 

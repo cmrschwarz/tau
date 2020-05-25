@@ -32,25 +32,29 @@ typedef struct list_s {
 } list;
 
 typedef struct list_it_s {
+    list_node* curr_node;
     void** head;
-    void** end;
-    list_node* next_node;
 } list_it;
+
+typedef struct list_rit_s {
+    list_node* prev_node;
+    void** node_begin;
+    void** head;
+} list_rit;
 
 ureg list_length(list* l);
 int list_append_node(list* l, pool* alloc_pool, void* data);
 void list_remove(list* l, list_it* it);
 void list_remove_swap(list* l, list_it* it);
 
-static inline void list_init(list* l)
+static inline int list_init(list* l)
 {
     l->first_node = NULL;
     l->head_node = (list_node*)((ureg)(NULL_PTR_PTR) | LIST_SSO_CAPACITY);
+    return OK;
 }
 
-static inline void list_fin(list* l)
-{
-}
+void list_fin(list* l, bool tfree);
 
 static inline int list_append(list* l, pool* alloc_pool, void* data)
 {
@@ -70,32 +74,60 @@ static inline int list_append(list* l, pool* alloc_pool, void* data)
     return OK;
 }
 
-static inline void list_it_init(list_it* it, list* l)
+static inline void list_it_begin(list_it* it, list* l)
 {
-    ureg sso_val = ((ureg)l->head_node) & LIST_SSO_MASK;
     it->head = &l->sso_slots[0];
-    it->end = &l->sso_slots[0] + (LIST_SSO_CAPACITY - sso_val);
-    it->next_node = l->first_node;
+    it->curr_node = NULL;
 }
 
-static inline void* list_it_next(list_it* it)
+static inline void* list_it_next(list_it* it, list* l)
 {
-    if (it->head == it->end) {
-        if (it->next_node == NULL) return NULL;
-        it->head = (void**)ptradd(it->next_node, sizeof(list_node));
-        it->end = it->next_node->head;
-        if (it->head == it->end) return NULL;
-        it->next_node = it->next_node->next;
+    if (!it->curr_node) {
+        ureg sso_val = ((ureg)l->head_node) & LIST_SSO_MASK;
+        void** sso_end = &l->sso_slots[0] + (LIST_SSO_CAPACITY - sso_val);
+        if (it->head == sso_end) {
+            if (!l->first_node) return NULL;
+            it->curr_node = l->first_node;
+            it->head = (void**)ptradd(l->first_node, sizeof(list_node));
+        }
+    }
+    while (it->head == it->curr_node->head) {
+        if (!it->curr_node->next) return NULL;
+        if (it->head != it->curr_node->end) return NULL;
+        it->curr_node = it->curr_node->next;
+        it->head = (void**)ptradd(it->curr_node, sizeof(list_node));
     }
     void* res = *it->head;
     it->head++;
     return res;
 }
 
-static inline void* list_it_start(list_it* it, list* l)
+static inline void list_rit_begin_at_end(list_rit* rit, list* l)
 {
-    list_it_init(it, l);
-    return list_it_next(it);
+    ureg sso_val = ((ureg)l->head_node) & LIST_SSO_MASK;
+    if (sso_val) {
+        rit->prev_node = NULL;
+        rit->head = &l->sso_slots[LIST_SSO_CAPACITY - sso_val];
+        rit->node_begin = &l->sso_slots[0];
+        return;
+    }
+    rit->prev_node = l->head_node->prev;
+    rit->head = l->head_node->head;
+    rit->node_begin = (void**)ptradd(l->head_node, sizeof(list_node));
+    return OK;
+}
+
+static inline void* list_rit_prev(list_rit* rit)
+{
+    if (rit->head == rit->node_begin) {
+        if (!rit->prev_node) return NULL;
+        rit->head = rit->prev_node->head;
+        rit->node_begin = (void**)ptradd(rit->prev_node, sizeof(list_node));
+        rit->prev_node = rit->prev_node->prev;
+        return list_rit_prev(rit);
+    }
+    rit->head--;
+    return *rit->head;
 }
 
 static inline void list_clear(list* l)
@@ -114,7 +146,7 @@ static inline void list_clear(list* l)
 static inline void* list_pop_back(list* l)
 {
     ureg sso_val = ((ureg)l->head_node) & LIST_SSO_MASK;
-    if (sso_val) {
+    if (sso_val || l->head_node == (list_node*)NULL_PTR_PTR) {
         assert(sso_val < LIST_SSO_CAPACITY);
         sso_val++;
         l->head_node =

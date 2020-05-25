@@ -256,7 +256,7 @@ int list_test()
         }
         void** i = NULL;
         list_it it;
-        for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it)) {
+        for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it, &l)) {
             i++;
             if (v != i) goto err;
         }
@@ -265,7 +265,7 @@ int list_test()
     }
     res = OK;
 err:
-    list_fin(&l);
+    list_fin(&l, false);
     pool_fin(&mem);
     return res;
 }
@@ -283,20 +283,20 @@ int list_remove_test()
     ureg sum = 0;
     list_it it;
 
-    for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it)) {
+    for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it, &l)) {
         sum += (ureg)v;
         if ((ureg)v % 2 == 0) list_remove_swap(&l, &it);
     }
 
     if (sum != 5050) goto err;
     sum = 0;
-    for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it)) {
+    for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it, &l)) {
         sum += (ureg)v;
         if ((ureg)v % 3 == 0) list_remove_swap(&l, &it);
     }
     if (sum != 2500) goto err;
     sum = 0;
-    for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it)) {
+    for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it, &l)) {
         sum += (ureg)v;
         list_remove_swap(&l, &it);
     }
@@ -304,7 +304,7 @@ int list_remove_test()
     if (!list_empty(&l)) goto err;
     res = OK;
 err:
-    list_fin(&l);
+    list_fin(&l, false);
     pool_fin(&mem);
     return res;
 }
