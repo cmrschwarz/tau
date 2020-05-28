@@ -106,9 +106,9 @@ int mdg_node_parsed(
     module_dependency_graph* m, mdg_node* n, thread_context* tc);
 int mdg_node_file_parsed(
     module_dependency_graph* m, mdg_node* n, thread_context* tc);
-int mdg_node_resolved(mdg_node* n, thread_context* tc);
-int mdg_node_generated(mdg_node* n, thread_context* tc, bool pp_generated);
 int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc);
+int mdg_nodes_generated(
+    mdg_node** start, mdg_node** end, thread_context* tc, bool pp_generated);
 int mdg_node_add_dependency(
     mdg_node* n, mdg_node* dependency, thread_context* tc);
 int mdg_node_add_frame(mdg_node* n, module_frame* mf, thread_context* tc);

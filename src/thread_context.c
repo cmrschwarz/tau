@@ -13,7 +13,7 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
         case 9: list_builder_fin(&tc->listb); // fallthrough
         case 8: stack_fin(&tc->temp_stack); // fallthrough
         case 7: sbuffer_fin(&tc->temp_buffer); // fallthrough
-        case 6: scc_detector_fin(&tc->sccd); // fallthrough
+        case 6: sccd_fin(&tc->sccd); // fallthrough
         case 5: resolver_fin(&tc->r); // fallthrough
         case 4: parser_fin(&tc->p); // fallthrough
         case 3: pool_fin(&tc->tempmem); // fallthrough
@@ -50,7 +50,7 @@ int thread_context_init(thread_context* tc, tauc* t)
     if (r) return thread_context_partial_fin(tc, r, 3);
     r = resolver_init(&tc->r, tc);
     if (r) return thread_context_partial_fin(tc, r, 4);
-    r = scc_detector_init(&tc->sccd, tc);
+    r = sccd_init(&tc->sccd, tc);
     if (r) return thread_context_partial_fin(tc, r, 5);
     r = sbuffer_init(&tc->temp_buffer, 64);
     if (r) return thread_context_partial_fin(tc, r, 6);

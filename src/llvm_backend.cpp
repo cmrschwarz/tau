@@ -2323,9 +2323,8 @@ llvm_error LLVMBackend::emitModule()
         }
     }
     if (!_pp_mode && lle == LLE_OK) {
-        for (mdg_node** n = _mods_start; n != _mods_end; n++) {
-            if (mdg_node_generated(*n, _tc, emit_to_pp)) return LLE_FATAL;
-        }
+        if (mdg_nodes_generated(_mods_start, _mods_end, _tc, emit_to_pp))
+            return LLE_FATAL;
     }
     return lle;
 }

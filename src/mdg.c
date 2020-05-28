@@ -6,6 +6,7 @@
 #include "utils/panic.h"
 #include "utils/threading.h"
 #include "utils/zero.h"
+#include "scc_detector.h"
 #include <assert.h>
 
 int mdg_fin_partial(module_dependency_graph* m, int i, int r)
@@ -400,7 +401,7 @@ int mdg_node_parsed(module_dependency_graph* m, mdg_node* n, thread_context* tc)
         run_scc = false;
     }
     rwlock_end_write(&n->lock);
-    if (run_scc) return scc_detector_run(tc, n);
+    if (run_scc) return sccd_run(&tc->sccd, n);
     return OK;
 }
 int mdg_node_file_parsed(
@@ -514,71 +515,103 @@ void mdg_node_report_missing_import(
         tgt_sym_srl.end, "imported here", smap, tgt_group_srl.start,
         tgt_group_srl.end, NULL);
 }
-
-int mdg_node_resolved(mdg_node* n, thread_context* tc)
-{
-    rwlock_write(&n->lock);
-    n->stage = MS_GENERATING;
-    rwlock_end_write(&n->lock);
-    // TODO: clear notify before actually notifying, since necessary
-    // notifications will be readded and we don't want this to explode
-    aseglist_iterator it;
-    aseglist_iterator_begin(&it, &n->notify);
-    while (true) {
-        mdg_node* dep = aseglist_iterator_next(&it);
-        if (!dep) break;
-        if (scc_detector_run(tc, dep)) return ERR;
-    }
-    return OK;
-}
 int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc)
 {
     for (mdg_node** i = start; i != end; i++) {
         rwlock_write(&(**i).lock);
         (**i).stage = MS_GENERATING;
+        list* l = sbuffer_append(&tc->temp_buffer, sizeof(list));
+        if (!l) {
+            // revert on error
+            // TODO: figure out what to do with the remaining notifys
+            rwlock_end_write(&(**i).lock);
+            for (mdg_node** j = start; j != i; j++) {
+                list_fin(
+                    (list*)sbuffer_back(&tc->temp_buffer, sizeof(list)), true);
+                sbuffer_remove_back(&tc->temp_buffer, sizeof(list));
+            }
+            return ERR;
+        }
+        *l = (**i).notify;
+        list_init(&(**i).notify);
         rwlock_end_write(&(**i).lock);
     }
-    for (mdg_node** i = start; i != end; i++) {
-        aseglist_iterator it;
-        aseglist_iterator_begin(&it, &(**i).notify);
-        while (true) {
-            mdg_node* dep = aseglist_iterator_next(&it);
+    bool ok = true;
+    for (mdg_node** i = end - 1; i != start - 1; i--) {
+        list* l = sbuffer_back(&tc->temp_buffer, sizeof(list));
+        list_it it;
+        list_it_begin(&it, l);
+        while (ok) {
+            mdg_node* dep = list_it_next(&it, l);
             if (!dep) break;
-            if (scc_detector_run(tc, dep)) return ERR;
+            if (sccd_run(&tc->sccd, dep)) ok = false;
+            // TODO: figure out what to do with the remaining notifys on err
         }
+        // we just replace the old notify list with a new one and free the old
+        // one without reusing any allocations. we have SSO anyways and a big
+        // "notify on resolved" list doesn't imply a big "notify on generated"
+        // list
+        list_fin(l, true);
+        sbuffer_remove_back(&tc->temp_buffer, sizeof(list));
     }
-    return OK;
+    return ok ? OK : ERR;
 }
-int mdg_node_generated(mdg_node* n, thread_context* tc, bool pp_generated)
+int mdg_nodes_generated(
+    mdg_node** start, mdg_node** end, thread_context* tc, bool pp_generated)
 {
-    rwlock_write(&n->lock);
-    n->stage = MS_DONE;
-    n->ppe_stage = pp_generated ? PPES_DONE : PPES_SKIPPED;
-    rwlock_end_write(&n->lock);
-    assert(pp_generated || n->parent == NULL); // TODO
-    // TODO: clear notify before actually notifying, since necessary
-    // notifications will be readded and we don't want this to explode
-    aseglist_iterator it;
-    aseglist_iterator_begin(&it, &n->notify);
-    while (true) {
-        ast_elem* dep = aseglist_iterator_next(&it);
-        if (!dep) break;
-        if (dep->kind == ELEM_MDG_NODE) {
-            if (scc_detector_run(tc, (mdg_node*)dep)) return ERR;
+    for (mdg_node** i = start; i != end; i++) {
+        rwlock_write(&(**i).lock);
+        (**i).stage = MS_DONE;
+        (**i).ppe_stage = pp_generated ? PPES_DONE : PPES_SKIPPED;
+        assert(pp_generated || (**i).parent == NULL); // TODO
+        list* l = sbuffer_append(&tc->temp_buffer, sizeof(list));
+        if (!l) {
+            // revert on error
+            // TODO: figure out what to do with the remaining notifys
+            rwlock_end_write(&(**i).lock);
+            for (mdg_node** j = start; j != i; j++) {
+                list_fin(
+                    (list*)sbuffer_back(&tc->temp_buffer, sizeof(list)), true);
+                sbuffer_remove_back(&tc->temp_buffer, sizeof(list));
+            }
+            return ERR;
         }
-        else if (dep->kind == SYM_IMPORT_GROUP) {
-            sym_import_group* ig = (sym_import_group*)dep;
-            atomic_boolean_store(&ig->done, true);
+        *l = (**i).notify;
+        list_init(&(**i).notify);
+        rwlock_end_write(&(**i).lock);
+    }
+    bool ok = true;
+    for (mdg_node** i = end - 1; i != start - 1; i--) {
+        list* l = sbuffer_back(&tc->temp_buffer, sizeof(list));
+        list_it it;
+        list_it_begin(&it, l);
+        while (ok) {
+            ast_elem* dep = list_it_next(&it, l);
+            if (!dep) break;
+            if (dep->kind == ELEM_MDG_NODE) {
+                if (sccd_run(&tc->sccd, (mdg_node*)dep)) ok = false;
+                // TODO: figure out what to do with the remaining notifys on err
+            }
+            else if (dep->kind == SYM_IMPORT_GROUP) {
+                sym_import_group* ig = (sym_import_group*)dep;
+                atomic_boolean_store(&ig->done, true);
+            }
+            else if (dep->kind == SYM_IMPORT_MODULE) {
+                sym_import_module* im = (sym_import_module*)dep;
+                atomic_boolean_store(&im->done, true);
+                // TODO: maybe some condition variable or similar to avoid
+                // busy waiting here
+            }
+            else {
+                assert(false);
+            }
         }
-        else if (dep->kind == SYM_IMPORT_MODULE) {
-            sym_import_module* im = (sym_import_module*)dep;
-            atomic_boolean_store(&im->done, true);
-            // TODO: maybe some condition variable or similar to avoid
-            // busy waiting here
-        }
-        else {
-            assert(false);
-        }
+        // we just replace the old notify list with a new one and free the old
+        // one without reusing any allocations. we have SSO anyways and a big
+        // "notify on resolved" list doesn't imply a big "notify on generated"
+        // list
+        list_fin(l, true);
+        sbuffer_remove_back(&tc->temp_buffer, sizeof(list));
     }
     return OK;
 }
@@ -652,7 +685,9 @@ int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp)
 int mdg_node_require(mdg_node* n, thread_context* tc)
 {
     mdg_node* parent = n->parent;
-    // TODO: evaluate this. we don't really want all the parents
+    // TODO: evaluate this. do we really want all the parents?
+    // maybe introduce a kind of "weak requirement" state for these
+    // to prevent them and all their deps to end up in the binary
     mdg_node* start_node = n;
     bool run_scc = false;
     while (true) {
@@ -665,7 +700,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
         parent = parent->parent;
         if (parent == NULL) break;
     }
-    scc_detector_housekeep_ids(&tc->sccd);
+    sccd_housekeep_ids(&tc->sccd);
     tc->sccd.dfs_start_index = tc->sccd.dfs_index;
     tc->sccd.dfs_index++;
     aseglist* mfs;
@@ -692,7 +727,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
             while (true) {
                 mdg_node* i = aseglist_iterator_next(&it);
                 if (!i) break;
-                sccd_node* sn = scc_detector_get(&tc->sccd, i->id);
+                sccd_node* sn = sccd_get(&tc->sccd, i->id);
                 if (!sn) {
                     rwlock_end_write(&n->lock);
                     return ERR;
@@ -711,7 +746,7 @@ int mdg_node_require(mdg_node* n, thread_context* tc)
         if (r) return r;
         while (true) {
             if (tc->temp_stack.head == stack_head) {
-                if (run_scc) return scc_detector_run(tc, start_node);
+                if (run_scc) return sccd_run(&tc->sccd, start_node);
                 return OK;
             }
             n = stack_pop(&tc->temp_stack);

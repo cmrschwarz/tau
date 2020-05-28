@@ -114,7 +114,6 @@ static inline void list_rit_begin_at_end(list_rit* rit, list* l)
     rit->prev_node = l->head_node->prev;
     rit->head = l->head_node->head;
     rit->node_begin = (void**)ptradd(l->head_node, sizeof(list_node));
-    return OK;
 }
 
 static inline void* list_rit_prev(list_rit* rit)

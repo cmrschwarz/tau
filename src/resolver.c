@@ -1976,7 +1976,7 @@ static inline resolve_error require_module_in_pp(
         else if (mdg->ppe_stage != PPES_RUNNING) {
             diy = true;
             mdg->ppe_stage = PPES_RUNNING;
-            aseglist_add(&mdg->notify, n);
+            list_append(&mdg->notify, NULL, n);
         }
     }
     else {
@@ -1986,7 +1986,7 @@ static inline resolve_error require_module_in_pp(
         }
         else {
             mdg->ppe_stage = PPES_REQUESTED;
-            aseglist_add(&mdg->notify, n);
+            list_append(&mdg->notify, NULL, n);
         }
     }
     rwlock_end_write(&mdg->lock);
@@ -2607,21 +2607,21 @@ static inline resolve_error resolve_ast_node_raw(
 static inline void report_type_loop(resolver* r, ast_node* n, symbol_table* st)
 {
     if (r->tc->t->trap_on_error) debugbreak();
-    ureg stack_s = stack_size(&r->error_stack);
+    ureg stack_ec = stack_element_count(&r->error_stack);
     // we are at the peek of the type loop. unwind and report again.
-    if (stack_s == 0) return;
-    if (stack_peek_nth(&r->error_stack, stack_s - 2) != n) {
+    if (stack_ec == 0) return;
+    if (stack_peek_nth(&r->error_stack, stack_ec - 2) != n) {
         r->retracing_type_loop = true;
         stack_clear(&r->error_stack);
         ast_flags_clear_resolving(&n->flags);
         resolve_ast_node(r, n, st, NULL, NULL);
         stack_pop(&r->error_stack);
         stack_pop(&r->error_stack);
-        stack_s = stack_size(&r->error_stack);
+        stack_ec = stack_element_count(&r->error_stack);
     }
     src_range_large srl;
     ast_node_get_src_range(n, st, &srl);
-    ureg annot_count = stack_s / 2;
+    ureg annot_count = stack_ec / 2;
     annot_count--; // the starting type is on the stack too
     error* e = error_log_create_error(
         r->tc->err_log, ES_RESOLVER, false, "type inference cycle", srl.smap,
@@ -3461,7 +3461,6 @@ int resolver_emit(resolver* r, llvm_module** module)
     if (lle) return RE_ERROR;
 
     // mark nodes as resolved and remap ids
-    int res = 0;
     ureg glob_id_head = glob_id_start;
     for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
         aseglist_iterator it;
@@ -3470,8 +3469,8 @@ int resolver_emit(resolver* r, llvm_module** module)
              mf = aseglist_iterator_next(&it)) {
             adjust_body_ids(r, &glob_id_head, &mf->body);
         }
-        res |= mdg_node_resolved(*n, r->tc);
     }
+    int res = mdg_nodes_resolved(r->mdgs_begin, r->mdgs_end, r->tc);
     if (res) return RE_FATAL;
     assert(glob_id_head - glob_id_start == r->public_sym_count);
 
@@ -3540,12 +3539,14 @@ int resolver_emit(resolver* r, llvm_module** module)
             rwlock_end_write(&(**i).lock);
         }
         for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
-            aseglist_iterator it;
-            aseglist_iterator_begin(&it, &(**i).notify);
+            list_rit rit;
+            rwlock_read(&(**i).lock);
+            list_rit_begin_at_end(&rit, &(**i).notify);
+            rwlock_end_read(&(**i).lock);
             while (true) {
-                mdg_node* dep = aseglist_iterator_next(&it);
+                mdg_node* dep = list_rit_prev(&rit);
                 if (!dep) break;
-                if (scc_detector_run(r->tc, *i)) return ERR;
+                if (sccd_run(&r->tc->sccd, dep)) return ERR;
             }
         }
         *module = NULL;

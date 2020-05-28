@@ -81,9 +81,9 @@ int mdg_test()
     e->stage = MS_AWAITING_DEPENDENCIES;
     f->stage = MS_AWAITING_DEPENDENCIES;
     g->stage = MS_AWAITING_DEPENDENCIES;
-    if (scc_detector_run(tc, g)) goto err;
-    if (scc_detector_run(tc, e)) goto err;
-    if (scc_detector_run(tc, a)) goto err;
+    if (sccd_run(&tc->sccd, g)) goto err;
+    if (sccd_run(&tc->sccd, e)) goto err;
+    if (sccd_run(&tc->sccd, a)) goto err;
     job j;
     ureg jid = 0;
     while (true) {
@@ -256,7 +256,8 @@ int list_test()
         }
         void** i = NULL;
         list_it it;
-        for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it, &l)) {
+        list_it_begin(&it, &l);
+        for (void* v = list_it_next(&it, &l); v; v = list_it_next(&it, &l)) {
             i++;
             if (v != i) goto err;
         }
@@ -282,21 +283,23 @@ int list_remove_test()
     }
     ureg sum = 0;
     list_it it;
-
-    for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it, &l)) {
+    list_it_begin(&it, &l);
+    for (void* v = list_it_next(&it, &l); v; v = list_it_next(&it, &l)) {
         sum += (ureg)v;
         if ((ureg)v % 2 == 0) list_remove_swap(&l, &it);
     }
 
     if (sum != 5050) goto err;
     sum = 0;
-    for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it, &l)) {
+    list_it_begin(&it, &l);
+    for (void* v = list_it_next(&it, &l); v; v = list_it_next(&it, &l)) {
         sum += (ureg)v;
         if ((ureg)v % 3 == 0) list_remove_swap(&l, &it);
     }
     if (sum != 2500) goto err;
     sum = 0;
-    for (void* v = list_it_start(&it, &l); v; v = list_it_next(&it, &l)) {
+    list_it_begin(&it, &l);
+    for (void* v = list_it_next(&it, &l); v; v = list_it_next(&it, &l)) {
         sum += (ureg)v;
         list_remove_swap(&l, &it);
     }

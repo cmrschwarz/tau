@@ -37,3 +37,7 @@ typedef struct scc_detector_s {
 int sccd_init(scc_detector* d, thread_context* tc);
 int sccd_run(scc_detector* d, mdg_node* n);
 void sccd_fin(scc_detector* d);
+// we need this in mdg to abuse sccds data structure fore cycle prevention
+// the whole thing is ... debatable
+void sccd_housekeep_ids(scc_detector* d);
+sccd_node* sccd_get(scc_detector* d, ureg id);

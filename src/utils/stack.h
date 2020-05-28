@@ -63,7 +63,6 @@ stack_alloc_segment(stack* s, ureg size, stack_segment* prev)
     seg->end = (void**)ptradd(seg, size);
     seg->prev = prev;
     seg->next = NULL;
-    prev->next = seg;
     return seg;
 }
 
@@ -88,6 +87,7 @@ static inline int stack_push(stack* s, void* data)
             stack_segment* ss = stack_alloc_segment(
                 s, ptrdiff(s->curr_seg->end, s->curr_seg) * 2, s->curr_seg);
             if (!ss) return ERR;
+            s->curr_seg->next = ss;
             s->curr_seg = ss;
         }
         s->head = (void**)ptradd(s->curr_seg, sizeof(stack_segment));
