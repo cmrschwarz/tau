@@ -22,8 +22,9 @@ typedef struct sccd_stack_entry_s {
     // to detect the invalidation
     ureg deps_count;
     ureg scc_elem_count; // so we can alloc the mdg without counting again
-    sccd_stack_entry* awaiting_parent;
+    sccd_stack_entry* dependant_to_notify;
     mdg_node* notifier;
+    sccd_stack_entry* curr_dep;
     bool propagate_required;
     bool exploratory;
 } sccd_stack_entry;
@@ -36,7 +37,7 @@ typedef struct scc_detector_s {
     ureg dfs_start_index;
     ureg dfs_index;
     sccd_stack_entry* origin_se;
-    sccd_stack_entry* awaiting_parent;
+    sccd_stack_entry* dependant_to_notify;
     bool propagate_required;
     bool exploratory;
 } scc_detector;

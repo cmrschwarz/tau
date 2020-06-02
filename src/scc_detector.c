@@ -278,7 +278,7 @@ int sccd_prepare(
     se->scc_elem_count = 1;
     se->propagate_required = propagate_required;
     se->exploratory = false;
-    se->awaiting_parent = NULL;
+    se->dependant_to_notify = NULL;
     sccd->origin_se = se;
     sccd->propagate_required = propagate_required;
     sccd->exploratory = exploratory;
@@ -339,12 +339,11 @@ sccd_push_node(scc_detector* sccd, mdg_node* n, sccd_node* sn, list_rit* rit)
     return se;
 }
 int sccd_handle_node_propagating_required(
-    scc_detector* sccd, sccd_stack_entry* parent_se, mdg_node* n, sccd_node* sn,
-    sccd_stack_entry** next_se)
+    scc_detector* sccd, mdg_node* n, sccd_node* sn, sccd_stack_entry** next_se)
 {
+
+    bool notified_people = false;
     const bool explore = sccd->exploratory;
-    const bool current_holdup =
-        (sccd->awaiting_parent->notifier_of_current_child == n);
     bool explore_parents = false;
     bool propagate_required = false;
     bool awaiting = false;
@@ -404,8 +403,15 @@ int sccd_handle_node_propagating_required(
         list_rit_begin_at_end(&deps_iter, &curr->dependencies);
         notifier = n->notifier;
     }
-    if (!available && sccd->awaiting_parent && !current_holdup) {
-        r = list_append(&n->notify, NULL, sccd->awaiting_parent->mdgn);
+    if (!available) {
+        sccd_stack_entry* dtn = sccd->dependant_to_notify;
+        while (dtn && !r) {
+            sccd_stack_entry* cd = dtn->curr_dep;
+            if (!cd || !cd->curr_dep || cd->notifier != cd->curr_dep->mdgn) {
+                r = list_append(&n->notify, NULL, dtn->mdgn);
+            }
+            dtn = dtn->dependant_to_notify;
+        }
     }
     rwlock_end_write(&curr->lock);
     if (available) {
@@ -417,28 +423,58 @@ int sccd_handle_node_propagating_required(
         assert(false);
     }
     if (propagate_required) {
-        if (parent_se->awaiting_parent) {
+        if (parent_se->dependant_to_notify) {
             parent_se->notifier_of_current_child = n;
         }
         sccd->propagate_required = true;
         *next_se = sccd_push_node(sccd, n, sn, &deps_iter);
         if (!*next_se) return ERR;
     }
-    if (sccd->awaiting_parent) {
+    assert(!available); // we found someone that's still working to latch on.
+    sccd_stack_entry* dtn = sccd->dependant_to_notify;
+    if (dtn) {
         if (r) {
             sccd_release(sccd);
             return ERR;
         }
-        if (sccd->awaiting_parent->children_rit.head ==
-            sccd->awaiting_parent->notifier) {
+        sccd_stack_entry* dtn = sccd->dependant_to_notify;
+        while (dtn && !r) {
+            sccd_stack_entry* cd = dtn->curr_dep;
+            bool success = true;
+            mdg_node* notifier = n;
+            if (cd && cd->curr_dep && cd->notifier == cd->curr_dep->mdgn) {
+                rwlock_write(&cd->mdgn->lock);
+                if (cd->notifier == cd->mdgn->notifier) {
+                    r = list_append(&cd->mdgn->notify, NULL, n);
+                    if (r) {
+                        dtn->mdgn->notifier = n;
+                    }
+                }
+                else {
+                    success = false;
+                }
+                rwlock_end_write(&dtn->mdgn->lock);
+                if (r) {
+                    sccd_release(sccd);
+                    return ERR;
+                }
+                if (!success) {
+                    // TODO: push this on some sort of stack for redo
+                    // similar to the parents to expore
+                    assert(false);
+                }
+                notifier = cd->mdgn;
+            }
+            rwlock_write(&dtn->mdgn->lock);
+            // in case somebody else was raced us we back off.
+            // this will leave one uneccessary notification but whatever
+            if (dtn->notifier == dtn->mdgn->notifier) {
+                dtn->mdgn->notifier = notifier;
+            }
+            rwlock_end_write(&dtn->mdgn->lock);
+            dtn = dtn->dependant_to_notify;
         }
-        if ()
-            if (current_holdup) {
-                ap->notifier = n;
-            }
-            else {
-                ap->notifier = n;
-            }
+        sccd->dependant_to_notify = NULL;
     }
 }
 int sccd_handle_node(
