@@ -136,6 +136,7 @@ mdg_node* mdg_node_create(
     if (r) return mdg_node_partial_fin(n, 6);
     n->stage = initial_stage;
     n->symtab = NULL;
+    n->notifier = NULL;
     n->ppe_stage = PPES_UNNEEDED;
     n->requested_for_pp = false;
     n->partial_res_data = NULL;
@@ -371,34 +372,31 @@ mdg_node* mdg_get_node(
 mdg_node*
 mdg_found_node(module_dependency_graph* m, mdg_node* parent, string ident)
 {
-    mdg_node* n = mdg_get_node(m, parent, ident, MS_UNNEEDED);
+    mdg_node* n = mdg_get_node(m, parent, ident, MS_FOUND_UNNEEDED);
     if (!n) return NULL;
-    atomic_ureg_inc(&n->unparsed_files);
-    rwlock_read(&n->lock);
-    bool found = (n->stage != MS_NOT_FOUND);
-    rwlock_end_read(&n->lock);
-    if (found) return n;
     rwlock_write(&n->lock);
-    if (n->stage == MS_NOT_FOUND) n->stage = MS_PARSING;
+    assert(n->stage < MS_RESOLVING_UNNEEDED); // TODO: handle error. user lied
+    atomic_ureg_inc(&n->unparsed_files);
+    if (n->stage == MS_UNFOUND) n->stage = MS_PARSING;
+    if (n->stage == MS_UNFOUND_UNNEEDED) n->stage = MS_FOUND_UNNEEDED;
     rwlock_end_write(&n->lock);
     return n;
 }
 
 int mdg_node_parsed(module_dependency_graph* m, mdg_node* n, thread_context* tc)
 {
-    bool run_scc = true;
+    bool run_scc = false;
     rwlock_write(&n->lock);
     if (n->stage == MS_PARSING) {
-        n->stage = MS_AWAITING_DEPENDENCIES;
+        n->stage = MS_PARSED;
+        run_scc = true;
     }
-    else if (n->stage == MS_UNNEEDED) {
-        n->stage = MS_AWAITING_NEED;
-        run_scc = false;
+    else if (n->stage == MS_PARSING_UNNEEDED || n->stage == MS_FOUND_UNNEEDED) {
+        n->stage = MS_PARSED_UNNEEDED;
     }
     else {
         // this happens for example when a module is redeclared
         assert(n->stage == MS_AWAITING_NEED);
-        run_scc = false;
     }
     rwlock_end_write(&n->lock);
     if (run_scc) return sccd_run(&tc->sccd, n);
@@ -615,6 +613,7 @@ int mdg_nodes_generated(
     }
     return OK;
 }
+// FIXME: rename this to add_external_requirements
 int module_frame_require_requirements(
     module_frame* mf, mdg_node* n, thread_context* tc, bool in_pp)
 {
@@ -653,9 +652,10 @@ int mdg_node_add_frame(mdg_node* n, module_frame* mf, thread_context* tc)
     return r;
 }
 
-// make sure the required libraries of an mdg node are loaded
 int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp)
 {
+    // TODO: do we have to update our module stage from unneeded to parsing
+    // here?
     if (in_pp) {
         bool pplr;
         rwlock_write(&n->lock);
@@ -672,9 +672,10 @@ int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp)
         module_frame_require_requirements(mf, n, tc, in_pp);
     }
     if (in_pp) {
-        aseglist_iterator_begin(&it, &n->dependencies);
+        list_it it;
+        list_it_begin(&it, &n->dependencies);
         while (true) {
-            mdg_node* dep = aseglist_iterator_next(&it);
+            mdg_node* dep = list_it_next(&it, &n->dependencies);
             if (!dep) break;
             int res = mdg_node_require_requirements(dep, tc, true);
             if (res) return res;
@@ -682,79 +683,131 @@ int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp)
     }
     return OK;
 }
-int mdg_node_require(mdg_node* n, thread_context* tc)
+typedef struct mdg_require_stack_node_s {
+    mdg_node* node;
+    list_rit deps_rit;
+    bool exploratory_requirement;
+    bool run_scc;
+} mdg_require_stack_node;
+
+int mdg_node_require(mdg_node* n, thread_context* tc, bool exploring)
 {
+    static const int RSNS = sizeof(mdg_require_stack_node);
     mdg_node* parent = n->parent;
-    // TODO: evaluate this. do we really want all the parents?
-    // maybe introduce a kind of "weak requirement" state for these
-    // to prevent them and all their deps to end up in the binary
     mdg_node* start_node = n;
-    bool run_scc = false;
-    while (true) {
-        rwlock_read(&n->lock);
-        bool needed = module_stage_needed(parent->stage);
-        rwlock_end_read(&n->lock);
-        if (needed) break;
-        int r = mdg_node_require(parent, tc);
-        if (r) return r;
-        parent = parent->parent;
-        if (parent == NULL) break;
-    }
     sccd_housekeep_ids(&tc->sccd);
     tc->sccd.dfs_start_index = tc->sccd.dfs_index;
     tc->sccd.dfs_index++;
     aseglist* mfs;
-    // since the stack is segmented there is no risk of this getting invalidated
-    void** stack_head = tc->temp_stack.head;
+    void** buffer_cutoff = tc->temp_buffer.tail_seg->tail;
+    mdg_node* curr = n;
     while (true) {
-        rwlock_write(&n->lock);
-        if (n->stage == MS_UNNEEDED) {
-            n->stage = MS_PARSING;
-            mfs = &n->module_frames;
+        list_rit deps_iter;
+        bool explore_parents = false;
+        bool update_deps = false;
+        bool run_scc = false;
+        rwlock_write(&curr->lock);
+        switch (curr->stage) {
+            case MS_UNFOUND_UNNEEDED: {
+                curr->stage = exploring ? MS_UNFOUND_EXPLORING : MS_UNFOUND;
+                explore_parents = true;
+                update_deps = true;
+            } break;
+            case MS_UNFOUND_EXPLORING: {
+                if (!exploring) {
+                    curr->stage = MS_UNFOUND;
+                    update_deps = true;
+                }
+            } break;
+            case MS_UNFOUND: break;
+            case MS_FOUND_UNNEEDED: {
+                curr->stage = exploring ? MS_PARSING_EXPLORING : MS_PARSING;
+                update_deps = true;
+            } break;
+            case MS_PARSING: break;
+            case MS_PARSING_EXPLORING: {
+                if (!exploring) {
+                    curr->stage = MS_PARSING;
+                }
+            } break;
+            case MS_PARSED_UNNEEDED: {
+                if (!exploring) {
+                    curr->stage = MS_AWAITING_DEPENDENCIES;
+                    run_scc = true;
+                }
+            } break;
+            case MS_AWAITING_DEPENDENCIES: break;
+            case MS_RESOLVING_EXPLORING: {
+                if (!exploring) {
+                    curr->stage = MS_RESOLVING;
+                    update_deps = true;
+                }
+            } break;
+            case MS_RESOLVING: break;
+            case MS_GENERATING: break;
+            case MS_DONE: break;
+            default: assert(false); break;
         }
-        else if (n->stage == MS_AWAITING_NEED) {
-            n->stage = MS_AWAITING_DEPENDENCIES;
-            mfs = &n->module_frames;
-            run_scc = true;
+        if (!update_deps) {
+            mfs = &curr->module_frames;
+            list_rit_begin_at_end(&deps_iter, &curr->dependencies);
         }
-        else {
-            mfs = NULL;
+        rwlock_end_write(&curr->lock);
+        int r = OK;
+        if (explore_parents) {
+            // explore even otherwise unneeded parents so we can find it
+            // #paste require stuff
+            assert(n->parent); // root is always found so can't land here
+            mdg_require_stack_node* rsn =
+                sbuffer_append(&tc->temp_buffer, RSNS);
+            if (!rsn) {
+                r = ERR;
+            }
+            else {
+                rsn->exploratory_requirement = true;
+                rsn->node = n->parent;
+            }
         }
-
-        if (mfs) {
-            aseglist_iterator it;
-            aseglist_iterator_begin(&it, &n->dependencies);
+        if (!r && update_deps) {
             while (true) {
-                mdg_node* i = aseglist_iterator_next(&it);
-                if (!i) break;
+                mdg_node* i = list_rit_prev(&deps_iter);
+                if (!i) {
+                    r = ERR;
+                    break;
+                }
                 sccd_node* sn = sccd_get(&tc->sccd, i->id);
                 if (!sn) {
-                    rwlock_end_write(&n->lock);
-                    return ERR;
+                    r = ERR;
+                    break;
                 }
                 if (sn->index != tc->sccd.dfs_start_index) {
-                    stack_push(&tc->temp_stack, i);
+                    mdg_require_stack_node* rsn =
+                        sbuffer_append(&tc->temp_buffer, RSNS);
+                    if (!rsn) {
+                        r = ERR;
+                        break;
+                    }
+                    rsn->exploratory_requirement = false;
+                    rsn->node = n->parent;
                     sn->index = tc->sccd.dfs_start_index;
                 }
             }
-        }
-        int r = OK;
-        if (mfs) {
-            r = mdg_node_require_requirements(n, tc, false);
-        }
-        rwlock_end_write(&n->lock);
-        if (r) return r;
-        while (true) {
-            if (tc->temp_stack.head == stack_head) {
-                if (run_scc) return sccd_run(&tc->sccd, start_node);
-                return OK;
+            if (!r && !exploring) {
+                r = mdg_node_require_requirements(n, tc, false);
             }
-            n = stack_pop(&tc->temp_stack);
-            rwlock_read(&n->lock);
-            bool needed = module_stage_needed(n->stage);
-            rwlock_end_read(&n->lock);
-            if (!needed) break;
         }
+        if (!r && run_scc) {
+            r = sccd_run(&tc->sccd, start_node);
+        }
+        if (r) {
+            while (sbuffer_remove(&tc->temp_buffer, RSNS) != buffer_pos)
+                continue;
+            return ERR;
+        }
+        if (tc->temp_stack.head == buffer_cutoff) return OK;
+        mdg_require_stack_node* rsn = sbuffer_back(&tc->temp_buffer, RSNS);
+        curr = rsn->node;
+        exploratory_requirement = rsn->exploratory_requirement;
     }
     assert(false);
 }

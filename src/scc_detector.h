@@ -12,7 +12,7 @@ typedef struct sccd_node_s {
 typedef struct sccd_stack_entry_s {
     mdg_node* mdgn;
     sccd_node* sn;
-    list_rit children_rit;
+    list_bounded_it children_it;
     // we have to prevent a scenario where two threads build an mdg but
     // while one gets scheduled out the other already begins resolving the mdg
     // which aquires a new dependency and goes back to waiting. now our sleeper
@@ -21,7 +21,11 @@ typedef struct sccd_stack_entry_s {
     // to prevent this we count the combined deps count of the scc
     // to detect the invalidation
     ureg deps_count;
-    ureg scc_elem_count;
+    ureg scc_elem_count; // so we can alloc the mdg without counting again
+    sccd_stack_entry* awaiting_parent;
+    mdg_node* notifier;
+    bool propagate_required;
+    bool exploratory;
 } sccd_stack_entry;
 
 typedef struct scc_detector_s {
@@ -32,10 +36,13 @@ typedef struct scc_detector_s {
     ureg dfs_start_index;
     ureg dfs_index;
     sccd_stack_entry* origin_se;
+    sccd_stack_entry* awaiting_parent;
+    bool propagate_required;
+    bool exploratory;
 } scc_detector;
 
 int sccd_init(scc_detector* d, thread_context* tc);
-int sccd_run(scc_detector* d, mdg_node* n);
+int sccd_run(scc_detector* d, mdg_node* n, bool make_required);
 void sccd_fin(scc_detector* d);
 // we need this in mdg to abuse sccds data structure fore cycle prevention
 // the whole thing is ... debatable

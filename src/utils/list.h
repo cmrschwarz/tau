@@ -19,7 +19,7 @@
 #define LIST_NODE_MIN_CAPACITY (LIST_NODE_MIN_SIZE - sizeof(list_node))
 
 typedef struct list_node_s {
-    void** head;
+    void** head; // PERF: remove this, put it in list (only for the head node)
     void** end;
     struct list_node_s* prev; // TODO: maybe store xor of prev and next?
     struct list_node_s* next;
@@ -35,6 +35,12 @@ typedef struct list_it_s {
     list_node* curr_node;
     void** head;
 } list_it;
+
+// iterator that stops where the list ended when the iterator was constructed
+typedef struct list_bounded_it_s {
+    list_it it;
+    void** it_end;
+} list_bounded_it;
 
 typedef struct list_rit_s {
     list_node* prev_node;
@@ -79,8 +85,7 @@ static inline void list_it_begin(list_it* it, list* l)
     it->head = &l->sso_slots[0];
     it->curr_node = NULL;
 }
-
-static inline void* list_it_next(list_it* it, list* l)
+static inline void* list_it_peek(list_it* it, list* l)
 {
     if (!it->curr_node) {
         ureg sso_val = ((ureg)l->head_node) & LIST_SSO_MASK;
@@ -97,11 +102,47 @@ static inline void* list_it_next(list_it* it, list* l)
         it->curr_node = it->curr_node->next;
         it->head = (void**)ptradd(it->curr_node, sizeof(list_node));
     }
-    void* res = *it->head;
-    it->head++;
+    return *it->head;
+}
+static inline void* list_it_next(list_it* it, list* l)
+{
+    void* res = list_it_peek(it, l);
+    if (res) it->head++;
     return res;
 }
+static inline void list_bounded_it_empty(list_bounded_it* bit)
+{
+    bit->it_end = NULL;
+    bit->it.head = NULL;
+}
+static inline void list_bounded_it_begin(list_bounded_it* bit, list* l)
+{
+    list_it_begin(&bit->it, l);
+    ureg sso_val = ((ureg)l->head_node) & LIST_SSO_MASK;
+    if (sso_val) {
+        bit->it_end = &l->sso_slots[0] + (LIST_SSO_CAPACITY - sso_val);
+    }
+    else {
+        bit->it_end = it->curr_node->head;
+    }
+}
+static inline void* list_bounded_it_peek(list_bounded_it* bit, list* l)
+{
+    if (bit->it_end == bit->it.head) return NULL;
+    return list_it_peek(&bit->it, l);
+}
+static inline void* list_bounded_it_next(list_bounded_it* bit, list* l)
+{
+    if (bit->it_end == bit->it.head) return NULL;
+    return list_it_next(&bit->it, l);
+}
 
+static inline void list_rit_empty(list_rit* rit)
+{
+    rit->node_begin = NULL;
+    rit->head = NULL;
+    rit->prev_node = NULL;
+}
 static inline void list_rit_begin_at_end(list_rit* rit, list* l)
 {
     ureg sso_val = ((ureg)l->head_node) & LIST_SSO_MASK;

@@ -3116,8 +3116,7 @@ parse_error parse_import_with_parent(
         parent = mdg_get_node(&p->lx.tc->t->mdg, parent, t->str, MS_NOT_FOUND);
         // if the node doesn't exist it gets created here,
         // we will find out (and report) once all required files are parsed
-        // if
-        // it is actually missing. NULL just means allocation failiure
+        // if it is actually missing.
         if (!parent) return PE_FATAL;
         end = t->end;
         lx_void(&p->lx);

@@ -13,21 +13,26 @@
 typedef struct thread_context_s thread_context;
 typedef struct tauc_s tauc;
 
+// it might be worth putting needed as a separate flag
+// but since not all combinations make sense we keep it like this for now
 typedef enum module_stage_e {
-    MS_NOT_FOUND, // required but not found in src
-    MS_UNNEEDED, //  partially parsed, but unneded
-    MS_PARSING, // required and partially parsed
-    MS_AWAITING_NEED, // fully parsed, but unneded
-    MS_AWAITING_DEPENDENCIES, // required, parsed
-    MS_RESOLVING, // required, parsed, deps resolved or in same resolve group
+    MS_UNFOUND_UNNEEDED, // was imported by a MS_FOUND_BUT_UNNEEDED module
+    MS_UNFOUND_EXPLORATION, // unneded but we would like it for exploration
+    MS_UNFOUND, // unfound but we need need it. we are exploring the parents
+    MS_FOUND_UNNEEDED, // was in a file together with something we needed
+    MS_PARSING_EXPLORATION, // we attempt to find a child by parsing this
+    MS_PARSING, // found, needed, but not fully parsed yet
+    MS_PARSED_EXPLORATION, // fully parsed for exploration, but unneded
+    MS_AWAITING_DEPENDENCIES, // needed, parsed, but deps missing for resolved
+    MS_RESOLVING_EXPLORATION, // we attempt to find a child by resolving this
+    MS_RESOLVING, // standard resolve in hope of generating it later
+    MS_RESOLVED_UNNEEDED, // we don't generated it since it's not needed
     MS_GENERATING, // resolved, generating IR
-    // since linking must be done in single threadedly we don't
-    // update the stage to done_generating or smth but track a single
-    // atomic in TAUC.linking_holdups
-    MS_DONE,
-    // can happen e.g. when host int is out of bounds for arch int
-    MS_GENERATION_ERROR, // TODO: actually integrate this
+    MS_DONE, // since linking must be done in one unit we don't track it here
+
+    MS_PARSING_ERROR, // TODO: actually integrate this
     MS_RESOLVING_ERROR,
+    MS_GENERATNG_ERROR,
 } module_stage;
 
 typedef enum pp_emission_stage_e {
@@ -38,9 +43,26 @@ typedef enum pp_emission_stage_e {
     PPES_DONE,
 } pp_emission_stage;
 
-static inline bool module_stage_needed(module_stage ms)
+static inline bool module_stage_is_needed(module_stage ms)
 {
-    return ms != MS_UNNEEDED && ms != MS_AWAITING_NEED;
+    switch (ms) {
+        case MS_UNFOUND:
+        case MS_PARSING:
+        case MS_AWAITING_DEPENDENCIES:
+        case MS_RESOLVING:
+        case MS_DONE: return false;
+        default: return true;
+    }
+}
+static inline bool module_stage_is_found(module_stage ms)
+{
+    return ms != MS_UNFOUND && ms != MS_UNFOUND_UNNEEDED &&
+           ms != MS_UNFOUND_EXPLORING;
+}
+static inline bool module_stage_is_exploring(module_stage ms)
+{
+    return ms == MS_UNFOUND_EXPLORING || ms == MS_PARSING_EXPLORING ||
+           ms == MS_RESOLVING_EXPLORING;
 }
 typedef struct partial_resolution_data_s partial_resolution_data;
 typedef struct mdg_node_s {
@@ -56,17 +78,33 @@ typedef struct mdg_node_s {
     atomic_ureg using_count;
     symbol_table* symtab;
     partial_resolution_data* partial_res_data;
-    aseglist module_frames; // doesn't require any locks
+    aseglist module_frames; // doesn't require any locks (?)
 
     rwlock lock; // everything below here is under the stage lock
     module_stage stage;
     pp_emission_stage ppe_stage;
+
+    // list of mdg_nodes that want to be informed if this changes stage
+    list notify;
+    // list of mdg_nodes that this node imports (directly)
+    list dependencies;
+
+    // the guy that notifies us when he's ready. used for reducing scc
+    // notification overhead by piggybacking on others with the same notifier
+    mdg_node* notifier;
+
     // whether some module (maybe itself) was found to use this in the pp
     // in that case all deps of this need to be recursively loaded in the pp
     // when we set this to true (initially false) we do this for all known ones
     bool requested_for_pp;
-    list notify;
-    list dependencies;
+
+    // we set unfound_children in the parent
+    bool exploring_parent;
+
+    // we are currently (unnecessarily) parsing this node in hopes of finding
+    // a missing child. once it is found we should stop working on this.
+    // TODO: implement this
+    ureg unfound_children;
 } mdg_node;
 
 typedef struct mdg_new_node_s {
@@ -112,6 +150,7 @@ int mdg_nodes_generated(
 int mdg_node_add_dependency(
     mdg_node* n, mdg_node* dependency, thread_context* tc);
 int mdg_node_add_frame(mdg_node* n, module_frame* mf, thread_context* tc);
+
 int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp);
 
 int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc);
