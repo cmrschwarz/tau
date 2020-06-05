@@ -1963,9 +1963,9 @@ static inline resolve_error require_module_in_pp(
     bool diy = false;
     atomic_boolean_init(done, false);
     rwlock_write(&mdg->lock);
-    pp_done = (mdg->stage >= MS_DONE);
+    pp_done = (mdg->stage >= MS_GENERATED);
     // TODO: do this properly
-    if (mdg->stage > MS_DONE) {
+    if (mdg->stage > MS_GENERATED) {
         rwlock_end_write(&mdg->lock);
         return RE_FATAL;
     }
@@ -3546,7 +3546,9 @@ int resolver_emit(resolver* r, llvm_module** module)
             while (true) {
                 mdg_node* dep = list_rit_prev(&rit);
                 if (!dep) break;
-                if (sccd_run(&r->tc->sccd, dep)) return ERR;
+                if (sccd_run(&r->tc->sccd, dep, SCCD_NOTIFY_DEP_ERROR)) {
+                    return ERR;
+                }
             }
         }
         *module = NULL;

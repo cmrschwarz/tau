@@ -23,12 +23,14 @@ typedef enum module_stage_e {
     MS_PARSING_EXPLORATION, // we attempt to find a child by parsing this
     MS_PARSING, // found, needed, but not fully parsed yet
     MS_PARSED_EXPLORATION, // fully parsed for exploration, but unneded
+    MS_AWAITING_DEPENDENCIES_EXPLORATION, // we want to explore gnerating this
     MS_AWAITING_DEPENDENCIES, // needed, parsed, but deps missing for resolved
     MS_RESOLVING_EXPLORATION, // we attempt to find a child by resolving this
     MS_RESOLVING, // standard resolve in hope of generating it later
     MS_RESOLVED_UNNEEDED, // we don't generated it since it's not needed
     MS_GENERATING, // resolved, generating IR
-    MS_DONE, // since linking must be done in one unit we don't track it here
+    MS_GENERATED, // generation completed successfully and written to disk
+    // since linking must be done in one unit we don't track it here
 
     MS_PARSING_ERROR, // TODO: actually integrate this
     MS_RESOLVING_ERROR,
@@ -43,26 +45,53 @@ typedef enum pp_emission_stage_e {
     PPES_DONE,
 } pp_emission_stage;
 
-static inline bool module_stage_is_needed(module_stage ms)
+static inline bool module_stage_deps_needed(module_stage ms, bool* exploration)
 {
     switch (ms) {
         case MS_UNFOUND:
         case MS_PARSING:
         case MS_AWAITING_DEPENDENCIES:
+            if (exploration) *exploration = false;
+            return true;
+        case MS_AWAITING_DEPENDENCIES_EXPLORATION:
+            if (exploration) *exploration = true;
+            return true;
         case MS_RESOLVING:
-        case MS_DONE: return false;
-        default: return true;
+        case MS_GENERATING:
+        case MS_GENERATED:
+            assert(false); // TODO: should be an error
+        // TODO: well we could speculate on this one if we have absolutely
+        // nothing better to do
+        case MS_PARSING_EXPLORATION:
+        default: return false;
+    }
+}
+static inline bool
+module_stage_requirements_needed(module_stage ms, bool* exploring)
+{
+    // why would we be handling requires otherwise?
+    assert(ms < MS_PARSED_EXPLORATION);
+    switch (ms) {
+        case MS_UNFOUND:
+        case MS_PARSING:
+            if (exploring) *exploring = false;
+            return true;
+        case MS_UNFOUND_EXPLORATION:
+        case MS_PARSING_EXPLORATION:
+            if (exploring) *exploring = true;
+            return true;
+        default: return false;
     }
 }
 static inline bool module_stage_is_found(module_stage ms)
 {
     return ms != MS_UNFOUND && ms != MS_UNFOUND_UNNEEDED &&
-           ms != MS_UNFOUND_EXPLORING;
+           ms != MS_UNFOUND_EXPLORATION;
 }
 static inline bool module_stage_is_exploring(module_stage ms)
 {
-    return ms == MS_UNFOUND_EXPLORING || ms == MS_PARSING_EXPLORING ||
-           ms == MS_RESOLVING_EXPLORING;
+    return ms == MS_UNFOUND_EXPLORATION || ms == MS_PARSING_EXPLORATION ||
+           ms == MS_RESOLVING_EXPLORATION;
 }
 typedef struct partial_resolution_data_s partial_resolution_data;
 typedef struct mdg_node_s {

@@ -90,15 +90,14 @@ static inline void* list_it_peek(list_it* it, list* l)
     if (!it->curr_node) {
         ureg sso_val = ((ureg)l->head_node) & LIST_SSO_MASK;
         void** sso_end = &l->sso_slots[0] + (LIST_SSO_CAPACITY - sso_val);
-        if (it->head == sso_end) {
-            if (!l->first_node) return NULL;
-            it->curr_node = l->first_node;
-            it->head = (void**)ptradd(l->first_node, sizeof(list_node));
-        }
+        if (it->head != sso_end) return *it->head;
+        if (!l->first_node) return NULL;
+        it->curr_node = l->first_node;
+        it->head = (void**)ptradd(l->first_node, sizeof(list_node));
     }
-    while (it->head == it->curr_node->head) {
-        if (!it->curr_node->next) return NULL;
-        if (it->head != it->curr_node->end) return NULL;
+    while (true) {
+        if (!it->curr_node) return NULL;
+        if (it->head != it->curr_node->head) break;
         it->curr_node = it->curr_node->next;
         it->head = (void**)ptradd(it->curr_node, sizeof(list_node));
     }
@@ -119,11 +118,11 @@ static inline void list_bounded_it_begin(list_bounded_it* bit, list* l)
 {
     list_it_begin(&bit->it, l);
     ureg sso_val = ((ureg)l->head_node) & LIST_SSO_MASK;
-    if (sso_val) {
+    if (sso_val || l->head_node == (list_node*)NULL_PTR_PTR) {
         bit->it_end = &l->sso_slots[0] + (LIST_SSO_CAPACITY - sso_val);
     }
     else {
-        bit->it_end = it->curr_node->head;
+        bit->it_end = l->head_node->head;
     }
 }
 static inline void* list_bounded_it_peek(list_bounded_it* bit, list* l)

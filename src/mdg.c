@@ -375,7 +375,7 @@ mdg_found_node(module_dependency_graph* m, mdg_node* parent, string ident)
     mdg_node* n = mdg_get_node(m, parent, ident, MS_FOUND_UNNEEDED);
     if (!n) return NULL;
     rwlock_write(&n->lock);
-    assert(n->stage < MS_RESOLVING_UNNEEDED); // TODO: handle error. user lied
+    assert(n->stage < MS_PARSED_EXPLORATION); // TODO: handle error. user lied
     atomic_ureg_inc(&n->unparsed_files);
     if (n->stage == MS_UNFOUND) n->stage = MS_PARSING;
     if (n->stage == MS_UNFOUND_UNNEEDED) n->stage = MS_FOUND_UNNEEDED;
@@ -385,22 +385,7 @@ mdg_found_node(module_dependency_graph* m, mdg_node* parent, string ident)
 
 int mdg_node_parsed(module_dependency_graph* m, mdg_node* n, thread_context* tc)
 {
-    bool run_scc = false;
-    rwlock_write(&n->lock);
-    if (n->stage == MS_PARSING) {
-        n->stage = MS_PARSED;
-        run_scc = true;
-    }
-    else if (n->stage == MS_PARSING_UNNEEDED || n->stage == MS_FOUND_UNNEEDED) {
-        n->stage = MS_PARSED_UNNEEDED;
-    }
-    else {
-        // this happens for example when a module is redeclared
-        assert(n->stage == MS_AWAITING_NEED);
-    }
-    rwlock_end_write(&n->lock);
-    if (run_scc) return sccd_run(&tc->sccd, n);
-    return OK;
+    return sccd_run(&tc->sccd, n, SCCD_NODE_PARSED);
 }
 int mdg_node_file_parsed(
     module_dependency_graph* m, mdg_node* n, thread_context* tc)
@@ -517,7 +502,14 @@ int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc)
 {
     for (mdg_node** i = start; i != end; i++) {
         rwlock_write(&(**i).lock);
-        (**i).stage = MS_GENERATING;
+        module_stage ms = (**i).stage;
+        if (ms == MS_RESOLVING) {
+            (**i).stage = MS_GENERATING;
+        }
+        else {
+            assert(ms == MS_RESOLVING_EXPLORATION);
+            (**i).stage = MS_RESOLVED_UNNEEDED;
+        }
         list* l = sbuffer_append(&tc->temp_buffer, sizeof(list));
         if (!l) {
             // revert on error
@@ -542,7 +534,7 @@ int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc)
         while (ok) {
             mdg_node* dep = list_it_next(&it, l);
             if (!dep) break;
-            if (sccd_run(&tc->sccd, dep)) ok = false;
+            if (sccd_run(&tc->sccd, dep, SCCD_NOTIFY_DEP_RESOLVED)) ok = false;
             // TODO: figure out what to do with the remaining notifys on err
         }
         // we just replace the old notify list with a new one and free the old
@@ -559,7 +551,7 @@ int mdg_nodes_generated(
 {
     for (mdg_node** i = start; i != end; i++) {
         rwlock_write(&(**i).lock);
-        (**i).stage = MS_DONE;
+        (**i).stage = MS_GENERATED;
         (**i).ppe_stage = pp_generated ? PPES_DONE : PPES_SKIPPED;
         assert(pp_generated || (**i).parent == NULL); // TODO
         list* l = sbuffer_append(&tc->temp_buffer, sizeof(list));
@@ -587,7 +579,11 @@ int mdg_nodes_generated(
             ast_elem* dep = list_it_next(&it, l);
             if (!dep) break;
             if (dep->kind == ELEM_MDG_NODE) {
-                if (sccd_run(&tc->sccd, (mdg_node*)dep)) ok = false;
+                assert(false); // FIXME: are we actually using this??
+                if (sccd_run(
+                        &tc->sccd, (mdg_node*)dep, SCCD_NOTIFY_DEP_GENERATED)) {
+                    ok = false;
+                }
                 // TODO: figure out what to do with the remaining notifys on err
             }
             else if (dep->kind == SYM_IMPORT_GROUP) {
@@ -642,7 +638,7 @@ int mdg_node_add_frame(mdg_node* n, module_frame* mf, thread_context* tc)
     // another thread updates to needed, and than we add mf
     // --> missing requires
     r = aseglist_add(&n->module_frames, mf);
-    needed = module_stage_needed(n->stage);
+    needed = module_stage_requirements_needed(n->stage, NULL);
     rwlock_end_read(&n->lock);
     if (r) return r;
     if (needed) {
@@ -690,137 +686,22 @@ typedef struct mdg_require_stack_node_s {
     bool run_scc;
 } mdg_require_stack_node;
 
-int mdg_node_require(mdg_node* n, thread_context* tc, bool exploring)
-{
-    static const int RSNS = sizeof(mdg_require_stack_node);
-    mdg_node* parent = n->parent;
-    mdg_node* start_node = n;
-    sccd_housekeep_ids(&tc->sccd);
-    tc->sccd.dfs_start_index = tc->sccd.dfs_index;
-    tc->sccd.dfs_index++;
-    aseglist* mfs;
-    void** buffer_cutoff = tc->temp_buffer.tail_seg->tail;
-    mdg_node* curr = n;
-    while (true) {
-        list_rit deps_iter;
-        bool explore_parents = false;
-        bool update_deps = false;
-        bool run_scc = false;
-        rwlock_write(&curr->lock);
-        switch (curr->stage) {
-            case MS_UNFOUND_UNNEEDED: {
-                curr->stage = exploring ? MS_UNFOUND_EXPLORING : MS_UNFOUND;
-                explore_parents = true;
-                update_deps = true;
-            } break;
-            case MS_UNFOUND_EXPLORING: {
-                if (!exploring) {
-                    curr->stage = MS_UNFOUND;
-                    update_deps = true;
-                }
-            } break;
-            case MS_UNFOUND: break;
-            case MS_FOUND_UNNEEDED: {
-                curr->stage = exploring ? MS_PARSING_EXPLORING : MS_PARSING;
-                update_deps = true;
-            } break;
-            case MS_PARSING: break;
-            case MS_PARSING_EXPLORING: {
-                if (!exploring) {
-                    curr->stage = MS_PARSING;
-                }
-            } break;
-            case MS_PARSED_UNNEEDED: {
-                if (!exploring) {
-                    curr->stage = MS_AWAITING_DEPENDENCIES;
-                    run_scc = true;
-                }
-            } break;
-            case MS_AWAITING_DEPENDENCIES: break;
-            case MS_RESOLVING_EXPLORING: {
-                if (!exploring) {
-                    curr->stage = MS_RESOLVING;
-                    update_deps = true;
-                }
-            } break;
-            case MS_RESOLVING: break;
-            case MS_GENERATING: break;
-            case MS_DONE: break;
-            default: assert(false); break;
-        }
-        if (!update_deps) {
-            mfs = &curr->module_frames;
-            list_rit_begin_at_end(&deps_iter, &curr->dependencies);
-        }
-        rwlock_end_write(&curr->lock);
-        int r = OK;
-        if (explore_parents) {
-            // explore even otherwise unneeded parents so we can find it
-            // #paste require stuff
-            assert(n->parent); // root is always found so can't land here
-            mdg_require_stack_node* rsn =
-                sbuffer_append(&tc->temp_buffer, RSNS);
-            if (!rsn) {
-                r = ERR;
-            }
-            else {
-                rsn->exploratory_requirement = true;
-                rsn->node = n->parent;
-            }
-        }
-        if (!r && update_deps) {
-            while (true) {
-                mdg_node* i = list_rit_prev(&deps_iter);
-                if (!i) {
-                    r = ERR;
-                    break;
-                }
-                sccd_node* sn = sccd_get(&tc->sccd, i->id);
-                if (!sn) {
-                    r = ERR;
-                    break;
-                }
-                if (sn->index != tc->sccd.dfs_start_index) {
-                    mdg_require_stack_node* rsn =
-                        sbuffer_append(&tc->temp_buffer, RSNS);
-                    if (!rsn) {
-                        r = ERR;
-                        break;
-                    }
-                    rsn->exploratory_requirement = false;
-                    rsn->node = n->parent;
-                    sn->index = tc->sccd.dfs_start_index;
-                }
-            }
-            if (!r && !exploring) {
-                r = mdg_node_require_requirements(n, tc, false);
-            }
-        }
-        if (!r && run_scc) {
-            r = sccd_run(&tc->sccd, start_node);
-        }
-        if (r) {
-            while (sbuffer_remove(&tc->temp_buffer, RSNS) != buffer_pos)
-                continue;
-            return ERR;
-        }
-        if (tc->temp_stack.head == buffer_cutoff) return OK;
-        mdg_require_stack_node* rsn = sbuffer_back(&tc->temp_buffer, RSNS);
-        curr = rsn->node;
-        exploratory_requirement = rsn->exploratory_requirement;
-    }
-    assert(false);
-}
 int mdg_node_add_dependency(
     mdg_node* n, mdg_node* dependency, thread_context* tc)
 {
-    rwlock_read(&n->lock);
-    int r = aseglist_add(&n->dependencies, dependency);
-    bool needed = module_stage_needed(n->stage);
-    rwlock_end_read(&n->lock);
-    if (!r && needed) mdg_node_require(dependency, tc);
+    rwlock_write(&n->lock);
+    int r = list_append(&n->dependencies, NULL, dependency);
+    bool exploring;
+    bool needed = module_stage_deps_needed(n->stage, &exploring);
+    rwlock_end_write(&n->lock);
+    if (!r && needed) {
+        r = sccd_run(
+            &tc->sccd, dependency,
+            exploring ? SCCD_NODE_REQUIRE_EXPLORATION : SCCD_NODE_REQUIRE);
+    }
     return r;
 }
+// this just checks for double module m  and extend m without module m for now
 int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
 {
     // write is necessary since we aren't satisfied with eventual
@@ -835,48 +716,48 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
         // we still need to lock the stages since some final resolving might
         // still be going on
         rwlock_read(&n->lock);
-        if (n->stage == MS_UNNEEDED || n->stage == MS_AWAITING_NEED) {
-            module_frame* mod_frame = NULL;
-            aseglist_iterator it;
-            aseglist_iterator_begin(&it, &n->module_frames);
-            module_frame* first_target = NULL;
-            module_frame* i = aseglist_iterator_next(&it);
-            first_target = i;
-            while (i) {
-                if (i->node.kind == MF_MODULE ||
-                    i->node.kind == MF_MODULE_GENERIC) {
-                    if (mod_frame != NULL) {
-                        src_range_large srl;
-                        src_range_unpack(i->node.srange, &srl);
-                        src_range_large srl_mod;
-                        src_range_unpack(mod_frame->node.srange, &srl_mod);
-                        // these should always have a smap
-                        assert(srl.smap && srl_mod.smap);
-                        // since aseglist iterates backwards we reverse, so
-                        // if it's in the same file the redeclaration is always
-                        // below
-                        error_log_report_annotated_twice(
-                            tc->err_log, ES_RESOLVER, false,
-                            "module redeclared", srl_mod.smap, srl_mod.start,
-                            srl_mod.end, "redeclaration here", srl.smap,
-                            srl.start, srl.end, "already declared here");
-                        res = ERR;
-                        break;
-                    }
-                    mod_frame = i;
+        // we used to only do this for unneeded and awaiting deps but i don't
+        // see why that would suffice
+        module_frame* mod_frame = NULL;
+        aseglist_iterator it;
+        aseglist_iterator_begin(&it, &n->module_frames);
+        module_frame* first_target = NULL;
+        module_frame* i = aseglist_iterator_next(&it);
+        first_target = i;
+        while (i) {
+            if (i->node.kind == MF_MODULE ||
+                i->node.kind == MF_MODULE_GENERIC) {
+                if (mod_frame != NULL) {
+                    src_range_large srl;
+                    src_range_unpack(i->node.srange, &srl);
+                    src_range_large srl_mod;
+                    src_range_unpack(mod_frame->node.srange, &srl_mod);
+                    // these should always have a smap
+                    assert(srl.smap && srl_mod.smap);
+                    // since aseglist iterates backwards we reverse, so
+                    // if it's in the same file the redeclaration is always
+                    // below
+                    error_log_report_annotated_twice(
+                        tc->err_log, ES_RESOLVER, false, "module redeclared",
+                        srl_mod.smap, srl_mod.start, srl_mod.end,
+                        "redeclaration here", srl.smap, srl.start, srl.end,
+                        "already declared here");
+                    res = ERR;
+                    break;
                 }
-                i = aseglist_iterator_next(&it);
+                mod_frame = i;
             }
-            if (mod_frame == NULL && first_target != NULL) {
-                src_range_large srl;
-                src_range_unpack(first_target->node.srange, &srl);
-                // THINK: maybe report extend count here or report all
-                error_log_report_annotated(
-                    tc->err_log, ES_RESOLVER, false,
-                    "extend without module declaration", srl.smap, srl.start,
-                    srl.end, "extend here");
-                res = ERR;
-            }
+            i = aseglist_iterator_next(&it);
+        }
+        if (mod_frame == NULL && first_target != NULL) {
+            src_range_large srl;
+            src_range_unpack(first_target->node.srange, &srl);
+            // THINK: maybe report extend count here or report all
+            error_log_report_annotated(
+                tc->err_log, ES_RESOLVER, false,
+                "extend without module declaration", srl.smap, srl.start,
+                srl.end, "extend here");
+            res = ERR;
         }
         rwlock_end_read(&n->lock);
     }

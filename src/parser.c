@@ -3113,7 +3113,8 @@ parse_error parse_import_with_parent(
     bool has_ident = false;
     while (t->kind == TK_IDENTIFIER) {
         has_ident = true;
-        parent = mdg_get_node(&p->lx.tc->t->mdg, parent, t->str, MS_NOT_FOUND);
+        parent = mdg_get_node(
+            &p->lx.tc->t->mdg, parent, t->str, MS_UNFOUND_UNNEEDED);
         // if the node doesn't exist it gets created here,
         // we will find out (and report) once all required files are parsed
         // if it is actually missing.
@@ -3266,7 +3267,9 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     rq.srange = src_range_pack_lines(p->lx.tc, start, t->end);
     if (rq.srange == SRC_RANGE_INVALID) return PE_FATAL;
     rwlock_read(&p->current_module->lock);
-    bool needed = (p->current_module->stage != MS_UNNEEDED);
+    bool exploring;
+    bool needed =
+        module_stage_requirements_needed(p->current_module->stage, &exploring);
     rwlock_end_read(&p->current_module->lock);
     if (!is_extern) {
         src_file* f = file_map_get_file_from_path(
@@ -3283,7 +3286,7 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
             &p->lx.tc->t->filemap, p->current_file->head.parent, t->str,
             is_dynamic);
         rq.fmh = (file_map_head*)l;
-        if (needed) {
+        if (needed && !exploring) {
             int r = src_lib_require(
                 l, p->lx.tc->t, p->lx.smap, rq.srange, rq.is_pp);
             if (r == ERR) return PE_FATAL;

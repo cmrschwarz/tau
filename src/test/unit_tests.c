@@ -51,20 +51,20 @@ int mdg_test()
     int res = ERR;
     module_dependency_graph* m = &t.mdg;
     thread_context* tc = &t.main_thread_context;
-    mdg_node* a =
-        mdg_get_node(m, m->root_node, string_from_cstr("a"), MS_UNNEEDED);
-    mdg_node* b =
-        mdg_get_node(m, m->root_node, string_from_cstr("b"), MS_UNNEEDED);
-    mdg_node* c =
-        mdg_get_node(m, m->root_node, string_from_cstr("c"), MS_UNNEEDED);
-    mdg_node* d =
-        mdg_get_node(m, m->root_node, string_from_cstr("d"), MS_UNNEEDED);
-    mdg_node* e =
-        mdg_get_node(m, m->root_node, string_from_cstr("e"), MS_UNNEEDED);
-    mdg_node* f =
-        mdg_get_node(m, m->root_node, string_from_cstr("f"), MS_UNNEEDED);
-    mdg_node* g =
-        mdg_get_node(m, m->root_node, string_from_cstr("g"), MS_UNNEEDED);
+    mdg_node* a = mdg_get_node(
+        m, m->root_node, string_from_cstr("a"), MS_AWAITING_DEPENDENCIES);
+    mdg_node* b = mdg_get_node(
+        m, m->root_node, string_from_cstr("b"), MS_AWAITING_DEPENDENCIES);
+    mdg_node* c = mdg_get_node(
+        m, m->root_node, string_from_cstr("c"), MS_AWAITING_DEPENDENCIES);
+    mdg_node* d = mdg_get_node(
+        m, m->root_node, string_from_cstr("d"), MS_AWAITING_DEPENDENCIES);
+    mdg_node* e = mdg_get_node(
+        m, m->root_node, string_from_cstr("e"), MS_AWAITING_DEPENDENCIES);
+    mdg_node* f = mdg_get_node(
+        m, m->root_node, string_from_cstr("f"), MS_AWAITING_DEPENDENCIES);
+    mdg_node* g = mdg_get_node(
+        m, m->root_node, string_from_cstr("g"), MS_AWAITING_DEPENDENCIES);
     mdg_node_add_dependency(a, b, tc);
     mdg_node_add_dependency(b, c, tc);
     mdg_node_add_dependency(c, a, tc);
@@ -74,16 +74,9 @@ int mdg_test()
     mdg_node_add_dependency(f, d, tc);
     mdg_node_add_dependency(g, a, tc);
     mdg_node_add_dependency(g, e, tc);
-    a->stage = MS_AWAITING_DEPENDENCIES;
-    b->stage = MS_AWAITING_DEPENDENCIES;
-    c->stage = MS_AWAITING_DEPENDENCIES;
-    d->stage = MS_AWAITING_DEPENDENCIES;
-    e->stage = MS_AWAITING_DEPENDENCIES;
-    f->stage = MS_AWAITING_DEPENDENCIES;
-    g->stage = MS_AWAITING_DEPENDENCIES;
-    if (sccd_run(&tc->sccd, g)) goto err;
-    if (sccd_run(&tc->sccd, e)) goto err;
-    if (sccd_run(&tc->sccd, a)) goto err;
+    if (sccd_run(&tc->sccd, g, SCCD_NOTIFY_DEP_PARSED)) goto err;
+    if (sccd_run(&tc->sccd, e, SCCD_NOTIFY_DEP_PARSED)) goto err;
+    if (sccd_run(&tc->sccd, a, SCCD_NOTIFY_DEP_PARSED)) goto err;
     job j;
     ureg jid = 0;
     while (true) {

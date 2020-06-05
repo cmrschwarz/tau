@@ -4,6 +4,16 @@
 typedef struct thread_context_s thread_context;
 typedef struct mdg_node_s mdg_node;
 
+typedef enum sccd_run_reason_e {
+    SCCD_NODE_PARSED,
+    SCCD_NOTIFY_DEP_PARSED,
+    SCCD_NOTIFY_DEP_RESOLVED,
+    SCCD_NOTIFY_DEP_GENERATED,
+    SCCD_NOTIFY_DEP_ERROR,
+    SCCD_NODE_REQUIRE,
+    SCCD_NODE_REQUIRE_EXPLORATION,
+} sccd_run_reason;
+
 typedef struct sccd_node_s {
     ureg index;
     ureg lowlink;
@@ -22,11 +32,12 @@ typedef struct sccd_stack_entry_s {
     // to detect the invalidation
     ureg deps_count;
     ureg scc_elem_count; // so we can alloc the mdg without counting again
-    sccd_stack_entry* dependant_to_notify;
+    struct sccd_stack_entry_s* dependant_to_notify;
     mdg_node* notifier;
-    sccd_stack_entry* curr_dep;
+    struct sccd_stack_entry_s* curr_dep;
     bool propagate_required;
     bool exploratory;
+    bool exploratory_resolve;
 } sccd_stack_entry;
 
 typedef struct scc_detector_s {
@@ -40,10 +51,11 @@ typedef struct scc_detector_s {
     sccd_stack_entry* dependant_to_notify;
     bool propagate_required;
     bool exploratory;
+    bool exploratory_resolve;
 } scc_detector;
 
 int sccd_init(scc_detector* d, thread_context* tc);
-int sccd_run(scc_detector* d, mdg_node* n, bool make_required);
+int sccd_run(scc_detector* d, mdg_node* n, sccd_run_reason sccdrr);
 void sccd_fin(scc_detector* d);
 // we need this in mdg to abuse sccds data structure fore cycle prevention
 // the whole thing is ... debatable
