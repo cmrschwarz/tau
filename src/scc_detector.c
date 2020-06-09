@@ -143,6 +143,8 @@ int sccd_emit_lone_mdgn(scc_detector* sccd, sccd_stack_entry* se_curr)
 }
 int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
 {
+    // TODO: if we are not the origin, update the dependants to notify
+    // to let them know that they need to wait on us being resolved
     ureg node_count = se_curr->scc_elem_count;
     if (node_count == 1) return sccd_emit_lone_mdgn(sccd, se_curr);
     ureg deps_count_now = 0;
@@ -232,6 +234,7 @@ sccd_stack_entry* sccd_push_node(
     se->exploratory = sccd->exploratory;
     se->notifier = notifier;
     se->awaiting = awaiting;
+    se->note_added = false;
     if (newly_awaiting) {
         se->dependant_to_notify = sccd->dependant_to_notify;
         sccd->dependant_to_notify = se;
@@ -256,12 +259,13 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
                     awaiting = true;
                 } break;
                 case MS_PARSING_EXPLORATION: {
-                    n->stage = MS_RESOLVING_EXPLORATION;
+                    n->stage = MS_AWAITING_DEPENDENCIES_EXPLORATION;
                     exploratory = true;
-                    assert(false); // TODO emit job
+                    awaiting = true;
                 } break;
                 case MS_FOUND_UNNEEDED: {
                     n->stage = MS_PARSED_UNNEEDED;
+                    r = SCCD_HANDLED;
                 } break;
                 // TODO: propagate errors?
                 default: assert(false); return ERR;
@@ -344,7 +348,8 @@ int sccd_handle_node(
     bool propagate_required = false;
     bool awaiting = false;
     bool newly_awaiting = false;
-    bool ready = false;
+    bool require_deps = false;
+    bool resolved = false;
     mdg_node* notifier;
     list_bounded_it deps_iter;
     printf("handling %s \n", n->name);
@@ -354,6 +359,7 @@ int sccd_handle_node(
         case MS_UNFOUND_UNNEEDED: {
             n->stage = explore ? MS_UNFOUND_EXPLORATION : MS_UNFOUND;
             explore_parents = true;
+            // no require deps since no deps yet
         } break;
         case MS_UNFOUND_EXPLORATION: {
             if (!explore) {
@@ -364,6 +370,7 @@ int sccd_handle_node(
         case MS_FOUND_UNNEEDED: {
             n->stage = explore ? MS_PARSING_EXPLORATION : MS_PARSING;
             propagate_required = true;
+            require_deps = true;
         } break;
         case MS_PARSING: break;
         case MS_PARSING_EXPLORATION: {
@@ -372,13 +379,13 @@ int sccd_handle_node(
                 propagate_required = true;
             }
         } break;
-
         case MS_PARSED_UNNEEDED: {
             n->stage = explore ? MS_AWAITING_DEPENDENCIES_EXPLORATION
                                : MS_AWAITING_DEPENDENCIES;
             propagate_required = true;
             awaiting = true;
             newly_awaiting = true;
+            require_deps = true;
         } break;
         case MS_AWAITING_DEPENDENCIES_EXPLORATION: {
             awaiting = true;
@@ -399,7 +406,7 @@ int sccd_handle_node(
         case MS_RESOLVING: break;
         case MS_GENERATING:
         case MS_GENERATED: {
-            ready = true;
+            resolved = true;
         } break;
         default: assert(false); break;
     }
@@ -407,18 +414,21 @@ int sccd_handle_node(
         list_bounded_it_begin(&deps_iter, &n->dependencies);
         notifier = n->notifier;
     }
-    if (!ready && !awaiting) {
+    if (!resolved && !awaiting) {
         sccd_stack_entry* dtn = sccd->dependant_to_notify;
         while (dtn && !r) {
             sccd_stack_entry* cd = dtn->curr_dep;
-            if (!cd || !cd->curr_dep || cd->notifier != cd->curr_dep->mdgn) {
+            if (!cd ||
+                (!cd->note_added &&
+                 (!cd->curr_dep || cd->notifier != cd->curr_dep->mdgn))) {
                 r = list_append(&n->notify, NULL, dtn->mdgn);
+                dtn->note_added = true;
             }
             dtn = dtn->dependant_to_notify;
         }
     }
     rwlock_end_write(&n->lock);
-    if (ready) {
+    if (resolved) {
         assert(!propagate_required && !explore_parents && !awaiting);
         return OK; // nothing to do, handled already
     }
@@ -427,20 +437,20 @@ int sccd_handle_node(
         assert(false);
     }
     if (propagate_required || awaiting) {
+        sccd->propagate_required = propagate_required;
         *next_se = sccd_push_node(
             sccd, n, sn, &deps_iter, notifier, awaiting, newly_awaiting, false);
         if (!*next_se) return ERR;
     }
-    if (awaiting) return OK;
-    if (propagate_required && !explore) {
+    if (require_deps) {
         r = mdg_node_require_requirements(n, sccd->tc, false);
         if (r) {
             sccd_release(sccd);
             return ERR;
         }
     }
+    if (awaiting) return OK;
     // we found someone that's still working to latch on.
-    assert(!ready && !awaiting);
     sccd_stack_entry* dtn = sccd->dependant_to_notify;
     if (dtn) {
         if (r) {
@@ -451,12 +461,15 @@ int sccd_handle_node(
             sccd_stack_entry* cd = dtn->curr_dep;
             bool success = true;
             mdg_node* notifier = n;
-            if (cd && cd->curr_dep && cd->notifier == cd->curr_dep->mdgn) {
+            if (!dtn->note_added) {
                 rwlock_write(&cd->mdgn->lock);
                 if (cd->notifier == cd->mdgn->notifier) {
-                    r = list_append(&cd->mdgn->notify, NULL, n);
+                    printf(
+                        "tree notification optimization: %s <- %s",
+                        dtn->mdgn->name, cd->mdgn->name);
+                    r = list_append(&cd->mdgn->notify, NULL, dtn->mdgn);
                     if (r) {
-                        dtn->mdgn->notifier = n;
+                        dtn->mdgn->notifier = cd->mdgn;
                     }
                 }
                 else {
@@ -502,6 +515,7 @@ int sccd_handle_node(
 }
 int sccd_run(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
 {
+    printf("running sccd for %s\n", n->name);
     sccd_new_ctx(sccd);
     int r = sccd_prepare(sccd, n, sccdrr);
     if (r == SCCD_HANDLED) return OK;
@@ -534,6 +548,7 @@ int sccd_run(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
         if (dep_mdg) {
             // it's a new node
             r = sccd_handle_node(sccd, dep_mdg, dep_sn, &se);
+            if (r == SCCD_ADDED_NOTIFICATION) return OK;
             if (r) return r;
             continue;
         }
