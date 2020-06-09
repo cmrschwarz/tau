@@ -375,7 +375,7 @@ mdg_found_node(module_dependency_graph* m, mdg_node* parent, string ident)
     mdg_node* n = mdg_get_node(m, parent, ident, MS_FOUND_UNNEEDED);
     if (!n) return NULL;
     rwlock_write(&n->lock);
-    assert(n->stage < MS_PARSED_EXPLORATION); // TODO: handle error. user lied
+    assert(n->stage < MS_PARSED_UNNEEDED); // TODO: handle error. user lied
     atomic_ureg_inc(&n->unparsed_files);
     if (n->stage == MS_UNFOUND) n->stage = MS_PARSING;
     if (n->stage == MS_UNFOUND_UNNEEDED) n->stage = MS_FOUND_UNNEEDED;

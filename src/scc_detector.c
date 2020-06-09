@@ -130,7 +130,7 @@ int sccd_emit_lone_mdgn(scc_detector* sccd, sccd_stack_entry* se_curr)
     else if (n->stage == MS_AWAITING_DEPENDENCIES) {
         n->stage = MS_RESOLVING;
     }
-    else if (n->stage == MS_PARSED_EXPLORATION) {
+    else if (n->stage == MS_AWAITING_DEPENDENCIES_EXPLORATION) {
         n->stage = MS_RESOLVING_EXPLORATION;
     }
     else {
@@ -168,7 +168,7 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
         if (n->stage == MS_AWAITING_DEPENDENCIES) {
             n->stage = MS_RESOLVING;
         }
-        else if (n->stage == MS_PARSED_EXPLORATION) {
+        else if (n->stage == MS_AWAITING_DEPENDENCIES_EXPLORATION) {
             n->stage = MS_RESOLVING_EXPLORATION;
         }
         else {
@@ -176,7 +176,6 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
             break;
         }
         deps_count_now += list_length(&n->dependencies);
-        if (n == lowlink) break;
     }
     if (outdated || deps_count_now != deps_count_expected) {
         // rollback. somebody else is doing our job. this is NOT an error
@@ -201,6 +200,46 @@ void sccd_new_ctx(scc_detector* sccd)
     sccd->dfs_index++;
     // always push origin so we know when to stop the pop(TM) in release
 }
+sccd_stack_entry* sccd_push_node(
+    scc_detector* sccd, mdg_node* n, sccd_node* sn, list_bounded_it* it,
+    mdg_node* notifier, bool awaiting, bool newly_awaiting, bool is_root)
+{
+    sccd_stack_entry* dependant;
+    if (!is_root) {
+        dependant =
+            sbuffer_back(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
+    }
+    sn->index = sccd->dfs_index;
+    sn->lowlink = sccd->dfs_index;
+    sccd->dfs_index++;
+    sccd_stack_entry* se =
+        sbuffer_append(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
+    int r = OK;
+    if (awaiting) r = stack_push(&sccd->tc->temp_stack, n);
+    if (!se || r) {
+        // release cleans up correctly no matter which one failed
+        sccd_release(sccd);
+        return NULL;
+    }
+    // if it's awaiting dependencies it always HAS dependencies, so there's no
+    // need for some kind of leaf node optimization
+    se->children_it = *it;
+    se->mdgn = n;
+    se->sn = sn;
+    se->deps_count = 0;
+    se->scc_elem_count = 1;
+    se->propagate_required = sccd->propagate_required;
+    se->exploratory = sccd->exploratory;
+    se->notifier = notifier;
+    se->awaiting = awaiting;
+    if (newly_awaiting) {
+        se->dependant_to_notify = sccd->dependant_to_notify;
+        sccd->dependant_to_notify = se;
+    }
+    if (!is_root) dependant->curr_dep = se;
+    se->curr_dep = NULL;
+    return se;
+}
 int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
 {
     bool exploratory = false;
@@ -217,8 +256,12 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
                     awaiting = true;
                 } break;
                 case MS_PARSING_EXPLORATION: {
+                    n->stage = MS_RESOLVING_EXPLORATION;
                     exploratory = true;
-                    assert(false); // TODO
+                    assert(false); // TODO emit job
+                } break;
+                case MS_FOUND_UNNEEDED: {
+                    n->stage = MS_PARSED_UNNEEDED;
                 } break;
                 // TODO: propagate errors?
                 default: assert(false); return ERR;
@@ -236,7 +279,7 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
                 } break;
                 // we currently don't care as we are not awaiting
                 // TODO: is this correct?
-                default: return SCCD_HANDLED;
+                default: r = SCCD_HANDLED;
             }
         } break;
         case SCCD_NOTIFY_DEP_GENERATED: assert(false); return ERR; // TODO
@@ -252,7 +295,7 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
                     n->stage = MS_PARSING;
                     propagate_required = true;
                 } break;
-                case MS_PARSED_EXPLORATION: {
+                case MS_PARSED_UNNEEDED: {
                     n->stage = MS_AWAITING_DEPENDENCIES;
                     awaiting = true;
                     propagate_required = true;
@@ -264,7 +307,7 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
                 case MS_RESOLVED_UNNEEDED: {
                     // TODO: emit generate job
                     assert(false);
-                    return ERR;
+                    r = ERR;
                 } break;
                 default: r = SCCD_HANDLED;
             }
@@ -278,75 +321,20 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
     mdg_node* notifier = n->notifier;
     list_bounded_it it;
     list_bounded_it_begin(&it, &n->dependencies);
-    rwlock_end_read(&n->lock);
+    rwlock_end_write(&n->lock);
     if (r) return r;
-    sccd_stack_entry* se =
-        sbuffer_append(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
-    if (!se) return ERR;
     sccd_node* sn = sccd_get(sccd, n->id);
-    r = stack_push(&sccd->tc->temp_stack, n);
-    if (!sn || r) {
-        sbuffer_remove_back(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
-        return ERR;
-    }
-
-    se->sn = sn;
-    se->children_it = it;
-    se->mdgn = n;
-    se->deps_count = 0;
-    se->scc_elem_count = 1;
-    se->propagate_required = sccd;
-    se->exploratory = false;
-    se->dependant_to_notify = NULL;
-    se->notifier = notifier;
-
-    sccd->origin_se = se;
+    if (!sn) return ERR;
     sccd->propagate_required = propagate_required;
     sccd->exploratory = exploratory;
     sccd->exploratory_resolve = exploratory_resolve;
-    if (awaiting) {
-        se->dependant_to_notify = NULL;
-        sccd->dependant_to_notify = se;
-    }
-    else {
-        sccd->dependant_to_notify = NULL;
-    }
+    sccd->dependant_to_notify = NULL;
+    sccd->origin_se =
+        sccd_push_node(sccd, n, sn, &it, notifier, awaiting, true, true);
+    if (!sccd->origin_se) return ERR;
     return OK;
 }
-sccd_stack_entry* sccd_push_node(
-    scc_detector* sccd, mdg_node* n, sccd_node* sn, list_bounded_it* it,
-    mdg_node* notifier, bool newly_awaiting)
-{
-    sccd_stack_entry* dependant =
-        sbuffer_back(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
-    sn->lowlink = sccd->dfs_index;
-    sn->index = sccd->dfs_index;
-    sccd->dfs_index++;
-    sccd_stack_entry* se =
-        sbuffer_append(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
-    int r = stack_push(&sccd->tc->temp_stack, n);
-    if (!se || r) {
-        // release cleans up correctly no matter which one failed
-        sccd_release(sccd);
-        return NULL;
-    }
-    // if it's awaiting dependencies it always HAS dependencies, so there's no
-    // need for some kind of leaf node optimization
-    se->children_it = *it;
-    se->mdgn = n;
-    se->sn = sn;
-    se->deps_count = 0;
-    se->scc_elem_count = 1;
-    se->propagate_required = sccd->propagate_required;
-    se->exploratory = sccd->exploratory;
-    se->notifier = notifier;
-    if (newly_awaiting) {
-        se->dependant_to_notify = sccd->dependant_to_notify;
-        sccd->dependant_to_notify = se;
-    }
-    dependant->curr_dep = se;
-    return se;
-}
+
 int sccd_handle_node(
     scc_detector* sccd, mdg_node* n, sccd_node* sn, sccd_stack_entry** next_se)
 {
@@ -359,6 +347,7 @@ int sccd_handle_node(
     bool ready = false;
     mdg_node* notifier;
     list_bounded_it deps_iter;
+    printf("handling %s \n", n->name);
     rwlock_write(&n->lock);
     int r = OK;
     switch (n->stage) {
@@ -384,13 +373,12 @@ int sccd_handle_node(
             }
         } break;
 
-        case MS_PARSED_EXPLORATION: {
-            if (!explore) {
-                n->stage = MS_AWAITING_DEPENDENCIES;
-                propagate_required = true;
-                awaiting = true;
-                newly_awaiting = true;
-            }
+        case MS_PARSED_UNNEEDED: {
+            n->stage = explore ? MS_AWAITING_DEPENDENCIES_EXPLORATION
+                               : MS_AWAITING_DEPENDENCIES;
+            propagate_required = true;
+            awaiting = true;
+            newly_awaiting = true;
         } break;
         case MS_AWAITING_DEPENDENCIES_EXPLORATION: {
             awaiting = true;
@@ -415,7 +403,7 @@ int sccd_handle_node(
         } break;
         default: assert(false); break;
     }
-    if (propagate_required) {
+    if (propagate_required || awaiting) {
         list_bounded_it_begin(&deps_iter, &n->dependencies);
         notifier = n->notifier;
     }
@@ -439,8 +427,8 @@ int sccd_handle_node(
         assert(false);
     }
     if (propagate_required || awaiting) {
-        *next_se =
-            sccd_push_node(sccd, n, sn, &deps_iter, notifier, newly_awaiting);
+        *next_se = sccd_push_node(
+            sccd, n, sn, &deps_iter, notifier, awaiting, newly_awaiting, false);
         if (!*next_se) return ERR;
     }
     if (awaiting) return OK;
@@ -514,11 +502,10 @@ int sccd_handle_node(
 }
 int sccd_run(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
 {
+    sccd_new_ctx(sccd);
     int r = sccd_prepare(sccd, n, sccdrr);
     if (r == SCCD_HANDLED) return OK;
     if (r) return r;
-    // we do this after 'prepare' to save the ids in case prepare fails
-    sccd_new_ctx(sccd);
     sccd_stack_entry* se = sccd->origin_se;
     while (true) {
         mdg_node* dep_mdg;
@@ -568,8 +555,10 @@ int sccd_run(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
             continue;
         }
         // we are the lowlink. assemble a list and initiate resolving
-        r = sccd_emit_mdg(sccd, se);
-        if (r) return r;
+        if (se->awaiting) {
+            r = sccd_emit_mdg(sccd, se);
+            if (r) return r;
+        }
         if (se == sccd->origin_se) return OK;
         se = sbuffer_back(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
     }

@@ -22,7 +22,7 @@ typedef enum module_stage_e {
     MS_FOUND_UNNEEDED, // was in a file together with something we needed
     MS_PARSING_EXPLORATION, // we attempt to find a child by parsing this
     MS_PARSING, // found, needed, but not fully parsed yet
-    MS_PARSED_EXPLORATION, // fully parsed for exploration, but unneded
+    MS_PARSED_UNNEEDED, // fully parsed for exploration, but unneded
     MS_AWAITING_DEPENDENCIES_EXPLORATION, // we want to explore gnerating this
     MS_AWAITING_DEPENDENCIES, // needed, parsed, but deps missing for resolved
     MS_RESOLVING_EXPLORATION, // we attempt to find a child by resolving this
@@ -70,7 +70,7 @@ static inline bool
 module_stage_requirements_needed(module_stage ms, bool* exploring)
 {
     // why would we be handling requires otherwise?
-    assert(ms < MS_PARSED_EXPLORATION);
+    assert(ms < MS_PARSED_UNNEEDED);
     switch (ms) {
         case MS_UNFOUND:
         case MS_PARSING:

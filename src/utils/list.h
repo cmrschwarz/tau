@@ -56,7 +56,7 @@ void list_remove_swap(list* l, list_it* it);
 static inline int list_init(list* l)
 {
     l->first_node = NULL;
-    l->head_node = (list_node*)((ureg)(NULL_PTR_PTR) | LIST_SSO_CAPACITY);
+    l->head_node = (list_node*)((ureg)NULL | LIST_SSO_CAPACITY);
     return OK;
 }
 
@@ -72,7 +72,7 @@ static inline int list_append(list* l, pool* alloc_pool, void* data)
             (list_node*)((((ureg)l->head_node) & ~LIST_SSO_MASK) | sso_val);
         return OK;
     }
-    if (l->head_node->head == l->head_node->end) {
+    if (!l->head_node || l->head_node->head == l->head_node->end) {
         return list_append_node(l, alloc_pool, data);
     }
     *l->head_node->head = data;
@@ -118,7 +118,7 @@ static inline void list_bounded_it_begin(list_bounded_it* bit, list* l)
 {
     list_it_begin(&bit->it, l);
     ureg sso_val = ((ureg)l->head_node) & LIST_SSO_MASK;
-    if (sso_val || l->head_node == (list_node*)NULL_PTR_PTR) {
+    if (sso_val || !l->head_node) {
         bit->it_end = &l->sso_slots[0] + (LIST_SSO_CAPACITY - sso_val);
     }
     else {
@@ -178,14 +178,14 @@ static inline void list_clear(list* l)
         l->head_node = (list_node*)(((ureg)l->first_node) | LIST_SSO_CAPACITY);
     }
     else {
-        l->head_node = (list_node*)(((ureg)NULL_PTR_PTR) | LIST_SSO_CAPACITY);
+        l->head_node = (list_node*)(((ureg)NULL) | LIST_SSO_CAPACITY);
     }
 }
 
 static inline void* list_pop_back(list* l)
 {
     ureg sso_val = ((ureg)l->head_node) & LIST_SSO_MASK;
-    if (sso_val || l->head_node == (list_node*)NULL_PTR_PTR) {
+    if (sso_val || !l->head_node) {
         assert(sso_val < LIST_SSO_CAPACITY);
         sso_val++;
         l->head_node =

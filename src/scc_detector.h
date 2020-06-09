@@ -38,6 +38,7 @@ typedef struct sccd_stack_entry_s {
     bool propagate_required;
     bool exploratory;
     bool exploratory_resolve;
+    bool awaiting;
 } sccd_stack_entry;
 
 typedef struct scc_detector_s {
