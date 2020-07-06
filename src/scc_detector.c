@@ -113,16 +113,130 @@ void sccd_release_stack(scc_detector* sccd)
         if (n == sccd->origin_se->mdgn) break;
     }
 }
+void sccd_release_dependants_including(scc_detector* sccd, sccd_stack_entry* se)
+{
+    if (sccd->dependant_to_notify == se) {
+        sccd->dependant_to_notify = se->dependant_to_notify;
+        se->dependant_to_notify = NULL;
+        return;
+    }
+    if (!se->dependant_to_notify) return;
+    while (sccd->dependant_to_notify != se->dependant_to_notify) {
+        sccd_stack_entry* dep_prev =
+            sccd->dependant_to_notify->dependant_to_notify;
+        sccd->dependant_to_notify->dependant_to_notify = NULL;
+        sccd->dependant_to_notify = dep_prev;
+    }
+}
 void sccd_release(scc_detector* sccd)
 {
     sccd_release_buffer(sccd);
     sccd_release_stack(sccd);
+}
+// curr must be under write lock!
+int notify_dependants(scc_detector* sccd, mdg_node* curr)
+{
+    int r = OK;
+    sccd_stack_entry* dtn = sccd->dependant_to_notify;
+    while (dtn) {
+        sccd_stack_entry* cd = dtn->curr_dep;
+        bool add_note = false;
+        if (!cd) {
+            add_note = true;
+        }
+        else {
+            assert(!cd->note_added);
+            if (!cd->curr_dep || cd->curr_dep->mdgn != cd->notifier) {
+                add_note = true;
+            }
+        }
+        if (add_note) {
+            r = list_append(&curr->notify, NULL, dtn->mdgn);
+            if (r) break;
+            dtn->note_added = true;
+            printf(
+                "notification added: %s <- %s\n", dtn->mdgn->name, curr->name);
+            break;
+        }
+        dtn = dtn->dependant_to_notify;
+    }
+    return r;
+}
+int update_dependant_notifiers(
+    scc_detector* sccd, mdg_node* notifier, bool error_occured)
+
+{
+    sccd_stack_entry* dtn = sccd->dependant_to_notify;
+    if (dtn) {
+        if (error_occured) {
+            sccd_release(sccd);
+            return ERR;
+        }
+        int r = OK;
+        bool carried_lock = false;
+        while (dtn && !r) {
+            sccd_stack_entry* cd = dtn->curr_dep;
+            bool success = true;
+            if (!dtn->note_added) {
+                if (!carried_lock) rwlock_write(&cd->mdgn->lock);
+                if (cd->notifier == cd->mdgn->notifier) {
+                    printf(
+                        "tree notification optimization: %s <- %s\n",
+                        dtn->mdgn->name, cd->mdgn->name);
+                    r = list_append(&cd->mdgn->notify, NULL, dtn->mdgn);
+                    if (r) {
+                        dtn->mdgn->notifier = cd->mdgn;
+                        dtn->notifier = cd->mdgn;
+                    }
+                }
+                else {
+                    success = false;
+                }
+                rwlock_end_write(&cd->mdgn->lock);
+                if (r) {
+                    sccd_release(sccd);
+                    return ERR;
+                }
+                if (!success) {
+                    // TODO: push this on some sort of stack for redo
+                    // similar to the parents to expore
+                    assert(false);
+                }
+                dtn->note_added = true;
+                notifier = cd->mdgn;
+            }
+            else if (carried_lock) {
+                rwlock_end_write(&cd->mdgn->lock);
+            }
+            rwlock_write(&dtn->mdgn->lock);
+            // in case somebody else was raced us we back off.
+            // this will leave one uneccessary notification but whatever
+            if (dtn->notifier == dtn->mdgn->notifier) {
+                dtn->mdgn->notifier = notifier;
+                dtn->notifier = notifier;
+            }
+            if (dtn->dependant_to_notify &&
+                dtn->dependant_to_notify->curr_dep == dtn) {
+                carried_lock = true;
+            }
+            else {
+                rwlock_end_write(&dtn->mdgn->lock);
+                carried_lock = false;
+            }
+            sccd_stack_entry* se = dtn;
+            dtn = dtn->dependant_to_notify;
+            se->dependant_to_notify = NULL;
+        }
+        sccd->dependant_to_notify = NULL;
+    }
+    return OK;
 }
 int sccd_emit_lone_mdgn(scc_detector* sccd, sccd_stack_entry* se_curr)
 {
     mdg_node* n = stack_pop(&sccd->tc->temp_stack);
     assert(n == se_curr->mdgn);
     bool outdated = false;
+    int r = OK;
     rwlock_write(&n->lock);
     if (list_length(&n->dependencies) != se_curr->deps_count) {
         outdated = true;
@@ -136,13 +250,24 @@ int sccd_emit_lone_mdgn(scc_detector* sccd, sccd_stack_entry* se_curr)
     else {
         outdated = true;
     }
+    if (!outdated) {
+        r = notify_dependants(sccd, n);
+    }
+    else {
+        // TODO: check whether we are ready or not. depending on that
+        // add the notification or continue as if this is done
+        assert(false);
+    }
     rwlock_end_write(&n->lock);
     sbuffer_remove_back(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
     if (outdated) return OK;
-    return tauc_request_resolve_single(sccd->tc->t, n);
+    printf("emitting %s\n", n->name);
+    r = update_dependant_notifiers(sccd, n, r != OK);
+    return r | tauc_request_resolve_single(sccd->tc->t, n);
 }
 int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
 {
+    sccd_release_dependants_including(sccd, se_curr);
     // TODO: if we are not the origin, update the dependants to notify
     // to let them know that they need to wait on us being resolved
     ureg node_count = se_curr->scc_elem_count;
@@ -162,7 +287,7 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
     } while (n != lowlink);
     assert(ni == nodes_end);
     mdg_nodes_quick_sort(nodes, node_count);
-
+    int r = OK;
     bool outdated = false;
     for (ni = nodes; ni != nodes_end; ni++) {
         n = *ni;
@@ -175,9 +300,14 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
         }
         else {
             outdated = true;
+            assert(false); // TODO: handle the notifications correctly :/
             break;
         }
         deps_count_now += list_length(&n->dependencies);
+        if (ni + 1 == nodes_end) {
+            assert(!outdated);
+            r = notify_dependants(sccd, n);
+        }
     }
     if (outdated || deps_count_now != deps_count_expected) {
         // rollback. somebody else is doing our job. this is NOT an error
@@ -192,7 +322,8 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
     for (ni = nodes; ni != nodes_end; ni++) {
         rwlock_end_write(&(**ni).lock);
     }
-    return tauc_request_resolve_multiple(sccd->tc->t, nodes, nodes_end);
+    r = update_dependant_notifiers(sccd, *(nodes_end - 1), r != OK);
+    return r | tauc_request_resolve_multiple(sccd->tc->t, nodes, nodes_end);
 }
 void sccd_new_ctx(scc_detector* sccd)
 {
@@ -238,6 +369,10 @@ sccd_stack_entry* sccd_push_node(
     if (newly_awaiting) {
         se->dependant_to_notify = sccd->dependant_to_notify;
         sccd->dependant_to_notify = se;
+    }
+    else {
+        se->dependant_to_notify = NULL;
+        if (is_root) sccd->dependant_to_notify = NULL;
     }
     if (!is_root) dependant->curr_dep = se;
     se->curr_dep = NULL;
@@ -338,7 +473,6 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
     if (!sccd->origin_se) return ERR;
     return OK;
 }
-
 int sccd_handle_node(
     scc_detector* sccd, mdg_node* n, sccd_node* sn, sccd_stack_entry** next_se)
 {
@@ -415,17 +549,7 @@ int sccd_handle_node(
         notifier = n->notifier;
     }
     if (!resolved && !awaiting) {
-        sccd_stack_entry* dtn = sccd->dependant_to_notify;
-        while (dtn && !r) {
-            sccd_stack_entry* cd = dtn->curr_dep;
-            if (!cd ||
-                (!cd->note_added &&
-                 (!cd->curr_dep || cd->notifier != cd->curr_dep->mdgn))) {
-                r = list_append(&n->notify, NULL, dtn->mdgn);
-                dtn->note_added = true;
-            }
-            dtn = dtn->dependant_to_notify;
-        }
+        r = notify_dependants(sccd, n);
     }
     rwlock_end_write(&n->lock);
     if (resolved) {
@@ -451,53 +575,8 @@ int sccd_handle_node(
     }
     if (awaiting) return OK;
     // we found someone that's still working to latch on.
-    sccd_stack_entry* dtn = sccd->dependant_to_notify;
-    if (dtn) {
-        if (r) {
-            sccd_release(sccd);
-            return ERR;
-        }
-        while (dtn && !r) {
-            sccd_stack_entry* cd = dtn->curr_dep;
-            bool success = true;
-            mdg_node* notifier = n;
-            if (!dtn->note_added) {
-                rwlock_write(&cd->mdgn->lock);
-                if (cd->notifier == cd->mdgn->notifier) {
-                    printf(
-                        "tree notification optimization: %s <- %s",
-                        dtn->mdgn->name, cd->mdgn->name);
-                    r = list_append(&cd->mdgn->notify, NULL, dtn->mdgn);
-                    if (r) {
-                        dtn->mdgn->notifier = cd->mdgn;
-                    }
-                }
-                else {
-                    success = false;
-                }
-                rwlock_end_write(&dtn->mdgn->lock);
-                if (r) {
-                    sccd_release(sccd);
-                    return ERR;
-                }
-                if (!success) {
-                    // TODO: push this on some sort of stack for redo
-                    // similar to the parents to expore
-                    assert(false);
-                }
-                notifier = cd->mdgn;
-            }
-            rwlock_write(&dtn->mdgn->lock);
-            // in case somebody else was raced us we back off.
-            // this will leave one uneccessary notification but whatever
-            if (dtn->notifier == dtn->mdgn->notifier) {
-                dtn->mdgn->notifier = notifier;
-            }
-            rwlock_end_write(&dtn->mdgn->lock);
-            dtn = dtn->dependant_to_notify;
-        }
-        sccd->dependant_to_notify = NULL;
-    }
+    r = update_dependant_notifiers(sccd, n, r != OK);
+    if (r) return r;
     if (!propagate_required) {
         sccd_stack_entry* se;
         do {
@@ -570,12 +649,16 @@ int sccd_run(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
             continue;
         }
         // we are the lowlink. assemble a list and initiate resolving
-        if (se->awaiting) {
+        if (se->awaiting && se->note_added == false) {
             r = sccd_emit_mdg(sccd, se);
             if (r) return r;
         }
-        if (se == sccd->origin_se) return OK;
-        se = sbuffer_back(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
+        do {
+            if (se == sccd->origin_se) return OK;
+            sbuffer_remove_back(
+                &sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
+            se = sbuffer_back(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
+        } while (se->note_added && !se->exploratory);
     }
     return OK;
 }
