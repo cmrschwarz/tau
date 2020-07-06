@@ -262,6 +262,9 @@ int handle_cmd_args(
         else if (!strcmp(arg, "--liveness")) {
             t->verbosity_flags |= VERBOSITY_FLAGS_LIVENESS;
         }
+        else if (!strcmp(arg, "--sccd")) {
+            t->verbosity_flags |= VERBOSITY_FLAGS_SCCD;
+        }
 #if DEBUG
         else if (!strcmp(arg, "--run-unit-tests")) {
             r = run_unit_tests(argc, argv);

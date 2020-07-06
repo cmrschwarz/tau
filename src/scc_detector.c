@@ -18,6 +18,11 @@ static inline int compare_mdg_nodes(const mdg_node* fst, const mdg_node* snd)
 #define SCCD_MISSING_IMPORT STATUS_2
 #define SCCD_HANDLED STATUS_3
 
+#define sccd_tprintf(sccd, ...)                                                \
+    {                                                                          \
+        if ((sccd->tc->t->verbosity_flags & VERBOSITY_FLAGS_SCCD) != 0)        \
+            tprintf(__VA_ARGS__);                                              \
+    }
 int sccd_init(scc_detector* sccd, thread_context* tc)
 {
     sccd->tc = tc;
@@ -154,8 +159,9 @@ int notify_dependants(scc_detector* sccd, mdg_node* curr)
             r = list_append(&curr->notify, NULL, dtn->mdgn);
             if (r) break;
             dtn->note_added = true;
-            printf(
-                "notification added: %s <- %s\n", dtn->mdgn->name, curr->name);
+            sccd_tprintf(
+                sccd, "notification added: %s <- %s\n", dtn->mdgn->name,
+                curr->name);
             break;
         }
         dtn = dtn->dependant_to_notify;
@@ -180,8 +186,8 @@ int update_dependant_notifiers(
             if (!dtn->note_added) {
                 if (!carried_lock) rwlock_write(&cd->mdgn->lock);
                 if (cd->notifier == cd->mdgn->notifier) {
-                    printf(
-                        "tree notification optimization: %s <- %s\n",
+                    sccd_tprintf(
+                        sccd, "tree notification optimization: %s <- %s\n",
                         dtn->mdgn->name, cd->mdgn->name);
                     r = list_append(&cd->mdgn->notify, NULL, dtn->mdgn);
                     if (r) {
@@ -261,7 +267,7 @@ int sccd_emit_lone_mdgn(scc_detector* sccd, sccd_stack_entry* se_curr)
     rwlock_end_write(&n->lock);
     sbuffer_remove_back(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
     if (outdated) return OK;
-    printf("emitting %s\n", n->name);
+    sccd_tprintf(sccd, "requesting emission of %s\n", n->name);
     r = update_dependant_notifiers(sccd, n, r != OK);
     return r | tauc_request_resolve_single(sccd->tc->t, n);
 }
@@ -486,7 +492,7 @@ int sccd_handle_node(
     bool resolved = false;
     mdg_node* notifier;
     list_bounded_it deps_iter;
-    printf("handling %s \n", n->name);
+    sccd_tprintf(sccd, "handling %s \n", n->name);
     rwlock_write(&n->lock);
     int r = OK;
     switch (n->stage) {
@@ -594,7 +600,7 @@ int sccd_handle_node(
 }
 int sccd_run(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
 {
-    printf("running sccd for %s\n", n->name);
+    sccd_tprintf(sccd, "running sccd for %s\n", n->name);
     sccd_new_ctx(sccd);
     int r = sccd_prepare(sccd, n, sccdrr);
     if (r == SCCD_HANDLED) return OK;

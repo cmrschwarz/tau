@@ -74,6 +74,7 @@ void tauc_scaffolding_fin(tauc* t);
 #define VERBOSITY_FLAGS_TIME_STAGES 0x1
 #define VERBOSITY_FLAGS_PPRNS 0x2
 #define VERBOSITY_FLAGS_LIVENESS 0x4
+#define VERBOSITY_FLAGS_SCCD 0x8
 
 #define TAU_TIME_STAGE_CTX(t, before, code, after)                             \
     do {                                                                       \
@@ -88,4 +89,3 @@ void tauc_scaffolding_fin(tauc* t);
     } while (false)
 
 #define TAU_TIME_STAGE(t, code) TAU_TIME_STAGE_CTX(t, , code, )
-
