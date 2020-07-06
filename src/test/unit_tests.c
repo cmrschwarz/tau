@@ -39,7 +39,6 @@ static void print_dash_padded(char* msg, bool err)
 int mdg_test()
 {
     tauc t;
-
     if (tauc_scaffolding_init(&t)) return ERR;
     if (tauc_core_init(&t)) {
         tauc_scaffolding_fin(&t);
@@ -123,9 +122,9 @@ int mdg_test()
         jid++;
     }
     //
-    //    B > C > D > F
+    //    B > C > D > E
     //     ^ v     ^ v
-    //      A < G > E
+    //      A < G > F
     //          ^
     res = OK;
 err:

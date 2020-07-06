@@ -265,7 +265,6 @@ int sccd_emit_lone_mdgn(scc_detector* sccd, sccd_stack_entry* se_curr)
         assert(false);
     }
     rwlock_end_write(&n->lock);
-    sbuffer_remove_back(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
     if (outdated) return OK;
     sccd_tprintf(sccd, "requesting emission of %s\n", n->name);
     r = update_dependant_notifiers(sccd, n, r != OK);
@@ -281,7 +280,6 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
     ureg deps_count_now = 0;
     ureg deps_count_expected = se_curr->deps_count;
     mdg_node* lowlink = se_curr->mdgn;
-    sbuffer_remove_back(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
     mdg_node** nodes = tmalloc(node_count * sizeof(mdg_node*));
     mdg_node** nodes_end = nodes + node_count;
     mdg_node** ni = nodes;
@@ -329,6 +327,13 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
         rwlock_end_write(&(**ni).lock);
     }
     r = update_dependant_notifiers(sccd, *(nodes_end - 1), r != OK);
+    if (sccd->tc->t->verbosity_flags & VERBOSITY_FLAGS_SCCD) {
+        tprintf("requesting resolve for {");
+        for (mdg_node** n = nodes; n < nodes_end - 1; n++) {
+            tprintf("%s, ", (**n).name);
+        }
+        tprintf("%s}\n", (**(nodes_end - 1)).name);
+    }
     return r | tauc_request_resolve_multiple(sccd->tc->t, nodes, nodes_end);
 }
 void sccd_new_ctx(scc_detector* sccd)
@@ -660,9 +665,9 @@ int sccd_run(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
             if (r) return r;
         }
         do {
-            if (se == sccd->origin_se) return OK;
             sbuffer_remove_back(
                 &sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
+            if (se == sccd->origin_se) return OK;
             se = sbuffer_back(&sccd->tc->temp_buffer, sizeof(sccd_stack_entry));
         } while (se->note_added && !se->exploratory);
     }
