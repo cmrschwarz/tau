@@ -76,6 +76,7 @@ void tauc_scaffolding_fin(tauc* t);
 #define VERBOSITY_FLAGS_LIVENESS 0x4
 #define VERBOSITY_FLAGS_SCCD 0x8
 #define VERBOSITY_FLAGS_STAGE_BEGINS 0x10
+#define VERBOSITY_FLAG_THREAD_SPAWNS 0x20
 
 #define TAU_TIME_STAGE_CTX(t, code, code_before_msg)                           \
     do {                                                                       \

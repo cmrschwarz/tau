@@ -256,6 +256,9 @@ int handle_cmd_args(
         else if (!strcmp(arg, "--timings")) {
             t->verbosity_flags |= VERBOSITY_FLAGS_TIME_STAGES;
         }
+        else if (!strcmp(arg, "--thread-spawns")) {
+            t->verbosity_flags |= VERBOSITY_FLAG_THREAD_SPAWNS;
+        }
         else if (!strcmp(arg, "--stage-begins")) {
             t->verbosity_flags |= VERBOSITY_FLAGS_STAGE_BEGINS;
         }
@@ -384,9 +387,18 @@ int tauc_run(int argc, char** argv)
 
 void worker_thread_fn(void* ctx)
 {
-    // tputs("added worker thread!");
     tflush();
     worker_thread* wt = (worker_thread*)ctx;
+    if (wt->tc.t->verbosity_flags & VERBOSITY_FLAG_THREAD_SPAWNS) {
+        if (wt->tc.t->verbosity_flags & VERBOSITY_FLAGS_STAGE_BEGINS) {
+            // so the initial job gets put here
+            tprintf("added worker thread: ");
+        }
+        else {
+            tputs("added worker thread!");
+            tflush();
+        }
+    }
     thread_context_run(&wt->tc);
 }
 int tauc_add_worker_thread(tauc* t)
