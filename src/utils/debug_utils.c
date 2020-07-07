@@ -6,12 +6,24 @@
 #include "math_utils.h"
 #include "dbuffer.h"
 
-#if DEBUG
-THREAD_LOCAL dbuffer buff; // guraranteed to be zero
+// guraranteed to be zero
+THREAD_LOCAL dbuffer buff;
+atomic_ureg mtx_ref_count;
+mutex flush_mtx;
+
 static void init_buffers()
 {
     if (buff.start) return;
     dbuffer_init(&buff);
+    ureg rc = atomic_ureg_inc(&mtx_ref_count) + 1;
+    while (rc < (ureg)UREGH_MAX + 1) {
+        if (rc == 1) {
+            mutex_init(&flush_mtx);
+            atomic_ureg_add(&mtx_ref_count, UREGH_MAX);
+            break;
+        }
+        rc = atomic_ureg_load(&mtx_ref_count);
+    }
 }
 void debug_utils_free_res()
 {
@@ -19,11 +31,16 @@ void debug_utils_free_res()
     tflush();
     dbuffer_fin(&buff);
     buff.start = NULL;
-}
-static void debugflush()
-{
-    if (!(plattform_get_virt_core_count() == 1)) return;
-    tflush();
+    ureg rc = atomic_ureg_dec(&mtx_ref_count) - 1;
+    while (rc == UREGH_MAX) {
+        // loop needed because of spurious failiure
+        if (atomic_ureg_cas(&mtx_ref_count, &rc, 0)) {
+            mutex_fin(&flush_mtx);
+            break;
+        }
+        // back off if somebody "subscribed" in the mean time
+        if (rc > UREG_MAX) break;
+    }
 }
 void tprintf(const char* format, ...)
 {
@@ -42,39 +59,43 @@ void tprintf(const char* format, ...)
         size = len + 1;
     }
     buff.head -= (size - len);
-    debugflush();
 }
 void tput(const char* c)
 {
     init_buffers();
     dbuffer_append(&buff, c, strlen(c));
-    debugflush();
 }
 void tputs(const char* c)
 {
     init_buffers();
     dbuffer_append(&buff, c, strlen(c));
     *(char*)dbuffer_claim(&buff, 1) = '\n';
-    debugflush();
 }
 void tputchar(const char c)
 {
     init_buffers();
     dbuffer_append(&buff, &c, 1);
-    debugflush();
 }
 void tprintn(const char* c, ureg n)
 {
     init_buffers();
     dbuffer_append(&buff, c, n);
-    debugflush();
 }
 void tflush()
 {
+    init_buffers();
     ureg len = dbuffer_get_size(&buff);
-    fwrite(buff.start, len, 1, stdout);
-    dbuffer_clear(&buff);
+    mutex_lock(&flush_mtx);
     fflush(stdout);
+    if (len == 1 && buff.start[0] == '\n') {
+        printf("lols\n");
+    }
+    else {
+        fwrite(buff.start, len, 1, stdout);
+    }
+    fflush(stdout);
+    mutex_unlock(&flush_mtx);
+    dbuffer_clear(&buff);
 }
 
 void pretty_print_timespan(timespan* ts)
@@ -104,32 +125,3 @@ void pretty_print_timer_elapsed(timer* t)
     timer_get_elapsed(&tc, &ts);
     pretty_print_timespan(&ts);
 }
-#else
-void tprintf(const char* format, ...)
-{
-}
-void tputs(const char* c)
-{
-}
-void tput(const char* c)
-{
-}
-void tputchar(const char c)
-{
-}
-void tflush()
-{
-}
-void tprintn(const char* c, ureg n)
-{
-}
-void pretty_print_timespan(timespan* ts)
-{
-}
-void pretty_print_timer_elapsed(timer* t)
-{
-}
-void debug_utils_free_res()
-{
-}
-#endif

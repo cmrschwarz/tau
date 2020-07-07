@@ -488,20 +488,20 @@ void prp_free_owned_vars(post_resolution_pass* prp)
                     vd->var_node->var->osym.sym.declaring_st)
                     ->owning_node,
                 0);
-            printf(": ");
+            tprintf(": ");
         }
         switch (vd->exit_states) {
             case VAR_STATE_INVALID:
                 dk = DTOR_KIND_STATIC;
-                if (p) puts("static dtor");
+                if (p) tputs("static dtor");
                 break;
             case VAR_STATE_MAYBE_VALID:
                 dk = DTOR_KIND_DYNAMIC;
-                if (p) puts("dynamic dtor");
+                if (p) tputs("dynamic dtor");
                 break;
             case VAR_STATE_VALID:
                 dk = DTOR_KIND_KNOWN_DEAD;
-                if (p) puts("no dtor");
+                if (p) tputs("no dtor");
                 break;
             case VAR_STATE_UNKNOWN:
                 assert(false); // well we failed then :/

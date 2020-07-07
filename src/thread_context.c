@@ -130,7 +130,7 @@ int thread_context_do_job(thread_context* tc, job* j)
         // DEBUG:
         if (tc->t->emit_ast) {
             print_mdg_node(tc->t->mdg.root_node, 0);
-            puts("");
+            tputs("");
         }
         int r = mdg_final_sanity_check(&tc->t->mdg, tc);
         if (!r) {

@@ -116,7 +116,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn)
     assert(n);
     assert(pprn->dep_count == 0);
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
-        printf("freeing pprn: ");
+        tprintf("freeing pprn: ");
         print_pprn(r, pprn, false, 0);
     }
     if (pprn->waiting_list_entry) {
@@ -172,7 +172,7 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->first_unresolved_child = NULL;
     pprn->waiting_list_entry = NULL;
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
-        printf("allocated pprn: ");
+        tprintf("allocated pprn: ");
         print_pprn(r, pprn, false, 0);
     }
     return pprn;
@@ -3096,11 +3096,11 @@ void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident)
     if (verbose) {
         aseglist_iterator it;
         print_indent(ident);
-        printf("dependencies: %zu\n", pprn->dep_count);
+        tprintf("dependencies: %zu\n", pprn->dep_count);
         aseglist_iterator_begin(&it, &pprn->notify_when_ready);
         ureg ready_nots = aseglist_iterator_get_remaining_count(&it);
         print_indent(ident);
-        printf("nofify ready: %zu\n", ready_nots);
+        tprintf("nofify ready: %zu\n", ready_nots);
         for (pp_resolve_node* p = (pp_resolve_node*)aseglist_iterator_next(&it);
              p; p = (pp_resolve_node*)aseglist_iterator_next(&it)) {
             print_pprn(r, p, false, ident + 1);
@@ -3108,7 +3108,7 @@ void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident)
         aseglist_iterator_begin(&it, &pprn->notify_when_done);
         ureg done_nots = aseglist_iterator_get_remaining_count(&it);
         print_indent(ident);
-        printf("notify done:  %zu\n", done_nots);
+        tprintf("notify done:  %zu\n", done_nots);
         for (pp_resolve_node* p = (pp_resolve_node*)aseglist_iterator_next(&it);
              p; p = (pp_resolve_node*)aseglist_iterator_next(&it)) {
             print_pprn(r, p, false, ident + 1);
@@ -3118,29 +3118,29 @@ void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident)
     pp_resolve_node* child = pprn->first_unresolved_child;
     print_indent(ident);
     if (ast_elem_is_func_base((ast_elem*)pprn->node)) {
-        printf("func %s", ((sc_func_base*)pprn->node)->sc.osym.sym.name);
+        tprintf("func %s", ((sc_func_base*)pprn->node)->sc.osym.sym.name);
     }
     else {
         print_ast_node(pprn->node, r->curr_mdg, ident);
     }
-    puts("");
+    tputs("");
     if (child && verbose) {
         print_indent(ident);
-        puts("children:");
+        tputs("children:");
         while (child) {
             print_indent(ident + 1);
             print_ast_node(child->node, r->curr_mdg, ident + 1);
-            puts("");
+            tputs("");
             child = child->next;
         }
     }
-    puts("");
+    tputs("");
 }
 // this stuff is just for debugging purposes
 void print_pprnlist(resolver* r, sbuffer* buff, char* msg, bool verbose)
 {
     if (sbuffer_get_used_size(buff) == 0) return;
-    puts(msg);
+    tputs(msg);
     sbuffer_iterator sbi = sbuffer_iterator_begin(buff);
     for (pp_resolve_node** rn =
              sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
@@ -3151,7 +3151,7 @@ void print_pprnlist(resolver* r, sbuffer* buff, char* msg, bool verbose)
 void print_pprns(resolver* r, char* msg, bool verbose)
 {
     if (!(r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS)) return;
-    printf(msg);
+    tprintf(msg);
     print_pprnlist(r, &r->pp_resolve_nodes_ready, "ready:", verbose);
     print_pprnlist(r, &r->pp_resolve_nodes_pending, "pending:", verbose);
     print_pprnlist(r, &r->pp_resolve_nodes_waiting, "waiting:", verbose);
