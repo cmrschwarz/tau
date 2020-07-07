@@ -256,6 +256,9 @@ int handle_cmd_args(
         else if (!strcmp(arg, "--timings")) {
             t->verbosity_flags |= VERBOSITY_FLAGS_TIME_STAGES;
         }
+        else if (!strcmp(arg, "--stage-begins")) {
+            t->verbosity_flags |= VERBOSITY_FLAGS_STAGE_BEGINS;
+        }
         else if (!strcmp(arg, "--pprns")) {
             t->verbosity_flags |= VERBOSITY_FLAGS_PPRNS;
         }
@@ -354,18 +357,12 @@ int tauc_run(int argc, char** argv)
         if (!r) {
             if (files_found) {
                 TAU_TIME_STAGE_CTX(
-                    &t, ,
+                    &t,
                     {
                         r = tauc_run_jobs(&t);
                         tauc_core_fin(&t);
-                        if (t.verbosity_flags & VERBOSITY_FLAGS_TIME_STAGES) {
-                            tprintf("total ");
-                        }
                     },
-                    {
-                        tputs("\n");
-                        tflush();
-                    });
+                    { tprintf("total "); });
             }
             else {
                 tauc_core_fin_no_run(&t);

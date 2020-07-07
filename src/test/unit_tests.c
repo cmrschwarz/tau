@@ -23,18 +23,17 @@ static void print_dash_padded(char* msg, bool err)
 
 #define TEST_IMPL(res, test_name, test_call)                                   \
     do {                                                                       \
-        char* msg_succ = STR_CAT(STRINGIFY(test_name), " PASSED ");            \
-        char* msg_fail = STR_CAT(STRINGIFY(test_name), " FAILED ");            \
+        char* msg_succ = STR_CAT("PASSED ", STRINGIFY(test_name));             \
+        char* msg_fail = STR_CAT("FAILED ", STRINGIFY(test_name));             \
         int r;                                                                 \
-        TIME_MSG((!r ? msg_succ : msg_fail), "\n", r = test_call;);            \
+        TIME_MSG_LN(r = test_call, tprintf("%s ", r ? msg_fail : msg_succ););  \
         res |= r;                                                              \
-        tflush();                                                              \
     } while (false)
 
 // MDG TESTS
-#define TEST(rest, test_name) TEST_IMPL(rest, test_name, test_name())
-#define TEST_WITH_ARGS(rest, test_name, ...)                                   \
-    TEST_IMPL(rest, test_name, test_name(__VA_ARGS__))
+#define TEST(res, test_name) TEST_IMPL(res, test_name, test_name())
+#define TEST_WITH_ARGS(res, test_name, ...)                                    \
+    TEST_IMPL(res, test_name, test_name(__VA_ARGS__))
 
 int mdg_test()
 {

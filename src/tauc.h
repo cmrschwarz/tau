@@ -75,16 +75,21 @@ void tauc_scaffolding_fin(tauc* t);
 #define VERBOSITY_FLAGS_PPRNS 0x2
 #define VERBOSITY_FLAGS_LIVENESS 0x4
 #define VERBOSITY_FLAGS_SCCD 0x8
+#define VERBOSITY_FLAGS_STAGE_BEGINS 0x10
 
-#define TAU_TIME_STAGE_CTX(t, before, code, after)                             \
+#define TAU_TIME_STAGE_CTX(t, code, code_before_msg)                           \
     do {                                                                       \
+        tauc* tp = t;                                                          \
+        if (tp->verbosity_flags & VERBOSITY_FLAGS_STAGE_BEGINS) {              \
+            code_before_msg;                                                   \
+            tputs("");                                                         \
+            tflush();                                                          \
+        }                                                                      \
         if ((t)->verbosity_flags & VERBOSITY_FLAGS_TIME_STAGES) {              \
-            before;                                                            \
-            TIME(code);                                                        \
-            after;                                                             \
+            TIME_MSG_LN(code, code_before_msg);                                \
         }                                                                      \
         else {                                                                 \
-            code                                                               \
+            code;                                                              \
         }                                                                      \
     } while (false)
 

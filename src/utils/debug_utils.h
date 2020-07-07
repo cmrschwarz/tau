@@ -15,7 +15,7 @@ void debug_utils_free_res();
 
 #if DEBUG
 
-#define TIME_MSG(msg, after_msg, code)                                         \
+#define TIME_MSG(code, code_before_msg)                                        \
     do {                                                                       \
         timer ____timer_reserved_name_for_bench_macro;                         \
         timer_init(&____timer_reserved_name_for_bench_macro);                  \
@@ -25,19 +25,25 @@ void debug_utils_free_res();
         timer_get_elapsed(                                                     \
             &____timer_reserved_name_for_bench_macro,                          \
             &____timespan_reserved_name_for_bench_macro);                      \
-        tprintf("%s[", msg);                                                   \
+        code_before_msg;                                                       \
+        tprintf("[");                                                          \
         pretty_print_timespan(&____timespan_reserved_name_for_bench_macro);    \
-        tprintf("]%s", after_msg);                                             \
+        tprintf("]");                                                          \
     } while (false)
 #else
 
-#define TIME_MSG(msg, after_msg, code)                                         \
+#define TIME_MSG(code, code_before_msg)                                        \
     do {                                                                       \
         code                                                                   \
     } while (false)
 #endif
-#define TIME(code) TIME_MSG("", "\n", code)
+#define TIME(code) TIME_MSG(code, ;)
+#define TIME_MSG_LN(code, code_before_msg)                                     \
+    do {                                                                       \
+        TIME_MSG(code, code_before_msg);                                       \
+        tputs("");                                                             \
+        tflush();                                                              \
+    } while (false)
 
 // for variables only used in asserts to get rid of -Wunused-variable
 #define UNUSED(x) ((void)(x))
-

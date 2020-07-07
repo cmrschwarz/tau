@@ -144,6 +144,10 @@ int llvm_link_modules(
     TAU_TIME_STAGE_CTX(
         t,
         {
+            lle = linkLLVMModules(
+                (LLVMModule**)start, (LLVMModule**)end, link_libs, output_path);
+        },
+        {
             tprintf("linking {");
             for (LLVMModule** n = (LLVMModule**)start; !ptreq(n, end); n++) {
                 tprintf(
@@ -151,12 +155,7 @@ int llvm_link_modules(
                     ptreq(n + 1, end) ? "" : ", ");
             }
             tput("} ");
-        },
-        {
-            lle = linkLLVMModules(
-                (LLVMModule**)start, (LLVMModule**)end, link_libs, output_path);
-        },
-        tflush(););
+        });
     if (lle) return ERR;
     return OK;
 }
@@ -625,17 +624,16 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     llvm_error lle;
 
     TAU_TIME_STAGE_CTX(
-        _tc->t, tprintf("generating {%s}", _mod_handle->module_str.c_str());
-        , lle = genModules();, tflush(););
+        _tc->t, lle = genModules(),
+        tprintf("generating {%s} ", _mod_handle->module_str.c_str()));
     if (lle) return lle;
     TAU_TIME_STAGE_CTX(
-        _tc->t,
+        _tc->t, { lle = emitModule(); },
         {
             if (!_pp_mode) {
                 tprintf("emmitting {%s} ", _mod_handle->module_str.c_str());
             }
-        },
-        { lle = emitModule(); }, { tflush(); });
+        });
 
     // PERF: instead of this last minute checking
     // just have different buffers for the different
