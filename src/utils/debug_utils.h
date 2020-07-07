@@ -33,7 +33,7 @@ void debug_utils_free_res();
 
 #define TIME_MSG(code, code_before_msg)                                        \
     do {                                                                       \
-        code                                                                   \
+        code;                                                                  \
     } while (false)
 #endif
 #define TIME(code) TIME_MSG(code, ;)
