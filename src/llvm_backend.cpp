@@ -40,6 +40,7 @@ void llvm_backend_fin_globals()
 {
     globals_refcount--;
     if (globals_refcount != 0) return;
+    // llvm::sys::CleanupOnSignal(0); // to cleanup after lld, not supported yet
     llvm::llvm_shutdown();
     delete PP_RUNNER;
 }
@@ -221,6 +222,8 @@ llvm_error llvm_backend_link_for_pp(bool is_dynamic, char* path)
 }
 } // CPP
 
+#include <llvm-c/Core.h>
+
 PPRunner::PPRunner()
     : exec_session(),
       obj_link_layer(
@@ -336,6 +339,7 @@ PPRunner::~PPRunner()
 LLVMBackend::LLVMBackend(thread_context* tc)
     : _tc(tc), _context(), _builder(_context),
       _global_value_store(atomic_ureg_load(&tc->t->node_ids), NULL)
+
 {
     std::string err;
     auto target_triple = "x86_64-pc-linux-gnu"; // LLVMGetDefaultTargetTriple();
@@ -351,10 +355,12 @@ LLVMBackend::LLVMBackend(thread_context* tc)
     llvm::Optional<llvm::CodeModel::Model> CM = llvm::CodeModel::Small;
     llvm::CodeGenOpt::Level OptLevel = llvm::CodeGenOpt::None;
     llvm::Optional<llvm::Reloc::Model> rm{llvm::Reloc::Model::PIC_};
+    char* features = LLVMGetHostCPUFeatures();
     _target_machine = target->createTargetMachine(
-        target_triple, LLVMGetHostCPUName(), LLVMGetHostCPUFeatures(), opt,
+        target_triple, llvm::sys::getHostCPUName(), features, opt,
         std::move(rm), CM, OptLevel);
     _data_layout = new llvm::DataLayout(_target_machine->createDataLayout());
+    LLVMDisposeMessage(features);
     _mod_dylib = NULL;
     _curr_this = NULL;
 }
@@ -375,7 +381,13 @@ LLVMBackend::~LLVMBackend()
         }
         while (f != skip) {
             auto val = (llvm::Value*)_global_value_store[f];
-            if (val) val->deleteValue();
+            if (val) {
+                auto fn = llvm::cast_or_null<llvm::Function>(val);
+                if (fn) {
+                    fn->dropAllReferences();
+                }
+                val->deleteValue();
+            }
             f++;
         }
         if (i == end) break;
@@ -1477,12 +1489,12 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                         tgt_ctx->following_block =
                             llvm::BasicBlock::Create(_context, "", _curr_fn);
                         _builder.SetInsertPoint(curr_ib, curr_ip);
-                        auto c = _control_flow_ctx.end();
+                        auto c = _control_flow_ctx.rbegin();
                         while (true) {
                             if (c->following_block == NULL)
                                 c->following_block = tgt_ctx->following_block;
                             if (&*c == _curr_fn_control_flow_ctx) break;
-                            --c;
+                            ++c;
                         }
                     }
                 }
@@ -1608,9 +1620,9 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (lle) return lle;
             _control_flow_ctx.emplace_back();
             ControlFlowContext* ctx = &_control_flow_ctx.back();
+            ctx->following_block = following_block;
             lle = genScopeValue(i->ctype, *ctx);
             if (lle) return lle;
-            ctx->following_block = following_block;
             if (i->else_body) {
                 auto if_block = llvm::BasicBlock::Create(
                     _context, "", _curr_fn, following_block);
@@ -1977,6 +1989,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         (**res).deleteValue();
     }
     else if (*state == STUB_GENERATED || *state == PP_STUB_GENERATED) {
+        assert(!_pp_mode || *state == PP_STUB_GENERATED);
         *state = (*state == STUB_GENERATED) ? STUB_ADDED : PP_STUB_ADDED;
         _module->getFunctionList().push_back((llvm::Function*)*res);
         _reset_after_emit.push_back(fn->id);
@@ -2101,21 +2114,21 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         assert(isLocalID(fn->id));
         *state = PP_IMPL_ADDED;
         ast_flags_set_emitted_for_pp(&fn->fnb.sc.osym.sym.node.flags);
+        _reset_after_emit.push_back(fn->id);
     }
     else {
         *state = IMPL_ADDED;
+        if (!isLocalID(fn->id)) _reset_after_emit.push_back(fn->id);
     }
-    _reset_after_emit.push_back(fn->id);
     llvm::BasicBlock* func_block = llvm::BasicBlock::Create(_context, "", func);
     if (!func_block) return LLE_FATAL;
     ureg cfcsize = _control_flow_ctx.size();
     _control_flow_ctx.emplace_back();
     ControlFlowContext& ctx = _control_flow_ctx.back();
-
-    // lle = genScopeValue(fn->return_ctype, ctx);
-    // if (lle) return lle;
     ctx.first_block = func_block;
     ctx.following_block = NULL;
+    // lle = genScopeValue(fn->return_ctype, ctx);
+    // if (lle) return lle;
     auto prev_fn = _curr_fn;
     auto prev_fn_ast_node = _curr_fn_ast_node;
     auto prev_fn_cfc = _curr_fn_control_flow_ctx;

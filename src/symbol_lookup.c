@@ -123,7 +123,7 @@ resolve_error symbol_lookup_level_run(
     symbol* sym = symbol_table_lookup_raw(lookup_st, sli->hash, sli->tgt_name);
     if (sym != NULL) {
         access_modifier am = ast_flags_get_access_mod(sym->node.flags);
-        bool vis_within;
+        bool vis_within = false;
         if (symbol_is_open_symbol(sym)) {
             open_symbol* osym = (open_symbol*)sym;
             re = update_ams(

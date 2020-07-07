@@ -1,6 +1,7 @@
 #include "token.h"
 #include "file_map.h"
 #include "stdio.h"
+#include "utils/debug_utils.h"
 
 const char* COND_KW_CONSTRUCT = "construct";
 const char* COND_KW_DESTRUCT = "destruct";

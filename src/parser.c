@@ -999,7 +999,9 @@ static inline parse_error
 parse_uninitialized_var_in_tuple(parser* p, token* t, ast_node** ex)
 {
     sym_var* v = alloc_perm(p, sizeof(tuple_ident_node));
+    if (!v) return PE_FATAL;
     ast_node_init((ast_node*)v, SYM_VAR);
+    v->osym.visible_within = NULL;
     ast_flags_set_compound_decl(&v->osym.sym.node.flags);
     v->osym.sym.name = alloc_string_perm(p, t->str);
     if (!v->osym.sym.name) return PE_FATAL;
@@ -1032,9 +1034,11 @@ static inline parse_error
 build_ident_node_in_tuple(parser* p, token* t, ast_node** ex)
 {
     tuple_ident_node* tin = alloc_perm(p, sizeof(tuple_ident_node));
+    if (!tin) return PE_FATAL;
     sym_var* v = &tin->var;
     ast_node_init(&v->osym.sym.node, SYM_VAR);
     v->osym.sym.name = alloc_string_perm(p, t->str);
+    v->osym.visible_within = NULL; // TODO
     if (!v->osym.sym.name) return PE_FATAL;
     if (ast_node_fill_srange(p, (ast_node*)v, t->start, t->end))
         return PE_FATAL;
@@ -1653,6 +1657,7 @@ parse_error parse_if(parser* p, ast_node** tgt)
     lx_void(&p->lx);
     expr_if* i = alloc_perm(p, sizeof(expr_if));
     if (!i) return PE_FATAL;
+    i->prpbn = NULL;
     init_expr_block_base(p, (expr_block_base*)i, false, NULL);
     i->ctype = NULL;
     parse_error pe =
@@ -2474,6 +2479,7 @@ parse_error parse_func_decl(
     }
     fnb->pprn = NULL;
     fnb->sc.osym.sym.name = name;
+    fnb->sc.osym.visible_within = NULL; // TODO
     ast_node_init_with_flags(
         (ast_node*)fnb, fng ? SC_FUNC_GENERIC : SC_FUNC, flags);
     pe = sym_fill_srange(p, (symbol*)fnb, start, decl_end);
@@ -2548,6 +2554,7 @@ parse_error parse_macro_decl(
     sc_macro* m = alloc_perm(p, sizeof(sc_macro));
     if (!m) return PE_FATAL;
     m->sc.osym.sym.name = name;
+    m->sc.osym.visible_within = NULL; // TODO
     ast_node_init_with_flags((ast_node*)m, SC_MACRO, flags);
     pe = sym_fill_srange(p, (symbol*)m, start, decl_end);
     if (pe) return pe;
@@ -2715,7 +2722,6 @@ parse_error parse_module_frame_decl(
     ast_node_init_with_flags((ast_node*)md, kind, flags);
     md->node.srange = src_range_pack(p->lx.tc, start, decl_end, p->lx.smap);
     if (md->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
-    // md->sc.osym.sym.name = mdgn->name;
     PEEK(p, t);
     mdg_node* parent = p->current_module;
     p->current_module = mdgn;
@@ -2793,6 +2799,7 @@ parse_error parse_trait_decl(
         if (!tr) return PE_FATAL;
     }
     tr->osym.sym.name = name;
+    tr->osym.visible_within = NULL; // TODO
     pe = sym_fill_srange(p, (symbol*)tr, start, decl_end);
     if (pe) return pe;
     ast_node_init_with_flags(
@@ -2942,6 +2949,7 @@ parse_error parse_use(
             if (!nu) return PE_FATAL;
             ast_node_init_with_flags((ast_node*)nu, SYM_NAMED_USE, flags);
             nu->osym.sym.name = alloc_string_perm(p, t->str);
+            nu->osym.visible_within = NULL; // TODO
             if (!nu->osym.sym.name) return PE_FATAL;
             lx_void_n(&p->lx, 2);
             parse_error pe = parse_expression(p, &nu->target);
@@ -3062,6 +3070,7 @@ parse_error parse_symbol_imports(
             ast_node_fill_srange(p, (ast_node*)im, symstart, symend);
             im->import_group = group;
             im->osym.sym.name = id1_str;
+            im->osym.visible_within = NULL; // TODO
             im->target.name = symname;
             *tgt = (symbol*)im;
             tgt = &im->osym.sym.next;
@@ -3133,6 +3142,7 @@ parse_error parse_import_with_parent(
             ast_node_init_with_flags((ast_node*)im, SYM_IMPORT_MODULE, flags);
             ast_node_fill_srange(p, (ast_node*)im, istart, end);
             im->target = parent;
+            im->osym.visible_within = NULL; // TODO
             if (name) {
                 im->osym.sym.name = name;
                 curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
@@ -3158,6 +3168,7 @@ parse_error parse_import_with_parent(
         ast_node_init_with_flags((ast_node*)ig, SYM_IMPORT_GROUP, flags);
         ig->parent_mdgn = parent;
         ig->osym.sym.name = name;
+        ig->osym.visible_within = NULL; // TODO
         *tgt = (symbol*)ig;
         tgt = &ig->children.symbols;
 
