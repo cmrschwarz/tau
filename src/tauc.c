@@ -348,7 +348,7 @@ int tauc_run(int argc, char** argv)
 {
     tauc t;
     int r;
-
+    timer_start(&t.total_time);
     r = tauc_scaffolding_init(&t);
     if (r) return r;
     bool files_found = false;
@@ -359,13 +359,8 @@ int tauc_run(int argc, char** argv)
             &t, t.main_thread_context.err_log, argc, argv, &files_found);
         if (!r) {
             if (files_found) {
-                TAU_TIME_STAGE_CTX(
-                    &t,
-                    {
-                        r = tauc_run_jobs(&t);
-                        tauc_core_fin(&t);
-                    },
-                    { tprintf("total "); });
+                r = tauc_run_jobs(&t);
+                tauc_core_fin(&t);
             }
             else {
                 tauc_core_fin_no_run(&t);
@@ -377,6 +372,14 @@ int tauc_run(int argc, char** argv)
     }
     master_error_log_unwind(&t.mel);
     tauc_scaffolding_fin(&t);
+    timer_stop(&t.total_time);
+    if (t.verbosity_flags & VERBOSITY_FLAGS_TIME_STAGES) {
+        timespan ts;
+        timer_get_elapsed(&t.total_time, &ts);
+        tprintf("total [");
+        pretty_print_timespan(&ts);
+        tprintf("]\n");
+    }
     debug_utils_free_res();
     if (!r) {
         if (tauc_success_so_far(&t)) return OK;

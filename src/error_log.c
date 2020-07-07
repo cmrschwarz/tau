@@ -339,14 +339,13 @@ void print_msg(master_error_log* mel, const char* msg, ureg msg_len)
 }
 void printCriticalThreadError(master_error_log* mel, const char* msg)
 {
-    pect(
-        mel, ANSICOLOR_RED ANSICOLOR_BOLD, "critical error in worker thread: ");
+    pect(mel, ANSICOLOR_RED ANSICOLOR_BOLD, "fatal error in worker thread: ");
     pe(msg);
     pect(mel, ANSICOLOR_CLEAR, "\n");
 }
 void printCriticalError(master_error_log* mel, const char* msg)
 {
-    pect(mel, ANSICOLOR_RED ANSICOLOR_BOLD, "critical error: ");
+    pect(mel, ANSICOLOR_RED ANSICOLOR_BOLD, "fatal error: ");
     pe(msg);
     pect(mel, ANSICOLOR_CLEAR, "\n");
 }

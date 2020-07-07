@@ -11,23 +11,22 @@ void tflush();
 void tprintn(const char* c, ureg n);
 
 void pretty_print_timespan(timespan* ts);
+void pretty_print_timer_elapsed(timer* t);
 void debug_utils_free_res();
 
 #if DEBUG
 
 #define TIME_MSG(code, code_before_msg)                                        \
     do {                                                                       \
-        timer ____timer_reserved_name_for_bench_macro;                         \
-        timer_init(&____timer_reserved_name_for_bench_macro);                  \
+        timer ____timer;                                                       \
+        timer_init(&____timer);                                                \
         code;                                                                  \
-        timer_stop(&____timer_reserved_name_for_bench_macro);                  \
-        timespan ____timespan_reserved_name_for_bench_macro;                   \
-        timer_get_elapsed(                                                     \
-            &____timer_reserved_name_for_bench_macro,                          \
-            &____timespan_reserved_name_for_bench_macro);                      \
+        timer_stop(&____timer);                                                \
+        timespan ____timespan;                                                 \
+        timer_get_elapsed(&____timer, &____timespan);                          \
         code_before_msg;                                                       \
         tprintf("[");                                                          \
-        pretty_print_timespan(&____timespan_reserved_name_for_bench_macro);    \
+        pretty_print_timespan(&____timespan);                                  \
         tprintf("]");                                                          \
     } while (false)
 #else

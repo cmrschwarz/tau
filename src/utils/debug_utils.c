@@ -96,6 +96,14 @@ void pretty_print_timespan(timespan* ts)
         tprintf("%.2f ms", millis);
     }
 }
+void pretty_print_timer_elapsed(timer* t)
+{
+    timer tc = *t;
+    timer_stop(&tc);
+    timespan ts;
+    timer_get_elapsed(&tc, &ts);
+    pretty_print_timespan(&ts);
+}
 #else
 void tprintf(const char* format, ...)
 {
@@ -115,8 +123,10 @@ void tflush()
 void tprintn(const char* c, ureg n)
 {
 }
-
 void pretty_print_timespan(timespan* ts)
+{
+}
+void pretty_print_timer_elapsed(timer* t)
 {
 }
 void debug_utils_free_res()
