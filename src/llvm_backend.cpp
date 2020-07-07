@@ -200,7 +200,7 @@ static inline llvm_error link_archive(PPRunner* pp, const char* path)
 }
 static inline llvm_error link_obj(PPRunner* pp, const char* path)
 {
-    auto& dl = pp->exec_session.getMainJITDylib();
+    auto& dl = pp->main_dylib;
     auto file{std::move(llvm::MemoryBuffer::getFile(path).get())};
     auto err = pp->obj_link_layer.add(
         dl, std::move(file), pp->exec_session.allocateVModule());
@@ -223,77 +223,80 @@ llvm_error llvm_backend_link_for_pp(bool is_dynamic, char* path)
 } // CPP
 
 #include <llvm-c/Core.h>
-
+llvm::Error CustomGenerator::tryToGenerate(
+    llvm::orc::LookupKind K, llvm::orc::JITDylib& dylib,
+    llvm::orc::JITDylibLookupFlags JDLookupFlags,
+    const llvm::orc::SymbolLookupSet& symbols)
+{
+    // std::lock_guard<std::mutex> guard{this->mtx};
+    llvm::orc::SymbolNameSet added;
+    llvm::orc::SymbolMap new_symbols;
+    for (auto& sym : symbols.getSymbolNames()) {
+        // printf("looking for symbol '%s'\n", (*sym).str().c_str());
+        bool found = false;
+        for (auto& arch_obs : PP_RUNNER->archives) {
+            auto& arch = *arch_obs.getBinary();
+            // Look for our symbols in each Archive
+            auto OptionalChildOrErr = arch.findSym(*sym);
+            if (!OptionalChildOrErr)
+                llvm::report_fatal_error(OptionalChildOrErr.takeError());
+            auto& OptionalChild = *OptionalChildOrErr;
+            if (OptionalChild) {
+                // FIXME: Support nested archives?
+                llvm::Expected<std::unique_ptr<llvm::object::Binary>>
+                    ChildBinOrErr = OptionalChild->getAsBinary();
+                if (!ChildBinOrErr) {
+                    llvm::errs() << ChildBinOrErr.takeError() << "\n";
+                    assert(false);
+                    continue;
+                }
+                std::unique_ptr<llvm::object::Binary>& ChildBin =
+                    ChildBinOrErr.get();
+                if (ChildBin->isObject()) {
+                    PP_RUNNER->obj_link_layer.add(
+                        PP_RUNNER->main_dylib,
+                        llvm::MemoryBuffer::getMemBufferCopy(
+                            ChildBin->getData()));
+                    added.insert(sym);
+                    found = true;
+                    break;
+                }
+                else {
+                    // printf("bin type: %i\n", ChildBin->getType());
+                }
+            }
+        }
+        if (found) continue;
+        for (auto dll : PP_RUNNER->dlls) {
+            void* addr = dll.getAddressOfSymbol((*sym).str().c_str());
+            if (addr) {
+                new_symbols[sym] = llvm::JITEvaluatedSymbol(
+                    static_cast<llvm::JITTargetAddress>(
+                        reinterpret_cast<uintptr_t>(addr)),
+                    llvm::JITSymbolFlags::Exported);
+                added.insert(sym);
+                found = true;
+            }
+        }
+        if (found) continue;
+        // TODO: error ?
+    }
+    PP_RUNNER->main_dylib.define(absoluteSymbols(std::move(new_symbols)));
+    return llvm::Error::success();
+}
 PPRunner::PPRunner()
     : exec_session(),
       obj_link_layer(
           exec_session,
-          []() { return llvm::make_unique<llvm::SectionMemoryManager>(); }),
-      pp_stuff_dylib(exec_session.createJITDylib("pp_stuff", true)), pp_count(0)
+          []() { return std::make_unique<llvm::SectionMemoryManager>(); }),
+      pp_stuff_dylib(exec_session.createJITDylib("pp_stuff")), pp_count(0),
+      main_dylib(exec_session.createJITDylib("main"))
 {
-    auto generator = [this](
-                         llvm::orc::JITDylib& dylib,
-                         const llvm::orc::SymbolNameSet& symbols)
-        -> llvm::Expected<llvm::orc::SymbolNameSet> {
-        // std::lock_guard<std::mutex> guard{this->mtx};
-        llvm::orc::SymbolNameSet added;
-        llvm::orc::SymbolMap new_symbols;
-        for (auto& sym : symbols) {
-            // printf("looking for symbol '%s'\n", (*sym).str().c_str());
-            bool found = false;
-            for (auto& arch_obs : this->archives) {
-                auto& arch = *arch_obs.getBinary();
-                // Look for our symbols in each Archive
-                auto OptionalChildOrErr = arch.findSym(*sym);
-                if (!OptionalChildOrErr)
-                    report_fatal_error(OptionalChildOrErr.takeError());
-                auto& OptionalChild = *OptionalChildOrErr;
-                if (OptionalChild) {
-                    // FIXME: Support nested archives?
-                    llvm::Expected<std::unique_ptr<llvm::object::Binary>>
-                        ChildBinOrErr = OptionalChild->getAsBinary();
-                    if (!ChildBinOrErr) {
-                        llvm::errs() << ChildBinOrErr.takeError() << "\n";
-                        assert(false);
-                        continue;
-                    }
-                    std::unique_ptr<llvm::object::Binary>& ChildBin =
-                        ChildBinOrErr.get();
-                    if (ChildBin->isObject()) {
-                        this->obj_link_layer.add(
-                            this->exec_session.getMainJITDylib(),
-                            llvm::MemoryBuffer::getMemBufferCopy(
-                                ChildBin->getData()));
-                        added.insert(sym);
-                        found = true;
-                        break;
-                    }
-                    else {
-                        // printf("bin type: %i\n", ChildBin->getType());
-                    }
-                }
-            }
-            if (found) continue;
-            for (auto dll : dlls) {
-                void* addr = dll.getAddressOfSymbol((*sym).str().c_str());
-                if (addr) {
-                    new_symbols[sym] = llvm::JITEvaluatedSymbol(
-                        static_cast<llvm::JITTargetAddress>(
-                            reinterpret_cast<uintptr_t>(addr)),
-                        llvm::JITSymbolFlags::Exported);
-                    added.insert(sym);
-                    found = true;
-                }
-            }
-            if (found) continue;
-            // TODO: error ?
-        }
-        this->exec_session.getMainJITDylib().define(
-            absoluteSymbols(std::move(new_symbols)));
-        return added;
-    };
-    exec_session.getMainJITDylib().setGenerator(generator);
-    pp_stuff_dylib.addToSearchOrder(exec_session.getMainJITDylib(), true);
+    this->main_dylib.addGenerator(
+        std::unique_ptr<llvm::orc::JITDylib::DefinitionGenerator>(
+            new CustomGenerator()));
+    pp_stuff_dylib.addToSearchOrder(
+        this->main_dylib, llvm::orc::JITDylibLookupFlags::MatchAllSymbols);
 }
 void PPRunner::addArchive(
     llvm::object::OwningBinary<llvm::object::Archive>&& arch)
@@ -607,7 +610,9 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     lle = emitModule();
     if (lle) return lle;
     auto mainfn = PP_RUNNER->exec_session.lookup(
-        llvm::orc::JITDylibSearchList({{&PP_RUNNER->pp_stuff_dylib, true}}),
+        llvm::orc::JITDylibSearchOrder(
+            {{&PP_RUNNER->pp_stuff_dylib,
+              llvm::orc::JITDylibLookupFlags::MatchExportedSymbolsOnly}}),
         PP_RUNNER->exec_session.intern(pp_func_name));
     if (!mainfn) {
         llvm::errs() << mainfn.takeError() << "\n";
@@ -897,7 +902,7 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             if (align) {
                 auto sl = _data_layout->getStructLayout((llvm::StructType*)*tp);
                 assert(sl);
-                *align = sl->getAlignment();
+                *align = sl->getAlignment().value();
             }
             if (size) {
                 *size = _data_layout->getTypeAllocSize((llvm::StructType*)*t);
@@ -931,7 +936,8 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             // PERF: we might want to cache this
             if (align) {
                 *align = _data_layout->getStructLayout(_slice_struct)
-                             ->getAlignment();
+                             ->getAlignment()
+                             .value();
             }
             if (size) {
                 *size = _data_layout->getStructLayout(_slice_struct)
@@ -1049,7 +1055,9 @@ llvm_error LLVMBackend::genScopeValue(ast_elem* ctype, ControlFlowContext& ctx)
         llvm::Type* t;
         llvm_error lle = lookupCType(ctype, &t, &ctx.value_align, NULL);
         if (lle) return lle;
-        auto all = new llvm::AllocaInst(t, 0, nullptr, ctx.value_align, "");
+        auto all = new llvm::AllocaInst(
+            t, _data_layout->getProgramAddressSpace(), nullptr,
+            llvm::MaybeAlign(ctx.value_align), "");
         if (!all) return LLE_FATAL;
         ctx.value = all;
         _builder.Insert(all);
@@ -1117,9 +1125,7 @@ LLVMBackend::buildConstant(ast_elem* ctype, void* data, llvm::Constant** res)
                 }
                 case PT_FLOAT: {
                     auto c = llvm::ConstantFP::get(
-                        _context,
-                        *new llvm::APFloat(
-                            llvm::APFloatBase::IEEEsingle(), *(float*)data));
+                        _context, *new llvm::APFloat(*(float*)data));
                     if (!c) return LLE_FATAL;
                     *res = c;
                     return LLE_OK;
@@ -1275,7 +1281,8 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             // These should be handled by member access
             assert(k != SC_STRUCT);
             auto all = new llvm::AllocaInst(
-                t, 0, nullptr, align, "" /* var->sym.name*/);
+                t, _data_layout->getProgramAddressSpace(), nullptr,
+                llvm::MaybeAlign(align), "" /* var->sym.name*/);
             if (!all) return LLE_FATAL;
             var_val = all;
             _builder.Insert(all);
@@ -1989,7 +1996,6 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         (**res).deleteValue();
     }
     else if (*state == STUB_GENERATED || *state == PP_STUB_GENERATED) {
-        assert(!_pp_mode || *state == PP_STUB_GENERATED);
         *state = (*state == STUB_GENERATED) ? STUB_ADDED : PP_STUB_ADDED;
         _module->getFunctionList().push_back((llvm::Function*)*res);
         _reset_after_emit.push_back(fn->id);
@@ -2001,8 +2007,9 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         // PP_IMPL_GENERATED)
         assert(false);
         auto fun = PP_RUNNER->exec_session.lookup(
-            llvm::orc::JITDylibSearchList(
-                {{&PP_RUNNER->exec_session.getMainJITDylib(), true}}),
+            llvm::orc::JITDylibSearchOrder(
+                {{&PP_RUNNER->main_dylib,
+                  llvm::orc::JITDylibLookupFlags::MatchAllSymbols}}),
             PP_RUNNER->exec_session.intern(nameMangle(&fn->fnb)));
         if (!fun) {
             llvm::errs() << fun.takeError() << "\n";
@@ -2195,8 +2202,8 @@ llvm_error LLVMBackend::emitModuleToStream(
     bool emit_asm)
 {
     std::error_code ec;
-    auto file_type = llvm::TargetMachine::CGFT_ObjectFile;
-    if (emit_asm) file_type = llvm::TargetMachine::CGFT_AssemblyFile;
+    auto file_type = llvm::CodeGenFileType::CGFT_ObjectFile;
+    if (emit_asm) file_type = llvm::CodeGenFileType::CGFT_AssemblyFile;
     llvm::legacy::PassManager CodeGenPasses;
 
     CodeGenPasses.add(llvm::createTargetTransformInfoWrapperPass(
@@ -2247,7 +2254,7 @@ llvm_error LLVMBackend::emitModuleToPP(
         dl = &PP_RUNNER->pp_stuff_dylib;
     }
     else {
-        dl = &PP_RUNNER->exec_session.getMainJITDylib();
+        dl = &PP_RUNNER->main_dylib;
     }
     auto res = PP_RUNNER->obj_link_layer.add(
         *dl, std::move(obj_svmb), PP_RUNNER->exec_session.allocateVModule());
@@ -2493,7 +2500,8 @@ llvm_error linkLLVMModules(
       tflush();
       */
     llvm::ArrayRef<const char*> arr_ref(&args[0], args.size());
-    lld::elf::link(arr_ref, false);
+    // TODO: wrap these errors
+    lld::elf::link(arr_ref, false, llvm::outs(), llvm::errs());
     for (char** i = libs; i != libs_head; i++) {
         tfree(*i);
     }

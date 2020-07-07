@@ -85,12 +85,21 @@ class ArchiveSymbolsMaterializationUnit
     llvm::orc::SymbolMap Symbols;
 };
 
+class CustomGenerator : public llvm::orc::JITDylib::DefinitionGenerator {
+  public:
+    llvm::Error tryToGenerate(
+        llvm::orc::LookupKind K, llvm::orc::JITDylib& JD,
+        llvm::orc::JITDylibLookupFlags JDLookupFlags,
+        const llvm::orc::SymbolLookupSet& LookupSet) override;
+};
+
 struct PPRunner {
     llvm::orc::ExecutionSession exec_session;
     llvm::orc::RTDyldObjectLinkingLayer obj_link_layer;
     llvm::orc::JITDylib& pp_stuff_dylib;
-    std::mutex mtx;
     std::atomic<ureg> pp_count;
+    llvm::orc::JITDylib& main_dylib;
+    std::mutex mtx;
     std::vector<llvm::object::OwningBinary<llvm::object::Archive>> archives;
     std::vector<llvm::sys::DynamicLibrary> dlls;
     PPRunner();
