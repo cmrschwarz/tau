@@ -2154,25 +2154,28 @@ parse_error parse_eof_delimited_module_frame(parser* p, module_frame* mf)
 }
 parse_error parser_parse_file(parser* p, job_parse* j)
 {
-    int r = lx_open_file(&p->lx, j->file);
+    lx_status s = lx_open_file(&p->lx, j->file);
     p->current_file = j->file;
-    if (r) {
-        if (j->requiring_smap != NULL) {
-            src_range_large srl;
-            src_range_unpack(j->requiring_srange, &srl);
-            error_log_report_annotated(
-                p->lx.tc->err_log, ES_TOKENIZER, false,
-                "required file doesn't exist", j->requiring_smap, srl.start,
-                srl.end, "required here");
-        }
-        else {
-            char* file_path = file_map_head_tmalloc_path(&j->file->head);
-            if (!file_path) return PE_FATAL;
-            char* msg = error_log_cat_strings_3(
-                p->lx.tc->err_log, "the requirested file \"", file_path,
-                "\" doesn't exist");
-            tfree(file_path);
-            error_log_report_critical_failiure(p->lx.tc->err_log, msg);
+    if (s) {
+        if (s == LX_STATUS_FILE_UNAVAILABLE) {
+            if (j->requiring_smap != NULL) {
+                src_range_large srl;
+                src_range_unpack(j->requiring_srange, &srl);
+                error_log_report_annotated(
+                    p->lx.tc->err_log, ES_TOKENIZER, false,
+                    "required file is not available", j->requiring_smap,
+                    srl.start, srl.end, "required here");
+            }
+            else {
+                char* file_path = file_map_head_tmalloc_path(&j->file->head);
+                if (!file_path) return PE_FATAL;
+                char* msg = error_log_cat_strings_3(
+                    p->lx.tc->err_log, "the requested file \"", file_path,
+                    "\" is not available");
+                tfree(file_path);
+                error_log_report_general(
+                    p->lx.tc->err_log, ES_TOKENIZER, false, msg);
+            }
         }
         return PE_LX_ERROR;
     }

@@ -96,6 +96,10 @@ void master_error_log_fin(master_error_log* mel);
 error_log* error_log_create(
     master_error_log* mel); // these get free'd on master_error_log_fin
 bool error_log_sane_state(error_log* el);
+
+void error_log_report_general(
+    error_log* el, error_stage stage, bool warn, const char* message);
+
 void error_log_report_simple(
     error_log* el, error_stage stage, bool warn, const char* message,
     src_map* smap, ureg position);
@@ -131,4 +135,3 @@ char* error_log_cat_strings(error_log* e, ureg count, const char** strs);
 void error_log_report_allocation_failiure(error_log* el);
 void error_log_report_synchronization_failiure(error_log* el);
 void error_log_report_critical_failiure(error_log* el, const char* msg);
-

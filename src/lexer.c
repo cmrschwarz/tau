@@ -145,14 +145,14 @@ static inline int lx_load_file_buffer(lexer* lx, char** holding)
     int error = 0;
     ureg siz = lx_stream_read(
         lx, lx->file_buffer_head, buff_size - size_to_keep, &error);
+    if (error) {
+        lx->status = LX_STATUS_IO_ERROR;
+        error_log_report_simple(
+            lx->tc->err_log, ES_TOKENIZER, false, "file io error", lx->smap,
+            lx->loaded_tokens_head->start);
+        return ERR;
+    }
     if (siz == 0) {
-        if (error) {
-            lx->status = LX_STATUS_IO_ERROR;
-            error_log_report_simple(
-                lx->tc->err_log, ES_TOKENIZER, false, "file io error", lx->smap,
-                lx->loaded_tokens_head->start);
-            return ERR;
-        }
         if (lx->status == LX_STATUS_EOF) return 0;
         *lx->file_buffer_pos = '\0';
         lx->file_buffer_head++;
@@ -168,7 +168,6 @@ static inline char lx_peek_char_holding(lexer* lx, char** hold)
 {
     if (lx->file_buffer_pos == lx->file_buffer_head) {
         if (lx_load_file_buffer(lx, hold)) {
-            lx->status = LX_STATUS_IO_ERROR;
             return '\0';
         }
     }
@@ -257,19 +256,23 @@ void lx_reset_buffer(lexer* lx)
     lx->loaded_tokens_head = lx->loaded_tokens_start;
 }
 
-int lx_open_smap(lexer* lx, src_map* smap)
+lx_status lx_open_smap(lexer* lx, src_map* smap)
 {
     assert(lx->smap == NULL);
+    int r = src_map_open(smap);
+    if (r) {
+        lx->status = LX_STATUS_FILE_UNAVAILABLE;
+        return lx->status;
+    }
     lx->smap = smap;
-    int r = src_map_open(lx->smap);
-    if (r) return ERR;
+    lx->status = LX_STATUS_OK;
     lx_reset_buffer(lx);
     if (lx_load_file_buffer(lx, NULL)) {
         src_map_close(lx->smap);
-        return ERR;
+        lx->smap = NULL;
+        return lx->status;
     }
-    lx->status = LX_STATUS_OK;
-    return OK;
+    return LX_STATUS_OK;
 }
 void lx_close_smap(lexer* lx)
 {
@@ -288,11 +291,10 @@ void lx_close_paste(lexer* lx)
     lx_close_smap(lx);
 }
 
-int lx_open_file(lexer* lx, src_file* f)
+lx_status lx_open_file(lexer* lx, src_file* f)
 {
-    if (src_file_start_parse(f, lx->tc)) {
-        return ERR;
-    }
+    int r = src_file_start_parse(f, lx->tc);
+    if (r) return LX_STATUS_FATAL_ERROR;
     return lx_open_smap(lx, &f->smap);
 }
 void lx_close_file(lexer* lx)

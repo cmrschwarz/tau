@@ -19,6 +19,8 @@ typedef enum PACK_ENUM lx_status {
     LX_STATUS_EOF,
     LX_STATUS_TOKENIZATION_ERROR,
     LX_STATUS_IO_ERROR,
+    LX_STATUS_FILE_UNAVAILABLE,
+    LX_STATUS_FATAL_ERROR,
 } lx_status;
 
 #define LX_TOKEN_BUFFER_SIZE 32
@@ -45,7 +47,7 @@ void lx_fin(lexer* lx);
 int lx_open_paste(lexer* lx, paste_evaluation* pe, src_map* parent_smap);
 void lx_close_paste(lexer* lx);
 
-int lx_open_file(lexer* lx, src_file* f);
+lx_status lx_open_file(lexer* lx, src_file* f);
 void lx_close_file(lexer* lx);
 
 // any peek or consume invalidates all pointers to voided tokens

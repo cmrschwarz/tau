@@ -130,7 +130,6 @@ static inline void error_fill(
     e->position = position;
     e->message = message;
 }
-
 void error_log_report_simple(
     error_log* el, error_stage stage, bool warn, const char* message,
     src_map* smap, ureg position)
@@ -139,6 +138,12 @@ void error_log_report_simple(
     if (!e) return;
     error_fill(e, stage, warn, ET_ERROR, message, smap, position);
     error_log_report(el, e);
+}
+
+void error_log_report_general(
+    error_log* el, error_stage stage, bool warn, const char* message)
+{
+    error_log_report_simple(el, stage, warn, message, NULL, 0);
 }
 
 error* error_log_create_error(
@@ -701,7 +706,7 @@ ureg extend_em(
     err_points[1].line = end.line;
     return 2;
 }
-int report_error(master_error_log* mel, error* e)
+int report_error(master_error_log* mel, error* e, bool last_err)
 {
     static err_point err_points[ERR_POINT_BUFFER_SIZE];
     pec(mel, ANSICOLOR_BOLD);
@@ -836,6 +841,7 @@ int report_error(master_error_log* mel, error* e)
             }
         }
     }
+    if (!last_err) pe("\n");
     return OK;
 }
 
@@ -887,12 +893,10 @@ void master_error_log_unwind(master_error_log* mel)
             // stable, in place sorting
             errors_grail_sort(errors, err_count);
             for (error** e = errors; e != errors + err_count; e++) {
-                if (report_error(mel, *e)) {
-                    break;
-                }
-                if (e != errors + err_count - 1 ||
-                    mel->global_error_count > 0 || errors == NULL) {
-                    pe("\n");
+                bool last_err =
+                    e == errors + err_count - 1 && mel->global_error_count == 0;
+                if (report_error(mel, *e, last_err)) {
+                    break; // TODO: what to do here?
                 }
             }
             tfree(errors);

@@ -315,6 +315,11 @@ int src_map_open(src_map* smap)
         f->file_stream = fopen(path, "r");
         if (path != pathbuff) tfree(path);
         if (f->file_stream == NULL) return ERR;
+        if (ferror(f->file_stream)) {
+            fclose(f->file_stream);
+            f->file_stream = NULL;
+            return ERR;
+        }
         return OK;
     }
     assert(ast_elem_is_paste_evaluation(smap->source));

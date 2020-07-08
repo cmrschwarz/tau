@@ -40,7 +40,6 @@ void llvm_backend_fin_globals()
 {
     globals_refcount--;
     if (globals_refcount != 0) return;
-    // llvm::sys::CleanupOnSignal(0); // to cleanup after lld, not supported yet
     llvm::llvm_shutdown();
     delete PP_RUNNER;
 }
