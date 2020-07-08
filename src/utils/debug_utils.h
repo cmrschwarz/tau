@@ -2,6 +2,10 @@
 
 #include "timing.h"
 #include <stdio.h>
+// limit memory usable by this process
+// used for debugging purposes
+// linux only
+void limit_mem(ureg max_bytes);
 
 void tprintf(const char* format, ...);
 void tputs(const char* c);

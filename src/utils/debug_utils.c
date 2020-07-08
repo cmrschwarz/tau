@@ -125,3 +125,12 @@ void pretty_print_timer_elapsed(timer* t)
     timer_get_elapsed(&tc, &ts);
     pretty_print_timespan(&ts);
 }
+
+#include <unistd.h>
+void limit_mem(ureg max_bytes)
+{
+    int pid = getpid();
+    char buf[256];
+    sprintf(buf, "/usr/bin/prlimit --as=%zu --pid=%i", max_bytes, pid);
+    system(buf);
+}

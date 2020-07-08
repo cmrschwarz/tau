@@ -52,7 +52,7 @@ void talloc_fin()
 void* tmalloc(ureg size)
 {
     void* r = malloc(size);
-    count_alloc(r);
+    if (r) count_alloc(r);
     return r;
 }
 
