@@ -89,6 +89,10 @@ int thread_sleep(ureg microsecs)
 {
     return usleep(microsecs);
 }
+ureg thread_id()
+{
+    return pthread_self();
+}
 
 static void* thread_wrapper(void* ctx)
 {

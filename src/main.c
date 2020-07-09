@@ -11,11 +11,7 @@
 
 int main(int argc, char** argv)
 {
-    int r;
-    r = talloc_init();
-    if (!r) {
-        r = tauc_run(argc, argv);
-        talloc_fin();
-    }
+    // limit_mem(1024 * 1024 * 220);
+    int r = tauc_run(argc, argv);
     return r ? EXIT_FAILURE : EXIT_SUCCESS;
 }

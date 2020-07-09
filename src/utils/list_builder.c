@@ -8,14 +8,14 @@
 int list_builder_init(list_builder* b, pool* memsrc, ureg initial_capacity)
 {
     b->memsrc = memsrc;
-    ureg size = sizeof(list_build_segment) + initial_capacity * sizeof(void*);
-    list_build_segment* first = pool_alloc(memsrc, size);
+    ureg size = sizeof(list_builder_segment) + initial_capacity * sizeof(void*);
+    list_builder_segment* first = pool_alloc(memsrc, size);
     if (!first) return ERR;
     first->prev = NULL;
     first->next = NULL;
     first->end = ptradd(first, size);
     b->head_segment = first;
-    b->head = ptradd(first, sizeof(list_build_segment));
+    b->head = ptradd(first, sizeof(list_builder_segment));
     return OK;
 }
 void list_builder_fin()
@@ -44,7 +44,7 @@ int list_builder_add_block(list_builder* b, void* block, ureg block_size)
             block = ptradd(block, size_left);
             block_size -= size_left;
         }
-        list_build_segment* next = b->head_segment->next;
+        list_builder_segment* next = b->head_segment->next;
         if (next == NULL) {
             ureg size = ptrdiff(b->head_segment->end, b->head_segment) * 2;
             next = pool_alloc(b->memsrc, size);
@@ -55,7 +55,7 @@ int list_builder_add_block(list_builder* b, void* block, ureg block_size)
             b->head_segment->next = next;
         }
         b->head_segment = next;
-        b->head = ptradd(next, sizeof(list_build_segment));
+        b->head = ptradd(next, sizeof(list_builder_segment));
         return list_builder_add_block(b, block, block_size);
     }
     return OK;
@@ -70,7 +70,7 @@ void* list_builder_pop_block_list(
 {
     void** tgt;
     ureg size = 0;
-    list_build_segment* s = b->head_segment;
+    list_builder_segment* s = b->head_segment;
     if ((void*)s <= list_start && s->end > (void*)list_start) {
         size = ptrdiff(b->head, list_start);
         *list_size = size;
@@ -81,7 +81,7 @@ void* list_builder_pop_block_list(
         return tgt;
     }
     ureg last_seg_size =
-        ptrdiff(b->head, b->head_segment) - sizeof(list_build_segment);
+        ptrdiff(b->head, b->head_segment) - sizeof(list_builder_segment);
     size = last_seg_size;
     while (true) {
         s = s->prev;
@@ -90,12 +90,12 @@ void* list_builder_pop_block_list(
             size += ptrdiff(s->end, list_start);
             break;
         }
-        size += ptrdiff(s->end, s) - sizeof(list_build_segment);
+        size += ptrdiff(s->end, s) - sizeof(list_builder_segment);
     }
     *list_size = size;
     tgt = (void**)pool_alloc(tgtmem, size + premem + postmem);
     if (!tgt) return NULL;
-    list_build_segment* head_old = b->head_segment;
+    list_builder_segment* head_old = b->head_segment;
     b->head_segment = s;
     void** h = ptradd(tgt, premem);
     void** start = list_start;
@@ -104,9 +104,9 @@ void* list_builder_pop_block_list(
         memcpy(h, start, seg_size);
         s = s->next;
         h = ptradd(h, seg_size);
-        start = ptradd(s, sizeof(list_build_segment));
+        start = ptradd(s, sizeof(list_builder_segment));
     }
-    memcpy(h, ptradd(s, sizeof(list_build_segment)), last_seg_size);
+    memcpy(h, ptradd(s, sizeof(list_builder_segment)), last_seg_size);
     b->head = list_start;
     return tgt;
 }
@@ -146,6 +146,15 @@ list_builder_pop_list_zt(list_builder* b, void** list_start, pool* memtgt)
 void list_builder_drop_list(list_builder* b, void* list_start)
 {
     b->head = list_start;
+    list_builder_segment* s = b->head_segment;
+    while (true) {
+        if ((void*)s <= list_start && s->end > (void*)list_start) {
+            b->head_segment = s;
+            break;
+        }
+        s = s->prev;
+        assert(s);
+    }
 }
 
 void**
@@ -156,4 +165,26 @@ list_builder_create_single_entry_zt(list_builder* b, void* entry, pool* tgtmem)
     res[0] = entry;
     res[1] = NULL;
     return res;
+}
+
+void list_builder_rev_iter_init(
+    list_builder_rev_iter* it, list_builder* lb, void** list)
+{
+    it->curr_seg = lb->head_segment;
+    it->pos = lb->head;
+    it->list_start = list;
+}
+void** list_builder_rev_iter_prev(list_builder_rev_iter* it, ureg elem_size)
+{
+    if (it->pos == it->list_start) return NULL;
+    if (it->pos == ptradd(it->curr_seg, sizeof(list_builder_segment))) {
+        it->curr_seg = it->curr_seg->prev;
+        it->pos = it->curr_seg->end;
+    }
+    // this could happen if segments are too small
+    assert(
+        ptrdiff(it->pos, it->curr_seg) >=
+        sizeof(list_builder_segment) + elem_size);
+    it->pos = ptrsub(it->pos, elem_size);
+    return it->pos;
 }

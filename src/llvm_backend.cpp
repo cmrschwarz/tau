@@ -2,6 +2,8 @@
 #include <memory>
 #include <fstream>
 #include <iostream>
+#include <llvm/Support/Compiler.h>
+#include <lld/Common/ErrorHandler.h>
 
 static PPRunner* PP_RUNNER;
 extern "C" {
@@ -14,7 +16,7 @@ extern "C" {
 #include <utils/debug_utils.h>
 
 static ureg globals_refcount = 0;
-int llvm_backend_init_globals()
+int llvm_backend_init_globals(tauc* t)
 {
     globals_refcount++;
     if (globals_refcount != 1) return OK;
@@ -34,6 +36,27 @@ int llvm_backend_init_globals()
         globals_refcount--;
         return ERR;
     }
+    llvm::install_fatal_error_handler(
+        [](void* user_data, const std::string& reason, bool gen_crash_diag) {
+            auto mel = (master_error_log*)user_data;
+            print_critical_error_begin(mel);
+            fputs("llvm reports: '", stderr);
+            fputs(reason.c_str(), stderr);
+            fputs("' and decides to terminate the process", stderr);
+            print_critical_error_end(mel);
+        },
+        &t->mel);
+    llvm::install_out_of_memory_new_handler();
+    llvm::install_bad_alloc_error_handler(
+        [](void* user_data, const std::string& reason, bool gen_crash_diag) {
+            print_critical_error(
+                (master_error_log*)user_data,
+                "llvm ran out of memory and decides to terminate the "
+                "process");
+            fflush(stderr);
+            std::exit(1); // llvm segfaults it up if we let it handle this
+        },
+        &t->mel);
     return OK;
 }
 void llvm_backend_fin_globals()
@@ -252,10 +275,11 @@ llvm::Error CustomGenerator::tryToGenerate(
                 std::unique_ptr<llvm::object::Binary>& ChildBin =
                     ChildBinOrErr.get();
                 if (ChildBin->isObject()) {
-                    PP_RUNNER->obj_link_layer.add(
+                    auto err = PP_RUNNER->obj_link_layer.add(
                         PP_RUNNER->main_dylib,
                         llvm::MemoryBuffer::getMemBufferCopy(
                             ChildBin->getData()));
+                    if (err) return err;
                     added.insert(sym);
                     found = true;
                     break;
@@ -280,8 +304,8 @@ llvm::Error CustomGenerator::tryToGenerate(
         if (found) continue;
         // TODO: error ?
     }
-    PP_RUNNER->main_dylib.define(absoluteSymbols(std::move(new_symbols)));
-    return llvm::Error::success();
+    return PP_RUNNER->main_dylib.define(
+        absoluteSymbols(std::move(new_symbols)));
 }
 PPRunner::PPRunner()
     : exec_session(),
@@ -339,9 +363,7 @@ PPRunner::~PPRunner()
 {
 }
 LLVMBackend::LLVMBackend(thread_context* tc)
-    : _tc(tc), _context(), _builder(_context),
-      _global_value_store(atomic_ureg_load(&tc->t->node_ids), NULL)
-
+    : _tc(tc), _context(), _builder(_context)
 {
     std::string err;
     auto target_triple = "x86_64-pc-linux-gnu"; // LLVMGetDefaultTargetTriple();
@@ -492,6 +514,7 @@ llvm_error LLVMBackend::reserveSymbols(ureg priv_sym_count, ureg pub_sym_count)
     if (_global_value_store.size() < pub_sym_count) {
         _global_value_store.resize(pub_sym_count, NULL);
         _global_value_state.resize(pub_sym_count, NOT_GENERATED);
+        _global_value_state[0] = _global_value_state[0];
     }
     return LLE_OK;
 }
@@ -604,7 +627,6 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     _pp_mode = true;
     llvm_error lle = genPPFunc(pp_func_name.c_str(), resolve_nodes);
     if (lle) return lle;
-
     // emit
     lle = emitModule();
     if (lle) return lle;
@@ -1272,7 +1294,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             auto gv = new llvm::GlobalVariable(
                 *_module, t, false, lt, init, var->osym.sym.name);
             if (!gv) return LLE_FATAL;
-            gv->setAlignment(align);
+            gv->setAlignment(llvm::MaybeAlign(align));
             var_val = gv;
         }
         else {

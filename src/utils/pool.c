@@ -5,6 +5,7 @@
 static inline pool_segment* pool_alloc_segment(pool* p, ureg size)
 {
     pool_segment* seg = (pool_segment*)tmalloc(size);
+    if (!seg) return NULL;
     seg->head = (u8*)(seg + 1);
     seg->end = (u8*)ptradd(seg, size);
     return seg;

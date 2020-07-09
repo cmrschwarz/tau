@@ -143,7 +143,7 @@ mdg_node* mdg_node_create(
     return n;
 }
 void free_body_symtabs(ast_node* node, ast_body* b);
-static void free_astn_symtabs(ast_node* n)
+void free_astn_symtabs(ast_node* n)
 {
     if (!n) return;
     if (ast_elem_is_module_frame((ast_elem*)n)) {

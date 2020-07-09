@@ -1,17 +1,27 @@
 #pragma once
 #include "pool.h"
 
-typedef struct list_build_segment_s {
-    struct list_build_segment_s* next;
-    struct list_build_segment_s* prev;
+typedef struct list_builder_segment_s {
+    struct list_builder_segment_s* next;
+    struct list_builder_segment_s* prev;
     void* end;
-} list_build_segment;
+} list_builder_segment;
 
 typedef struct list_builder_s {
     pool* memsrc;
-    list_build_segment* head_segment;
+    list_builder_segment* head_segment;
     void* head;
 } list_builder;
+
+typedef struct list_builder_rev_iter {
+    list_builder_segment* curr_seg;
+    void** list_start;
+    void** pos;
+} list_builder_rev_iter;
+
+void list_builder_rev_iter_init(
+    list_builder_rev_iter* it, list_builder* lb, void** list);
+void** list_builder_rev_iter_prev(list_builder_rev_iter* it, ureg elem_size);
 
 int list_builder_init(list_builder* b, pool* memsrc, ureg initial_capacity);
 void list_builder_fin();
@@ -38,4 +48,3 @@ void* list_builder_pop_block_list_zt(
     list_builder* b, void* list_start, pool* tgtmem);
 
 void list_builder_drop_list(list_builder* b, void* list_start);
-

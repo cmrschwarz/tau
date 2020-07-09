@@ -12,8 +12,8 @@ if not os.path.isfile(f):
 with open(sys.argv[1]) as f: 
     lines = f.read().splitlines()
 allocs = {}
-alloc = re.compile("^alloc.*?([0-9xA-Fa-f]*) *$")
-free = re.compile("^free.*?([0-9xA-Fa-f]*) *$")
+alloc = re.compile("^alloc.*?([0-9xA-Fa-f]+).*?$")
+free = re.compile("^free.*?([0-9xA-Fa-f]+).*?$")
 for idx, line in enumerate(lines):
     a = alloc.match(line)
     if a:

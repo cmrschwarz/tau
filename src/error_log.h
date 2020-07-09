@@ -66,6 +66,7 @@ typedef struct master_error_log_s master_error_log;
 
 typedef struct error_log_s {
     master_error_log* mel;
+    ureg tid;
     error* errors;
     error* critical_failiure_point;
     const char* critical_failiure_msg;
@@ -126,6 +127,10 @@ void error_log_report_annotated_thrice(
     ureg start2, ureg end2, const char* annotation2, src_map* smap3,
     ureg start3, ureg end3, const char* annotation3);
 
+void print_critical_thread_error(master_error_log* mel, const char* msg);
+void print_critical_error(master_error_log* mel, const char* msg);
+void print_critical_error_begin(master_error_log* mel);
+void print_critical_error_end(master_error_log* mel);
 // create a concatenated string stored inside the error memory pool
 char* error_log_cat_strings_2(error_log* e, const char* s1, const char* s2);
 char* error_log_cat_strings_3(

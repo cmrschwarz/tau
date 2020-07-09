@@ -30,7 +30,8 @@ typedef struct worker_thread {
     // we add the thread to the list first and launch it afterwards, because
     // we it's a pain to selectively free all the resources of this tc right
     // away in case the launch fails
-    bool spawn_failed;
+    bool spawned;
+    bool initialized;
     thread thr;
 } worker_thread;
 

@@ -4,11 +4,16 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd $SCRIPT_DIR
 
 keep_build=false
-if [ $# -gt 0 ]; then
-   if  [ "$1" = "-k" ] || [ "$1" = "--keep-build" ]; then
+force_override=false
+while [ $# -gt 0 ]; do
+    if  [ "$1" = "-k" ] || [ "$1" = "--keep-build" ]; then
         keep_build=true
-   fi
-fi
+        shift
+    elif  [ "$1" = "-f" ] || [ "$1" = "--force" ]; then
+        force_override=true
+        shift
+    fi
+done
 
 # # make sure llvm is up to date
 # git submodule update --init --recursive --remote
@@ -17,7 +22,7 @@ cd ./deps/llvm-project/
 #if this dir exist we already precompiled
 if [ -d "../llvm-project-prebuild" ]; then
     #if we have the same commit id as during the prebuild exit successfully
-    if [ "$(git rev-parse HEAD)" == "$(cat ../llvm-project-prebuild/prebuild_commit_id.txt 2>/dev/null || : )" ]; then
+    if ! $force_override && [ "$(git rev-parse HEAD)" == "$(cat ../llvm-project-prebuild/prebuild_commit_id.txt 2>/dev/null || : )" ]; then
         echo "found existing prebuild"
         exit 0
     fi

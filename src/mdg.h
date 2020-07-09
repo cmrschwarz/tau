@@ -185,3 +185,4 @@ int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp);
 int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc);
 
 void free_body_symtabs(ast_node* node, ast_body* b);
+void free_astn_symtabs(ast_node* n);

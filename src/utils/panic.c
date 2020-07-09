@@ -11,6 +11,7 @@ void panic(const char* message)
     fputs(message, stderr);
     fputc('\n', stderr);
     fflush(stderr);
+    fflush(stdout);
     assert(false);
     exit(EXIT_FAILURE);
 }

@@ -18,17 +18,9 @@ static inline int thread_context_partial_fin(thread_context* tc, int r, int i)
         case 4: parser_fin(&tc->p); // fallthrough
         case 3: pool_fin(&tc->tempmem); // fallthrough
         case 2: sbuffer_fin(&tc->modules); // fallthrough
-        case 1:
-            pool_fin(&tc->permmem);
-            // these don't need to be initialized and they are thread local,
-            // so this seems like the best place to free them
-            debug_utils_free_res();
-            // fallthrough
+        case 1: pool_fin(&tc->permmem);
         case 0: break;
     }
-    if (r)
-        master_error_log_report(
-            &tc->t->mel, "thread context initialization failed");
     return r;
 }
 void thread_context_fin(thread_context* tc)
@@ -38,14 +30,14 @@ void thread_context_fin(thread_context* tc)
 int thread_context_init(thread_context* tc, tauc* t)
 {
     tc->t = t;
+    tc->err_log = error_log_create(&t->mel);
+    if (!tc->err_log) return ERR;
     int r = pool_init(&tc->permmem);
     if (r) return thread_context_partial_fin(tc, r, 0);
     r = sbuffer_init(&tc->modules, sizeof(llvm_module*) * 8);
     if (r) return thread_context_partial_fin(tc, r, 1);
     r = pool_init(&tc->tempmem);
     if (r) return thread_context_partial_fin(tc, r, 2);
-    tc->err_log = error_log_create(&t->mel);
-    if (!tc->err_log) return thread_context_partial_fin(tc, r, 2);
     r = parser_init(&tc->p, tc);
     if (r) return thread_context_partial_fin(tc, r, 3);
     r = resolver_init(&tc->r, tc);
@@ -173,7 +165,6 @@ void thread_context_run(thread_context* tc)
         r = thread_context_do_job(tc, &j);
         if (r) break;
     }
-    debug_utils_free_res();
     ureg atc = atomic_ureg_dec(&tc->t->active_thread_count) - 1;
     job_queue_check_waiters(&tc->t->jobqueue, atc);
 }

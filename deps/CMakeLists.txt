@@ -107,6 +107,11 @@ else()
     set(LLVM_INCLUDE_TESTS OFF CACHE BOOL "" FORCE)
     set(LLVM_INCLUDE_EXAMPLES OFF CACHE BOOL "" FORCE)
 
+    #enable exception handling (disabled, can't catch alloc anyways)
+    #set(LLVM_ENABLE_EH ON CACHE BOOL "" FORCE)
+    #set(LLVM_ENABLE_RTTI ON CACHE BOOL "" FORCE)
+    
+
     #enable LLD, disable other projects
     set(LLVM_ENABLE_PROJECTS lld CACHE STRING "" FORCE)
 

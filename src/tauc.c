@@ -32,7 +32,6 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
         case 1: llvm_backend_fin_globals(); // fallthrough
         case 0: break;
     }
-    if (r) master_error_log_report(&t->mel, "memory allocation failed");
     return r;
 }
 int tauc_core_init(tauc* t)
@@ -40,7 +39,7 @@ int tauc_core_init(tauc* t)
     int r = llvm_initialize_primitive_information();
     // ^ this doesn't need to be fin'd
     if (r) return tauc_core_partial_fin(t, r, 0);
-    r = llvm_backend_init_globals();
+    r = llvm_backend_init_globals(t);
     if (r) return tauc_core_partial_fin(t, r, 0);
     r = job_queue_init(&t->jobqueue);
     if (r) return tauc_core_partial_fin(t, r, 1);
@@ -329,7 +328,7 @@ int tauc_run_jobs(tauc* t)
     while (true) {
         wt = aseglist_iterator_next(&it);
         if (!wt) break;
-        if (!wt->spawn_failed) {
+        if (wt->spawned) {
             thread_join(&wt->thr);
         }
     }
@@ -338,7 +337,7 @@ int tauc_run_jobs(tauc* t)
     while (true) {
         wt = aseglist_iterator_next(&it);
         if (!wt) break;
-        thread_context_fin(&wt->tc);
+        if (wt->initialized) thread_context_fin(&wt->tc);
         tfree(wt);
     }
     return atomic_sreg_load_flat(&t->error_code);
@@ -347,6 +346,7 @@ int tauc_run_jobs(tauc* t)
 int tauc_run(int argc, char** argv)
 {
     tauc t;
+    if (talloc_init(&t.mel)) return ERR;
     int r;
     timer_start(&t.total_time);
     r = tauc_scaffolding_init(&t);
@@ -381,6 +381,7 @@ int tauc_run(int argc, char** argv)
         tprintf("]\n");
     }
     debug_utils_free_res();
+    talloc_fin();
     if (!r) {
         if (tauc_success_so_far(&t)) return OK;
         return atomic_sreg_load(&t.error_code);
@@ -390,8 +391,11 @@ int tauc_run(int argc, char** argv)
 
 void worker_thread_fn(void* ctx)
 {
-    tflush();
     worker_thread* wt = (worker_thread*)ctx;
+    wt->spawned = true;
+    int r = thread_context_init(&wt->tc, wt->tc.t);
+    if (r) return;
+    wt->initialized = true;
     if (wt->tc.t->verbosity_flags & VERBOSITY_FLAG_THREAD_SPAWNS) {
         if (wt->tc.t->verbosity_flags & VERBOSITY_FLAGS_STAGE_BEGINS) {
             // so the initial job gets put here
@@ -403,6 +407,9 @@ void worker_thread_fn(void* ctx)
         }
     }
     thread_context_run(&wt->tc);
+    // we do this right before the worker thread exits
+    // to be on the safe side
+    debug_utils_free_res();
 }
 int tauc_add_worker_thread(tauc* t)
 {
@@ -411,30 +418,18 @@ int tauc_add_worker_thread(tauc* t)
     // TODO: better mem management
     worker_thread* wt = tmalloc(sizeof(worker_thread));
     if (!wt) return ERR;
-    int r = thread_context_init(&wt->tc, t);
+    wt->tc.t = t;
+    wt->spawned = false;
+    wt->initialized = false;
+    int r = aseglist_add(&t->worker_threads, wt);
     if (r) {
-        tfree(wt);
-        return r;
-    }
-    wt->spawn_failed = false;
-    r = aseglist_add(&t->worker_threads, wt);
-    if (r) {
-        thread_context_fin(&wt->tc);
         tfree(wt);
         return r;
     }
     r = thread_launch(&wt->thr, worker_thread_fn, wt);
     if (r) {
-        // all other initialization failiures are due to memory
-        // allocation, which is deemed fatal for the CALLING thread a
-        // thread spawn failiure isn't really though, so we make the
-        // error appear in the new context, and make the old one
-        // continue like we succeeded
-        thread_context_fin(&wt->tc);
-        error_log_report_critical_failiure(
-            wt->tc.err_log, "failed to spawn additional worker thread");
-        wt->spawn_failed = true;
-        return OK; // this is intentional, see above
+        master_error_log_report(&t->mel, "failed to spawn worker thread");
+        return OK; // our thread might live on? debatable.
     }
     return OK;
 }
@@ -512,9 +507,12 @@ int tauc_link(tauc* t)
     thread_context* tc = &t->main_thread_context;
     // tauc_request_end();
     // thread_context_run(&t->main_thread_context);
+    worker_thread* wt;
     while (true) {
         mod_count += sbuffer_get_used_size(&tc->modules) / sizeof(llvm_module*);
-        worker_thread* wt = (worker_thread*)aseglist_iterator_next(&it);
+        do {
+            wt = (worker_thread*)aseglist_iterator_next(&it);
+        } while (wt && !wt->initialized);
         if (!wt) break;
         tc = &wt->tc;
     }
@@ -530,7 +528,9 @@ int tauc_link(tauc* t)
             *i = *m;
             i++;
         }
-        worker_thread* wt = (worker_thread*)aseglist_iterator_next(&it);
+        do {
+            wt = (worker_thread*)aseglist_iterator_next(&it);
+        } while (wt && !wt->initialized);
         if (!wt) break;
         tc = &wt->tc;
     }

@@ -263,9 +263,7 @@ static inline bool is_kw_valid_label(token_kind t)
 }
 static inline void* alloc_ppool(parser* p, ureg size, pool* pool)
 {
-    void* mem = pool_alloc(pool, size);
-    if (!mem) error_log_report_allocation_failiure(p->lx.tc->err_log);
-    return mem;
+    return pool_alloc(pool, size);
 }
 static inline void* alloc_temp(parser* p, ureg size)
 {
@@ -318,6 +316,20 @@ static inline parse_error parser_error_3a(
         p->lx.tc->err_log, ES_PARSER, false, msg, p->lx.smap, start, end, annot,
         p->lx.smap, start2, end2, annot2, p->lx.smap, start3, end3, annot3);
     return PE_ERROR;
+}
+void free_failed_ast_node_list_symtabs(
+    list_builder* lb, void** list_start, ast_node*** intended_target)
+{
+    list_builder_rev_iter it;
+    list_builder_rev_iter_init(&it, lb, list_start);
+    while (true) {
+        ast_node** n =
+            (ast_node**)list_builder_rev_iter_prev(&it, sizeof(ast_node*));
+        if (!n) break;
+        free_astn_symtabs(*n);
+    }
+    list_builder_drop_list(lb, list_start);
+    if (intended_target) *intended_target = (ast_node**)NULL_PTR_PTR;
 }
 static inline body_parse_data* get_bpd(parser* p)
 {
@@ -373,11 +385,13 @@ static inline void drop_bpd(parser* p)
 {
     sbuffer_remove_back(&p->body_stack, sizeof(body_parse_data));
 }
-static inline int pop_bpd(parser* p, parse_error pe)
+static inline int pop_bpd(parser* p, parse_error prec_pe)
 {
     sbuffer_iterator i = sbuffer_iterator_begin_at_end(&p->body_stack);
     body_parse_data bpd = *(body_parse_data*)sbuffer_iterator_previous(
         &i, sizeof(body_parse_data));
+    sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
+    if (prec_pe) return OK;
     bool is_mf = ast_elem_is_module_frame((ast_elem*)bpd.node);
     if (bpd.shared_decl_count > 0 || bpd.shared_uses_count > 0) {
         assert(is_mf);
@@ -396,7 +410,6 @@ static inline int pop_bpd(parser* p, parse_error pe)
         return ERR;
     }
     (**st).parent = NULL;
-    sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
     return OK;
 }
 
@@ -753,7 +766,10 @@ parse_error parse_expr_node_list(
     }
     *tgt = (ast_node**)list_builder_pop_list(
         &p->lx.tc->listb2, list_start, &p->lx.tc->permmem, elem_count, 0, 0);
-    if (!*tgt) return PE_FATAL;
+    if (!*tgt) {
+        free_failed_ast_node_list_symtabs(&p->lx.tc->listb2, list_start, tgt);
+        return PE_FATAL;
+    }
     return PE_OK;
 }
 static inline parse_error
@@ -897,7 +913,11 @@ static inline parse_error parse_tuple_after_first_comma(
     }
     tp->elements = (ast_node**)list_builder_pop_list(
         &p->lx.tc->listb2, list, &p->lx.tc->permmem, &tp->elem_count, 0, 0);
-    if (!tp->elements) return PE_FATAL;
+    if (!tp->elements) {
+        free_failed_ast_node_list_symtabs(
+            &p->lx.tc->listb2, list, &tp->elements);
+        return PE_FATAL;
+    }
     if (ast_node_fill_srange(p, (ast_node*)tp, t_start, t->end))
         return PE_FATAL;
     lx_void(&p->lx);
@@ -1153,7 +1173,11 @@ parse_paren_group_or_tuple_or_compound_decl_with_enabled_mbc(
             ast_node** res_elem_list = (ast_node**)list_builder_pop_list(
                 &p->lx.tc->listb2, element_list, &p->lx.tc->permmem,
                 &res_elem_count, 0, 0);
-            if (!res_elem_list) return PE_FATAL;
+            if (!res_elem_list) {
+                free_failed_ast_node_list_symtabs(
+                    &p->lx.tc->listb2, element_list, NULL);
+                return PE_FATAL;
+            }
             if (elem_list) {
                 *elem_list = res_elem_list;
                 *elem_count = res_elem_count;
@@ -1539,6 +1563,8 @@ parse_error parse_match(parser* p, ast_node** tgt)
             em->body.elements = (ast_node**)list_builder_pop_list_zt(
                 &p->lx.tc->listb2, list, &p->lx.tc->permmem);
             if (!em->body.elements) {
+                free_failed_ast_node_list_symtabs(
+                    &p->lx.tc->listb2, list, NULL);
                 pop_bpd(p, PE_FATAL);
                 return PE_FATAL;
             }
@@ -2095,15 +2121,15 @@ parse_error handle_semicolon_after_statement(parser* p, ast_node* s)
 static inline parse_error parse_delimited_module_frame(
     parser* p, module_frame* mf, token_kind delimiter_1, token_kind delimiter_2)
 {
+    // to allow deallocation in case of early failiure
+    mf->body.elements = (ast_node**)NULL_PTR_PTR;
     if (push_bpd(p, (ast_node*)mf, &mf->body)) return PE_FATAL;
-
     void* requires_list_start = list_builder_start_blocklist(&p->lx.tc->listb);
     void** element_list_start = list_builder_start(&p->lx.tc->listb2);
     token* t;
     t = lx_peek(&p->lx);
     if (!t) {
         if (pop_bpd(p, PE_LX_ERROR)) return PE_FATAL;
-        mf->body.elements = (ast_node**)NULL_PTR_PTR;
         return PE_LX_ERROR;
     }
     ureg start = t->start;
@@ -2136,8 +2162,12 @@ static inline parse_error parse_delimited_module_frame(
         &p->lx.tc->listb2, element_list_start, &p->lx.tc->permmem);
     mf->requires = (file_require*)list_builder_pop_block_list_zt(
         &p->lx.tc->listb, requires_list_start, &p->lx.tc->permmem);
+    if (!mf->body.elements) {
+        free_failed_ast_node_list_symtabs(
+            &p->lx.tc->listb2, element_list_start, &mf->body.elements);
+        pe = PE_FATAL;
+    }
     if (pop_bpd(p, pe)) return PE_FATAL;
-    if (!mf->body.elements) return PE_FATAL;
     if (!mf->requires) return PE_FATAL;
     if (pe) return pe;
     src_range_large srl;
@@ -2391,6 +2421,18 @@ parse_error parse_var_decl(
     curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
     return PE_OK;
 }
+void free_failed_param_block_list_symtabs(list_builder* lb, void** list_start)
+{
+    list_builder_rev_iter it;
+    list_builder_rev_iter_init(&it, lb, list_start);
+    while (true) {
+        sym_param* p =
+            (sym_param*)list_builder_rev_iter_prev(&it, sizeof(sym_param));
+        if (!p) break;
+        free_astn_symtabs(p);
+    }
+    list_builder_drop_list(lb, list_start);
+}
 parse_error parse_param_list(
     parser* p, symbol* parent, sym_param** tgt, ureg* param_count, bool generic,
     ureg ctx_start, ureg ctx_end, char* msg)
@@ -2432,12 +2474,16 @@ parse_error parse_param_list(
         }
     } while (t->kind != end_tok);
     if (pe) {
-        list_builder_drop_list(&p->lx.tc->listb2, param_list);
+        free_failed_param_block_list_symtabs(&p->lx.tc->listb2, param_list);
         return pe;
     }
     lx_void(&p->lx);
     *tgt = (sym_param*)list_builder_pop_block_list(
         &p->lx.tc->listb2, param_list, &p->lx.tc->permmem, param_count, 0, 0);
+    if (!*tgt) {
+        free_failed_param_block_list_symtabs(&p->lx.tc->listb2, param_list);
+        return PE_FATAL;
+    }
     *param_count = *param_count / sizeof(sym_param);
     return PE_OK;
 }
@@ -3571,8 +3617,14 @@ static inline parse_error parse_delimited_body(
     }
     b->elements = (ast_node**)list_builder_pop_list_zt(
         &p->lx.tc->listb2, elements_list_start, &p->lx.tc->permmem);
-    if (pop_bpd(p, pe)) return PE_FATAL;
-    if (!b->elements) return PE_FATAL;
+    if (!b->elements) {
+        free_failed_ast_node_list_symtabs(
+            &p->lx.tc->listb2, elements_list_start, &b->elements);
+        pe = PE_FATAL;
+    }
+    if (pop_bpd(p, pe)) {
+        return PE_FATAL;
+    }
     return pe;
 }
 parse_error parse_brace_delimited_body(

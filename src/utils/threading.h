@@ -23,6 +23,7 @@ typedef void (*thread_function_ptr)(void* context);
 int thread_yield();
 int thread_sleep(ureg microsecs);
 
+ureg thread_id();
 int thread_launch(thread* t, thread_function_ptr thread_fn, void* context);
 int thread_join(thread* t);
 int thread_detach(thread* t);
@@ -47,4 +48,3 @@ void cond_var_wait(cond_var* cv, mutex* m);
 void cond_var_notify_one(cond_var* cv);
 void cond_var_notify_all(cond_var* cv);
 void cond_var_fin(cond_var* cv);
-

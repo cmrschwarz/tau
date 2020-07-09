@@ -48,6 +48,7 @@
             pe(text text2);                                                    \
     } while (false)
 
+static const char* ALLOC_FAILIURE_MSG = "allocation failiure";
 int master_error_log_init(master_error_log* mel, file_map* filemap)
 {
     int r = aseglist_init(&mel->error_logs);
@@ -99,7 +100,7 @@ void master_error_log_report(master_error_log* mel, char* critical_error)
 {
     if (mel->global_error_count >= TAUC_MAX_GLOBAL_ERRORS - 1) {
         mel->global_errors[TAUC_MAX_GLOBAL_ERRORS - 1] =
-            "global error log memory exhausted";
+            "global error log memory exhausted, some errors not displayed";
     }
     else {
         mel->global_errors[mel->global_error_count] = critical_error;
@@ -113,6 +114,7 @@ error_log* error_log_create(master_error_log* mel)
     if (!el) return NULL;
     int r = aseglist_add(&mel->error_logs, el);
     if (r) return NULL;
+    el->tid = thread_id();
     el->mel = mel;
     el->errors = NULL;
     el->critical_failiure_point = FAILURE_NONE;
@@ -226,6 +228,8 @@ void error_log_report(error_log* el, error* e)
 }
 void error_log_report_critical_failiure(error_log* el, const char* msg)
 {
+    // TODO: this might be totally uneccessary, fatal error should always
+    // the last error? and we don't honor order anyways
     if (el->critical_failiure_point != FAILURE_NONE) return;
     if (el->errors != NULL) {
         el->critical_failiure_point = el->errors;
@@ -237,7 +241,7 @@ void error_log_report_critical_failiure(error_log* el, const char* msg)
 }
 void error_log_report_allocation_failiure(error_log* el)
 {
-    error_log_report_critical_failiure(el, "allocation failiure");
+    error_log_report_critical_failiure(el, ALLOC_FAILIURE_MSG);
 }
 void error_log_report_synchronization_failiure(error_log* el)
 {
@@ -342,19 +346,28 @@ void print_msg(master_error_log* mel, const char* msg, ureg msg_len)
         pe(msg);
     }
 }
-void printCriticalThreadError(master_error_log* mel, const char* msg)
-{
-    pect(mel, ANSICOLOR_RED ANSICOLOR_BOLD, "fatal error in worker thread: ");
-    pe(msg);
-    pect(mel, ANSICOLOR_CLEAR, "\n");
-}
-void printCriticalError(master_error_log* mel, const char* msg)
+void print_critical_thread_error(master_error_log* mel, const char* msg)
 {
     pect(mel, ANSICOLOR_RED ANSICOLOR_BOLD, "fatal error: ");
     pe(msg);
     pect(mel, ANSICOLOR_CLEAR, "\n");
 }
-void printFileIOError(master_error_log* mel, src_file* f)
+void print_critical_error_begin(master_error_log* mel)
+{
+    pect(mel, ANSICOLOR_RED ANSICOLOR_BOLD, "fatal error: ");
+}
+void print_critical_error_end(master_error_log* mel)
+{
+    pect(mel, ANSICOLOR_CLEAR, "\n");
+}
+void print_critical_error(master_error_log* mel, const char* msg)
+{
+    print_critical_error_begin(mel);
+    pe(msg);
+    print_critical_error_end(mel);
+}
+
+void print_file_io_error(master_error_log* mel, src_file* f)
 {
     pectc(
         mel, ANSICOLOR_RED ANSICOLOR_BOLD,
@@ -363,9 +376,9 @@ void printFileIOError(master_error_log* mel, src_file* f)
     file_map_head_print_path(&f->head, true);
     pe("'\n");
 }
-void printAllocationError(master_error_log* mel)
+void print_allocation_error(master_error_log* mel)
 {
-    printCriticalError(
+    print_critical_error(
         mel, "memory allocation failiure during error reporting");
 }
 #define IO_ERR STATUS_1
@@ -911,18 +924,23 @@ void master_error_log_unwind(master_error_log* mel)
             }
         }
         else {
-            printAllocationError(mel);
+            print_allocation_error(mel);
         }
     }
+    bool alloc_failiure_reported = false;
     aseglist_iterator_begin(&it, &mel->error_logs);
     for (error_log* el = aseglist_iterator_next(&it); el != NULL;
          el = aseglist_iterator_next(&it)) {
         if (el->critical_failiure_point != FAILURE_NONE) {
-            printCriticalThreadError(mel, el->critical_failiure_msg);
+            if (el->critical_failiure_msg == ALLOC_FAILIURE_MSG) {
+                if (alloc_failiure_reported) continue;
+                alloc_failiure_reported = true;
+            }
+            print_critical_thread_error(mel, el->critical_failiure_msg);
         }
     }
     for (ureg i = 0; i < mel->global_error_count; i++) {
-        printCriticalError(mel, mel->global_errors[i]);
+        print_critical_error(mel, mel->global_errors[i]);
     }
 }
 

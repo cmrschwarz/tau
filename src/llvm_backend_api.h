@@ -21,7 +21,7 @@ typedef enum llvm_error_e {
     LLE_FATAL,
 } llvm_error;
 
-int llvm_backend_init_globals();
+int llvm_backend_init_globals(tauc* t);
 void llvm_backend_fin_globals();
 
 llvm_backend* llvm_backend_new(thread_context* tc);

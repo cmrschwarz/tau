@@ -3558,6 +3558,12 @@ int resolver_emit(resolver* r, llvm_module** module)
 int resolver_resolve_and_emit(
     resolver* r, mdg_node** start, mdg_node** end, llvm_module** module)
 {
+    // so that the pprn doesn't overrun the global ids of other modules
+    // it might use
+    ureg curr_max_glob_id = atomic_ureg_load(&r->tc->t->node_ids);
+    llvm_error lle =
+        llvm_backend_reserve_symbols(r->backend, 0, curr_max_glob_id);
+    if (lle) return RE_ERROR;
     r->mdgs_begin = start;
     r->mdgs_end = end;
     int res;

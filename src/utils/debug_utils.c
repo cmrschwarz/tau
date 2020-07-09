@@ -5,15 +5,19 @@
 #include <assert.h>
 #include "math_utils.h"
 #include "dbuffer.h"
+#include "error.h"
 
 // guraranteed to be zero
 THREAD_LOCAL dbuffer buff;
 atomic_ureg mtx_ref_count;
 mutex flush_mtx;
 
-static void init_buffers()
+static int init_buffers()
 {
-    if (buff.start) return;
+    if (buff.start) return OK;
+    if (buff.end == 1) return ERR;
+    if (!talloc_initialized()) return ERR;
+    buff.end = (void*)1;
     dbuffer_init(&buff);
     ureg rc = atomic_ureg_inc(&mtx_ref_count) + 1;
     while (rc < (ureg)UREGH_MAX + 1) {
@@ -24,6 +28,7 @@ static void init_buffers()
         }
         rc = atomic_ureg_load(&mtx_ref_count);
     }
+    return OK;
 }
 void debug_utils_free_res()
 {
@@ -31,6 +36,7 @@ void debug_utils_free_res()
     tflush();
     dbuffer_fin(&buff);
     buff.start = NULL;
+    buff.end = NULL;
     ureg rc = atomic_ureg_dec(&mtx_ref_count) - 1;
     while (rc == UREGH_MAX) {
         // loop needed because of spurious failiure
@@ -44,7 +50,13 @@ void debug_utils_free_res()
 }
 void tprintf(const char* format, ...)
 {
-    init_buffers();
+    if (init_buffers()) {
+        va_list args;
+        va_start(args, format);
+        vprintf(format, args);
+        va_end(args);
+        return;
+    }
     sreg size = 256;
     sreg len = 0;
     char* tgt = dbuffer_claim(&buff, size);
@@ -62,28 +74,43 @@ void tprintf(const char* format, ...)
 }
 void tput(const char* c)
 {
-    init_buffers();
+    if (init_buffers()) {
+        fputs(c, stdout);
+        return;
+    }
     dbuffer_append(&buff, c, strlen(c));
 }
 void tputs(const char* c)
 {
-    init_buffers();
+    if (init_buffers()) {
+        puts(c);
+        return;
+    }
     dbuffer_append(&buff, c, strlen(c));
     *(char*)dbuffer_claim(&buff, 1) = '\n';
 }
 void tputchar(const char c)
 {
-    init_buffers();
+    if (init_buffers()) {
+        putchar(c);
+        return;
+    }
     dbuffer_append(&buff, &c, 1);
 }
 void tprintn(const char* c, ureg n)
 {
-    init_buffers();
+    if (init_buffers()) {
+        fwrite(c, n, 1, stdout);
+        return;
+    }
     dbuffer_append(&buff, c, n);
 }
 void tflush()
 {
-    init_buffers();
+    if (init_buffers()) {
+        fflush(stdout);
+        return;
+    }
     ureg len = dbuffer_get_size(&buff);
     mutex_lock(&flush_mtx);
     fflush(stdout);
