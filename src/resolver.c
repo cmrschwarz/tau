@@ -3295,9 +3295,10 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
         non_import_pprns = false;
         if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
             print_pprns(r, "running ", true);
+            ureg priv_count = r->id_space - PRIV_SYMBOL_OFFSET;
+            llvm_backend_reserve_symbols(r->backend, priv_count, 0);
             lle = llvm_backend_run_pp(
-                r->backend, r->id_space - PRIV_SYMBOL_OFFSET,
-                &r->pp_resolve_nodes_ready);
+                r->backend, priv_count, &r->pp_resolve_nodes_ready);
             if (lle) return RE_FATAL;
             it = pli_begin(&r->pp_resolve_nodes_ready);
             for (pp_resolve_node* rn = pli_next(&it); rn; rn = pli_next(&it)) {
@@ -3558,8 +3559,8 @@ int resolver_emit(resolver* r, llvm_module** module)
 int resolver_resolve_and_emit(
     resolver* r, mdg_node** start, mdg_node** end, llvm_module** module)
 {
-    // so that the pprn doesn't overrun the global ids of other modules
-    // it might use
+    // reserve global symbol slots so that the pprn doesn't overrun the global
+    // ids of other modules it might use
     ureg curr_max_glob_id = atomic_ureg_load(&r->tc->t->node_ids);
     llvm_error lle =
         llvm_backend_reserve_symbols(r->backend, 0, curr_max_glob_id);

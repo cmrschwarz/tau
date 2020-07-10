@@ -611,9 +611,6 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
         }
     }
     _private_sym_count = private_sym_count;
-    // TODO: find a lower upper bound for this
-    ureg max_pub_symbols = atomic_ureg_load(&_tc->t->node_ids);
-    if (reserveSymbols(private_sym_count, max_pub_symbols)) return LLE_FATAL;
     // create name
     std::string num = std::to_string(
         PP_RUNNER->pp_count.fetch_add(1, std::memory_order_relaxed));
@@ -658,7 +655,6 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     _mod_startid = startid;
     _mod_endid = endid;
     _private_sym_count = private_sym_count;
-    if (reserveSymbols(private_sym_count, endid)) return LLE_FATAL;
     llvm_error lle;
 
     TAU_TIME_STAGE_CTX(

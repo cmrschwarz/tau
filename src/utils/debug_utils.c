@@ -15,7 +15,7 @@ mutex flush_mtx;
 static int init_buffers()
 {
     if (buff.start) return OK;
-    if (buff.end == 1) return ERR;
+    if (buff.end == (void*)1) return ERR;
     if (!talloc_initialized()) return ERR;
     buff.end = (void*)1;
     dbuffer_init(&buff);

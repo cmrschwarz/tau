@@ -2429,7 +2429,7 @@ void free_failed_param_block_list_symtabs(list_builder* lb, void** list_start)
         sym_param* p =
             (sym_param*)list_builder_rev_iter_prev(&it, sizeof(sym_param));
         if (!p) break;
-        free_astn_symtabs(p);
+        free_astn_symtabs((ast_node*)p);
     }
     list_builder_drop_list(lb, list_start);
 }
