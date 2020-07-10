@@ -3155,6 +3155,7 @@ void print_pprns(resolver* r, char* msg, bool verbose)
     print_pprnlist(r, &r->pp_resolve_nodes_ready, "ready:", verbose);
     print_pprnlist(r, &r->pp_resolve_nodes_pending, "pending:", verbose);
     print_pprnlist(r, &r->pp_resolve_nodes_waiting, "waiting:", verbose);
+    tflush();
 }
 resolve_error
 pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn, bool fin_independent)

@@ -6,31 +6,28 @@
 #include "stdio.h"
 #include "tauc.h"
 #include "utils/math_utils.h"
+#include "utils/debug_utils.h"
 #include <assert.h>
 
 void pc(char c)
 {
-    putchar(c);
-    fflush(stdout);
+    tputchar(c);
 }
 void p(const char* c)
 {
-    fputs(c, stdout);
-    fflush(stdout);
+    tput(c);
 }
 void pu(const char* c)
 {
     if (c == NULL) {
         c = "unknown";
     }
-    fputs(c, stdout);
-    fflush(stdout);
+    tput(c);
 }
 void ps(const char* c)
 {
     pu(c);
     pc(' ');
-    fflush(stdout);
 }
 void pinn(char* c)
 {
