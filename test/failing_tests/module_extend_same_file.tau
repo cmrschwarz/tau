@@ -1,0 +1,12 @@
+module m{
+    require "module_extend_same_file.tau";
+}
+extend m{
+    func foo(){
+    }
+}
+
+func main(){
+    import m;
+    m::foo();
+}
