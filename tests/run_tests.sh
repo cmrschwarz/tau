@@ -10,6 +10,6 @@ TAUC="./build/tauc"
 $TAUC --run-unit-tests || :
 
 #run ci tests
-./test/ci_tests/run_ci_tests.sh
+./tests/ci_tests/run_ci_tests.sh
 
 # - valgrind --track-origins=yes --leak-check=full --error-exitcode=1 --suppressions test/valgrind_suppressions$TAUC 
