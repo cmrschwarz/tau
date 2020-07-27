@@ -3452,6 +3452,51 @@ int resolver_resolve(resolver* r)
     free_pprns(r);
     return RE_OK;
 }
+resolve_error lookup_priv_module_symbol(
+    resolver* r, mdg_node* mod, const char* name, symbol** result,
+    const char* amb_message)
+{
+    symbol* res = NULL;
+    symbol* ambiguity = NULL;
+    symbol* ambiguity2 = NULL;
+    symbol** result_1 = &res;
+    symbol** result_2 = &ambiguity;
+    resolve_error re = resolver_lookup_single(
+        r, mod->symtab, NULL, mod->symtab, name, result_1, result_2);
+    if (re) return re;
+    if (!ambiguity) {
+        aseglist_iterator it;
+        aseglist_iterator_begin(&it, &mod->module_frames);
+        for (module_frame* mf = aseglist_iterator_next(&it); mf;
+             mf = aseglist_iterator_next(&it)) {
+            if (res) {
+                result_1 = &ambiguity;
+                result_2 = &ambiguity2;
+            }
+            resolver_lookup_single(
+                r, mf->body.symtab, NULL, mf->body.symtab, name, result_1,
+                result_2);
+            if (re) return re;
+            // since we check multiple frames we might hit the same main twice
+            if (ambiguity == res) ambiguity = ambiguity2;
+            if (ambiguity) break;
+        }
+    }
+    if (ambiguity) {
+        src_range_large srl1, srl2;
+        ast_node_get_src_range((ast_node*)res, res->declaring_st, &srl1);
+        ast_node_get_src_range(
+            (ast_node*)ambiguity, ambiguity->declaring_st, &srl2);
+        error_log_report_annotated_twice(
+            r->tc->err_log, ES_RESOLVER, false, amb_message, srl1.smap,
+            srl1.start, srl1.end, "first here", srl2.smap, srl2.start, srl2.end,
+            "second here");
+        return RE_ERROR;
+    }
+    if (ambiguity) assert(false); // TODO: report ambiguity
+    *result = res;
+    return RE_OK;
+}
 int resolver_emit(resolver* r, llvm_module** module)
 {
     // add module ctors and dtors
@@ -3488,38 +3533,17 @@ int resolver_emit(resolver* r, llvm_module** module)
     // gen entrypoint in case if we are the root module
     mdg_node* root = r->tc->t->mdg.root_node;
     if (*r->mdgs_begin == root) {
-        symbol* mainfn;
-        symbol* startfn;
-        symbol* amb;
-        resolve_error re = resolver_lookup_single(
-            r, root->symtab, NULL, root->symtab, COND_KW_MAIN, &mainfn, &amb);
+        symbol* mainfn = NULL;
+        symbol* startfn = NULL;
+        resolve_error re = lookup_priv_module_symbol(
+            r, root, COND_KW_START, &startfn,
+            "multiple candidates for _start function");
         if (re) return re;
-        if (amb) assert(false); // TODO: report ambiguity
-        re = resolver_lookup_single(
-            r, root->symtab, NULL, root->symtab, COND_KW_START, &startfn, &amb);
-        if (re) return re;
-        if (amb) assert(false); // TODO: report ambiguity
-        if (!mainfn || !startfn) {
-            aseglist_iterator mfs;
-            aseglist_iterator_begin(&mfs, &root->module_frames);
-            for (module_frame* mf = aseglist_iterator_next(&mfs); mf;
-                 mf = aseglist_iterator_next(&mfs)) {
-                if (!mainfn) {
-                    re = resolver_lookup_single(
-                        r, mf->body.symtab, NULL, root->symtab, COND_KW_MAIN,
-                        &mainfn, &amb);
-                    if (re) return re;
-                    if (amb) assert(false); // TODO: report ambiguity
-                }
-                if (!startfn) {
-                    re = resolver_lookup_single(
-                        r, mf->body.symtab, NULL, root->symtab, COND_KW_START,
-                        &startfn, &amb);
-                    if (re) return re;
-                    if (amb) assert(false); // TODO: report ambiguity
-                }
-                if (mainfn && startfn) break;
-            }
+        if (!startfn) {
+            re = lookup_priv_module_symbol(
+                r, root, COND_KW_MAIN, &mainfn,
+                "multiple candidates for main function");
+            if (re) return re;
         }
         if (!mainfn && !startfn) {
             // TODO: maybe create a separate error kind for this?

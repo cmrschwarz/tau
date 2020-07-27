@@ -184,42 +184,38 @@ resolve_error symbol_lookup_level_run(
                 break;
             }
             sym = (symbol*)s;
-            if (sli->enable_shadowing) break;
         }
     }
-
-    if (sym && sli->enable_shadowing) {
-        *res = sym;
-        return RE_OK;
-    }
-
     symbol_table* extends_sc = NULL;
-    if (lookup_st->owning_node && ast_elem_is_struct(lookup_st->owning_node)) {
-        sc_struct* st = (sc_struct*)lookup_st->owning_node;
-        // TODO: respect extends visibility
-        if (st->sb.extends_spec) {
-            if (!st->sb.extends) {
-                re = resolve_ast_node(
-                    sli->r, st->sb.extends_spec, lookup_st,
-                    (ast_elem**)&st->sb.extends, NULL);
-                if (re) return re;
-                assert(ast_elem_is_struct((ast_elem*)st->sb.extends));
-            }
-            extends_sc = st->sb.extends->sb.sc.body.symtab;
-        }
-    }
-
     symbol_table** usings_end = NULL;
     symbol_table** usings_start = NULL;
-    if (lookup_st->usings) {
-        re = update_ams(
-            sli->r, lookup_st, sli->looking_st, sli->looking_struct,
-            sli->looking_mf, sli->looking_mod, NULL, NULL, &am_start, &am_end);
-        if (re) return re;
-        usings_start = symbol_table_get_uses_start(lookup_st, am_start);
-        usings_end = symbol_table_get_uses_end(lookup_st, am_end);
-    }
+    if (!sym || !sli->enable_shadowing) {
+        if (lookup_st->owning_node &&
+            ast_elem_is_struct(lookup_st->owning_node)) {
+            sc_struct* st = (sc_struct*)lookup_st->owning_node;
+            // TODO: respect extends visibility
+            if (st->sb.extends_spec) {
+                if (!st->sb.extends) {
+                    re = resolve_ast_node(
+                        sli->r, st->sb.extends_spec, lookup_st,
+                        (ast_elem**)&st->sb.extends, NULL);
+                    if (re) return re;
+                    assert(ast_elem_is_struct((ast_elem*)st->sb.extends));
+                }
+                extends_sc = st->sb.extends->sb.sc.body.symtab;
+            }
+        }
 
+        if (lookup_st->usings) {
+            re = update_ams(
+                sli->r, lookup_st, sli->looking_st, sli->looking_struct,
+                sli->looking_mf, sli->looking_mod, NULL, NULL, &am_start,
+                &am_end);
+            if (re) return re;
+            usings_start = symbol_table_get_uses_start(lookup_st, am_start);
+            usings_end = symbol_table_get_uses_end(lookup_st, am_end);
+        }
+    }
     int responsibility_count =
         (sym != NULL) + (overloaded_sym_head != NULL) +
         (overloaded_import_symbol != NULL) + (usings_end != usings_start) +

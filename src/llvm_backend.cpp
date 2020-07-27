@@ -1982,7 +1982,7 @@ const char* LLVMBackend::nameMangle(sc_func_base* fn)
         name = n->name + ("_" + name);
         n = n->parent;
     }
-    if (name != "main") {
+    if (name != "main") { // HACK: we should handle the main function properly
         name = name + "_" + std::to_string(fn->param_count);
     }
     std::string MangledName;
