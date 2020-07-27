@@ -57,7 +57,6 @@ static inline ureg stack_is_empty(stack* s)
 static inline stack_segment*
 stack_alloc_segment(stack* s, ureg size, stack_segment* prev)
 {
-    size = sizeof(void*) * size;
     stack_segment* seg = (stack_segment*)pool_alloc(s->mempool, size);
     if (!s) return NULL;
     seg->end = (void**)ptradd(seg, size);
@@ -145,7 +144,7 @@ static inline void* stack_peek_nth(stack* s, ureg i)
         ureg elems = stack_seg_elems(seg, head);
         if (elems >= i) return *(head - i - 1);
         seg = seg->prev;
-        if (!seg) return NULL;
+        assert(seg);
         i -= elems;
         head = seg->end;
     }
@@ -156,11 +155,11 @@ static inline ureg stack_element_count(stack* s)
     ureg curr_seg_size = ptrdiff(s->curr_seg->end, s->curr_seg);
     ureg seg_count = ulog2(curr_seg_size) - ulog2(STACK_SEG_MIN_SIZE) + 1;
     // size of the segments combined
-    ureg space = (2 * seg_count - 1) * STACK_SEG_MIN_SIZE;
+    ureg space = ((1 << seg_count) - 1) * STACK_SEG_MIN_SIZE;
     // subtract size of the metadata
     space -= seg_count * sizeof(stack_segment);
     // subtract unused slots in the current segment
-    space -= (ptrdiff(s->head, s->curr_seg) - sizeof(stack_segment));
+    space -= ptrdiff(s->curr_seg->end, s->head);
     return space / sizeof(void*);
 }
 
