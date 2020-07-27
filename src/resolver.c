@@ -2615,14 +2615,17 @@ static inline void report_type_loop(resolver* r, ast_node* n, symbol_table* st)
         stack_clear(&r->error_stack);
         ast_flags_clear_resolving(&n->flags);
         resolve_ast_node(r, n, st, NULL, NULL);
-        stack_pop(&r->error_stack);
-        stack_pop(&r->error_stack);
         stack_ec = stack_element_count(&r->error_stack);
+        assert(stack_peek_nth(&r->error_stack, stack_ec - 2) == n);
     }
+    ast_node* n_s = (ast_node*)stack_pop(&r->error_stack);
+    assert(n == n_s);
+    stack_pop(&r->error_stack);
+    stack_ec -= 2;
     src_range_large srl;
     ast_node_get_src_range(n, st, &srl);
     ureg annot_count = stack_ec / 2;
-    annot_count--; // the starting type is on the stack too
+    annot_count--; // the starting type is at the bottom of the stack
     error* e = error_log_create_error(
         r->tc->err_log, ES_RESOLVER, false, "type inference cycle", srl.smap,
         srl.start, srl.end, "type definition depends on itself", annot_count);
@@ -2631,14 +2634,20 @@ static inline void report_type_loop(resolver* r, ast_node* n, symbol_table* st)
         if (!n) break;
         st = (symbol_table*)stack_pop(&r->error_stack);
         if (n->kind == EXPR_OP_BINARY || n->kind == EXPR_OP_UNARY ||
-            n->kind == EXPR_MEMBER_ACCESS) {
-            continue; // skip stuff that isn't helpful in the report
+            n->kind == EXPR_MEMBER_ACCESS || n->kind == EXPR_BREAK ||
+            n->kind == EXPR_BLOCK) {
+            // don't highlight too much stuff
+            ast_node_get_src_range(n, st, &srl);
+            error_add_annotation(e, srl.smap, srl.start, srl.end, NULL);
+            continue;
         }
         ast_node_get_src_range(n, st, &srl);
-        error_add_annotation(e, srl.smap, srl.start, srl.end, "");
+        char* annot = (i + 1 == annot_count) ? "loop detected" : "";
+        error_add_annotation(e, srl.smap, srl.start, srl.end, annot);
     }
     stack_pop(&r->error_stack);
     stack_pop(&r->error_stack);
+    assert(stack_element_count(&r->error_stack) == 0);
     error_log_report(r->tc->err_log, e);
 }
 resolve_error resolve_ast_node(

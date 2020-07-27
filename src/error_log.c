@@ -672,6 +672,7 @@ ureg extend_em(
     src_map* smap, err_point* err_points, const char* annot, src_pos pos,
     src_pos end)
 {
+    char* dummy_msg = (annot == NULL) ? NULL : "";
     if (end.column == 0 && end.line != pos.line) {
         ureg lstart, llength;
         src_pos_get_line_bounds(smap, pos.line, &lstart, &llength);
@@ -683,7 +684,7 @@ ureg extend_em(
         err_points[0].col_end = end.column;
         return 1;
     }
-    err_points[0].message = "";
+    err_points[0].message = dummy_msg;
     ureg lstart, llength;
     src_pos_get_line_bounds(smap, pos.line, &lstart, &llength);
     err_points[0].col_end = llength - 1;
@@ -699,7 +700,7 @@ ureg extend_em(
     }
     if (pos.line + 2 == end.line) {
         src_pos_get_line_bounds(smap, pos.line + 1, &lstart, &llength);
-        err_points[1].message = "";
+        err_points[1].message = dummy_msg;
         err_points[1].col_start = 0;
         err_points[1].col_end = llength - 1;
         err_points[1].line = pos.line + 1;
