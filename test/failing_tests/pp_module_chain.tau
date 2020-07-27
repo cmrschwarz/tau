@@ -1,0 +1,26 @@
+module a{
+    public func foo()->int{
+        return 1;
+    };
+};
+module b{
+    import a;
+    public func foo()->int{
+        x := #a::foo();  
+        return x;
+    };
+};
+module c{
+    import b;
+    public func foo()->int{
+        x := #b::foo();  
+        return x;
+    };
+}
+
+import c;
+
+public func main() -> int{
+    if(c::foo() != 1) return 1;
+    return #if(#c::foo() != 1) 1 else 0;
+}
