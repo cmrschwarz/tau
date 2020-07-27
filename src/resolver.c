@@ -3587,12 +3587,13 @@ int resolver_partial_fin(resolver* r, int i, int res)
 {
     switch (i) {
         case -1:
-        case 8: llvm_backend_delete(r->backend); // fallthrough
-        case 7: prp_fin(&r->prp); // fallthrough
-        case 6: ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
-        case 5: ptrlist_fin(&r->pp_resolve_nodes_pending); // fallthrough
-        case 4: sbuffer_fin(&r->pp_resolve_nodes_waiting); // fallthrough
-        case 3: freelist_fin(&r->pp_resolve_nodes); // fallthrough
+        case 9: llvm_backend_delete(r->backend); // fallthrough
+        case 8: prp_fin(&r->prp); // fallthrough
+        case 7: ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
+        case 6: ptrlist_fin(&r->pp_resolve_nodes_pending); // fallthrough
+        case 5: sbuffer_fin(&r->pp_resolve_nodes_waiting); // fallthrough
+        case 4: freelist_fin(&r->pp_resolve_nodes); // fallthrough
+        case 3: pool_fin(&r->pprn_mem); // fallthrough
         case 2: sbuffer_fin(&r->temp_stack); // fallthrough
         case 1: stack_fin(&r->error_stack); // fallthrough
         case 0: break;
@@ -3610,20 +3611,22 @@ int resolver_init(resolver* r, thread_context* tc)
     if (e) return resolver_partial_fin(r, 0, e);
     e = sbuffer_init(&r->temp_stack, sizeof(ast_node*) * 32);
     if (e) return resolver_partial_fin(r, 1, e);
-    e = freelist_init(
-        &r->pp_resolve_nodes, &r->tc->permmem, sizeof(pp_resolve_node));
+    e = pool_init(&r->pprn_mem);
     if (e) return resolver_partial_fin(r, 2, e);
+    e = freelist_init(
+        &r->pp_resolve_nodes, &r->pprn_mem, sizeof(pp_resolve_node));
+    if (e) return resolver_partial_fin(r, 3, e);
     e = sbuffer_init(
         &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*) * 16);
-    if (e) return resolver_partial_fin(r, 3, e);
-    e = ptrlist_init(&r->pp_resolve_nodes_pending, 16);
     if (e) return resolver_partial_fin(r, 4, e);
-    e = ptrlist_init(&r->pp_resolve_nodes_ready, 16);
+    e = ptrlist_init(&r->pp_resolve_nodes_pending, 16);
     if (e) return resolver_partial_fin(r, 5, e);
-    e = prp_init(&r->prp, r->tc);
+    e = ptrlist_init(&r->pp_resolve_nodes_ready, 16);
     if (e) return resolver_partial_fin(r, 6, e);
+    e = prp_init(&r->prp, r->tc);
+    if (e) return resolver_partial_fin(r, 7, e);
     r->backend = llvm_backend_new(r->tc);
-    if (!r->backend) return resolver_partial_fin(r, 7, ERR);
+    if (!r->backend) return resolver_partial_fin(r, 8, ERR);
     r->allow_type_loops = false;
     r->type_loop_start = NULL;
     r->curr_block_owner = NULL;

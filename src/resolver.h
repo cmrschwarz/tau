@@ -90,6 +90,7 @@ typedef struct resolver_s {
     ureg private_sym_count;
 
     // dealing with the preprocessor
+    pool pprn_mem;
     freelist pp_resolve_nodes;
 
     // dep count > 0, what remains in the end are cyclic dependencies
