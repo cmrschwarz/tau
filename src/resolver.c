@@ -2988,7 +2988,7 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
         error_log_report_annotated_thrice(
             r->tc->err_log, ES_RESOLVER, false,
             "reachable end of non void function", smap, brace_end - 1,
-            brace_end, "missing return statement (or unreachable) ", smap,
+            brace_end, "missing return statement", smap,
             src_range_get_start(fnb->return_type->srange),
             src_range_get_end(fnb->return_type->srange),
             "function returns non void type", smap,
