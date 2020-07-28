@@ -42,7 +42,7 @@ typedef struct pp_resolve_node_s {
     bool ready;
     bool run_when_ready; // false for exprs in functions
     bool block_pos_reachable;
-    bool call_when_done;
+    bool sequential_block;
     struct pp_resolve_node_s* parent; // gets informed once this is pending
     struct pp_resolve_node_s** waiting_list_entry;
     struct pp_resolve_node_s* first_unresolved_child;
