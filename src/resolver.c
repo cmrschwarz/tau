@@ -1952,7 +1952,6 @@ static inline resolve_error require_module_in_pp(
     resolve_error re;
     if (*tgt_pprn) {
         if (atomic_boolean_load(done)) {
-            atomic_boolean_fin(done);
             re = pp_resolve_node_ready(r, *tgt_pprn, false);
             if (re) return re;
             *tgt_pprn = NULL;
@@ -1999,7 +1998,6 @@ static inline resolve_error require_module_in_pp(
     }
     else {
         *tgt_pprn = NULL;
-        atomic_boolean_fin(done);
     }
     if (diy) {
         if (tauc_request_pp_module(r->tc->t, mdg)) return RE_FATAL;

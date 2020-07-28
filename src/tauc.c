@@ -16,17 +16,13 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
 {
     switch (i) {
         case -1:
-        case 12: mdg_fin(&t->mdg); // fallthrough
+        case 8: mdg_fin(&t->mdg); // fallthrough
         case -2: // skip mdg because we freed that earlier when we still had all
                  // threads and their permmem
-        case 11: aseglist_fin(&t->module_dtors); // fallthrough
-        case 10: aseglist_fin(&t->module_ctors); // fallthrough
-        case 9: thread_context_fin(&t->main_thread_context); // fallthrough
-        case 8: fin_root_symtab(t->root_symtab); // fallthrough
-        case 7: atomic_ureg_fin(&t->linking_holdups); // fallthrough
-        case 6: atomic_sreg_fin(&t->error_code); // fallthrough
-        case 5: atomic_ureg_fin(&t->node_ids); // fallthrough
-        case 4: atomic_ureg_fin(&t->active_thread_count); // fallthrough
+        case 7: aseglist_fin(&t->module_dtors); // fallthrough
+        case 6: aseglist_fin(&t->module_ctors); // fallthrough
+        case 5: thread_context_fin(&t->main_thread_context); // fallthrough
+        case 4: fin_root_symtab(t->root_symtab); // fallthrough
         case 3: aseglist_fin(&t->worker_threads); // fallthrough
         case 2: job_queue_fin(&t->jobqueue); // fallthrough
         case 1: llvm_backend_fin_globals(); // fallthrough
@@ -45,25 +41,22 @@ int tauc_core_init(tauc* t)
     if (r) return tauc_core_partial_fin(t, r, 1);
     r = aseglist_init(&t->worker_threads);
     if (r) return tauc_core_partial_fin(t, r, 2);
-    r = atomic_ureg_init(&t->active_thread_count, 1);
-    if (r) return tauc_core_partial_fin(t, r, 3);
-    r = atomic_ureg_init(&t->node_ids, 0);
-    if (r) return tauc_core_partial_fin(t, r, 4);
-    r = atomic_sreg_init(&t->error_code, 0);
-    if (r) return tauc_core_partial_fin(t, r, 5);
-    // 1 for release generation, one for final sanity check
-    r = atomic_ureg_init(&t->linking_holdups, 2);
-    if (r) return tauc_core_partial_fin(t, r, 6);
     r = init_root_symtab(&t->root_symtab); // needs node_ids
-    if (r) return tauc_core_partial_fin(t, r, 7);
+    if (r) return tauc_core_partial_fin(t, r, 3);
     r = thread_context_init(&t->main_thread_context, t);
-    if (r) return tauc_core_partial_fin(t, r, 8);
+    if (r) return tauc_core_partial_fin(t, r, 4);
     r = aseglist_init(&t->module_ctors);
-    if (r) return tauc_core_partial_fin(t, r, 9);
+    if (r) return tauc_core_partial_fin(t, r, 5);
     r = aseglist_init(&t->module_dtors);
-    if (r) return tauc_core_partial_fin(t, r, 10);
+    if (r) return tauc_core_partial_fin(t, r, 6);
     r = mdg_init(&t->mdg);
-    if (r) return tauc_core_partial_fin(t, r, 11);
+    if (r) return tauc_core_partial_fin(t, r, 7);
+
+    atomic_ureg_init(&t->active_thread_count, 1);
+    atomic_ureg_init(&t->node_ids, 0);
+    atomic_sreg_init(&t->error_code, 0);
+    // 1 for release generation, one for final sanity check
+    atomic_ureg_init(&t->linking_holdups, 2);
     t->emit_asm = false;
     t->emit_ll = false;
     t->explicit_exe = false;

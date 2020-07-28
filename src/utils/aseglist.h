@@ -63,18 +63,12 @@ static inline aseglist_node* aseglist_node_new(ureg size)
 {
     aseglist_node* n = (aseglist_node*)tmalloc(size);
     if (!n) return NULL;
-    int r = atomic_sreg_init(
-        &n->space, (size - sizeof(aseglist_node)) / sizeof(void*));
-    if (r) {
-        tfree(n);
-        return NULL;
-    }
+    atomic_sreg_init(&n->space, (size - sizeof(aseglist_node)) / sizeof(void*));
     *(ureg*)ptradd(n, ASEGLIST_ELEM_OFFSET) = size;
     return n;
 }
 static inline void aseglist_node_free(aseglist_node* n)
 {
-    atomic_sreg_fin(&n->space);
     tfree(n);
 }
 
@@ -82,11 +76,7 @@ static inline int aseglist_init(aseglist* l)
 {
     aseglist_node* n = aseglist_node_new(ASEGLIST_INITIAL_SIZE);
     if (!n) return ERR;
-    int r = atomic_ptr_init(l, n);
-    if (r) {
-        aseglist_node_free(n);
-        return r;
-    }
+    atomic_ptr_init(l, n);
     n->prev = NULL;
     return OK;
 }
@@ -128,4 +118,3 @@ static inline int aseglist_add(aseglist* l, void* data)
         }
     }
 }
-

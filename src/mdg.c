@@ -12,18 +12,17 @@
 int mdg_fin_partial(module_dependency_graph* m, int i, int r)
 {
     switch (i) {
-        case 0:
+        case -1:
             mdg_node_fin(m->root_node);
             mdght_fin_contained_nodes(mdg_start_write(m));
             mdg_end_write(m);
             // fallthrough
-        case 1: mdght_fin(&m->mdghts[1]); // fallthrough
-        case 2: mdght_fin(&m->mdghts[0]); // fallthrough
+        case 5: mdght_fin(&m->mdghts[1]); // fallthrough
+        case 4: mdght_fin(&m->mdghts[0]); // fallthrough
         case 3: evmap2_fin(&m->evm); // fallthrough
-        case 4: pool_fin(&m->node_pool); // fallthrough
-        case 5: pool_fin(&m->ident_pool); // fallthrough
-        case 6: atomic_ureg_fin(&m->node_ids); // fallthrough
-        default: break;
+        case 2: pool_fin(&m->node_pool); // fallthrough
+        case 1: pool_fin(&m->ident_pool); // fallthrough
+        case 0: break;
     }
     return r;
 }
@@ -32,28 +31,30 @@ mdg_node* mdg_node_create(
     module_stage initial_stage);
 int mdg_init(module_dependency_graph* m)
 {
-    int r = atomic_ureg_init(&m->node_ids, 0);
-    if (r) return r;
-    r = pool_init(&m->ident_pool);
-    if (r) return mdg_fin_partial(m, 6, r);
+    int r = pool_init(&m->ident_pool);
+    if (r) return mdg_fin_partial(m, 0, r);
     r = pool_init(&m->node_pool);
-    if (r) return mdg_fin_partial(m, 5, r);
+    if (r) return mdg_fin_partial(m, 1, r);
     r = evmap2_init(&m->evm, MDG_MAX_CHANGES);
-    if (r) return mdg_fin_partial(m, 4, r);
+    if (r) return mdg_fin_partial(m, 2, r);
     r = mdght_init(&m->mdghts[0]);
     if (r) return mdg_fin_partial(m, 3, r);
     r = mdght_init(&m->mdghts[1]);
-    if (r) return mdg_fin_partial(m, 2, r);
+    if (r) return mdg_fin_partial(m, 4, r);
+
+    atomic_ureg_init(&m->node_ids, 0);
+
     m->root_node = mdg_node_create(m, string_from_cstr("_"), NULL, MS_PARSING);
-    if (!m->root_node) return mdg_fin_partial(m, 1, ERR);
+    if (!m->root_node) return mdg_fin_partial(m, 5, ERR);
+
     // this gets increased when we use src_file_require on the root file
-    atomic_ureg_store(&m->root_node->unparsed_files, 0);
+    atomic_ureg_init(&m->root_node->unparsed_files, 0);
     m->change_count = 0;
     return 0;
 }
 void mdg_fin(module_dependency_graph* m)
 {
-    mdg_fin_partial(m, 0, 0);
+    mdg_fin_partial(m, -1, 0);
 }
 
 mdght* mdg_start_read(module_dependency_graph* m)
@@ -93,14 +94,12 @@ void mdg_end_write(module_dependency_graph* m)
 void* mdg_node_partial_fin(mdg_node* n, int i)
 {
     switch (i) {
-        default:
-        case 7: atomic_ureg_fin(&n->using_count); // fallthrough
-        case 6: atomic_ureg_fin(&n->decl_count); // fallthrough
-        case 5: atomic_ureg_fin(&n->unparsed_files); // fallthrough
+        case -1:
         case 4: list_fin(&n->notify, true); // fallthrough
         case 3: list_fin(&n->dependencies, true); // fallthrough
         case 2: rwlock_fin(&n->lock); // fallthrough
         case 1: aseglist_fin(&n->module_frames); // fallthrough
+        case 0: break;
     }
     return NULL;
 }
@@ -121,19 +120,16 @@ mdg_node* mdg_node_create(
     n->id = atomic_ureg_inc(&m->node_ids);
     n->parent = parent;
     int r = aseglist_init(&n->module_frames);
-    if (r) return NULL;
+    if (r) return mdg_node_partial_fin(n, 0);
     r = rwlock_init(&n->lock);
     if (r) return mdg_node_partial_fin(n, 1);
     r = list_init(&n->dependencies);
     if (r) return mdg_node_partial_fin(n, 2);
     r = list_init(&n->notify);
     if (r) return mdg_node_partial_fin(n, 3);
-    r = atomic_ureg_init(&n->unparsed_files, 0);
-    if (r) return mdg_node_partial_fin(n, 4);
-    r = atomic_ureg_init(&n->decl_count, 0);
-    if (r) return mdg_node_partial_fin(n, 5);
-    r = atomic_ureg_init(&n->using_count, 0);
-    if (r) return mdg_node_partial_fin(n, 6);
+    atomic_ureg_init(&n->unparsed_files, 0);
+    atomic_ureg_init(&n->decl_count, 0);
+    atomic_ureg_init(&n->using_count, 0);
     n->stage = initial_stage;
     n->symtab = NULL;
     n->notifier = NULL;
@@ -334,7 +330,7 @@ void mdg_node_fin(mdg_node* n)
     if (n->stage >= MS_RESOLVING) {
         symbol_table_fin(n->symtab);
     }
-    mdg_node_partial_fin(n, 0);
+    mdg_node_partial_fin(n, -1);
 }
 
 mdg_node* mdg_get_node(

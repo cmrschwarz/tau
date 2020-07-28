@@ -38,8 +38,7 @@ bool talloc_initialized()
 int talloc_init(master_error_log* el)
 {
 #if DEBUG
-    int r = atomic_sreg_init(&allocations, 0);
-    if (r) return r;
+    atomic_sreg_init(&allocations, 0);
 #endif
     mel = el;
     return OK;

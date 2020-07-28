@@ -1,42 +1,26 @@
 #include "evmap2.h"
+#include "error.h"
 #include <stdio.h>
 #define STRIDE (UREG_MAX / 2)
 
-static inline int evmap2_partial_fin(evmap2* m, int i, int r)
-{
-    switch (i) {
-        case 0: atomic_ureg_fin(&m->done_counts[1]); // fallthrough
-        case 1: atomic_ureg_fin(&m->done_counts[0]); // fallthrough
-        case 2: atomic_ureg_fin(&m->counter); // fallthrough
-        case 3: atomic_ureg_fin(&m->pending_writers); // fallthrough
-        case 4: mutex_fin(&m->write_lock); // fallthrough
-    }
-    return r;
-}
-
 int evmap2_init(evmap2* m, ureg max_change_count)
 {
-    int r;
-    r = mutex_init(&m->write_lock);
+    int r = mutex_init(&m->write_lock);
     if (r) return r;
-    r = atomic_ureg_init(&m->pending_writers, 0);
-    if (r) return evmap2_partial_fin(m, 4, r);
-    r = atomic_ureg_init(&m->counter, 0);
-    if (r) return evmap2_partial_fin(m, 3, r);
-    r = atomic_ureg_init(&m->done_counts[0], 0);
-    if (r) return evmap2_partial_fin(m, 2, r);
-    r = atomic_ureg_init(&m->done_counts[1], 0);
-    if (r) return evmap2_partial_fin(m, 1, r);
+    atomic_ureg_init(&m->pending_writers, 0);
+    atomic_ureg_init(&m->counter, 0);
+    atomic_ureg_init(&m->done_counts[0], 0);
+    atomic_ureg_init(&m->done_counts[1], 0);
     m->reader_id = 0;
     m->prev_readers = 0;
     m->swapped = false;
     m->change_count = 0;
     m->max_change_count = max_change_count;
-    return 0;
+    return OK;
 }
 void evmap2_fin(evmap2* m)
 {
-    evmap2_partial_fin(m, 0, 0);
+    mutex_fin(&m->write_lock);
 }
 
 ureg evmap2_start_read(evmap2* m)

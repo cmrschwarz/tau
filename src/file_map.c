@@ -75,19 +75,10 @@ static inline int src_lib_init(
     src_lib* l, file_map* fm, src_dir* parent, string name, bool is_dynamic)
 {
 
-    int r = atomic_boolean_init(&l->loaded, false);
+    int r = aseglist_init(&l->requiring_modules);
     if (r) return r;
-    r = atomic_boolean_init(&l->loaded_for_pp, false);
-    if (r) {
-        atomic_boolean_fin(&l->loaded);
-        return r;
-    }
-    r = aseglist_init(&l->requiring_modules);
-    if (r) {
-        atomic_boolean_fin(&l->loaded);
-        atomic_boolean_fin(&l->loaded_for_pp);
-        return r;
-    }
+    atomic_boolean_init(&l->loaded, false);
+    atomic_boolean_init(&l->loaded_for_pp, false);
     l->dynamic = is_dynamic;
     return file_map_head_init(
         (file_map_head*)l, fm, parent, name, ELEM_SRC_LIB);
@@ -96,8 +87,6 @@ static inline int src_lib_init(
 static inline void src_lib_fin(src_lib* l)
 {
     aseglist_fin(&l->requiring_modules);
-    atomic_boolean_fin(&l->loaded_for_pp);
-    atomic_boolean_fin(&l->loaded);
     file_map_head_fin(&l->head);
 }
 

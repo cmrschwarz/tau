@@ -2,10 +2,9 @@
 #ifdef USE_LIBC_ATOMICS
 #include <stdatomic.h>
 // ptr
-int atomic_ptr_init(atomic_ptr* a, void* value)
+void atomic_ptr_init(atomic_ptr* a, void* value)
 {
     atomic_init(&a->val, value);
-    return 0;
 }
 void* atomic_ptr_load(atomic_ptr* a)
 {
@@ -27,15 +26,11 @@ bool atomic_ptr_cas(atomic_ptr* a, void** oldval, void* newval)
 {
     return atomic_compare_exchange_weak(&a->val, oldval, newval);
 }
-void atomic_ptr_fin(atomic_ptr* a)
-{
-}
 
 // bool
-int atomic_boolean_init(atomic_boolean* a, bool value)
+void atomic_boolean_init(atomic_boolean* a, bool value)
 {
     atomic_init(&a->val, value);
-    return 0;
 }
 bool atomic_boolean_load(atomic_boolean* a)
 {
@@ -61,15 +56,11 @@ bool atomic_boolean_swap(atomic_boolean* a, bool newval)
 {
     return atomic_exchange(&a->val, newval);
 }
-void atomic_boolean_fin(atomic_boolean* a)
-{
-}
 
 // ureg
-int atomic_ureg_init(atomic_ureg* a, ureg value)
+void atomic_ureg_init(atomic_ureg* a, ureg value)
 {
     atomic_init(&a->val, value);
-    return 0;
 }
 ureg atomic_ureg_load(atomic_ureg* a)
 {
@@ -107,15 +98,11 @@ bool atomic_ureg_cas(atomic_ureg* a, ureg* oldval, ureg newval)
 {
     return atomic_compare_exchange_weak(&a->val, oldval, newval);
 }
-void atomic_ureg_fin(atomic_ureg* a)
-{
-}
 
 // sreg
-int atomic_sreg_init(atomic_sreg* a, sreg value)
+void atomic_sreg_init(atomic_sreg* a, sreg value)
 {
     atomic_init(&a->val, value);
-    return 0;
 }
 sreg atomic_sreg_load(atomic_sreg* a)
 {
@@ -152,9 +139,6 @@ sreg atomic_sreg_sub(atomic_sreg* a, sreg v)
 bool atomic_sreg_cas(atomic_sreg* a, sreg* oldval, sreg newval)
 {
     return atomic_compare_exchange_weak(&a->val, oldval, newval);
-}
-void atomic_sreg_fin(atomic_sreg* a)
-{
 }
 
 #endif

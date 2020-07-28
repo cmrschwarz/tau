@@ -1,15 +1,16 @@
 #pragma once
 
 #include "threading.h"
+#include "error.h"
 typedef atomic_sreg rwslock;
 
 static inline int rwslock_init(rwslock* l)
 {
-    return atomic_sreg_init(l, 0);
+    atomic_sreg_init(l, 0);
+    return OK;
 }
 static inline void rwslock_fin(rwslock* l)
 {
-    atomic_sreg_fin(l);
 }
 
 static inline void rwslock_read(rwslock* l)
