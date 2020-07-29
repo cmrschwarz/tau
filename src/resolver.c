@@ -159,7 +159,6 @@ static pp_resolve_node* pp_resolve_node_create(
     resolver* r, ast_node* n, symbol_table* declaring_st, bool res_used,
     bool run_individually, bool sequential_block, bool dummy)
 {
-    // print_pprns(r);
     pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
     if (!pprn) return NULL;
     if (aseglist_init(&pprn->notify_when_ready)) {
@@ -329,7 +328,6 @@ pp_resolve_node_activate(resolver* r, pp_resolve_node* pprn, bool resolved)
         return RE_OK;
     }
     return add_pprn_to_waiting_list(r, pprn);
-    return RE_OK;
 }
 resolve_error add_sym_import_module_decl(
     resolver* r, symbol_table* st, sym_import_module* im, mdg_node* stop,
@@ -1922,14 +1920,16 @@ static inline resolve_error resolve_expr_pp(
                 r->tc->err_log, ES_RESOLVER, false,
                 "pasting preprocessor expression can't return a value",
                 pp_srl.smap, pp_srl.start, pp_srl.end, "in this pp expression");
-            return RE_TYPE_MISSMATCH;
+            re = RE_TYPE_MISSMATCH;
         }
-        ppe->ctype = PASTED_EXPR_ELEM;
-    }
-    if (pprn->nested_pp_exprs) {
-        return RE_UNREALIZED_COMPTIME;
+        else {
+            ppe->ctype = PASTED_EXPR_ELEM;
+        }
     }
     if (re == RE_OK) {
+        if (pprn->nested_pp_exprs) {
+            return RE_UNREALIZED_COMPTIME;
+        }
         if (curr_pp_block_add_child(r, pprn)) return RE_FATAL;
         if (pp_resolve_node_activate(r, pprn, true)) {
             return RE_FATAL;
@@ -1954,11 +1954,21 @@ static inline resolve_error resolve_expr_paste_str(
     resolver* r, symbol_table* st, expr_paste_str* eps, ast_elem** value,
     ast_elem** ctype)
 {
+    if (!r->curr_pp_node) {
+        src_range_large paste_srl;
+        ast_node_get_src_range((ast_node*)eps, st, &paste_srl);
+        error_log_report_annotated(
+            r->tc->err_log, ES_RESOLVER, false,
+            "paste call outside of preprocessor expression", paste_srl.smap,
+            paste_srl.start, paste_srl.end,
+            "paste call must reside in a preprocessor expression"
+            "result");
+        return RE_ERROR;
+    }
     ast_elem* val_type;
     resolve_error re = resolve_ast_node(r, eps->value, st, NULL, &val_type);
     if (re) return re;
     ast_flags_set_resolved(&eps->node.flags);
-    assert(r->curr_pp_node->node->kind == EXPR_PP); // TODO: error
     eps->target = (expr_pp*)r->curr_pp_node->node;
     if (!ctypes_unifiable(val_type, (ast_elem*)&PRIMITIVES[PT_STRING])) {
         src_range_large paste_srl, val_srl;
@@ -2793,16 +2803,16 @@ resolve_error resolve_expr_body(
     if (pprn) {
         pprn->block_pos_reachable = *end_reachable;
         pprn->declaring_st = parent_st;
+        resolve_error re2;
         if (re) {
             pprn->continue_block = n;
+            // so it gets freed on error
+            re2 = add_pprn_to_waiting_list(r, pprn);
+            if (re2) return re2;
         }
         else {
             pprn->continue_block = NULL;
         }
-        /*if (!pprn->first_unresolved_child) {
-            pprn->run_individually = false;
-        }*/
-        resolve_error re2;
         if (!pprn->first_unresolved_child) {
             // this is a rerun and everyting got resolved
             // detach this from parent and free it individually
