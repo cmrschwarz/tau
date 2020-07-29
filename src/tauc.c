@@ -257,6 +257,9 @@ int handle_cmd_args(
         else if (!strcmp(arg, "--pprns")) {
             t->verbosity_flags |= VERBOSITY_FLAGS_PPRNS;
         }
+        else if (!strcmp(arg, "--pastes")) {
+            t->verbosity_flags |= VERBOSITY_FLAG_PASTES;
+        }
         else if (!strcmp(arg, "--liveness")) {
             t->verbosity_flags |= VERBOSITY_FLAGS_LIVENESS;
         }

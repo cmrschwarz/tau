@@ -15,6 +15,14 @@ typedef enum optimization_strategy_e {
     OPT_STRAT_OS,
 } optimization_strategy;
 
+#define VERBOSITY_FLAGS_TIME_STAGES 0x1
+#define VERBOSITY_FLAGS_PPRNS 0x2
+#define VERBOSITY_FLAGS_LIVENESS 0x4
+#define VERBOSITY_FLAGS_SCCD 0x8
+#define VERBOSITY_FLAGS_STAGE_BEGINS 0x10
+#define VERBOSITY_FLAG_THREAD_SPAWNS 0x20
+#define VERBOSITY_FLAG_PASTES 0x40
+
 typedef struct tauc_s {
     // these two are still needed for error reporting after
     // the compiler has run
@@ -71,13 +79,6 @@ int tauc_core_init(tauc* t);
 void tauc_core_fin(tauc* t);
 void tauc_core_fin_no_run(tauc* t);
 void tauc_scaffolding_fin(tauc* t);
-
-#define VERBOSITY_FLAGS_TIME_STAGES 0x1
-#define VERBOSITY_FLAGS_PPRNS 0x2
-#define VERBOSITY_FLAGS_LIVENESS 0x4
-#define VERBOSITY_FLAGS_SCCD 0x8
-#define VERBOSITY_FLAGS_STAGE_BEGINS 0x10
-#define VERBOSITY_FLAG_THREAD_SPAWNS 0x20
 
 #define TAU_TIME_STAGE_CTX(t, code, code_before_msg)                           \
     do {                                                                       \

@@ -2248,19 +2248,22 @@ parse_error init_paste_evaluation_parse(
     smap = p->lx.smap;
     p->current_file = src_map_get_file(smap);
     if (r) return PE_LX_ERROR;
-    // TODO: make configurable
-    char buffer[1025];
-    ureg read_size;
-    tput("parsing paste: '");
-    do {
+    if (p->lx.tc->t->verbosity_flags & VERBOSITY_FLAG_PASTES) {
+        ureg lx_pos = ptrdiff(p->lx.file_buffer_head, p->lx.file_buffer_start);
+        // TODO: make configurable
+        char buffer[1025];
+        ureg read_size;
+        tput("parsing paste: '");
         src_map_seek_set(smap, 0);
-        src_map_read(smap, sizeof(buffer) - 1, &read_size, buffer);
-        buffer[read_size] = '\0';
-        tput(buffer);
-    } while (read_size == sizeof(buffer) - 1);
-    tputs("'");
-    tflush();
-    src_map_seek_set(smap, p->lx.file_buffer_pos);
+        do {
+            src_map_read(smap, sizeof(buffer) - 1, &read_size, buffer);
+            buffer[read_size] = '\0';
+            tput(buffer);
+        } while (read_size == sizeof(buffer) - 1);
+        tputs("'");
+        tflush();
+        src_map_seek_set(smap, lx_pos);
+    }
     pe->node.srange = src_range_pack(p->lx.tc, 0, 0, smap);
     *eval = pe;
     p->file_root = NULL;
