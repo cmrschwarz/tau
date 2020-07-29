@@ -3318,11 +3318,11 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             lle = llvm_backend_run_pp(
                 r->backend, priv_count, &r->pp_resolve_nodes_ready);
             if (lle) return RE_FATAL;
-            it = pli_begin(&r->pp_resolve_nodes_ready);
-            for (pp_resolve_node* rn = pli_next(&it); rn; rn = pli_next(&it)) {
+            it = pli_rbegin(&r->pp_resolve_nodes_ready);
+            for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
                 pp_resolve_node_done(r, rn, &progress);
+                ptrlist_remove(&r->pp_resolve_nodes_ready, &it);
             }
-            sbuffer_clear(&r->pp_resolve_nodes_ready);
         }
         // we try to resolve pending nodes again
         it = pli_begin(&r->pp_resolve_nodes_pending);
