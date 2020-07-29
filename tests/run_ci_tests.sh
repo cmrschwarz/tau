@@ -1,5 +1,5 @@
 #!/bin/bash
-cd "$(dirname "$(readlink -f "$0")")" #change to directory of the shell script
+cd "$(dirname "$(readlink -f "$0")")/ci_tests" #change to directory of ci_tests
 TAUC="../../build/tauc"
 errors=0
 success=0
