@@ -158,7 +158,7 @@ static pp_resolve_node* pp_resolve_node_create(
         return NULL;
     }
     pprn->dep_count = 0;
-    pprn->showstopper = false;
+    pprn->nested_pp_exprs = false;
     pprn->pending_pastes = false;
     pprn->declaring_st = declaring_st;
     pprn->node = n;
@@ -291,8 +291,15 @@ pp_resolve_node_activate(resolver* r, pp_resolve_node* pprn, bool resolved)
             return pp_resolve_node_ready(r, pprn);
         }
         if (pprn->run_individually) {
-            if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
-                return RE_FATAL;
+            if (pprn->first_unresolved_child) {
+                if (ptrlist_append(&r->pp_resolve_nodes_ready, pprn)) {
+                    return RE_FATAL;
+                }
+            }
+            else {
+                if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
+                    return RE_FATAL;
+                }
             }
         }
         return RE_OK;
@@ -1567,7 +1574,7 @@ static inline resolve_error resolve_var(
     pp_resolve_node* prev_var_pp_node;
     ast_node* prev_var_decl_block_owner;
 
-    if (comptime) {
+    if (comptime && !v->pprn) {
         v->pprn = pp_resolve_node_create(
             r, (ast_node*)v, v->osym.sym.declaring_st, false, true, false,
             false);
@@ -1643,6 +1650,7 @@ static inline resolve_error resolve_var(
         r->curr_var_pp_node = prev_var_pp_node;
         r->curr_var_decl_block_owner = prev_var_decl_block_owner;
     }
+    if (re) return re;
     if (v->pprn) {
         resolve_error re_prev = re;
         re = curr_pp_block_add_child(r, v->pprn);
@@ -1651,7 +1659,6 @@ static inline resolve_error resolve_var(
         if (re) return re;
         re = re_prev;
     }
-    if (re) return re;
     ast_flags_set_resolved(&v->osym.sym.node.flags);
     RETURN_RESOLVED(value, ctype, v, v->ctype);
 }
@@ -1881,23 +1888,13 @@ static inline resolve_error resolve_expr_pp(
             r, (ast_node*)ppe, st, is_stmt, true, false, false);
         if (!pprn) return RE_FATAL;
         ppe->pprn = pprn;
-        /* if (r->curr_pp_node) {
-             if (curr_pprn_run_after(r, pprn)) return RE_FATAL;
-         }
-         // disable run_individually even if we don't add this immediately
-         // to avoid it being run once the deps are done
-         // for structs the children run individually, so we actually want it to
-         // run
-         if (!ast_elem_is_struct((ast_elem*)r->curr_block_owner)) {
-             re = get_curr_block_pprn(r, &pprn->parent);
-             if (pprn->parent) {
-                 pprn->run_individually = false;
-             }
-             if (re) return re;
-         }*/
+    }
+    if (r->curr_pp_node) {
+        r->curr_pp_node->nested_pp_exprs = true;
     }
     pp_resolve_node* parent_pprn = r->curr_pp_node;
     r->curr_pp_node = pprn;
+    pprn->nested_pp_exprs = false;
     re = resolve_ast_node(r, ppe->pp_expr, st, value, &ppe->ctype);
     r->curr_pp_node = parent_pprn;
     if (pprn->pending_pastes) {
@@ -1912,6 +1909,9 @@ static inline resolve_error resolve_expr_pp(
             return RE_TYPE_MISSMATCH;
         }
         ppe->ctype = PASTED_EXPR_ELEM;
+    }
+    if (pprn->nested_pp_exprs) {
+        return RE_UNREALIZED_COMPTIME;
     }
     if (re == RE_OK) {
         if (curr_pp_block_add_child(r, pprn)) return RE_FATAL;
@@ -2953,7 +2953,8 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
         re = resolve_ast_node(r, *n, st, NULL, stmt_ctype_ptr);
         if (re) break;
         assert(r->curr_pp_node == NULL);
-        if (r->curr_block_pp_node && r->curr_block_pp_node->pending_pastes) {
+        if (r->curr_block_pp_node && (r->curr_block_pp_node->pending_pastes ||
+                                      r->curr_block_pp_node->nested_pp_exprs)) {
             r->curr_block_pp_node->continue_block = n;
             re = RE_SYMBOL_NOT_FOUND_YET;
             break;
@@ -2972,10 +2973,8 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
     r->generic_context = generic_parent;
     if (re == RE_UNREALIZED_COMPTIME) {
         assert(bpprn);
-        if (bpprn->dep_count == 0) {
-            if (ptrlist_append(&r->pp_resolve_nodes_ready, bpprn))
-                return RE_FATAL;
-        }
+        re = pp_resolve_node_activate(r, fnb->pprn, re == RE_OK);
+        if (re) return re;
         bpprn->continue_block = n;
         bpprn->block_pos_reachable = (stmt_ctype_ptr != NULL);
         return RE_OK;
@@ -3407,7 +3406,6 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
 }
 void cleanup_import_pprns(resolver* r)
 {
-
     pli it = pli_rbegin(&r->pp_resolve_nodes_pending);
     for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
         if (ast_elem_is_any_import_symbol((ast_elem*)rn->node)) {
