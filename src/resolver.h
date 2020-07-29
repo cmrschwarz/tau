@@ -37,12 +37,14 @@ typedef struct pp_resolve_node_s {
     aseglist notify_when_ready;
     ast_node** continue_block;
     ureg dep_count;
+    bool showstopper;
     bool pending_pastes;
     bool ready;
     bool run_individually; // false for exprs in functions
     bool block_pos_reachable;
     bool sequential_block;
-    struct pp_resolve_node_s* parent; // gets informed once this is pending
+    bool dummy; // clean once ready messages sent, no running required
+    // struct pp_resolve_node_s* parent; // gets informed once this is pending
     struct pp_resolve_node_s** waiting_list_entry;
     struct pp_resolve_node_s* first_unresolved_child;
     struct pp_resolve_node_s* last_unresolved_child;

@@ -37,8 +37,7 @@ resolve_func_from_call(resolver* r, sc_func* fn, ast_elem** ctype);
 resolve_error
 pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress);
 resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn);
-resolve_error
-pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn, bool fin_independant);
+resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn);
 void free_pprns(resolver* r);
 void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident);
 // must be a macro so value and ctype become lazily evaluated
@@ -118,6 +117,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn)
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
         tprintf("freeing pprn: ");
         print_pprn(r, pprn, false, 0);
+        tflush();
     }
     if (pprn->waiting_list_entry) {
         remove_pprn_from_waiting_list(r, pprn);
@@ -143,7 +143,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn)
 }
 static pp_resolve_node* pp_resolve_node_create(
     resolver* r, ast_node* n, symbol_table* declaring_st, bool res_used,
-    bool run_individually, bool sequential_block)
+    bool run_individually, bool sequential_block, bool dummy)
 {
     // print_pprns(r);
     pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
@@ -158,6 +158,7 @@ static pp_resolve_node* pp_resolve_node_create(
         return NULL;
     }
     pprn->dep_count = 0;
+    pprn->showstopper = false;
     pprn->pending_pastes = false;
     pprn->declaring_st = declaring_st;
     pprn->node = n;
@@ -165,15 +166,17 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->continue_block = NULL;
     pprn->next = NULL;
     pprn->ready = false;
-    pprn->parent = NULL;
+    // pprn->parent = NULL;
     pprn->run_individually = run_individually;
     pprn->block_pos_reachable = true;
     pprn->sequential_block = sequential_block;
     pprn->first_unresolved_child = NULL;
     pprn->waiting_list_entry = NULL;
+    pprn->dummy = dummy;
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
         tprintf("allocated pprn: ");
         print_pprn(r, pprn, false, 0);
+        tflush();
     }
     return pprn;
 }
@@ -196,7 +199,7 @@ get_curr_block_pprn(resolver* r, pp_resolve_node** curr_pprn)
     *curr_pprn = pp_resolve_node_create(
         r, r->curr_block_owner,
         ast_elem_get_body((ast_elem*)r->curr_block_owner)->symtab, true, true,
-        sequential);
+        sequential, false);
     if (!*curr_pprn) return RE_FATAL;
     r->curr_block_pp_node = *curr_pprn;
     return RE_OK;
@@ -218,7 +221,7 @@ get_curr_pprn(resolver* r, pp_resolve_node** curr_pprn)
         *curr_pprn = pp_resolve_node_create(
             r, (ast_node*)r->curr_var_decl,
             ast_elem_get_body((ast_elem*)r->curr_var_decl_block_owner)->symtab,
-            false, false, false);
+            false, false, false, false);
         if (!*curr_pprn) return RE_FATAL;
         r->curr_var_pp_node = *curr_pprn;
         return RE_OK;
@@ -253,24 +256,25 @@ curr_pprn_run_after(resolver* r, pp_resolve_node* dependency)
 static resolve_error
 curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
 {
-    pp_resolve_node* parent;
-    resolve_error re = get_curr_block_pprn(r, &parent);
+    pp_resolve_node* block_parent;
+    resolve_error re = get_curr_block_pprn(r, &block_parent);
     if (re) return re;
-    if (!parent) return RE_OK;
-    child->parent = parent;
-    if (!parent->sequential_block) {
-        if (aseglist_add(&child->notify_when_done, parent)) return RE_FATAL;
-        parent->dep_count++;
+    if (!block_parent) return RE_OK;
+    // child->parent = parent;
+    if (!block_parent->sequential_block) {
+        if (aseglist_add(&child->notify_when_done, block_parent))
+            return RE_FATAL;
+        block_parent->dep_count++;
         return RE_OK;
     }
     child->run_individually = false;
-    if (parent->first_unresolved_child == NULL) {
-        parent->first_unresolved_child = child;
-        parent->last_unresolved_child = child;
+    if (block_parent->first_unresolved_child == NULL) {
+        block_parent->first_unresolved_child = child;
+        block_parent->last_unresolved_child = child;
     }
     else {
-        parent->last_unresolved_child->next = child;
-        parent->last_unresolved_child = child;
+        block_parent->last_unresolved_child->next = child;
+        block_parent->last_unresolved_child = child;
     }
     return RE_OK;
 }
@@ -284,20 +288,23 @@ pp_resolve_node_activate(resolver* r, pp_resolve_node* pprn, bool resolved)
     }
     if (pprn->dep_count == 0) {
         if (resolved) {
-            return pp_resolve_node_ready(r, pprn, true);
+            return pp_resolve_node_ready(r, pprn);
         }
-        if (!pprn->parent) {
+        if (pprn->run_individually) {
             if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn)) {
                 return RE_FATAL;
             }
         }
         return RE_OK;
     }
-    if (pprn->parent) {
-        if (aseglist_add(&pprn->notify_when_ready, pprn->parent)) {
+    pp_resolve_node* block_pprn;
+    resolve_error re = get_curr_block_pprn(r, &block_pprn);
+    if (re) return re;
+    if (block_pprn && block_pprn->sequential_block) {
+        if (aseglist_add(&pprn->notify_when_ready, block_pprn)) {
             return RE_FATAL;
         }
-        pprn->parent->dep_count++;
+        block_pprn->dep_count++;
         return RE_OK;
     }
     pp_resolve_node** res =
@@ -551,7 +558,7 @@ static resolve_error add_ast_node_decls(
 
         case STMT_USE: {
             pp_resolve_node* pprn =
-                pp_resolve_node_create(r, n, st, false, false, false);
+                pp_resolve_node_create(r, n, st, false, false, false, true);
             if (!pprn) return RE_FATAL;
             if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn))
                 return RE_FATAL;
@@ -566,7 +573,8 @@ static resolve_error add_ast_node_decls(
                 // any non pp stuff in the scope
                 bool is_expr = ast_elem_is_expr((ast_elem*)epp->pp_expr);
                 pp_resolve_node* pprn = pp_resolve_node_create(
-                    r, is_expr ? n : epp->pp_expr, st, false, is_expr, false);
+                    r, is_expr ? n : epp->pp_expr, st, false, is_expr, false,
+                    false);
                 if (!pprn) return RE_FATAL;
                 re = pp_resolve_node_activate(r, pprn, false);
                 if (re) return re;
@@ -700,7 +708,7 @@ static resolve_error add_ast_node_decls(
                         return RE_ERROR;
                     }
                     pp_resolve_node* pprn = pp_resolve_node_create(
-                        r, (ast_node*)fn, st, true, true, true);
+                        r, (ast_node*)fn, st, true, true, true, false);
                     if (!pprn) return RE_FATAL;
                     fn->fnb.pprn = pprn;
                     r->module_group_constructor = fn;
@@ -730,7 +738,7 @@ static resolve_error add_ast_node_decls(
                         return RE_ERROR;
                     }
                     pp_resolve_node* pprn = pp_resolve_node_create(
-                        r, (ast_node*)fn, st, true, true, true);
+                        r, (ast_node*)fn, st, true, true, true, false);
                     if (!pprn) return RE_FATAL;
                     fn->fnb.pprn = pprn;
                     r->module_group_destructor = fn;
@@ -1561,7 +1569,8 @@ static inline resolve_error resolve_var(
 
     if (comptime) {
         v->pprn = pp_resolve_node_create(
-            r, (ast_node*)v, v->osym.sym.declaring_st, false, true, false);
+            r, (ast_node*)v, v->osym.sym.declaring_st, false, true, false,
+            false);
         if (!v->pprn) return RE_FATAL;
     }
     // we only need this in public scope because for function scopes / ordered
@@ -1868,24 +1877,24 @@ static inline resolve_error resolve_expr_pp(
         pprn = ppe->pprn;
     }
     else {
-        pprn =
-            pp_resolve_node_create(r, (ast_node*)ppe, st, is_stmt, true, false);
+        pprn = pp_resolve_node_create(
+            r, (ast_node*)ppe, st, is_stmt, true, false, false);
         if (!pprn) return RE_FATAL;
         ppe->pprn = pprn;
-        if (r->curr_pp_node) {
-            if (curr_pprn_run_after(r, pprn)) return RE_FATAL;
-        }
-        // disable run_individually even if we don't add this immediately
-        // to avoid it being run once the deps are done
-        // for structs the children run individually, so we actually want it to
-        // run
-        if (!ast_elem_is_struct((ast_elem*)r->curr_block_owner)) {
-            re = get_curr_block_pprn(r, &pprn->parent);
-            if (pprn->parent) {
-                pprn->run_individually = false;
-            }
-            if (re) return re;
-        }
+        /* if (r->curr_pp_node) {
+             if (curr_pprn_run_after(r, pprn)) return RE_FATAL;
+         }
+         // disable run_individually even if we don't add this immediately
+         // to avoid it being run once the deps are done
+         // for structs the children run individually, so we actually want it to
+         // run
+         if (!ast_elem_is_struct((ast_elem*)r->curr_block_owner)) {
+             re = get_curr_block_pprn(r, &pprn->parent);
+             if (pprn->parent) {
+                 pprn->run_individually = false;
+             }
+             if (re) return re;
+         }*/
     }
     pp_resolve_node* parent_pprn = r->curr_pp_node;
     r->curr_pp_node = pprn;
@@ -1957,7 +1966,7 @@ static inline resolve_error require_module_in_pp(
     resolve_error re;
     if (*tgt_pprn) {
         if (atomic_boolean_load(done)) {
-            re = pp_resolve_node_ready(r, *tgt_pprn, false);
+            re = pp_resolve_node_ready(r, *tgt_pprn);
             if (re) return re;
             *tgt_pprn = NULL;
         }
@@ -1996,7 +2005,7 @@ static inline resolve_error require_module_in_pp(
     rwlock_end_write(&mdg->lock);
     if (!pp_done || diy) {
         pp_resolve_node* pprn =
-            pp_resolve_node_create(r, n, st, false, false, false);
+            pp_resolve_node_create(r, n, st, false, true, false, true);
         if (!pprn) return PE_FATAL;
         *tgt_pprn = pprn;
         re = pp_resolve_node_activate(r, pprn, false);
@@ -2763,20 +2772,19 @@ resolve_error resolve_expr_body(
         else {
             pprn->continue_block = NULL;
         }
-        if (!pprn->first_unresolved_child) {
+        /*if (!pprn->first_unresolved_child) {
             pprn->run_individually = false;
-        }
+        }*/
         resolve_error re2;
-        if (!pprn->first_unresolved_child && pprn->dep_count == 0) {
+        if (!pprn->first_unresolved_child) {
             // this is a rerun and everyting got resolved
             // detach this from parent and free it individually
-            pprn->parent = NULL;
-            re2 = pp_resolve_node_ready(r, pprn, true);
+            pprn->dummy = true;
         }
         else {
             if (curr_pp_block_add_child(r, pprn)) return RE_FATAL;
-            re2 = pp_resolve_node_activate(r, pprn, re == RE_OK);
         }
+        re2 = pp_resolve_node_activate(r, pprn, re == RE_OK);
         if (re2) return re2;
     }
     if (re) return re; // This includes unrealized paste
@@ -2802,7 +2810,7 @@ resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ast_elem** ctype)
         if (!fn->fnb.pprn) {
             fn->fnb.pprn = pp_resolve_node_create(
                 r, (ast_node*)fn, fn->fnb.sc.osym.sym.declaring_st, false,
-                false, true);
+                false, true, false);
             if (!fn->fnb.pprn) return RE_FATAL;
         }
         re = resolve_ast_node(
@@ -2976,7 +2984,7 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
         if (!re) bpprn->continue_block = NULL;
         if (!fnb->pprn->first_unresolved_child &&
             fnb != (sc_func_base*)r->module_group_constructor) {
-            bpprn->run_individually = false;
+            fnb->pprn->dummy = true;
         }
         resolve_error re2 = pp_resolve_node_activate(r, fnb->pprn, re == RE_OK);
         if (re2) {
@@ -3170,8 +3178,7 @@ void print_pprns(resolver* r, char* msg, bool verbose)
     print_pprnlist(r, &r->pp_resolve_nodes_waiting, "waiting:", verbose);
     tflush();
 }
-resolve_error
-pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn, bool fin_independent)
+resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn)
 {
     resolve_error re;
     pprn->ready = true;
@@ -3185,12 +3192,12 @@ pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn, bool fin_independent)
         re = pp_resolve_node_dep_ready(r, rn);
         if (re) return re;
     }
-    if (pprn->run_individually) {
-        if (ptrlist_append(&r->pp_resolve_nodes_ready, pprn)) return RE_FATAL;
-    }
-    else if (fin_independent && !pprn->parent) {
+    if (pprn->dummy) {
         re = pp_resolve_node_done(r, pprn, NULL);
         if (re) return re;
+    }
+    else if (pprn->run_individually) {
+        if (ptrlist_append(&r->pp_resolve_nodes_ready, pprn)) return RE_FATAL;
     }
     return RE_OK;
 }
@@ -3198,7 +3205,7 @@ resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn)
 {
     pprn->dep_count--;
     if (pprn->dep_count == 0) {
-        resolve_error re = pp_resolve_node_ready(r, pprn, true);
+        resolve_error re = pp_resolve_node_ready(r, pprn);
         if (re) return re;
     }
     return RE_OK;
@@ -3221,7 +3228,7 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
         pprn->last_unresolved_child = NULL;
     }
     if (pprn->continue_block) {
-        if (pprn->parent == NULL) {
+        if (pprn->run_individually) {
             if (progress) *progress = true;
             if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn))
                 return RE_FATAL;
@@ -3246,7 +3253,7 @@ pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
     pprn->dep_count--;
     if (pprn->dep_count == 0) {
         if (progress) *progress = true;
-        resolve_error re = pp_resolve_node_ready(r, pprn, true);
+        resolve_error re = pp_resolve_node_ready(r, pprn);
         if (re) return re;
     }
     return RE_OK;
@@ -3300,10 +3307,18 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
     llvm_error lle;
     pli it;
     resolve_error re;
-    bool progress;
+    bool progress = true;
     bool import_pprns;
     bool non_import_pprns;
+    bool non_dummy_waiters = false;
     do {
+        if (progress) {
+            non_dummy_waiters = false;
+            it = pli_begin(&r->pp_resolve_nodes_waiting);
+            for (pp_resolve_node* rn = pli_next(&it); rn; rn = pli_next(&it)) {
+                if (!rn->dummy) non_dummy_waiters = true;
+            }
+        }
         progress = false;
         import_pprns = false;
         non_import_pprns = false;
@@ -3341,16 +3356,19 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 if (re) return re;
                 continue;
             }
+            /*
             if (rn->parent) {
                 r->curr_pp_node = rn->parent;
                 r->curr_block_owner = rn->parent->node;
             }
             else {
-                r->curr_pp_node = NULL;
-                // can't be the an mdg because of "declaring" st --> node
-                assert(rn->node->kind != ELEM_MDG_NODE);
-                r->curr_block_owner = (ast_node*)rn->declaring_st->owning_node;
-            }
+                */
+            assert(rn->run_individually);
+            r->curr_pp_node = NULL;
+            // can't be the an mdg because of "declaring" st --> node
+            assert(rn->node->kind != ELEM_MDG_NODE);
+            r->curr_block_owner = (ast_node*)rn->declaring_st->owning_node;
+            // }
             ast_node* astn = rn->node;
             re = resolve_ast_node(r, rn->node, rn->declaring_st, NULL, NULL);
             if (re == RE_UNREALIZED_COMPTIME) {
@@ -3371,7 +3389,6 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                     progress = true;
                     pli_prev(&it);
                     ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
-                    re = pp_resolve_node_done(r, rn, NULL);
                     if (re) return re;
                 }
             }
@@ -3385,10 +3402,20 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             }
         }
     } while (progress || (import_pprns && non_import_pprns) ||
-             (import_pprns && !sbuffer_is_empty(&r->pp_resolve_nodes_waiting)));
+             non_dummy_waiters);
     return RE_OK;
 }
+void cleanup_import_pprns(resolver* r)
+{
 
+    pli it = pli_rbegin(&r->pp_resolve_nodes_pending);
+    for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
+        if (ast_elem_is_any_import_symbol((ast_elem*)rn->node)) {
+            pp_resolve_node_ready(r, rn);
+            ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+        }
+    }
+}
 resolve_error resolver_handle_post_pp(resolver* r)
 {
     resolve_error re;
@@ -3407,6 +3434,7 @@ resolve_error resolver_handle_post_pp(resolver* r)
     }
     re = resolver_run_pp_resolve_nodes(r);
     if (re) return re;
+    cleanup_import_pprns(r);
     return report_cyclic_pp_deps(r);
 }
 
