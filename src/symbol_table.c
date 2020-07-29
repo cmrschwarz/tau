@@ -18,6 +18,17 @@ static inline bool symbol_table_should_be_meta(ast_elem* owning_node)
 {
     return owning_node->kind == STMT_PASTE_EVALUATION;
 }
+void symbol_table_init_dummy(
+    symbol_table* st, symbol_table* parent, ast_elem* owning_node)
+{
+    st->table = META_TABLE;
+    st->owning_node = owning_node;
+    st->parent = parent;
+    st->hash_mask = 0;
+    st->decl_count = 0;
+    st->usings = NULL;
+    st->non_meta_parent = symbol_table_nonmeta(parent);
+}
 int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
     ast_elem* owning_node)

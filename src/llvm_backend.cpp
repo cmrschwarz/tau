@@ -1191,12 +1191,14 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         // since that would have been reset to GENERATED
         case IMPL_ADDED:
         case STUB_ADDED: break;
+
         case PP_IMPL_ADDED:
         case PP_STUB_ADDED: {
             if (_pp_mode) break;
             *state = IMPL_ADDED;
             generate = true;
         } break;
+
         case PP_STUB_GENERATED: {
             if (_pp_mode) {
                 assert(isLocalID(var->var_id));
@@ -1212,17 +1214,20 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                 generate = true;
             }
         } break;
+
         case STUB_GENERATED: {
             assert(isGlobalID(var->var_id));
             *state = STUB_ADDED;
             _module->getGlobalList().push_back((llvm::GlobalVariable*)*llvar);
             _reset_after_emit.push_back(var->var_id);
         } break;
+
         case IMPL_DESTROYED: {
             *state = STUB_ADDED;
             gen_stub = true;
             generate = true;
         } break;
+
         case PP_IMPL_DESTROYED: {
             if (_pp_mode) {
                 *state = PP_STUB_ADDED;
@@ -1240,6 +1245,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             }
 
         } break;
+
         case NOT_GENERATED: {
             *state = _pp_mode ? PP_IMPL_ADDED : IMPL_ADDED;
             generate = true;
@@ -1247,14 +1253,20 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         default: assert(false);
     }
     if (generate) {
+        // HACK: should allow local variables for pp by checking for "internal"
+        // vars
         ast_node_kind k =
             symbol_table_nonmeta(var->osym.sym.declaring_st)->owning_node->kind;
         llvm::Value* var_val;
-        if (k == ELEM_MDG_NODE || k == MF_MODULE || k == MF_EXTEND) {
+        if (k == ELEM_MDG_NODE || k == MF_MODULE || k == MF_EXTEND ||
+            _pp_mode) {
             // global var
             llvm::GlobalVariable::LinkageTypes lt;
             if (gen_stub) {
                 lt = llvm::GlobalVariable::InternalLinkage;
+                if (_pp_mode) {
+                    _reset_after_emit.push_back(var->var_id);
+                }
             }
             else if (isLocalID(var->var_id)) {
                 if (_pp_mode) {

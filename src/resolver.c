@@ -1882,15 +1882,17 @@ static inline resolve_error resolve_expr_pp(
         if (!is_stmt) {
             pe =
                 parser_parse_paste_expr(&r->tc->p, ppe, st, get_current_ebb(r));
+            if (pe) return RE_ERROR;
+            return resolve_ast_node(r, (ast_node*)ppe, st, value, ctype);
         }
         else {
             ast_body* b = ast_elem_get_body((ast_elem*)r->curr_block_owner);
             pe = parser_parse_paste_stmt(
                 &r->tc->p, ppe, &b->symtab, get_current_ebb(r),
                 b->symtab->owning_node == (ast_elem*)r->curr_block_owner);
+            if (pe) return RE_ERROR;
+            return resolve_ast_node(r, (ast_node*)ppe, st, value, ctype);
         }
-        if (pe) return RE_ERROR;
-        return resolve_ast_node_raw(r, (ast_node*)ppe, st, value, ctype);
     }
     pp_resolve_node* pprn = NULL;
     resolve_error re;
@@ -2395,7 +2397,10 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_PASTE_EVALUATION: {
             expr_paste_evaluation* epe = (expr_paste_evaluation*)n;
-            re = resolve_ast_node_raw(r, epe->expr, st, value, ctype);
+            // HACK: to get owning node -> correct smap for errors
+            symbol_table dummy_st;
+            symbol_table_init_dummy(&dummy_st, st, (ast_elem*)epe);
+            re = resolve_ast_node(r, epe->expr, &dummy_st, value, ctype);
             if (!resolved && !re) ast_flags_set_resolved(&epe->pe.node.flags);
             return re;
         }
@@ -2680,11 +2685,9 @@ static inline void report_type_loop(resolver* r, ast_node* n, symbol_table* st)
     assert(stack_element_count(&r->error_stack) == 0);
     error_log_report(r->tc->err_log, e);
 }
-resolve_error resolve_ast_node(
-    resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
-    ast_elem** ctype)
+resolve_error handle_resolve_error(
+    resolver* r, ast_node* n, symbol_table* st, resolve_error re)
 {
-    resolve_error re = resolve_ast_node_raw(r, n, st, value, ctype);
     if (!re) return RE_OK;
     if (re == RE_TYPE_LOOP) {
         if (!r->allow_type_loops) {
@@ -2708,6 +2711,13 @@ resolve_error resolve_ast_node(
         ast_flags_clear_resolving(&n->flags);
     }
     return re;
+}
+resolve_error resolve_ast_node(
+    resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
+    ast_elem** ctype)
+{
+    resolve_error re = resolve_ast_node_raw(r, n, st, value, ctype);
+    return handle_resolve_error(r, n, st, re);
 }
 resolve_error resolve_expr_body(
     resolver* r, symbol_table* parent_st, ast_node* expr, ast_body* b,
@@ -3369,6 +3379,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 else {
                     assert(false);
                 }
+                re = handle_resolve_error(r, rn->node, rn->declaring_st, re);
                 if (re) return re;
                 continue;
             }

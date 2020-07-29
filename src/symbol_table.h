@@ -30,6 +30,8 @@ typedef struct symbol_table_s {
     };
 } symbol_table;
 
+void symbol_table_init_dummy(
+    symbol_table* st, symbol_table* parent, ast_elem* owning_node);
 int symbol_table_init(
     symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
     ast_elem* owning_node);
@@ -80,4 +82,3 @@ typedef struct symtab_it {
 void symtab_it_begin(symtab_it* stit, symbol_table* st);
 symtab_it symtab_it_make(symbol_table* st);
 symbol* symtab_it_next(symtab_it* stit);
-

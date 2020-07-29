@@ -365,7 +365,6 @@ int src_map_seek_set(src_map* smap, ureg pos)
     }
     assert(ast_elem_is_paste_evaluation(smap->source));
     paste_evaluation* pe = (paste_evaluation*)smap->source;
-    assert(pe->read_str);
     pe->read_str = pe->paste_str;
     pe->read_pos = pe->read_str->str;
     ureg read_size;

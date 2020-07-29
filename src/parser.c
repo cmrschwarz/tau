@@ -2244,11 +2244,24 @@ parse_error init_paste_evaluation_parse(
     pe->read_str = NULL;
     pe->parent_ebb = parent_ebb;
     // eval->read_pos = NULL; //unnecessary
-
-    p->current_file = src_map_get_file(smap);
     int r = lx_open_paste(&p->lx, pe, smap);
+    smap = p->lx.smap;
+    p->current_file = src_map_get_file(smap);
     if (r) return PE_LX_ERROR;
-    pe->node.srange = src_range_pack(p->lx.tc, 0, 0, p->lx.smap);
+    // TODO: make configurable
+    char buffer[1025];
+    ureg read_size;
+    tput("parsing paste: '");
+    do {
+        src_map_seek_set(smap, 0);
+        src_map_read(smap, sizeof(buffer) - 1, &read_size, buffer);
+        buffer[read_size] = '\0';
+        tput(buffer);
+    } while (read_size == sizeof(buffer) - 1);
+    tputs("'");
+    tflush();
+    src_map_seek_set(smap, p->lx.file_buffer_pos);
+    pe->node.srange = src_range_pack(p->lx.tc, 0, 0, smap);
     *eval = pe;
     p->file_root = NULL;
     if (p->lx.tc->t->verbosity_flags & VERBOSITY_FLAGS_TIME_STAGES) {
@@ -2265,11 +2278,23 @@ parse_error parser_parse_paste_expr(
         p, epp, EXPR_PASTE_EVALUATION, st, parent_ebb,
         (paste_evaluation**)&eval);
     if (pe) return pe;
+    pe = push_bpd(p, parent_ebb, NULL);
+    if (pe) return pe;
     pe = parse_expression(p, &eval->expr);
+    drop_bpd(p);
     if (pe) return pe;
     token* t = lx_peek(&p->lx);
     if (t->kind != TK_EOF) {
-        assert(false); // TODO
+        src_range_large srl;
+        src_range_unpack(eval->pe.source_pp_srange, &srl);
+        error_log_report_annotated_thrice(
+            p->lx.tc->err_log, ES_PARSER, false, "invalid paste expression",
+            p->lx.smap, t->start, t->end,
+            "token follows after end of expression", p->lx.smap,
+            src_range_get_start(eval->expr->srange),
+            src_range_get_end(eval->expr->srange), "pasted expression",
+            srl.smap, srl.start, srl.end, "pasted in here");
+        return PE_ERROR;
     }
     lx_close_paste(&p->lx);
     return PE_OK;

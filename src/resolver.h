@@ -82,7 +82,7 @@ typedef struct resolver_s {
     // dealing with type loops and type inference in expr blocks
     stack error_stack;
     ast_node* type_loop_start;
-    u8 allow_type_loops;
+    bool allow_type_loops;
     bool retracing_type_loop;
     bool generic_context;
     // ids distributed during declaration adding starting from PRIV_SYM_OFFSET

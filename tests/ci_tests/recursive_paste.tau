@@ -1,0 +1,12 @@
+
+public func main() -> int{  
+    #x := 100;
+    #s := \\"
+        #{
+            x--;
+            if(x == 0) paste("#x")
+            else paste(s);
+        }
+    \\";
+    return #paste(s);
+}
