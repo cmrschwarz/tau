@@ -22,18 +22,17 @@ for taufile in *.tau ; do
                 else
                     time="$time ms"
                 fi
-                printf "\033[0;32m$taufile succeeded [$time] \033[0m\n"
+                printf "PASSED $taufile [$time]\n"
             else
-                printf "\033[0;32mcompiling $taufile succeeded\033[0;31m but the run returned $res!\033[0m\n"
+                printf "\033[0;31mFAILED $taufile: compile succeeded but the run returned $res!\033[0m\n"
                 ok=false
             fi
             rm a.out
         else
-            printf "\033[0;32mcompiling $taufile succeeded\033[0m\n"
-            printf "\033[0;33mskipped running $taufile because of main format\033[0m\n"
+            printf "\033[0;32mPASSED $taufile (\033[0;33mskipped run because of main format\033)\033[0m\n"
         fi
     else
-        printf "\033[0;31mcompiling $taufile failed\033[0m\n"
+        printf "\033[0;31mFAILED $taufile: compilation error\033[0m\n"
     fi
     if $ok; then
         success=$(($success + 1))
@@ -42,13 +41,17 @@ for taufile in *.tau ; do
     fi
 done
 
-if [[ $errors -eq 0 ]]; then
-    printf "\033[0;32mall $success test(s) passed\n"
-else
-    printf "\033[0;32m$success test(s) passed\033[0;31m but $errors test(s) failed\n"
-fi
-
 for output in *.out *.ll *.asm *.obj; do 
     [ -e "$output" ] || continue
     rm $output
 done
+
+if [[ $errors -eq 0 ]]; then
+    if [ $# != 1 ] || [ "$1" != "-q" ]; then
+        printf "\033[0;32mall $success test(s) passed\033[0m\n"
+    fi
+    exit 0
+else
+    printf "\033[0;32m$success test(s) passed\033[0;31m but $errors test(s) failed\033[0m\n"
+    exit 1
+fi

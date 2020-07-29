@@ -380,7 +380,8 @@ err:
 #include <utils/debug_utils.h>
 int run_unit_tests(int argc, char** argv)
 {
-    print_dash_padded("Executing Unit Tests", false);
+    // print_dash_padded("Executing Unit Tests", false);
+    UNUSED(print_dash_padded);
     int res = OK;
 
     TEST(res, stack_test);
@@ -392,12 +393,14 @@ int run_unit_tests(int argc, char** argv)
     TEST(res, list_remove_test);
     TEST(res, ptrlist_test);
     TEST(res, ptrlist_remove_test);
+    /*
     if (res) {
         print_dash_padded("FAILED", false);
     }
     else {
         print_dash_padded("PASSED", false);
     }
+    */
     debug_utils_free_res();
     return OK;
 }

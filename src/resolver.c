@@ -3440,7 +3440,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             }
         }
     } while (progress || (import_pprns && non_import_pprns) ||
-             non_dummy_waiters);
+             (import_pprns && non_dummy_waiters));
     return RE_OK;
 }
 void cleanup_import_pprns(resolver* r)

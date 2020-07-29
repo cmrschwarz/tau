@@ -55,6 +55,7 @@ typedef struct tauc_s {
     bool needs_emit_stage;
     bool explicit_exe;
     bool trap_on_error;
+    bool ok_on_error;
     bool debug_symbols;
     bool explicit_debug_symbols;
 } tauc;

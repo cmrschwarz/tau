@@ -67,6 +67,7 @@ int tauc_core_init(tauc* t)
     t->opt_strat = OPT_STRAT_UNSPECIFIED;
     t->debug_symbols = true;
     t->explicit_debug_symbols = false;
+    t->ok_on_error = false;
     t->verbosity_flags = 0;
     target_platform_get_host(&t->host_target);
     target_platform_set_unknown(&t->target);
@@ -266,6 +267,9 @@ int handle_cmd_args(
         else if (!strcmp(arg, "--sccd")) {
             t->verbosity_flags |= VERBOSITY_FLAGS_SCCD;
         }
+        else if (!strcmp(arg, "--ok-on-error")) {
+            t->ok_on_error = true;
+        }
 #if DEBUG
         else if (!strcmp(arg, "--run-unit-tests")) {
             r = run_unit_tests(argc, argv);
@@ -378,6 +382,7 @@ int tauc_run(int argc, char** argv)
     }
     debug_utils_free_res();
     talloc_fin();
+    if (t.ok_on_error) return OK;
     if (!r) {
         if (tauc_success_so_far(&t)) return OK;
         return atomic_sreg_load(&t.error_code);
