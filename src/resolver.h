@@ -32,15 +32,14 @@ typedef struct thread_context_s thread_context;
 typedef struct pp_resolve_node_s {
     ast_node* node; // either expr_pp, stmt_use or func or var
     symbol_table* declaring_st;
-    expr_block_base* parent_ebb;
     // PERF: use a non threadsafe list here
     aseglist notify_when_done;
     aseglist notify_when_ready;
     ast_node** continue_block;
     ureg dep_count;
-    ureg pending_pastes;
+    bool pending_pastes;
     bool ready;
-    bool run_when_ready; // false for exprs in functions
+    bool run_individually; // false for exprs in functions
     bool block_pos_reachable;
     bool sequential_block;
     struct pp_resolve_node_s* parent; // gets informed once this is pending

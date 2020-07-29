@@ -143,7 +143,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn)
 }
 static pp_resolve_node* pp_resolve_node_create(
     resolver* r, ast_node* n, symbol_table* declaring_st, bool res_used,
-    bool run_when_ready, bool sequential_block)
+    bool run_individually, bool sequential_block)
 {
     // print_pprns(r);
     pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
@@ -158,7 +158,7 @@ static pp_resolve_node* pp_resolve_node_create(
         return NULL;
     }
     pprn->dep_count = 0;
-    pprn->pending_pastes = 0;
+    pprn->pending_pastes = false;
     pprn->declaring_st = declaring_st;
     pprn->node = n;
     assert(n->kind != MF_MODULE);
@@ -166,7 +166,7 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->next = NULL;
     pprn->ready = false;
     pprn->parent = NULL;
-    pprn->run_when_ready = run_when_ready;
+    pprn->run_individually = run_individually;
     pprn->block_pos_reachable = true;
     pprn->sequential_block = sequential_block;
     pprn->first_unresolved_child = NULL;
@@ -253,10 +253,6 @@ curr_pprn_run_after(resolver* r, pp_resolve_node* dependency)
 static resolve_error
 curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
 {
-    // for structs we want the block to depend on the children but the children
-    // should run indivitually
-    if (ast_elem_is_struct((ast_elem*)r->curr_block_owner)) {
-    }
     pp_resolve_node* parent;
     resolve_error re = get_curr_block_pprn(r, &parent);
     if (re) return re;
@@ -267,7 +263,7 @@ curr_pp_block_add_child(resolver* r, pp_resolve_node* child)
         parent->dep_count++;
         return RE_OK;
     }
-    child->run_when_ready = false;
+    child->run_individually = false;
     if (parent->first_unresolved_child == NULL) {
         parent->first_unresolved_child = child;
         parent->last_unresolved_child = child;
@@ -1879,14 +1875,14 @@ static inline resolve_error resolve_expr_pp(
         if (r->curr_pp_node) {
             if (curr_pprn_run_after(r, pprn)) return RE_FATAL;
         }
-        // disable run_when_ready even if we don't add this immediately
+        // disable run_individually even if we don't add this immediately
         // to avoid it being run once the deps are done
         // for structs the children run individually, so we actually want it to
         // run
         if (!ast_elem_is_struct((ast_elem*)r->curr_block_owner)) {
             re = get_curr_block_pprn(r, &pprn->parent);
             if (pprn->parent) {
-                pprn->run_when_ready = false;
+                pprn->run_individually = false;
             }
             if (re) return re;
         }
@@ -1947,7 +1943,7 @@ static inline resolve_error resolve_expr_paste_str(
             paste_srl.smap, paste_srl.start, paste_srl.end, NULL);
         return RE_TYPE_MISSMATCH;
     }
-    r->curr_pp_node->pending_pastes++;
+    r->curr_pp_node->pending_pastes = true;
     RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
 }
 static inline void report_type_loop(resolver* r, ast_node* n, symbol_table* st);
@@ -2768,7 +2764,7 @@ resolve_error resolve_expr_body(
             pprn->continue_block = NULL;
         }
         if (!pprn->first_unresolved_child) {
-            pprn->run_when_ready = false;
+            pprn->run_individually = false;
         }
         resolve_error re2;
         if (!pprn->first_unresolved_child && pprn->dep_count == 0) {
@@ -2980,7 +2976,7 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
         if (!re) bpprn->continue_block = NULL;
         if (!fnb->pprn->first_unresolved_child &&
             fnb != (sc_func_base*)r->module_group_constructor) {
-            bpprn->run_when_ready = false;
+            bpprn->run_individually = false;
         }
         resolve_error re2 = pp_resolve_node_activate(r, fnb->pprn, re == RE_OK);
         if (re2) {
@@ -3189,7 +3185,7 @@ pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn, bool fin_independent)
         re = pp_resolve_node_dep_ready(r, rn);
         if (re) return re;
     }
-    if (pprn->run_when_ready) {
+    if (pprn->run_individually) {
         if (ptrlist_append(&r->pp_resolve_nodes_ready, pprn)) return RE_FATAL;
     }
     else if (fin_independent && !pprn->parent) {
