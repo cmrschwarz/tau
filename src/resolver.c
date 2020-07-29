@@ -95,6 +95,16 @@ add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
     }
     return RE_OK;
 }
+resolve_error add_pprn_to_waiting_list(resolver* r, pp_resolve_node* pprn)
+{
+    if (pprn->waiting_list_entry) return RE_OK;
+    pp_resolve_node** res =
+        sbuffer_append(&r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*));
+    if (!res) return RE_FATAL;
+    *res = pprn;
+    pprn->waiting_list_entry = res;
+    return RE_OK;
+}
 void remove_pprn_from_waiting_list(resolver* r, pp_resolve_node* pprn)
 {
     assert(pprn->waiting_list_entry);
@@ -114,6 +124,10 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn)
     ast_node* n = pprn->node;
     assert(n);
     assert(pprn->dep_count == 0);
+    for (pp_resolve_node* rn = pprn->first_unresolved_child; rn;
+         rn = rn->next) {
+        pprn_fin(r, rn);
+    }
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
         tprintf("freeing pprn: ");
         print_pprn(r, pprn, false, 0);
@@ -314,11 +328,7 @@ pp_resolve_node_activate(resolver* r, pp_resolve_node* pprn, bool resolved)
         block_pprn->dep_count++;
         return RE_OK;
     }
-    pp_resolve_node** res =
-        sbuffer_append(&r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*));
-    if (!res) return RE_FATAL;
-    *res = pprn;
-    pprn->waiting_list_entry = res;
+    return add_pprn_to_waiting_list(r, pprn);
     return RE_OK;
 }
 resolve_error add_sym_import_module_decl(
@@ -1650,7 +1660,11 @@ static inline resolve_error resolve_var(
         r->curr_var_pp_node = prev_var_pp_node;
         r->curr_var_decl_block_owner = prev_var_decl_block_owner;
     }
-    if (re) return re;
+    if (re) {
+        // so we can free it... sigh
+        if (v->pprn) add_pprn_to_waiting_list(r, v->pprn);
+        return re;
+    }
     if (v->pprn) {
         resolve_error re_prev = re;
         re = curr_pp_block_add_child(r, v->pprn);
@@ -1919,7 +1933,10 @@ static inline resolve_error resolve_expr_pp(
             return RE_FATAL;
         }
     }
-    if (re) return re;
+    if (re) {
+        add_pprn_to_waiting_list(r, pprn); // so we can free it... sigh
+        return re;
+    }
     if (ctype) *ctype = ppe->ctype;
     if (pprn->pending_pastes) return RE_UNREALIZED_COMPTIME;
     ast_flags_set_resolved(&ppe->node.flags);
@@ -3455,6 +3472,8 @@ void free_pprns(resolver* r)
     free_pprnlist(r, &r->pp_resolve_nodes_ready);
     free_pprnlist(r, &r->pp_resolve_nodes_waiting);
     assert(r->pp_resolve_nodes.alloc_count == 0);
+    freelist_clear(&r->pp_resolve_nodes);
+    pool_clear(&r->pprn_mem);
 }
 int resolver_resolve(resolver* r)
 {
