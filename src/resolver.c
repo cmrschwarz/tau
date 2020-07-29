@@ -1915,7 +1915,8 @@ static inline resolve_error resolve_expr_pp(
         if (ppe->ctype != VOID_ELEM) {
             src_range_large pp_srl;
             ast_node_get_src_range((ast_node*)ppe, st, &pp_srl);
-            // TODO: report where the value is coming from
+            // TODO: report where the value is coming from (it's type, etc.)
+            // especiallly nasty on missing semicolon -> expr is array
             error_log_report_annotated(
                 r->tc->err_log, ES_RESOLVER, false,
                 "pasting preprocessor expression can't return a value",

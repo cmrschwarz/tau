@@ -1259,7 +1259,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             symbol_table_nonmeta(var->osym.sym.declaring_st)->owning_node->kind;
         llvm::Value* var_val;
         if (k == ELEM_MDG_NODE || k == MF_MODULE || k == MF_EXTEND ||
-            _pp_mode) {
+            (_pp_mode && !_curr_fn_ast_node)) {
             // global var
             llvm::GlobalVariable::LinkageTypes lt;
             if (gen_stub) {
@@ -1284,6 +1284,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                 _reset_after_emit.push_back(var->var_id);
             }
             llvm::Constant* init = NULL;
+            llvm::Value* assign_val = NULL;
             if (n->kind == SYM_VAR_INITIALIZED && !gen_stub) {
                 llvm::Value* v;
                 // TODO: we get some dumb crashes here if the var is used
@@ -1294,15 +1295,22 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     ((sym_var_initialized*)n)->initial_value, NULL, &v);
                 if (lle) return lle;
                 if (!(init = llvm::dyn_cast<llvm::Constant>(v))) {
-                    // even global varialble initializers must use hash
-                    assert(false); // must be constant
-                    return LLE_FATAL;
+                    // for now, global varialble initializers must be const
+                    // the only exception are hacky local vars in pp
+                    // that we make global to share them across exprs
+                    assert(_pp_mode && isLocalID(var->var_id));
+                    assign_val = v;
                 }
             }
             auto gv = new llvm::GlobalVariable(
-                *_module, t, false, lt, init, var->osym.sym.name);
+                *_module, t, false, lt, assign_val ? NULL : init,
+                var->osym.sym.name);
             if (!gv) return LLE_FATAL;
-            gv->setAlignment(llvm::MaybeAlign(align));
+            auto maybe_al = llvm::MaybeAlign(align);
+            gv->setAlignment(maybe_al);
+            if (assign_val) {
+                _builder.CreateAlignedStore(assign_val, gv, maybe_al);
+            }
             var_val = gv;
         }
         else {
