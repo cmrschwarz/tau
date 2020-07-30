@@ -5,23 +5,23 @@ errors=0
 success=0
 for taufile in *.tau ; do
     [ -e "$taufile" ] || continue
-    time_before="$(date +%s.%3N)"
     ok=true
+    time_before="$(date +%s.%3N)"
     $TAUC "$taufile" || ok=false
+    time_after="$(date +%s.%3N)"
+    time=$(bc <<< "( $time_after - $time_before ) * 1000 / 1")
+    if [ $time -gt 1000 ]; then
+        time=$(bc <<< "scale=2; ( $time_after - $time_before )  / 1")
+        time="$time s"
+    else
+        time="$time ms"
+    fi
     if $ok; then
         if grep -q "main().->.int" "$taufile"; then
             #printf "\033[0;33mrunning $taufile\033[0m\n"
             ./a.out
             res=$?
             if [ $res -eq 0 ]; then
-                time_after="$(date +%s.%3N)"
-                time=$(bc <<< "( $time_after - $time_before ) * 1000 / 1")
-                if [ $time -gt 1000 ]; then
-                    time=$(bc <<< "scale=2; ( $time_after - $time_before )  / 1")
-                    time="$time s"
-                else
-                    time="$time ms"
-                fi
                 printf "PASSED $taufile [$time]\n"
             else
                 printf "\033[0;31mFAILED $taufile: compile succeeded but the run returned $res!\033[0m\n"
@@ -29,7 +29,7 @@ for taufile in *.tau ; do
             fi
             rm a.out
         else
-            printf "\033[0;32mPASSED $taufile (\033[0;33mskipped run because of main format\033)\033[0m\n"
+            printf "\033[0;32mPASSED $taufile [$time] (\033[0;33mskipped run because of main format\033)\033[0m\n"
         fi
     else
         printf "\033[0;31mFAILED $taufile: compilation error\033[0m\n"
