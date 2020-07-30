@@ -18,48 +18,91 @@ int pool_init(pool* p)
 {
     pool_segment* seg = pool_alloc_segment(p, plattform_get_page_size());
     if (!seg) return ERR;
-    p->segments = seg;
+    p->head_segment = seg;
     seg->next = NULL;
+    seg->prev = NULL;
     return 0;
 }
 void pool_fin(pool* p)
 {
-    pool_segment* segs = p->segments;
-    while (segs != NULL) {
-        pool_segment* to_free = segs;
-        segs = segs->next;
+    pool_segment* next = p->head_segment->next;
+    pool_segment* seg = p->head_segment;
+    while (seg != NULL) {
+        pool_segment* to_free = seg;
+        seg = seg->prev;
+        pool_free_segment(p, to_free);
+    }
+    seg = next;
+    while (seg != NULL) {
+        pool_segment* to_free = seg;
+        seg = seg->next;
         pool_free_segment(p, to_free);
     }
 }
 void* pool_alloc(pool* p, ureg size)
 {
-    if (p->segments->head + size <= p->segments->end) {
-        void* res = p->segments->head;
-        p->segments->head += size;
-        return res;
+    while (true) {
+        if (p->head_segment->head + size <= p->head_segment->end) {
+            void* res = p->head_segment->head;
+            p->head_segment->head += size;
+            return res;
+        }
+        if (!p->head_segment->next) break;
+        p->head_segment = p->head_segment->next;
     }
-    ureg size_new =
-        2 * (ptrdiff(p->segments->end, p->segments) - sizeof(pool_segment));
+    ureg size_new = 2 * (ptrdiff(p->head_segment->end, p->head_segment) -
+                         sizeof(pool_segment));
     if (size_new < size) {
         size_new = ceil_to_pow2(size);
         if (size_new == 0) size_new = size;
     }
     pool_segment* seg = pool_alloc_segment(p, size_new);
     if (!seg) return NULL;
-    seg->next = p->segments;
-    p->segments = seg;
+    p->head_segment->next = seg;
+    seg->prev = p->head_segment;
+    seg->next = NULL;
+    p->head_segment = seg;
     void* res = seg->head;
     seg->head += size;
     return res;
 }
 void pool_clear(pool* p)
 {
-    pool_segment* segs = p->segments;
-    while (segs->next != NULL) {
-        pool_segment* next = segs->next;
-        pool_free_segment(p, segs);
-        segs = next;
+    pool_segment* seg = p->head_segment;
+    while (true) {
+        seg->head = ptradd(seg, sizeof(pool_segment));
+        if (!seg->prev) {
+            p->head_segment = seg;
+            break;
+        }
+        seg = seg->prev;
     }
-    p->segments = segs;
-    segs->head = (u8*)ptradd(segs, sizeof(pool_segment));
+}
+void pool_steal_all(pool* p, pool* donor)
+{
+    if (!donor->head_segment) return;
+    if (!p->head_segment) {
+        p->head_segment = donor->head_segment;
+        donor->head_segment = NULL;
+        return;
+    }
+    if (p->head_segment->next) {
+        pool_segment* donor_last = donor->head_segment;
+        while (donor_last->next) donor_last = donor_last->next;
+        donor_last->next = p->head_segment->next;
+        p->head_segment->next->prev = donor_last;
+    }
+    pool_segment* donor_first = donor->head_segment;
+    while (donor_first->prev) donor_first = donor_first->prev;
+    p->head_segment->next = donor_first;
+    donor_first->prev = p->head_segment;
+    donor->head_segment = NULL;
+}
+void pool_steal_used(pool* p, pool* donor)
+{
+    pool_segment* donor_unused = donor->head_segment->next;
+    donor->head_segment->next = NULL;
+    pool_steal_all(p, donor);
+    donor->head_segment = donor_unused;
+    if (donor_unused) donor_unused->prev = NULL;
 }
