@@ -1,5 +1,7 @@
-resolver error: reachable end of non void function
- ==> ./tests/error_tests/double_main.tau:2:1
+resolver error: multiple candidates for main function
+ ==> ./tests/error_tests/double_main.tau:1:1
 1 |func main() -> int{
-  |               ^^^ function returns non void type
-2 |} <- missing return statement
+  |^^^^^^^^^ first here
+...
+4 |func main(){
+  |^^^^^^^^^ second here

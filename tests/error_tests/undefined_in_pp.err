@@ -1,0 +1,4 @@
+resolver error: unknown symbol
+ ==> ./tests/error_tests/undefined_in_pp.tau:2:6
+2 |    #s = "3"; //error: undefined
+  |     ^ use of an undefined symbol
