@@ -47,6 +47,13 @@ static inline void ptrlist_remove(ptrlist* p, pli* pli)
     sbuffer_remove(p, pli, sizeof(void*));
 }
 
+static inline void* ptrlist_pop_back(ptrlist* p)
+{
+    void* res = *(void**)sbuffer_back(p, sizeof(void*));
+    sbuffer_remove_back(p, sizeof(void*));
+    return res;
+}
+
 static inline void ptrlist_clear(ptrlist* p)
 {
     sbuffer_clear(p);
@@ -74,6 +81,15 @@ static inline pli pli_begin(ptrlist* p)
 static inline pli pli_rbegin(ptrlist* p)
 {
     return sbuffer_iterator_begin_at_end(p);
+}
+
+static inline int ptrlist_append_copy(ptrlist* p, ptrlist* src)
+{
+    pli it = sbuffer_iterator_begin(p);
+    for (void* i = pli_next(&it); i; i = pli_next(&it)) {
+        if (ptrlist_append(p, i)) return ERR;
+    }
+    return OK;
 }
 
 #endif

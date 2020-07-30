@@ -25,6 +25,7 @@ typedef enum resolve_error_e {
     RE_UNREALIZED_COMPTIME, // could be paste or a value needed for a type
     RE_REQUIRES_BODY_TYPE,
     RE_SYMBOL_NOT_FOUND_YET,
+    RE_SUSPENDED,
 } resolve_error;
 
 typedef struct thread_context_s thread_context;
@@ -53,17 +54,13 @@ typedef struct pp_resolve_node_s {
 
 typedef struct partial_resolution_data_s {
     pool pprn_mem;
-    mdg_node** begin;
-    mdg_node** end;
-    mdg_node* single_store;
+    mdg_node** mdgs_begin;
+    mdg_node** mdgs_end;
+    mdg_node* mdgs_single_store;
     ureg id_space;
-    ureg private_sym_count;
-    ureg public_sym_count;
-    ureg pprn_count;
-    ureg pprn_pending_count;
-    ureg pprn_waiting_count;
-    pp_resolve_node** pending_pprns;
-    pp_resolve_node** waiting_pprns;
+    ptrlist pprns_pending;
+    ptrlist pprns_waiting;
+    bool deps_required_for_pp;
 } partial_resolution_data;
 
 typedef struct resolver_s {
@@ -71,6 +68,7 @@ typedef struct resolver_s {
     thread_context* tc;
     post_resolution_pass prp;
     llvm_backend* backend;
+    bool deps_required_for_pp;
     // current context
     mdg_node** mdgs_begin;
     mdg_node** mdgs_end;
@@ -95,7 +93,7 @@ typedef struct resolver_s {
     freelist pp_resolve_nodes;
 
     // dep count > 0, what remains in the end are cyclic dependencies
-    sbuffer pp_resolve_nodes_waiting;
+    ptrlist pp_resolve_nodes_waiting;
 
     // dep_count == 0, but unresolved.
     // when run with the parent it's not added here

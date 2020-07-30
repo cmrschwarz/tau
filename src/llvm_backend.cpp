@@ -603,13 +603,6 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     // init id space
     _mod_startid = 0;
     _mod_endid = 0;
-    if (!_pp_required) {
-        _pp_required = true;
-        for (mdg_node** n = _mods_start; n != _mods_end; n++) {
-            int r = mdg_node_require_requirements(*n, _tc, true);
-            if (r) return LLE_FATAL;
-        }
-    }
     _private_sym_count = private_sym_count;
     // create name
     std::string num = std::to_string(
@@ -617,7 +610,7 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     std::string pp_func_name = "__pp_func_" + num;
     std::string pp_mod_name = "__pp_mod_" + num;
     // swap out for pp moudle
-    auto mod = _module;
+    assert(_module == NULL);
     _module = new (std::nothrow) llvm::Module(pp_mod_name, _context);
     if (!_module) return LLE_OK;
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
@@ -644,7 +637,7 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
 
     resetAfterEmit();
     delete _module;
-    _module = mod;
+    _module = NULL;
     return lle;
 }
 llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
@@ -674,6 +667,7 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     // reset types
     resetAfterEmit();
     delete _module;
+    _module = NULL;
     _local_value_store.assign(_private_sym_count, NULL);
     _local_value_state.assign(_private_sym_count, NOT_GENERATED);
     return lle;

@@ -98,25 +98,18 @@ add_symbol(resolver* r, symbol_table* st, symbol_table* sst, symbol* sym)
 resolve_error add_pprn_to_waiting_list(resolver* r, pp_resolve_node* pprn)
 {
     if (pprn->waiting_list_entry) return RE_OK;
-    pp_resolve_node** res =
-        sbuffer_append(&r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*));
-    if (!res) return RE_FATAL;
-    *res = pprn;
-    pprn->waiting_list_entry = res;
+    int res = ptrlist_append_get_pos(
+        &r->pp_resolve_nodes_waiting, pprn, (void***)&pprn->waiting_list_entry);
+    if (res) return RE_FATAL;
     return RE_OK;
 }
 void remove_pprn_from_waiting_list(resolver* r, pp_resolve_node* pprn)
 {
     assert(pprn->waiting_list_entry);
-    assert(!sbuffer_is_empty(&r->pp_resolve_nodes_waiting));
-    sbuffer_iterator sbi =
-        sbuffer_iterator_begin_at_end(&r->pp_resolve_nodes_waiting);
-    pp_resolve_node** last =
-        sbuffer_iterator_previous(&sbi, sizeof(pp_resolve_node*));
-    *pprn->waiting_list_entry = *last;
-    (*last)->waiting_list_entry = pprn->waiting_list_entry;
-    sbuffer_remove_back(
-        &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node**));
+    assert(!ptrlist_is_empty(&r->pp_resolve_nodes_waiting));
+    pp_resolve_node* last = ptrlist_pop_back(&r->pp_resolve_nodes_waiting);
+    *pprn->waiting_list_entry = last;
+    last->waiting_list_entry = pprn->waiting_list_entry;
     pprn->waiting_list_entry = NULL;
 }
 void pprn_fin(resolver* r, pp_resolve_node* pprn)
@@ -3363,6 +3356,13 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             print_pprns(r, "running ", true);
             ureg priv_count = r->id_space - PRIV_SYMBOL_OFFSET;
             llvm_backend_reserve_symbols(r->backend, priv_count, 0);
+            if (!r->deps_required_for_pp) {
+                r->deps_required_for_pp = true;
+                for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
+                    int res = mdg_node_require_requirements(*n, r->tc, true);
+                    if (res) return LLE_FATAL;
+                }
+            }
             lle = llvm_backend_run_pp(
                 r->backend, priv_count, &r->pp_resolve_nodes_ready);
             if (lle) return RE_FATAL;
@@ -3497,7 +3497,7 @@ void free_pprns(resolver* r)
     freelist_clear(&r->pp_resolve_nodes);
     pool_clear(&r->pprn_mem);
 }
-int resolver_resolve(resolver* r)
+void resolver_reset_resolution_state(resolver* r)
 {
     r->generic_context = false;
     r->curr_pp_node = NULL;
@@ -3506,11 +3506,12 @@ int resolver_resolve(resolver* r)
     r->curr_var_decl_block_owner = NULL;
     r->curr_var_pp_node = NULL;
     r->retracing_type_loop = false;
-    r->public_sym_count = 0;
-    r->private_sym_count = 0;
-    r->id_space = PRIV_SYMBOL_OFFSET;
     r->module_group_constructor = NULL;
     r->module_group_destructor = NULL;
+}
+int resolver_resolve(resolver* r)
+{
+    resolver_reset_resolution_state(r);
     resolve_error re;
     re = resolver_init_mdg_symtabs_and_handle_root(r);
     if (re) return re;
@@ -3570,6 +3571,9 @@ resolve_error lookup_priv_module_symbol(
 }
 int resolver_emit(resolver* r, llvm_module** module)
 {
+    int res = llvm_backend_init_module(
+        r->backend, r->mdgs_begin, r->mdgs_end, module);
+    if (res) return res;
     // add module ctors and dtors
     if (r->module_group_constructor) {
         aseglist_add(&r->tc->t->module_ctors, r->module_group_constructor);
@@ -3597,7 +3601,7 @@ int resolver_emit(resolver* r, llvm_module** module)
             adjust_body_ids(r, &glob_id_head, &mf->body);
         }
     }
-    int res = mdg_nodes_resolved(r->mdgs_begin, r->mdgs_end, r->tc);
+    res = mdg_nodes_resolved(r->mdgs_begin, r->mdgs_end, r->tc);
     if (res) return RE_FATAL;
     assert(glob_id_head - glob_id_start == r->public_sym_count);
 
@@ -3661,20 +3665,13 @@ int resolver_emit(resolver* r, llvm_module** module)
     }
     return OK;
 }
-int resolver_resolve_and_emit(
-    resolver* r, mdg_node** start, mdg_node** end, llvm_module** module)
+int resolver_resolve_and_emit_post_setup(resolver* r, llvm_module** module)
 {
-    // reserve global symbol slots so that the pprn doesn't overrun the global
-    // ids of other modules it might use
     ureg curr_max_glob_id = atomic_ureg_load(&r->tc->t->node_ids);
     llvm_error lle =
         llvm_backend_reserve_symbols(r->backend, 0, curr_max_glob_id);
     if (lle) return RE_ERROR;
-    r->mdgs_begin = start;
-    r->mdgs_end = end;
     int res;
-    res = llvm_backend_init_module(r->backend, start, end, module);
-    if (res) return ERR;
     TAU_TIME_STAGE_CTX(r->tc->t, res = resolver_resolve(r);
                        , print_debug_info(r, "resolving"));
     if (res) {
@@ -3687,6 +3684,41 @@ int resolver_resolve_and_emit(
     if (res) return ERR;
     return resolver_emit(r, module);
 }
+int resolver_continue(
+    resolver* r, partial_resolution_data* prd, llvm_module** module)
+{
+    pool_steal_all(&r->pprn_mem, &prd->pprn_mem);
+    pool_fin(&prd->pprn_mem);
+    r->mdgs_begin = prd->mdgs_begin;
+    r->mdgs_begin = prd->mdgs_end;
+    r->id_space = prd->id_space;
+    r->deps_required_for_pp = prd->deps_required_for_pp;
+    int res =
+        ptrlist_append_copy(&r->pp_resolve_nodes_pending, &prd->pprns_pending);
+    if (res) return res;
+    ptrlist_fin(&prd->pprns_pending);
+    res =
+        ptrlist_append_copy(&r->pp_resolve_nodes_waiting, &prd->pprns_waiting);
+    if (res) return res;
+    ptrlist_fin(&prd->pprns_waiting);
+    return resolver_resolve_and_emit_post_setup(r, module);
+}
+int resolver_suspend(resolver* r)
+{
+}
+int resolver_resolve_and_emit(
+    resolver* r, mdg_node** start, mdg_node** end, llvm_module** module)
+{
+    // reserve global symbol slots so that the pprn doesn't overrun the global
+    // ids of other modules it might use
+    r->public_sym_count = 0;
+    r->private_sym_count = 0;
+    r->id_space = PRIV_SYMBOL_OFFSET;
+    r->mdgs_begin = start;
+    r->mdgs_end = end;
+    r->deps_required_for_pp = false;
+    return resolver_resolve_and_emit_post_setup(r, module);
+}
 int resolver_partial_fin(resolver* r, int i, int res)
 {
     switch (i) {
@@ -3695,7 +3727,7 @@ int resolver_partial_fin(resolver* r, int i, int res)
         case 8: prp_fin(&r->prp); // fallthrough
         case 7: ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
         case 6: ptrlist_fin(&r->pp_resolve_nodes_pending); // fallthrough
-        case 5: sbuffer_fin(&r->pp_resolve_nodes_waiting); // fallthrough
+        case 5: ptrlist_fin(&r->pp_resolve_nodes_waiting); // fallthrough
         case 4: freelist_fin(&r->pp_resolve_nodes); // fallthrough
         case 3: pool_fin(&r->pprn_mem); // fallthrough
         case 2: sbuffer_fin(&r->temp_stack); // fallthrough
@@ -3720,8 +3752,7 @@ int resolver_init(resolver* r, thread_context* tc)
     e = freelist_init(
         &r->pp_resolve_nodes, &r->pprn_mem, sizeof(pp_resolve_node));
     if (e) return resolver_partial_fin(r, 3, e);
-    e = sbuffer_init(
-        &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*) * 16);
+    e = ptrlist_init(&r->pp_resolve_nodes_waiting, 16);
     if (e) return resolver_partial_fin(r, 4, e);
     e = ptrlist_init(&r->pp_resolve_nodes_pending, 16);
     if (e) return resolver_partial_fin(r, 5, e);
