@@ -1245,10 +1245,20 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             }
 
         } break;
-
         case NOT_GENERATED: {
-            *state = _pp_mode ? PP_IMPL_ADDED : IMPL_ADDED;
             generate = true;
+            if (_pp_mode) {
+                if (ast_flags_get_emitted_for_pp(n->flags)) {
+                    *state = PP_STUB_ADDED;
+                    gen_stub = true;
+                }
+                else {
+                    *state = PP_IMPL_ADDED;
+                }
+            }
+            else {
+                *state = IMPL_ADDED;
+            }
         } break;
         default: assert(false);
     }
@@ -2023,7 +2033,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
 {
     auto res = (llvm::Value**)lookupAstElem(fn->id);
     auto state = lookupValueState(fn->id);
-
+    bool gen_stub = false;
     if (*state == IMPL_ADDED || *state == STUB_ADDED ||
         *state == PP_IMPL_ADDED || *state == PP_STUB_ADDED) {
         if (llfn) *llfn = *res;
@@ -2039,7 +2049,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         if (llfn) *llfn = *res;
         return LLE_OK;
     }
-    else if (*state == PP_IMPL_DESTROYED) {
+    /*else if (*state == PP_IMPL_DESTROYED) {
         // we disabled this in favor of using stubs (-->
         // PP_IMPL_GENERATED)
         assert(false);
@@ -2062,14 +2072,25 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         *state = PP_STUB_ADDED;
         _reset_after_emit.push_back(fn->id);
         return LLE_OK;
-    }
+    }*/
     else if (*state == PP_STUB_ADDED) {
         assert(_pp_mode);
         if (llfn) *llfn = *res;
         return LLE_OK;
     }
+    else if (*state == PP_IMPL_DESTROYED) {
+        gen_stub = !_pp_mode;
+    }
     else {
-        assert(*state == NOT_GENERATED || *state == PP_IMPL_DESTROYED);
+        if (_pp_mode) {
+            assert(*state == NOT_GENERATED);
+            gen_stub =
+                ast_flags_get_emitted_for_pp(fn->fnb.sc.osym.sym.node.flags);
+        }
+        else {
+            assert(*state == NOT_GENERATED || *state == IMPL_DESTROYED);
+            gen_stub = (*state == IMPL_DESTROYED);
+        }
     }
 
     llvm::Function* func;
@@ -2127,13 +2148,13 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         ast_flags_get_extern_func(fn->fnb.sc.osym.sym.node.flags);
     auto func_name_mangled = extern_flag ? std::string(fn->fnb.sc.osym.sym.name)
                                          : nameMangle(&fn->fnb);
-    if (fwd_decl || !isIDInModule(fn->id)) {
+    if (fwd_decl || !isIDInModule(fn->id) || gen_stub) {
         func = (llvm::Function*)llvm::Function::Create(
             func_sig, llvm::GlobalVariable::ExternalLinkage,
             _data_layout->getProgramAddressSpace(), func_name_mangled);
         if (!func) return LLE_FATAL;
         _module->getFunctionList().push_back(func);
-        *state = STUB_ADDED;
+        *state = _pp_mode ? PP_STUB_ADDED : STUB_ADDED;
         if (isGlobalID(fn->id) || _pp_mode) {
             _reset_after_emit.push_back(fn->id);
         }
@@ -2220,7 +2241,6 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     if (prev_blk) {
         _builder.SetInsertPoint(prev_blk, prev_pos);
     }
-
     return lle;
 }
 
