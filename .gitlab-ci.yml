@@ -42,7 +42,7 @@ build:
 test:
     stage: test
     script:
-       - ./test/run_tests.sh
+       - ./test/run_all_tests.sh
     only:
         - master
         - testing
