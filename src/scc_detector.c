@@ -22,6 +22,7 @@ static inline int compare_mdg_nodes(const mdg_node* fst, const mdg_node* snd)
     {                                                                          \
         if ((sccd->tc->t->verbosity_flags & VERBOSITY_FLAGS_SCCD) != 0)        \
             tprintf(__VA_ARGS__);                                              \
+        tflush();                                                              \
     }
 int sccd_init(scc_detector* sccd, thread_context* tc)
 {
@@ -151,8 +152,12 @@ int notify_dependants(scc_detector* sccd, mdg_node* curr)
         }
         else {
             assert(!cd->note_added);
-            if (!cd->curr_dep || cd->curr_dep->mdgn != cd->notifier) {
+            mdg_node* curr_dep_mdgn = cd->curr_dep ? cd->curr_dep->mdgn : curr;
+            if (curr_dep_mdgn != cd->notifier) {
                 add_note = true;
+                sccd_tprintf(
+                    sccd, "avoiding tree notification: %s <- %s present\n",
+                    cd->notifier->name, dtn->curr_dep->mdgn->name);
             }
         }
         if (add_note) {
@@ -301,6 +306,9 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
         *(ni++) = n;
     } while (n != lowlink);
     assert(ni == nodes_end);
+    // used for notify dependants so that it uses the
+    // correct 'current node' for the tree opt check
+    mdg_node* stack_top = *nodes;
     mdg_nodes_quick_sort(nodes, node_count);
     bool outdated = false;
     bool notify_anways;
@@ -326,7 +334,7 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
         deps_count_now += list_length(&n->dependencies);
     }
     int r = OK;
-    if (notify_anways) r = notify_dependants(sccd, *nodes);
+    if (notify_anways) r = notify_dependants(sccd, stack_top);
     if (r || outdated || deps_count_now != deps_count_expected) {
         // rollback. we failed or somebody else is already doing our job
         for (mdg_node** ni_redo = nodes; ni_redo != ni; ni_redo++) {
@@ -665,6 +673,7 @@ int sccd_run(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
             }
         }
         if (dep_mdg) {
+
             // it's a new node
             r = sccd_handle_node(sccd, dep_mdg, dep_sn, &se);
             if (r == SCCD_ADDED_NOTIFICATION) return OK;
