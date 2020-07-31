@@ -1,0 +1,8 @@
+module a{
+    #x: int = 3;
+}
+module b{
+    #x: int = 3;
+}
+import {a,b};
+func main(){}
