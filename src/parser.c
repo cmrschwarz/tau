@@ -2267,9 +2267,6 @@ parse_error init_paste_evaluation_parse(
     pe->node.srange = src_range_pack(p->lx.tc, 0, 0, smap);
     *eval = pe;
     p->file_root = NULL;
-    if (p->lx.tc->t->verbosity_flags & VERBOSITY_FLAGS_TIME_STAGES) {
-        tprintf("parsing a paste expression\n");
-    }
     return PE_OK;
 }
 parse_error parser_parse_paste_expr(
