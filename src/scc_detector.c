@@ -215,7 +215,7 @@ int update_dependant_notifiers(
                 rwlock_end_write(&cd->mdgn->lock);
             }
             rwlock_write(&dtn->mdgn->lock);
-            // in case somebody else was raced us we back off.
+            // in case somebody else raced us we back off.
             // this will leave one uneccessary notification but whatever
             if (dtn->notifier == dtn->mdgn->notifier) {
                 dtn->mdgn->notifier = notifier;
@@ -242,30 +242,38 @@ int sccd_emit_lone_mdgn(scc_detector* sccd, sccd_stack_entry* se_curr)
     mdg_node* n = stack_pop(&sccd->tc->temp_stack);
     assert(n == se_curr->mdgn);
     bool outdated = false;
-    int r = OK;
+    module_stage stage;
     rwlock_write(&n->lock);
+    stage = n->stage;
     if (list_length(&n->dependencies) != se_curr->deps_count) {
         outdated = true;
     }
-    else if (n->stage == MS_AWAITING_DEPENDENCIES) {
+    else if (stage == MS_AWAITING_DEPENDENCIES) {
         n->stage = MS_RESOLVING;
     }
-    else if (n->stage == MS_AWAITING_DEPENDENCIES_EXPLORATION) {
+    else if (stage == MS_AWAITING_DEPENDENCIES_EXPLORATION) {
         n->stage = MS_RESOLVING_EXPLORATION;
     }
     else {
         outdated = true;
     }
-    if (!outdated) {
-        r = notify_dependants(sccd, n);
-    }
-    else {
-        // TODO: check whether we are ready or not. depending on that
-        // add the notification or continue as if this is done
-        assert(false);
+    // we must do this even if we are outdated since we might have picked
+    // up a new dependant
+    int r = OK;
+    if (n->stage < MS_RESOLVED_UNNEEDED) r = notify_dependants(sccd, n);
+    if (r) {
+        // we failed to add notifications, so we can't launch the update
+        // abort and hope that somebody else will take care of it
+        n->stage = stage;
+        rwlock_end_write(&n->lock);
+        sccd_release(sccd);
+        return ERR;
     }
     rwlock_end_write(&n->lock);
-    if (outdated) return OK;
+    if (outdated) {
+        sccd_tprintf(sccd, "outdated sccd run for %s!\n");
+        return OK;
+    }
     sccd_tprintf(sccd, "requesting emission of %s\n", n->name);
     partial_resolution_data* prd = n->partial_res_data;
     n->partial_res_data = NULL;
@@ -294,37 +302,45 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
     } while (n != lowlink);
     assert(ni == nodes_end);
     mdg_nodes_quick_sort(nodes, node_count);
-    int r = OK;
     bool outdated = false;
+    bool notify_anways;
     for (ni = nodes; ni != nodes_end; ni++) {
         n = *ni;
         rwlock_write(&n->lock);
-        if (n->stage == MS_AWAITING_DEPENDENCIES) {
+        module_stage stage = n->stage;
+        if (stage == MS_AWAITING_DEPENDENCIES) {
             n->stage = MS_RESOLVING;
         }
-        else if (n->stage == MS_AWAITING_DEPENDENCIES_EXPLORATION) {
+        else if (stage == MS_AWAITING_DEPENDENCIES_EXPLORATION) {
             n->stage = MS_RESOLVING_EXPLORATION;
         }
         else {
             outdated = true;
-            assert(false); // TODO: handle the notifications correctly :/
+            // we must do this even if we are outdated because we might have
+            // pickedup a new dependant
+            // if it will still send out notifications that works for us
+            // but if it's done we can't expect updates from it
+            notify_anways = n->stage < MS_RESOLVED_UNNEEDED;
             break;
         }
         deps_count_now += list_length(&n->dependencies);
-        if (ni + 1 == nodes_end) {
-            assert(!outdated);
-            r = notify_dependants(sccd, n);
-        }
     }
-    if (outdated || deps_count_now != deps_count_expected) {
-        // rollback. somebody else is doing our job. this is NOT an error
+    int r = OK;
+    if (notify_anways) r = notify_dependants(sccd, *nodes);
+    if (r || outdated || deps_count_now != deps_count_expected) {
+        // rollback. we failed or somebody else is already doing our job
         for (mdg_node** ni_redo = nodes; ni_redo != ni; ni_redo++) {
             n = *ni_redo;
-            n->stage = MS_AWAITING_DEPENDENCIES;
+            if (n->stage == MS_RESOLVING) {
+                n->stage = MS_AWAITING_DEPENDENCIES;
+            }
+            else if (n->stage == MS_RESOLVING_EXPLORATION) {
+                n->stage = MS_AWAITING_DEPENDENCIES_EXPLORATION;
+            }
             rwlock_end_write(&n->lock);
         }
         tfree(nodes);
-        return OK;
+        return r;
     }
     for (ni = nodes; ni != nodes_end; ni++) {
         rwlock_end_write(&(**ni).lock);
@@ -378,8 +394,8 @@ sccd_stack_entry* sccd_push_node(
         sccd_release(sccd);
         return NULL;
     }
-    // if it's awaiting dependencies it always HAS dependencies, so there's no
-    // need for some kind of leaf node optimization
+    // if it's awaiting dependencies it always HAS dependencies, so there's
+    // no need for some kind of leaf node optimization
     se->children_it = *it;
     se->mdgn = n;
     se->sn = sn;
