@@ -3684,40 +3684,83 @@ int resolver_resolve_and_emit_post_setup(resolver* r, llvm_module** module)
     if (res) return ERR;
     return resolver_emit(r, module);
 }
-int resolver_continue(
-    resolver* r, partial_resolution_data* prd, llvm_module** module)
-{
-    pool_steal_all(&r->pprn_mem, &prd->pprn_mem);
-    pool_fin(&prd->pprn_mem);
-    r->mdgs_begin = prd->mdgs_begin;
-    r->mdgs_begin = prd->mdgs_end;
-    r->id_space = prd->id_space;
-    r->deps_required_for_pp = prd->deps_required_for_pp;
-    int res =
-        ptrlist_append_copy(&r->pp_resolve_nodes_pending, &prd->pprns_pending);
-    if (res) return res;
-    ptrlist_fin(&prd->pprns_pending);
-    res =
-        ptrlist_append_copy(&r->pp_resolve_nodes_waiting, &prd->pprns_waiting);
-    if (res) return res;
-    ptrlist_fin(&prd->pprns_waiting);
-    return resolver_resolve_and_emit_post_setup(r, module);
-}
-int resolver_suspend(resolver* r)
-{
-}
-int resolver_resolve_and_emit(
-    resolver* r, mdg_node** start, mdg_node** end, llvm_module** module)
+void resolver_setup_blank_resolve(resolver* r)
 {
     // reserve global symbol slots so that the pprn doesn't overrun the global
     // ids of other modules it might use
     r->public_sym_count = 0;
     r->private_sym_count = 0;
     r->id_space = PRIV_SYMBOL_OFFSET;
+    r->deps_required_for_pp = false;
+}
+void resolver_unpack_partial_resolution_data(
+    resolver* r, partial_resolution_data* prd)
+{
+    // this undoes the dummy allocation of this partial_resolution_data
+    // freeing the space for more pprns. since no allocs come
+    // during the run of this methods the memory stays valid long enough
+    pool_undo_last_alloc(&prd->pprn_mem, sizeof(partial_resolution_data));
+    pool_steal_all(&r->pprn_mem, &prd->pprn_mem);
+    pool_fin(&prd->pprn_mem);
+    r->id_space = prd->id_space;
+    r->deps_required_for_pp = prd->deps_required_for_pp;
+    sbuffer_take_and_invalidate(
+        &r->pp_resolve_nodes_pending, &prd->pprns_pending);
+    sbuffer_take_and_invalidate(
+        &r->pp_resolve_nodes_waiting, &prd->pprns_waiting);
+}
+int resolver_resolve_and_emit(
+    resolver* r, mdg_node** start, mdg_node** end, partial_resolution_data* prd,
+    llvm_module** module)
+{
     r->mdgs_begin = start;
     r->mdgs_end = end;
-    r->deps_required_for_pp = false;
+    if (prd) {
+        resolver_unpack_partial_resolution_data(r, prd);
+    }
+    else {
+        resolver_setup_blank_resolve(r);
+    }
     return resolver_resolve_and_emit_post_setup(r, module);
+}
+int resolver_suspend(resolver* r)
+{
+    // this alloc will be undone by the continue
+    partial_resolution_data* p =
+        pool_alloc(&r->pprn_mem, sizeof(partial_resolution_data));
+    pool_steal_used(&p->pprn_mem, &r->pprn_mem);
+    p->deps_required_for_pp = r->deps_required_for_pp;
+    p->id_space = r->id_space;
+    // TODO: we could very much avoid the allocs here using some
+    // steal strategy but eh
+    int res =
+        sbuffer_steal_used(&p->pprns_pending, &r->pp_resolve_nodes_pending);
+    if (res) {
+        pool_steal_all(&r->pprn_mem, &p->pprn_mem);
+        return res;
+    }
+    res = sbuffer_steal_used(&p->pprns_waiting, &r->pp_resolve_nodes_waiting);
+    if (res) {
+        sbuffer_take_and_invalidate(
+            &r->pp_resolve_nodes_pending, &p->pprns_pending);
+        pool_steal_all(&r->pprn_mem, &p->pprn_mem);
+        return res;
+    }
+    // since we currently resolve that module nobody may race us
+    (**r->mdgs_begin).partial_res_data = p;
+    assert(sbuffer_get_used_size(&r->pp_resolve_nodes_ready) == 0);
+    ptrlist_clear(&r->pp_resolve_nodes_pending);
+    ptrlist_clear(&r->pp_resolve_nodes_waiting);
+    freelist_clear(&r->pp_resolve_nodes);
+    // TODO: this is really dumb. consider getting rid of the difference
+    // entirely
+    if (ptrdiff(r->mdgs_end, r->mdgs_begin) == sizeof(mdg_node*)) {
+        return tauc_request_resolve_single(r->tc->t, *r->mdgs_begin, p);
+    }
+    else {
+        return tauc_request_resolve_multiple(
+            r->tc->t, r->mdgs_begin, r->mdgs_end, p);
+    }
 }
 int resolver_partial_fin(resolver* r, int i, int res)
 {

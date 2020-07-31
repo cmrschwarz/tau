@@ -47,6 +47,10 @@ void sbuffer_remove_back(sbuffer* sb, ureg size);
 
 void sbuffer_compact(sbuffer* sb);
 void sbuffer_clear(sbuffer* sb);
+
+int sbuffer_steal_used(sbuffer* sb, sbuffer* donor);
+void sbuffer_take_and_invalidate(sbuffer* sb, sbuffer* donor);
+
 static inline sbuffer_iterator sbuffer_iterator_begin(sbuffer* sb)
 {
     sbuffer_iterator sbi;

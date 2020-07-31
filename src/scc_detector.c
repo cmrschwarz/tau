@@ -267,8 +267,11 @@ int sccd_emit_lone_mdgn(scc_detector* sccd, sccd_stack_entry* se_curr)
     rwlock_end_write(&n->lock);
     if (outdated) return OK;
     sccd_tprintf(sccd, "requesting emission of %s\n", n->name);
+    partial_resolution_data* prd = n->partial_res_data;
+    n->partial_res_data = NULL;
     r = update_dependant_notifiers(sccd, n, r != OK);
-    return r | tauc_request_resolve_single(sccd->tc->t, n);
+    // intentionaly continuing despite error in previous step
+    return r | tauc_request_resolve_single(sccd->tc->t, n, prd);
 }
 int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
 {
@@ -326,6 +329,14 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
     for (ni = nodes; ni != nodes_end; ni++) {
         rwlock_end_write(&(**ni).lock);
     }
+    partial_resolution_data* prd = NULL;
+    for (ni = nodes; ni != nodes_end; ni++) {
+        if ((**ni).partial_res_data) {
+            assert(!prd); // TODO: prd merge
+            prd = (**ni).partial_res_data;
+            (**ni).partial_res_data = NULL;
+        }
+    }
     r = update_dependant_notifiers(sccd, *(nodes_end - 1), r != OK);
     if (sccd->tc->t->verbosity_flags & VERBOSITY_FLAGS_SCCD) {
         tprintf("requesting resolve for {");
@@ -334,7 +345,9 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
         }
         tprintf("%s}\n", (**(nodes_end - 1)).name);
     }
-    return r | tauc_request_resolve_multiple(sccd->tc->t, nodes, nodes_end);
+    // intentionaly continuing despite error in previous step
+    return r |
+           tauc_request_resolve_multiple(sccd->tc->t, nodes, nodes_end, prd);
 }
 void sccd_new_ctx(scc_detector* sccd)
 {

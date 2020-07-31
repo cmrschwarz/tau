@@ -54,8 +54,6 @@ typedef struct pp_resolve_node_s {
 
 typedef struct partial_resolution_data_s {
     pool pprn_mem;
-    mdg_node** mdgs_begin;
-    mdg_node** mdgs_end;
     mdg_node* mdgs_single_store;
     ureg id_space;
     ptrlist pprns_pending;
@@ -116,7 +114,8 @@ typedef struct resolver_s {
 int resolver_init(resolver* r, thread_context* tc);
 void resolver_fin(resolver* r);
 int resolver_resolve_and_emit(
-    resolver* r, mdg_node** start, mdg_node** end, llvm_module** module);
+    resolver* r, mdg_node** start, mdg_node** end, partial_resolution_data* prd,
+    llvm_module** module);
 ast_elem* get_resolved_ast_node_ctype(ast_node* n);
 
 resolve_error resolve_ast_node(

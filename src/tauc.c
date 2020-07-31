@@ -467,13 +467,15 @@ int tauc_request_parse(
     j.concrete.parse.requiring_srange = requiring_srange;
     return tauc_add_job(t, &j, false);
 }
-int tauc_request_resolve_multiple(tauc* t, mdg_node** start, mdg_node** end)
+int tauc_request_resolve_multiple(
+    tauc* t, mdg_node** start, mdg_node** end, partial_resolution_data* prd)
 {
     job j;
     j.kind = JOB_RESOLVE;
     j.concrete.resolve.single_store = NULL;
     j.concrete.resolve.start = start;
     j.concrete.resolve.end = end;
+    j.concrete.resolve.partial_res_data = prd;
     return tauc_add_job(t, &j, false);
 }
 int tauc_request_pp_module(tauc* t, mdg_node* mdg)
@@ -485,12 +487,14 @@ int tauc_request_pp_module(tauc* t, mdg_node* mdg)
     j.concrete.load_pp.node = mdg;
     return tauc_add_job(t, &j, false);
 }
-int tauc_request_resolve_single(tauc* t, mdg_node* node)
+int tauc_request_resolve_single(
+    tauc* t, mdg_node* node, partial_resolution_data* prd)
 {
     job j;
     j.kind = JOB_RESOLVE;
     // we can't use start and end here since jobs are copied by value
     j.concrete.resolve.single_store = node;
+    j.concrete.resolve.partial_res_data = prd;
     return tauc_add_job(t, &j, false);
 }
 int tauc_request_finalize(tauc* t)

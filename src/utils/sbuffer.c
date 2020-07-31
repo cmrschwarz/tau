@@ -1,6 +1,7 @@
 #include "sbuffer.h"
 #include "allocator.h"
 #include "math_utils.h"
+#include "error.h"
 #include <assert.h>
 #include <memory.h>
 static inline sbuffer_segment* sbuffer_segment_create(ureg size)
@@ -27,12 +28,12 @@ int sbuffer_init(sbuffer* sb, ureg initial_capacity)
     sb->biggest_seg_size =
         ceil_to_pow2(initial_capacity + sizeof(sbuffer_segment));
     sbuffer_segment* s = sbuffer_segment_create(sb->biggest_seg_size);
-    if (!s) return -1;
+    if (!s) return ERR;
     s->next = NULL;
     s->prev = NULL;
     sb->first_seg = s;
     sb->tail_seg = s;
-    return 0;
+    return OK;
 }
 void sbuffer_fin(sbuffer* sb)
 {
@@ -182,4 +183,46 @@ void sbuffer_clear(sbuffer* sb)
         s = s->next;
     } while (s);
     sb->tail_seg = sb->first_seg;
+}
+void sbuffer_take_and_invalidate(sbuffer* sb, sbuffer* donor)
+{
+    sbuffer_segment* donor_rem = donor->tail_seg->next;
+    donor->tail_seg->next = sb->first_seg;
+    sb->first_seg->prev = donor->tail_seg;
+    sb->first_seg = donor->first_seg;
+    if (donor_rem) {
+        donor_rem->prev = sb->tail_seg;
+        if (sb->tail_seg->next) {
+            sbuffer_segment* donor_end = donor_rem;
+            while (donor_end->next) donor_end = donor_end->next;
+            donor_end->next = sb->tail_seg->next;
+            donor_end->next->prev = donor_end;
+        }
+        sb->tail_seg->next = donor_rem;
+    }
+}
+int sbuffer_steal_used(sbuffer* sb, sbuffer* donor)
+{
+    sbuffer_segment* donor_rem = donor->tail_seg->next;
+    sbuffer_segment* donor_new = NULL;
+    if (!donor_rem) {
+        // sbuffer must always have at least one segment
+        // we alloc this first so we don't have to undo on failiure
+        donor->biggest_seg_size *= 2;
+        donor_new = sbuffer_segment_create(donor->biggest_seg_size);
+        donor_new->prev = NULL;
+        donor_new->next = NULL;
+        if (!donor_new) return ERR;
+    }
+    sb->first_seg->prev = donor->first_seg;
+    donor->tail_seg->next = sb->first_seg;
+    sb->first_seg = donor->first_seg;
+    if (donor_rem) {
+        donor_rem->prev = NULL;
+        donor->first_seg = donor_rem;
+        return OK;
+    }
+    donor->first_seg = donor_new;
+    donor->tail_seg = donor_new;
+    return OK;
 }

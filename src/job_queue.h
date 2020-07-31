@@ -23,6 +23,7 @@ typedef struct job_resolve_s {
     mdg_node** start;
     mdg_node** end;
     mdg_node* single_store;
+    partial_resolution_data* partial_res_data;
 } job_resolve;
 
 typedef struct job_load_pp_s {

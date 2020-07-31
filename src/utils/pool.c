@@ -106,3 +106,14 @@ void pool_steal_used(pool* p, pool* donor)
     donor->head_segment = donor_unused;
     if (donor_unused) donor_unused->prev = NULL;
 }
+
+void* pool_undo_last_alloc(pool* p, ureg size)
+{
+    // it's either in the current segment or the current segment is empty
+    // there could be multiple emptys because of steals
+    while (p->head_segment->head ==
+           ptradd(p->head_segment, sizeof(pool_segment))) {
+        p->head_segment = p->head_segment->prev;
+    }
+    p->head_segment->head = ptrsub(p->head_segment->head, size);
+}
