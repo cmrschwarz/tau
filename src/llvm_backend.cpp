@@ -2312,6 +2312,7 @@ llvm_error LLVMBackend::emitModuleToPP(
     if (res.dynamicClassID() != NULL) {
         llvm::errs() << res;
         assert(false);
+        return LLE_FATAL;
     }
     return LLE_OK;
 }
