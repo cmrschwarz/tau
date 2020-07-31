@@ -88,7 +88,7 @@ void tauc_scaffolding_fin(tauc* t);
         tauc* tp = t;                                                          \
         if (tp->verbosity_flags & VERBOSITY_FLAGS_STAGE_BEGINS) {              \
             code_before_msg;                                                   \
-            tprintf("@");                                                      \
+            tput("@");                                                         \
             pretty_print_timer_elapsed(&tp->total_time);                       \
             tputs("");                                                         \
             tflush();                                                          \

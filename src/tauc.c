@@ -400,10 +400,10 @@ void worker_thread_fn(void* ctx)
     if (wt->tc.t->verbosity_flags & VERBOSITY_FLAG_THREAD_SPAWNS) {
         if (wt->tc.t->verbosity_flags & VERBOSITY_FLAGS_STAGE_BEGINS) {
             // so the initial job gets put here
-            tprintf("added worker thread: ");
+            tprintf("started worker thread: ");
         }
         else {
-            tputs("added worker thread!");
+            tputs("started worker thread");
             tflush();
         }
     }
@@ -426,6 +426,15 @@ int tauc_add_worker_thread(tauc* t)
     if (r) {
         tfree(wt);
         return r;
+    }
+    if (wt->tc.t->verbosity_flags & VERBOSITY_FLAG_THREAD_SPAWNS) {
+        tput("requesting worker thread");
+        if (wt->tc.t->verbosity_flags & VERBOSITY_FLAGS_STAGE_BEGINS) {
+            tput(" @");
+            pretty_print_timer_elapsed(&wt->tc.t->total_time);
+        }
+        tputs("");
+        tflush();
     }
     r = thread_launch(&wt->thr, worker_thread_fn, wt);
     if (r) {
