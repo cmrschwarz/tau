@@ -967,7 +967,7 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
                    aa->slice_type.ctype_members, ab->slice_type.ctype_members);
     }
     if (b == (ast_elem*)&PRIMITIVES[PT_UNDEFINED] ||
-        (ast_elem*)&PRIMITIVES[PT_DEFINED]) {
+        b == (ast_elem*)&PRIMITIVES[PT_DEFINED]) {
         return true;
     }
     return false; // TODO
