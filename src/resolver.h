@@ -33,9 +33,7 @@ typedef struct thread_context_s thread_context;
 typedef struct pp_resolve_node_s {
     ast_node* node; // either expr_pp, stmt_use or func or var
     symbol_table* declaring_st; // for continuing top level expressions
-    // PERF: use a non threadsafe list here
-    aseglist notify_when_done;
-    aseglist notify_when_ready;
+    list notify;
     ast_node** continue_block;
     ureg dep_count;
     bool nested_pp_exprs;
@@ -44,6 +42,7 @@ typedef struct pp_resolve_node_s {
     bool run_individually; // false for exprs in functions
     bool block_pos_reachable; // for continuing blocks
     bool sequential_block;
+    bool notify_when_ready; // by default we notify when done
     bool dummy; // clean once ready messages sent, no running required
     // struct pp_resolve_node_s* parent; // gets informed once this is pending
     struct pp_resolve_node_s** waiting_list_entry;
