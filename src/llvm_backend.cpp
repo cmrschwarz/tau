@@ -1286,6 +1286,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             else {
                 lt = llvm::GlobalVariable::ExternalLinkage;
                 _reset_after_emit.push_back(var->var_id);
+                _globals_not_to_free.push_back(var->var_id);
             }
             llvm::Constant* init = NULL;
             llvm::Value* assign_val = NULL;
@@ -1306,9 +1307,12 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     assign_val = v;
                 }
             }
+            if (!init && !gen_stub) {
+                init = llvm::UndefValue::get(t);
+            }
             auto gv = new llvm::GlobalVariable(
-                *_module, t, false, lt, assign_val ? NULL : init,
-                var->osym.sym.name);
+                *_module, t, false, lt, init, var->osym.sym.name, NULL,
+                llvm::GlobalValue::NotThreadLocal, 0, false);
             if (!gv) return LLE_FATAL;
             auto maybe_al = llvm::MaybeAlign(align);
             gv->setAlignment(maybe_al);
@@ -2375,7 +2379,6 @@ llvm_error LLVMBackend::emitModule()
         }
     }
     bool emit_to_pp = false;
-    ;
     if (!lle) {
         emit_to_pp = _pp_mode;
         // no need to add the root module to the pp,
