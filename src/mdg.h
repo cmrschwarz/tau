@@ -23,6 +23,8 @@ typedef enum module_stage_e {
     MS_PARSING_EXPLORATION, // we attempt to find a child by parsing this
     MS_PARSING, // found, needed, but not fully parsed yet
     MS_PARSED_UNNEEDED, // fully parsed for exploration, but unneded
+    MS_AWAITING_PP_DEPENDENCIES_EXPLORATION, // pp dep gen needed to explore
+    MS_AWAITING_PP_DEPENDENCIES, // pp dep gen needed to resolve this
     MS_AWAITING_DEPENDENCIES_EXPLORATION, // we want to explore gnerating this
     MS_AWAITING_DEPENDENCIES, // needed, parsed, but deps missing for resolved
     MS_RESOLVING_EXPLORATION, // we attempt to find a child by resolving this
@@ -95,11 +97,11 @@ static inline bool module_stage_is_exploring(module_stage ms)
 }
 typedef struct partial_resolution_data_s partial_resolution_data;
 typedef struct mdg_node_s {
-    // TODO: make this an ast node/element for the symtab owning node to work
     ast_elem elem;
     struct mdg_node_s* parent;
     char* name;
     atomic_ureg unparsed_files;
+    atomic_ureg ungenerated_pp_deps;
     // these ids are used in the scc detector. don't confuse these with
     // the symbol ids used in the llvm backend, they don't share an "id space"
     ureg id;

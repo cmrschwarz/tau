@@ -5,10 +5,10 @@ typedef struct thread_context_s thread_context;
 typedef struct mdg_node_s mdg_node;
 
 typedef enum sccd_run_reason_e {
-    SCCD_NODE_PARSED,
+    SCCD_PARSED,
+    SCCD_PP_DEPS_GENERATED,
     SCCD_NOTIFY_DEP_PARSED,
     SCCD_NOTIFY_DEP_RESOLVED,
-    SCCD_NOTIFY_DEP_GENERATED,
     SCCD_NOTIFY_DEP_ERROR,
     SCCD_NODE_REQUIRE,
     SCCD_NODE_REQUIRE_EXPLORATION,

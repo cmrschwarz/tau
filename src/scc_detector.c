@@ -435,7 +435,7 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
     int r = OK;
     rwlock_write(&n->lock);
     switch (sccdrr) {
-        case SCCD_NODE_PARSED: {
+        case SCCD_PARSED: {
             switch (n->stage) {
                 case MS_PARSING: {
                     n->stage = MS_AWAITING_DEPENDENCIES;
@@ -469,7 +469,6 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
                 default: r = SCCD_HANDLED;
             }
         } break;
-        case SCCD_NOTIFY_DEP_GENERATED: assert(false); return ERR; // TODO
         case SCCD_NOTIFY_DEP_ERROR: assert(false); return ERR; // TODO
         case SCCD_NODE_REQUIRE: {
             switch (n->stage) {
@@ -499,11 +498,15 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
                 default: r = SCCD_HANDLED;
             }
         } break;
-        case SCCD_NODE_REQUIRE_EXPLORATION:
+        case SCCD_NODE_REQUIRE_EXPLORATION: {
             propagate_required = true;
             exploratory = true;
             exploratory_resolve = true;
             assert(false); // TODO: implement this
+        } break;
+        case SCCD_PP_DEPS_GENERATED: {
+            assert(false); // TODO
+        } break;
     }
     mdg_node* notifier = n->notifier;
     list_bounded_it it;

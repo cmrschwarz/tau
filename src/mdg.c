@@ -381,7 +381,7 @@ mdg_found_node(module_dependency_graph* m, mdg_node* parent, string ident)
 
 int mdg_node_parsed(module_dependency_graph* m, mdg_node* n, thread_context* tc)
 {
-    return sccd_run(&tc->sccd, n, SCCD_NODE_PARSED);
+    return sccd_run(&tc->sccd, n, SCCD_PARSED);
 }
 int mdg_node_file_parsed(
     module_dependency_graph* m, mdg_node* n, thread_context* tc)
@@ -574,27 +574,24 @@ int mdg_nodes_generated(
         while (ok) {
             ast_elem* dep = list_it_next(&it, l);
             if (!dep) break;
-            if (dep->kind == ELEM_MDG_NODE) {
-                assert(false); // FIXME: are we actually using this??
-                if (sccd_run(
-                        &tc->sccd, (mdg_node*)dep, SCCD_NOTIFY_DEP_GENERATED)) {
-                    ok = false;
-                }
-                // TODO: figure out what to do with the remaining notifys on err
-            }
-            else if (dep->kind == SYM_IMPORT_GROUP) {
+            if (dep->kind == SYM_IMPORT_GROUP) {
                 sym_import_group* ig = (sym_import_group*)dep;
                 atomic_boolean_store(&ig->done, true);
             }
-            else if (dep->kind == SYM_IMPORT_MODULE) {
+            else {
+                assert(dep->kind == SYM_IMPORT_MODULE);
                 sym_import_module* im = (sym_import_module*)dep;
                 atomic_boolean_store(&im->done, true);
-                // TODO: maybe some condition variable or similar to avoid
-                // busy waiting here
             }
-            else {
-                assert(false);
-            }
+            symbol_table* st = ((symbol*)dep)->declaring_st;
+            while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
+            mdg_node* dep_mdg = (mdg_node*)st->owning_node;
+            if (atomic_ureg_dec(&dep_mdg->ungenerated_pp_deps) == 1) {
+                if (sccd_run(
+                        &tc->sccd, (mdg_node*)dep, SCCD_PP_DEPS_GENERATED)) {
+                    ok = false;
+                }
+            };
         }
         // we just replace the old notify list with a new one and free the old
         // one without reusing any allocations. we have SSO anyways and a big
