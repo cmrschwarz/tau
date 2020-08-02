@@ -191,23 +191,23 @@ void print_ast_elem_name(ast_elem* n)
 }
 void print_import_group(sym_import_group* g, mdg_node* curr_mdg, ureg indent)
 {
-    if (g->osym.sym.name) {
-        p(g->osym.sym.name);
+    if (g->parent_im.osym.sym.name) {
+        p(g->parent_im.osym.sym.name);
         p(" = ");
     }
-    if (ast_flags_get_relative_import(g->osym.sym.node.flags)) {
+    if (ast_flags_get_relative_import(g->parent_im.osym.sym.node.flags)) {
         p("self::");
-        if (print_mdg_node_until(g->parent_mdgn, curr_mdg)) p("::");
+        if (print_mdg_node_until(g->parent_im.module, curr_mdg)) p("::");
     }
     else {
-        if (print_mdg_node_until(g->parent_mdgn, NULL)) p("::");
+        if (print_mdg_node_until(g->parent_im.module, NULL)) p("::");
     }
     // TODO: improve this mess, we can't even preserve import order right now
 
     symtab_it stit;
     symbol* c;
     bool use_stit = false;
-    if (ast_flags_get_declared(g->osym.sym.node.flags)) {
+    if (ast_flags_get_declared(g->parent_im.osym.sym.node.flags)) {
         use_stit = true;
         stit = symtab_it_make(g->children.symtab);
         c = symtab_it_next(&stit);
@@ -223,16 +223,16 @@ void print_import_group(sym_import_group* g, mdg_node* curr_mdg, ureg indent)
         if (!syms) print_indent(indent + 1);
         if (c->node.kind == SYM_IMPORT_GROUP) {
             print_import_group(
-                (sym_import_group*)c, g->parent_mdgn, indent + 1);
+                (sym_import_group*)c, g->parent_im.module, indent + 1);
         }
         else if (c->node.kind == SYM_IMPORT_MODULE) {
             sym_import_module* im = (sym_import_module*)c;
             // TODO: figure out if it's really ours
-            if (!cstr_eq(c->name, im->target->name)) {
+            if (!cstr_eq(c->name, im->module->name)) {
                 p(c->name);
                 p(" = ");
             }
-            print_mdg_node_until(im->target, g->parent_mdgn->parent);
+            print_mdg_node_until(im->module, g->parent_im.module->parent);
         }
         else if (c->node.kind == SYM_IMPORT_SYMBOL) {
             sym_import_symbol* is = (sym_import_symbol*)c;
@@ -306,10 +306,10 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             sym_import_module* im = (sym_import_module*)n;
             if (ast_flags_get_relative_import(n->flags)) {
                 p("self::");
-                print_mdg_node_until(im->target, cmdg->parent);
+                print_mdg_node_until(im->module, cmdg->parent);
             }
             else {
-                print_mdg_node_until(im->target, NULL);
+                print_mdg_node_until(im->module, NULL);
             }
         } break;
         case SYM_IMPORT_GROUP: {

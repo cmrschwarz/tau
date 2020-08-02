@@ -102,10 +102,14 @@ bool ast_elem_is_struct_base(ast_elem* s)
     return s->kind == SC_STRUCT || s->kind == SC_STRUCT_GENERIC ||
            s->kind == SC_STRUCT_GENERIC_INST;
 }
-bool ast_elem_is_any_import_symbol(ast_elem* s)
+bool ast_elem_is_any_import(ast_elem* s)
 {
     return s->kind == SYM_IMPORT_GROUP || s->kind == SYM_IMPORT_MODULE ||
            s->kind == SYM_IMPORT_PARENT;
+}
+bool ast_elem_is_import_module(ast_elem* s)
+{
+    return s->kind == SYM_IMPORT_GROUP || s->kind == SYM_IMPORT_MODULE;
 }
 bool ast_elem_is_symbol(ast_elem* s)
 {

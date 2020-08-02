@@ -396,7 +396,7 @@ bool module_import_group_find_import(
     sym_import_group* ig, mdg_node* import, sym_import_group** tgt_group,
     symbol** tgt_sym)
 {
-    if (ig->parent_mdgn == import) {
+    if (ig->parent_im.module == import) {
         *tgt_sym = (symbol*)ig;
         *tgt_group = ig;
         return true;
@@ -411,7 +411,7 @@ bool module_import_group_find_import(
         }
         else {
             assert(c->node.kind == SYM_IMPORT_MODULE);
-            if (((sym_import_module*)c)->target == import) {
+            if (((sym_import_module*)c)->module == import) {
                 *tgt_sym = (symbol*)c;
                 *tgt_group = ig;
                 return true;
@@ -445,7 +445,7 @@ bool ast_body_find_import(
             }
         }
         else if ((**n).kind == SYM_IMPORT_MODULE) {
-            if (((sym_import_module*)*n)->target == import) {
+            if (((sym_import_module*)*n)->module == import) {
                 *tgt_group = NULL;
                 *tgt_sym = (symbol*)*n;
                 return true;
@@ -487,7 +487,7 @@ void mdg_node_report_missing_import(
         return;
     }
     src_range_large tgt_group_srl;
-    src_range_unpack(tgt_group->osym.sym.node.srange, &tgt_group_srl);
+    src_range_unpack(tgt_group->parent_im.osym.sym.node.srange, &tgt_group_srl);
     error_log_report_annotated_twice(
         tc->err_log, ES_RESOLVER, false,
         "missing definition for imported module", smap, tgt_sym_srl.start,
@@ -574,16 +574,10 @@ int mdg_nodes_generated(
         while (ok) {
             ast_elem* dep = list_it_next(&it, l);
             if (!dep) break;
-            if (dep->kind == SYM_IMPORT_GROUP) {
-                sym_import_group* ig = (sym_import_group*)dep;
-                atomic_boolean_store(&ig->done, true);
-            }
-            else {
-                assert(dep->kind == SYM_IMPORT_MODULE);
-                sym_import_module* im = (sym_import_module*)dep;
-                atomic_boolean_store(&im->done, true);
-            }
-            symbol_table* st = ((symbol*)dep)->declaring_st;
+            assert(ast_elem_is_import_module(dep));
+            sym_import_module* im = (sym_import_module*)dep;
+            atomic_boolean_store(&im->done, true);
+            symbol_table* st = im->osym.sym.declaring_st;
             while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
             mdg_node* dep_mdg = (mdg_node*)st->owning_node;
             if (atomic_ureg_dec(&dep_mdg->ungenerated_pp_deps) == 1) {

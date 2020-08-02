@@ -1400,7 +1400,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     assert(
         ast_flags_get_resolved(n->flags) ||
         ast_elem_is_module_frame((ast_elem*)n) ||
-        ast_elem_is_any_import_symbol((ast_elem*)n));
+        ast_elem_is_any_import((ast_elem*)n));
     // TODO: proper error handling
     llvm_error lle;
     switch (n->kind) {

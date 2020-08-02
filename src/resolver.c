@@ -139,7 +139,9 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
         case EXPR_BLOCK: ((expr_block*)n)->ebb.pprn = NULL; break;
         case EXPR_LOOP: ((expr_loop*)n)->ebb.pprn = NULL; break;
         case SC_STRUCT: ((sc_struct*)n)->sb.pprn = NULL; break;
-        case SYM_IMPORT_GROUP: ((sym_import_group*)n)->pprn = NULL; break;
+        case SYM_IMPORT_GROUP:
+            ((sym_import_group*)n)->parent_im.pprn = NULL;
+            break;
         case SYM_IMPORT_MODULE: ((sym_import_module*)n)->pprn = NULL; break;
         case EXPR_PP: ((expr_pp*)n)->pprn = NULL; break;
         case EXPR_PASTE_EVALUATION:
@@ -241,6 +243,8 @@ void ast_node_set_used_in_pp(resolver* r, ast_node* n)
 {
     assert(!ast_flags_get_used_in_pp(n->flags));
     ast_flags_set_used_in_pp(&n->flags);
+    if (n->kind == SYM_IMPORT_GROUP || n->kind == SYM_IMPORT_MODULE) {
+    }
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_USED_IN_PP) {
         tprintf("used in pp: ");
         print_ast_node(n, NULL, 0);
@@ -452,7 +456,7 @@ resolve_error add_import_group_decls(
     symbol_table* st)
 {
     symbol* next;
-    if (!ig->osym.sym.name) {
+    if (!ig->parent_im.osym.sym.name) {
         next = ig->children.symbols;
         ig->children.symtab = st;
     }
@@ -485,16 +489,16 @@ resolve_error add_import_group_decls(
             sym_import_module* im = (sym_import_module*)s;
             if (ast_flags_get_relative_import(s->node.flags)) {
                 re = add_sym_import_module_decl(
-                    r, st, im, curr_mdg_node, im->target, NULL);
+                    r, st, im, curr_mdg_node, im->module, NULL);
             }
             else {
                 re = add_sym_import_module_decl(
-                    r, st, im, r->tc->t->mdg.root_node, im->target, NULL);
+                    r, st, im, r->tc->t->mdg.root_node, im->module, NULL);
             }
             if (re) return re;
         }
     }
-    ast_flags_set_declared(&ig->osym.sym.node.flags);
+    ast_flags_set_declared(&ig->parent_im.osym.sym.node.flags);
     return RE_OK;
 }
 static inline void
@@ -781,8 +785,8 @@ static resolve_error add_ast_node_decls(
         }
         case SYM_IMPORT_GROUP: {
             sym_import_group* ig = (sym_import_group*)n;
-            ig->osym.sym.declaring_st = st;
-            if (ig->osym.sym.name) {
+            ig->parent_im.osym.sym.declaring_st = st;
+            if (ig->parent_im.osym.sym.name) {
                 re = add_symbol(r, st, sst, (symbol*)ig);
                 if (re) return re;
             }
@@ -809,7 +813,7 @@ static resolve_error add_ast_node_decls(
                 stop = r->tc->t->mdg.root_node;
             }
             return add_sym_import_module_decl(
-                r, st, im, stop, im->target, NULL);
+                r, st, im, stop, im->module, NULL);
         }
         case SYM_VAR_INITIALIZED:
         case SYM_VAR: {
@@ -1417,7 +1421,7 @@ get_resolved_symbol_symtab(resolver* r, symbol* s, symbol_table** tgt_st)
         *tgt_st = ((sym_import_parent*)s)->children.symtab;
     }
     else if (s->node.kind == SYM_IMPORT_MODULE) {
-        *tgt_st = ((sym_import_module*)s)->target->symtab;
+        *tgt_st = ((sym_import_module*)s)->module->symtab;
     }
     else {
         assert(false); // TODO: error
@@ -1462,7 +1466,7 @@ resolve_import_parent(resolver* r, sym_import_parent* ip, symbol_table* st)
         else {
             symbol_table_insert_use(
                 pst, AM_PUBLIC, (ast_node*)s,
-                ((sym_import_module*)s)->target->symtab);
+                ((sym_import_module*)s)->module->symtab);
         }
     } while (next);
     ip->children.symtab = pst;
@@ -1964,7 +1968,7 @@ static inline resolve_error resolve_expr_pp(
     ast_flags_set_resolved(&ppe->node.flags);
     // HACK: this is a really inefficient way of doing things
     // in cases like foo(bar(baz(#x))) we unnecessarily repeat a
-    // whole lot of resoution
+    // whole lot of resolution
     // better would be to add the pprn to the parent's list immediately
     // and check for ready in the parent
     if (parent_pprn) return RE_UNREALIZED_COMPTIME;
@@ -2114,8 +2118,8 @@ resolve_error resolve_import_symbol(resolver* r, sym_import_symbol* is)
     ast_flags_set_resolving(flags);
     resolve_error re;
     symbol_table* decl_st = is->osym.sym.declaring_st;
-    symbol_table* tgt_st = is->import_group->parent_mdgn->symtab;
-    if (is->import_group->osym.sym.name == NULL) {
+    symbol_table* tgt_st = is->import_group->parent_im.module->symtab;
+    if (is->import_group->parent_im.osym.sym.name == NULL) {
         re = resolve_ast_node_raw(
             r, (ast_node*)is->import_group, decl_st, NULL, NULL);
         if (re) return re;
@@ -2317,16 +2321,17 @@ static inline resolve_error resolve_ast_node_raw(
             }
             if (ast_flags_get_import_group_module_used(n->flags)) {
                 re = require_module_in_pp(
-                    r, n, st, ig->parent_mdgn, &ig->done, &ig->pprn);
+                    r, n, st, ig->parent_im.module, &ig->parent_im.done,
+                    &ig->parent_im.pprn);
                 if (re) return re;
-                if (!ig->pprn) {
+                if (!ig->parent_im.pprn) {
                     // we can't mark it as resolved since we need to go
                     // though it again
                     ast_flags_set_resolved(&n->flags);
                 }
                 else {
                     ast_flags_clear_resolving(&n->flags);
-                    re = curr_pprn_depend_on(r, &ig->pprn);
+                    re = curr_pprn_depend_on(r, &ig->parent_im.pprn);
                     if (re) return re;
                 }
             }
@@ -2336,7 +2341,7 @@ static inline resolve_error resolve_ast_node_raw(
             sym_import_module* im = (sym_import_module*)n;
             if (!resolved) {
                 re = require_module_in_pp(
-                    r, n, st, im->target, &im->done, &im->pprn);
+                    r, n, st, im->module, &im->done, &im->pprn);
                 if (re) return re;
                 if (!im->pprn) {
                     // we can't mark it as resolved since we need to go
@@ -3343,7 +3348,7 @@ resolve_error report_cyclic_pp_deps(resolver* r)
     // TODO: create a nice cycle display instead of dumping out everything
     resolve_error re = RE_OK;
     do {
-        if (!ast_elem_is_any_import_symbol((ast_elem*)(**rn).node)) {
+        if (!ast_elem_is_any_import((ast_elem*)(**rn).node)) {
             if (err == false) {
                 err = true;
                 print_pprns(r, "error: \n", true);
@@ -3429,7 +3434,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             }
             if (re) return re;
             // these have their own list
-            assert(!ast_elem_is_any_import_symbol((ast_elem*)astn));
+            assert(!ast_elem_is_any_import((ast_elem*)astn));
             // otherwise we would have gotten an error?
             assert(ast_flags_get_resolved(astn->flags));
             progress = true;
@@ -3439,24 +3444,12 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
         if (!progress) {
             it = pli_begin(&r->imports_with_pprns);
             for (ast_node* n = pli_next(&it); n; n = pli_next(&it)) {
-                pp_resolve_node* pprn;
-                if (n->kind == SYM_IMPORT_MODULE) {
-                    sym_import_module* im = (sym_import_module*)n;
-                    re = require_module_in_pp(
-                        r, n, im->osym.sym.declaring_st, im->target, &im->done,
-                        &im->pprn);
-                    pprn = im->pprn;
-                }
-                else {
-                    assert(n->kind == SYM_IMPORT_GROUP);
-                    sym_import_group* ig = (sym_import_group*)n;
-                    re = require_module_in_pp(
-                        r, n, ig->osym.sym.declaring_st, ig->parent_mdgn,
-                        &ig->done, &ig->pprn);
-                    pprn = ig->pprn;
-                }
+                sym_import_module* im = (sym_import_module*)n;
+                re = require_module_in_pp(
+                    r, n, im->osym.sym.declaring_st, im->module, &im->done,
+                    &im->pprn);
                 if (re) return re;
-                if (!pprn) {
+                if (!im->pprn) {
                     ast_flags_set_resolving(&n->flags);
                     ast_flags_set_resolved(&n->flags);
                     pli_prev(&it);
@@ -3470,16 +3463,6 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
         }
     } while (progress);
     return RE_OK;
-}
-void cleanup_import_pprns(resolver* r)
-{
-    pli it = pli_rbegin(&r->pp_resolve_nodes_pending);
-    for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
-        if (ast_elem_is_any_import_symbol((ast_elem*)rn->node)) {
-            pp_resolve_node_ready(r, rn);
-            ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
-        }
-    }
 }
 resolve_error resolver_handle_post_pp(resolver* r)
 {
@@ -3499,7 +3482,6 @@ resolve_error resolver_handle_post_pp(resolver* r)
     }
     re = resolver_run_pp_resolve_nodes(r);
     if (re) return re;
-    cleanup_import_pprns(r);
     return report_cyclic_pp_deps(r);
 }
 
@@ -3520,15 +3502,9 @@ void free_pprns(resolver* r, bool error_occured)
 {
     pli it = pli_begin(&r->imports_with_pprns);
     for (ast_node* n = pli_next(&it); n; n = pli_next(&it)) {
-        if (n->kind == SYM_IMPORT_MODULE) {
-            sym_import_module* im = (sym_import_module*)n;
-            pprn_fin(r, im->pprn, error_occured);
-        }
-        else {
-            assert(n->kind == SYM_IMPORT_GROUP);
-            sym_import_group* ig = (sym_import_group*)n;
-            pprn_fin(r, ig->pprn, error_occured);
-        }
+        assert(ast_elem_is_import_module((ast_elem*)n));
+        sym_import_module* im = (sym_import_module*)n;
+        pprn_fin(r, im->pprn, error_occured);
     }
     free_pprnlist(r, &r->pp_resolve_nodes_pending, error_occured);
     free_pprnlist(r, &r->pp_resolve_nodes_ready, error_occured);

@@ -281,22 +281,19 @@ typedef struct sym_import_parent_s {
 
 typedef struct sym_import_module_s {
     open_symbol osym;
-    mdg_node* target;
+    mdg_node* module;
     atomic_boolean done;
     pp_resolve_node* pprn;
 } sym_import_module;
 
 typedef struct sym_import_group_s {
-    open_symbol osym; // name is NULL for an unnamed import group
-    mdg_node* parent_mdgn;
+    sym_import_module parent_im;
     union {
         // used for named groups
         // the actual symbols are stored in the first element of the symtab
         symbol_table* symtab;
         symbol* symbols; // used for unnamed groups
     } children;
-    atomic_boolean done;
-    pp_resolve_node* pprn;
 } sym_import_group;
 
 struct mdg_node_s;
@@ -787,7 +784,8 @@ bool symbol_is_open_symbol(symbol* s);
 bool ast_elem_is_struct_base(ast_elem* s);
 bool ast_elem_is_struct(ast_elem* s);
 bool ast_elem_is_var(ast_elem* s);
-bool ast_elem_is_any_import_symbol(ast_elem* s);
+bool ast_elem_is_any_import(ast_elem* s);
+bool ast_elem_is_import_module(ast_elem* s); // includes import group
 bool ast_elem_is_module_frame(ast_elem* s);
 bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
