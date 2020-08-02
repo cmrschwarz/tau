@@ -41,6 +41,13 @@ resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn);
 void free_pprns(resolver* r, bool error_occured);
 void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident);
 // must be a macro so value and ctype become lazily evaluated
+#define SET_THEN_RETURN_IF_RESOLVED(resolved, pvalue, pctype, value, ctype)    \
+    do {                                                                       \
+        if (pvalue) *pvalue = (ast_elem*)(value);                              \
+        if (pctype) *pctype = (ast_elem*)(ctype);                              \
+        if (resolved) return RE_OK;                                            \
+    } while (false)
+
 #define RETURN_RESOLVED(pvalue, pctype, value, ctype)                          \
     do {                                                                       \
         if (pvalue) *pvalue = (ast_elem*)(value);                              \
@@ -1769,8 +1776,14 @@ resolve_return(resolver* r, symbol_table* st, expr_return* er)
 static inline resolve_error
 resolve_break(resolver* r, symbol_table* st, expr_break* b)
 {
-    resolve_error re = resolve_ast_node(r, b->value, st, NULL, &b->value_ctype);
-    if (re) return re;
+    resolve_error re = RE_OK;
+    if (b->value) {
+        re = resolve_ast_node(r, b->value, st, NULL, &b->value_ctype);
+        if (re) return re;
+    }
+    else {
+        b->value_ctype = VOID_ELEM;
+    }
     ast_flags_set_resolved(&b->node.flags);
     ast_elem** tgt_ctype;
     re = resolve_break_target(r, b->target.label, &b->target.ebb, &tgt_ctype);
@@ -1841,6 +1854,7 @@ static inline resolve_error resolve_if(
     bool cond_type_loop = false;
     bool if_branch_type_loop = false;
     bool else_branch_type_loop = false;
+    // TODO: check for bool here
     resolve_error re = resolve_ast_node(r, ei->condition, st, NULL, NULL);
     if (re == RE_TYPE_LOOP) {
         cond_type_loop = true;
@@ -1855,46 +1869,51 @@ static inline resolve_error resolve_if(
     else {
         if (re) return re;
     }
-    re = resolve_ast_node(r, ei->else_body, st, NULL, &ctype_else);
-    if (re == RE_TYPE_LOOP) {
-        else_branch_type_loop = true;
+    if (ei->else_body) {
+        re = resolve_ast_node(r, ei->else_body, st, NULL, &ctype_else);
+        if (re == RE_TYPE_LOOP) {
+            else_branch_type_loop = true;
+            if (if_branch_type_loop || ctype_if == UNREACHABLE_ELEM) {
+                return RE_TYPE_LOOP;
+            }
+        }
+        else {
+            if (re) return re;
+        }
         if (if_branch_type_loop || ctype_if == UNREACHABLE_ELEM) {
-            return RE_TYPE_LOOP;
+            ei->ctype = ctype_else; // TODO: this could lead to void instead
+        }
+        else if (else_branch_type_loop || ctype_else == UNREACHABLE_ELEM) {
+            ei->ctype = ctype_if;
+        }
+        else if (!ctypes_unifiable(ctype_if, ctype_else)) {
+            src_range_large srl, srl_if, srl_else;
+            ast_node_get_src_range((ast_node*)ei, st, &srl);
+            ast_node_get_src_range(ei->if_body, st, &srl_if);
+            ast_node_get_src_range(ei->else_body, st, &srl_else);
+            error_log_report_annotated_thrice(
+                r->tc->err_log, ES_RESOLVER, false, "type missmatch", srl.smap,
+                srl.start, srl.end,
+                "if body and else body evaluate to differently typed "
+                "values",
+                srl_if.smap, srl_if.start, srl_if.end, NULL, srl_else.smap,
+                srl_else.start, srl_else.end, NULL);
+            return RE_TYPE_MISSMATCH;
+        }
+        else {
+            // TODO: choose the unified type?
+            ei->ctype = ctype_if;
         }
     }
     else {
-        if (re) return re;
-    }
-    if (!ei->else_body) {
         // TODO: maybe check for breaks and cause an error here
         ei->ctype = VOID_ELEM;
     }
-    else if (if_branch_type_loop || ctype_if == UNREACHABLE_ELEM) {
-        ei->ctype = ctype_else; // TODO: this could lead to void instead
-    }
-    else if (else_branch_type_loop || ctype_else == UNREACHABLE_ELEM) {
-        ei->ctype = ctype_if;
-    }
-    else if (!ctypes_unifiable(ctype_if, ctype_else)) {
-        src_range_large srl;
-        ast_node_get_src_range((ast_node*)ei, st, &srl);
-        error_log_report_annotated(
-            r->tc->err_log, ES_RESOLVER, false, "type missmatch", srl.smap,
-            srl.start, srl.end,
-            "if body and else body evaluate to differently typed "
-            "values");
-        return RE_TYPE_MISSMATCH;
-    }
-    else {
-        ei->ctype = ctype_if;
-    }
-    if (ctype) *ctype = ei->ctype;
-    if (value) *value = (ast_elem*)ei;
     if (cond_type_loop || if_branch_type_loop || else_branch_type_loop) {
         return RE_TYPE_LOOP;
     }
     ast_flags_set_resolved(&ei->node.flags);
-    return RE_OK;
+    RETURN_RESOLVED(value, ctype, ei, ei->ctype);
 }
 static inline resolve_error resolve_expr_pp(
     resolver* r, symbol_table* st, expr_pp* ppe, ast_elem** value,
@@ -2162,21 +2181,9 @@ static inline resolve_error resolve_ast_node_raw(
     resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
     ast_elem** ctype)
 {
-    if (!n) {
-        // TODO: investigate where we need this
-        RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
-    }
-    if (ast_elem_is_module_frame((ast_elem*)n)) {
-        if (value) *value = (ast_elem*)n;
-        if (ctype) *ctype = VOID_ELEM;
-        return RE_OK;
-    }
-    // PERF: find a way to avoid checking in sub exprs
+    assert(n);
     bool resolved = ast_flags_get_resolved(n->flags);
-    if (resolved) {
-        if (!ctype && !value) return RE_OK;
-    }
-    else {
+    if (!resolved) {
         if (ast_flags_get_resolving(n->flags)) {
             r->type_loop_start = n;
             return RE_TYPE_LOOP;
@@ -2185,6 +2192,13 @@ static inline resolve_error resolve_ast_node_raw(
     }
     resolve_error re;
     switch (n->kind) {
+        case MF_EXTEND:
+        case MF_EXTEND_GENERIC:
+        case MF_MODULE:
+        case MF_MODULE_GENERIC: {
+            if (!resolved) ast_flags_set_resolved(&n->flags);
+            RETURN_RESOLVED(value, ctype, n, VOID_ELEM);
+        }
         case SC_MACRO: {
             if (!resolved) ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
@@ -2233,6 +2247,8 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case SYM_FUNC_OVERLOADED: { // used during import resolution
             assert(!ctype);
+            // doesn't really matter, but for consistency
+            if (!resolved) ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, n, NULL);
         }
         case EXPR_CONTINUE:
@@ -2256,7 +2272,7 @@ static inline resolve_error resolve_ast_node_raw(
         case EXPR_PARENTHESES: {
             // we set this even on error because we jump through to get the
             // required values anyways, so at least make it tail recursive
-            ast_flags_set_resolved(&n->flags);
+            if (!resolved) ast_flags_set_resolved(&n->flags);
             return resolve_ast_node(
                 r, ((expr_parentheses*)n)->child, st, value, ctype);
         }
@@ -2264,16 +2280,16 @@ static inline resolve_error resolve_ast_node_raw(
             expr_op_binary* ob = (expr_op_binary*)n;
             if (resolved) {
                 if (ob->op->kind == SYM_PRIMITIVE) {
-                    *ctype =
-                        (ast_elem*)&PRIMITIVES[((ast_node*)ob->op)->pt_kind];
+                    RETURN_RESOLVED(
+                        value, ctype, ob,
+                        (ast_elem*)&PRIMITIVES[((ast_node*)ob->op)->pt_kind]);
                 }
-                else {
-                    *ctype = ((sc_func*)ob->op)->fnb.return_ctype;
-                }
-                return RE_OK;
+                RETURN_RESOLVED(
+                    value, ctype, ob, ((sc_func*)ob->op)->fnb.return_ctype);
             }
             re = choose_binary_operator_overload(r, ob, st, value, ctype);
             if (re) return re;
+            // we do this here since choose has many return statements
             ast_flags_set_resolved(&n->flags);
             return RE_OK;
         }
@@ -2308,41 +2324,20 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
-            if (value) *value = (ast_elem*)n;
-            if (ctype) *ctype = VOID_ELEM;
-            if (resolved) return RE_OK;
+            SET_THEN_RETURN_IF_RESOLVED(resolved, value, ctype, n, VOID_ELEM);
             return resolve_func(r, (sc_func_base*)n, NULL);
         }
         case SYM_IMPORT_PARENT: {
-            if (!resolved) {
-                re = resolve_import_parent(r, (sym_import_parent*)n, st);
-                if (re) return re;
-            }
-            RETURN_RESOLVED(value, ctype, n, NULL);
+            SET_THEN_RETURN_IF_RESOLVED(resolved, value, ctype, n, NULL);
+            return resolve_import_parent(r, (sym_import_parent*)n, st);
         }
         case SYM_IMPORT_GROUP: {
-            sym_import_group* ig = (sym_import_group*)n;
-            if (resolved) {
-                RETURN_RESOLVED(value, ctype, n, NULL);
+            if (!resolved &&
+                !ast_flags_get_import_group_module_used(n->flags)) {
+                ast_flags_set_resolved(&n->flags);
+                resolved = true;
             }
-            if (ast_flags_get_import_group_module_used(n->flags)) {
-                re = require_module_in_pp(
-                    r, n, st, ig->parent_im.module, &ig->parent_im.done,
-                    &ig->parent_im.pprn);
-                if (re) return re;
-                if (!ig->parent_im.pprn) {
-                    // we can't mark it as resolved since we need to go
-                    // though it again
-                    ast_flags_set_resolved(&n->flags);
-                }
-                else {
-                    ast_flags_clear_resolving(&n->flags);
-                    re = curr_pprn_depend_on(r, &ig->parent_im.pprn);
-                    if (re) return re;
-                }
-            }
-            RETURN_RESOLVED(value, ctype, n, NULL);
-        }
+        } // fallthrough
         case SYM_IMPORT_MODULE: {
             sym_import_module* im = (sym_import_module*)n;
             if (!resolved) {
@@ -2395,23 +2390,18 @@ static inline resolve_error resolve_ast_node_raw(
             return resolve_var(r, st, v, value, ctype);
         }
         case EXPR_RETURN: {
-            if (ctype) *ctype = UNREACHABLE_ELEM;
-            if (value) *value = UNREACHABLE_ELEM;
-            if (resolved) return RE_OK;
+            SET_THEN_RETURN_IF_RESOLVED(
+                resolved, value, ctype, UNREACHABLE_ELEM, UNREACHABLE_ELEM);
             return resolve_return(r, st, (expr_return*)n);
         }
         case EXPR_BREAK: {
-            if (ctype) *ctype = UNREACHABLE_ELEM;
-            if (value) *value = UNREACHABLE_ELEM;
-            if (resolved) return RE_OK;
+            SET_THEN_RETURN_IF_RESOLVED(
+                resolved, value, ctype, UNREACHABLE_ELEM, UNREACHABLE_ELEM);
             return resolve_break(r, st, (expr_break*)n);
         }
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
-            if (resolved) {
-                assert(!value);
-                RETURN_RESOLVED(value, ctype, NULL, b->ebb.ctype);
-            }
+            if (resolved) RETURN_RESOLVED(value, ctype, NULL, b->ebb.ctype);
             return resolve_expr_block(r, b, st, value, ctype);
         }
         case EXPR_IF: {
@@ -2476,19 +2466,15 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_MACRO_CALL: {
             // TODO ctype
-            if (resolved) {
-                *value = (ast_elem*)n;
-                *ctype = ((expr_macro_call*)n)->ctype;
-                return RE_OK;
-            }
-            return resolve_macro_call(r, (expr_macro_call*)n, st, value, ctype);
+            expr_macro_call* emc = (expr_macro_call*)n;
+            if (resolved) RETURN_RESOLVED(value, ctype, n, emc->ctype);
+            return resolve_macro_call(r, emc, st, value, ctype);
         }
         case EXPR_PP: {
             expr_pp* ppe = (expr_pp*)n;
             if (resolved) {
                 assert(!value);
-                if (ctype) *ctype = ppe->ctype;
-                return RE_OK;
+                RETURN_RESOLVED(value, ctype, NULL, ppe->ctype);
             }
             return resolve_expr_pp(r, st, ppe, value, ctype);
         }
@@ -2496,7 +2482,6 @@ static inline resolve_error resolve_ast_node_raw(
             if (resolved) {
                 RETURN_RESOLVED(
                     value, ctype, PASTED_EXPR_ELEM, PASTED_EXPR_ELEM);
-                return RE_OK;
             }
             return resolve_expr_paste_str(
                 r, st, (expr_paste_str*)n, value, ctype);
@@ -2975,12 +2960,17 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
                 return re;
             }
         }
-        re =
-            resolve_ast_node(r, fnb->return_type, st, &fnb->return_ctype, NULL);
-        if (re) {
-            r->curr_block_owner = parent_block_owner;
-            r->generic_context = generic_parent;
-            return re;
+        if (fnb->return_type) {
+            re = resolve_ast_node(
+                r, fnb->return_type, st, &fnb->return_ctype, NULL);
+            if (re) {
+                r->curr_block_owner = parent_block_owner;
+                r->generic_context = generic_parent;
+                return re;
+            }
+        }
+        else {
+            fnb->return_ctype = VOID_ELEM;
         }
         // handle function declarations
         if (fnb->sc.body.srange == SRC_RANGE_INVALID) {
@@ -3538,6 +3528,7 @@ int resolver_resolve(resolver* r)
     re = resolver_handle_post_pp(r);
     if (re) return re;
     free_pprns(r, false);
+    assert(r->committed_waiters == 0);
     return RE_OK;
 }
 resolve_error lookup_priv_module_symbol(
