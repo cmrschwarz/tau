@@ -95,6 +95,7 @@ typedef struct resolver_s {
 
     // dep count > 0, what remains in the end are cyclic dependencies
     ptrlist pp_resolve_nodes_waiting;
+    ureg committed_waiters; // waiters that actually want to run
 
     // dep_count == 0, but unresolved.
     // when run with the parent it's not added here

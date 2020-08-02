@@ -101,6 +101,7 @@ resolve_error add_pprn_to_waiting_list(resolver* r, pp_resolve_node* pprn)
     int res = ptrlist_append_get_pos(
         &r->pp_resolve_nodes_waiting, pprn, (void***)&pprn->waiting_list_entry);
     if (res) return RE_FATAL;
+    if (ast_flags_get_used_in_pp(pprn->node->flags)) r->committed_waiters++;
     return RE_OK;
 }
 void remove_pprn_from_waiting_list(resolver* r, pp_resolve_node* pprn)
@@ -111,6 +112,7 @@ void remove_pprn_from_waiting_list(resolver* r, pp_resolve_node* pprn)
     *pprn->waiting_list_entry = last;
     last->waiting_list_entry = pprn->waiting_list_entry;
     pprn->waiting_list_entry = NULL;
+    if (ast_flags_get_used_in_pp(pprn->node->flags)) r->committed_waiters--;
 }
 void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
 {
@@ -244,6 +246,7 @@ void ast_node_set_used_in_pp(resolver* r, ast_node* n)
     assert(!ast_flags_get_used_in_pp(n->flags));
     ast_flags_set_used_in_pp(&n->flags);
     if (n->kind == SYM_IMPORT_GROUP || n->kind == SYM_IMPORT_MODULE) {
+        // TODO: add notification
     }
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_USED_IN_PP) {
         tprintf("used in pp: ");
@@ -256,6 +259,9 @@ resolve_error pprn_set_used_in_pp(resolver* r, pp_resolve_node* pprn)
 {
     if (ast_flags_get_used_in_pp(pprn->node->flags)) return RE_OK;
     ast_node_set_used_in_pp(r, pprn->node);
+    if (pprn->waiting_list_entry) {
+        r->committed_waiters++;
+    }
     list_it it;
     list_it_begin(&it, &pprn->notified_by);
     pp_resolve_node** pprnp;
@@ -3325,36 +3331,29 @@ pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
 resolve_error report_cyclic_pp_deps(resolver* r)
 {
     bool err = false;
-    pp_resolve_node** rn;
-    pli pit = pli_begin(&r->pp_resolve_nodes_pending);
-    for (pp_resolve_node* pprn = pli_next(&pit); pprn; pprn = pli_next(&pit)) {
-        rn = (pp_resolve_node**)sbuffer_append(
-            &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*));
-        if (!rn) return RE_FATAL;
-        *rn = pprn;
+    assert(ptrlist_is_empty(&r->pp_resolve_nodes_ready));
+    // we might have pending guys, but since they have no deps
+    // they can't cause a cycle
+    pli it = pli_rbegin(&r->pp_resolve_nodes_waiting);
+    for (pp_resolve_node* pprn = pli_prev(&it); pprn; pprn = pli_prev(&it)) {
+        if (!ast_flags_get_used_in_pp(pprn->node->flags)) {
+            pprn_fin(r, pprn, true);
+        }
     }
-    sbuffer_clear(&r->pp_resolve_nodes_pending);
-    pit = pli_begin(&r->pp_resolve_nodes_ready);
-    for (pp_resolve_node* pprn = pli_next(&pit); pprn; pprn = pli_next(&pit)) {
-        rn = (pp_resolve_node**)sbuffer_append(
-            &r->pp_resolve_nodes_waiting, sizeof(pp_resolve_node*));
-        if (!rn) return RE_FATAL;
-        *rn = pprn;
-    }
-    sbuffer_clear(&r->pp_resolve_nodes_ready);
-    sbuffer_iterator sbi = sbuffer_iterator_begin(&r->pp_resolve_nodes_waiting);
-    rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
-    if (!rn) return RE_OK;
+
+    if (ptrlist_is_empty(&r->pp_resolve_nodes_waiting)) return RE_OK;
+
     // TODO: create a nice cycle display instead of dumping out everything
     resolve_error re = RE_OK;
-    do {
-        if (!ast_elem_is_any_import((ast_elem*)(**rn).node)) {
+    it = pli_begin(&r->pp_resolve_nodes_waiting);
+    for (pp_resolve_node* pprn = pli_next(&it); pprn; pprn = pli_next(&it)) {
+        if (!ast_elem_is_any_import((ast_elem*)pprn->node)) {
             if (err == false) {
                 err = true;
                 print_pprns(r, "error: \n", true);
             }
             src_range_large srl;
-            ast_node_get_src_range((**rn).node, (**rn).declaring_st, &srl);
+            ast_node_get_src_range(pprn->node, pprn->declaring_st, &srl);
             error_log_report_annotated(
                 r->tc->err_log, ES_RESOLVER, false,
                 "encountered cyclic dependency during preprocessor "
@@ -3362,8 +3361,7 @@ resolve_error report_cyclic_pp_deps(resolver* r)
                 srl.smap, srl.start, srl.end, "loop contains this element");
             re = RE_PP_DEPS_LOOP;
         }
-        rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
-    } while (rn);
+    }
     return re;
 }
 resolve_error resolver_run_pp_resolve_nodes(resolver* r)
@@ -3371,7 +3369,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
     llvm_error lle;
     pli it;
     resolve_error re;
-    bool progress = true;
+    bool progress;
     do {
         progress = false;
         if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
@@ -3441,7 +3439,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             pli_prev(&it);
             ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
         }
-        if (!progress) {
+        if (!progress && r->committed_waiters) {
             it = pli_begin(&r->imports_with_pprns);
             for (ast_node* n = pli_next(&it); n; n = pli_next(&it)) {
                 sym_import_module* im = (sym_import_module*)n;
@@ -3504,7 +3502,9 @@ void free_pprns(resolver* r, bool error_occured)
     for (ast_node* n = pli_next(&it); n; n = pli_next(&it)) {
         assert(ast_elem_is_import_module((ast_elem*)n));
         sym_import_module* im = (sym_import_module*)n;
-        pprn_fin(r, im->pprn, error_occured);
+        if (im->pprn) {
+            pprn_fin(r, im->pprn, error_occured);
+        }
     }
     free_pprnlist(r, &r->pp_resolve_nodes_pending, error_occured);
     free_pprnlist(r, &r->pp_resolve_nodes_ready, error_occured);
@@ -3708,6 +3708,7 @@ void resolver_setup_blank_resolve(resolver* r)
     r->private_sym_count = 0;
     r->id_space = PRIV_SYMBOL_OFFSET;
     r->deps_required_for_pp = false;
+    r->committed_waiters = 0;
 }
 void resolver_unpack_partial_resolution_data(
     resolver* r, partial_resolution_data* prd)
