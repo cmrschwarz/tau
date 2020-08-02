@@ -311,6 +311,9 @@ curr_pp_block_add_child(resolver* r, pp_resolve_node** child_p)
         if (list_append(&block_parent->notified_by, NULL, child_p))
             return RE_FATAL;
         block_parent->dep_count++;
+        if (ast_flags_get_used_in_pp(block_parent->node->flags)) {
+            pprn_set_used_in_pp(r, child);
+        }
         return RE_OK;
     }
     child->run_individually = false;
@@ -1613,6 +1616,7 @@ static inline resolve_error resolve_var(
     bool comptime = ast_flags_get_comptime(v->osym.sym.node.flags);
     bool public_symbol = symbol_table_is_public(st);
     sym_var* prev_var_decl;
+    pp_resolve_node* prev_pp_node;
     pp_resolve_node* prev_var_pp_node;
     ast_node* prev_var_decl_block_owner;
 
@@ -1626,7 +1630,9 @@ static inline resolve_error resolve_var(
     // we only need this in public scope because for function scopes / ordered
     // scopes we will never reach following lines if the var above is still
     // unresolved
-    if (public_symbol) {
+    prev_pp_node = r->curr_pp_node;
+    r->curr_pp_node = v->pprn;
+    if (!comptime && public_symbol) {
         prev_var_decl = r->curr_var_decl;
         prev_var_pp_node = r->curr_var_pp_node;
         prev_var_decl_block_owner = r->curr_var_decl_block_owner;
@@ -1687,7 +1693,8 @@ static inline resolve_error resolve_var(
             }*/
         }
     }
-    if (public_symbol) {
+    r->curr_pp_node = prev_pp_node;
+    if (!comptime && public_symbol) {
         v->pprn = r->curr_var_pp_node;
         r->curr_var_decl = prev_var_decl;
         r->curr_var_pp_node = prev_var_pp_node;
@@ -1700,7 +1707,12 @@ static inline resolve_error resolve_var(
     }
     if (v->pprn) {
         resolve_error re_prev = re;
-        re = curr_pp_block_add_child(r, &v->pprn);
+        if (public_symbol) {
+            re = curr_pprn_depend_on(r, &v->pprn);
+        }
+        else {
+            re = curr_pp_block_add_child(r, &v->pprn);
+        }
         if (re) return re;
         re = pp_resolve_node_activate(r, &v->pprn, re == RE_OK);
         if (re) return re;
@@ -2034,8 +2046,6 @@ static inline resolve_error resolve_expr_paste_str(
     RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
 }
 static inline void report_type_loop(resolver* r, ast_node* n, symbol_table* st);
-// the symbol table is not the one that contains the symbol, but the one
-// where it was declared and where the type name loopup should start
 
 static inline resolve_error require_module_in_pp(
     resolver* r, ast_node* n, symbol_table* st, mdg_node* mdg,
@@ -2097,6 +2107,25 @@ static inline resolve_error require_module_in_pp(
         if (tauc_request_pp_module(r->tc->t, mdg)) return RE_FATAL;
     }
     return RE_OK;
+}
+resolve_error resolve_import_module(
+    resolver* r, sym_import_module* im, symbol_table* st, ast_elem** value,
+    ast_elem** ctype)
+{
+    resolve_error re = require_module_in_pp(
+        r, (ast_node*)im, st, im->module, &im->done, &im->pprn);
+    if (re) return re;
+    if (!im->pprn) {
+        // we can't mark it as resolved since we need to go
+        // though it again
+        ast_flags_set_resolved(&im->osym.sym.node.flags);
+    }
+    else {
+        re = curr_pprn_depend_on(r, &im->pprn);
+        ast_flags_clear_resolving(&im->osym.sym.node.flags);
+        if (re) return re;
+    }
+    RETURN_RESOLVED(value, ctype, im, NULL);
 }
 static inline resolve_error resolve_expr_block(
     resolver* r, expr_block* b, symbol_table* st, ast_elem** value,
@@ -2340,21 +2369,8 @@ static inline resolve_error resolve_ast_node_raw(
         } // fallthrough
         case SYM_IMPORT_MODULE: {
             sym_import_module* im = (sym_import_module*)n;
-            if (!resolved) {
-                re = require_module_in_pp(
-                    r, n, st, im->module, &im->done, &im->pprn);
-                if (re) return re;
-                if (!im->pprn) {
-                    // we can't mark it as resolved since we need to go
-                    // though it again
-                    ast_flags_set_resolved(&n->flags);
-                }
-                else {
-                    re = curr_pprn_depend_on(r, &im->pprn);
-                    ast_flags_clear_resolving(&n->flags);
-                    if (re) return re;
-                }
-            }
+            if (!resolved)
+                return resolve_import_module(r, im, st, value, ctype);
             RETURN_RESOLVED(value, ctype, n, NULL);
         }
         case STMT_USE:
@@ -2370,9 +2386,9 @@ static inline resolve_error resolve_ast_node_raw(
             if (resolved) {
                 if (v->pprn) {
                     // if the symbol table isn't public we are looking up a
-                    // symbol inside a function since we can find it we're in
-                    // the same function therefore we don't want to depend on
-                    // ourselves
+                    // symbol inside a function since we can find it we're
+                    // in the same function therefore we don't want to
+                    // depend on ourselves
                     // TODO: this simple detection for "is the var in my
                     // function" will no longer work once we have nested
                     // functions
@@ -3556,7 +3572,8 @@ resolve_error lookup_priv_module_symbol(
                 r, mf->body.symtab, NULL, mf->body.symtab, name, result_1,
                 result_2);
             if (re) return re;
-            // since we check multiple frames we might hit the same main twice
+            // since we check multiple frames we might hit the same main
+            // twice
             if (ambiguity == res) ambiguity = ambiguity2;
             if (ambiguity) break;
         }
@@ -3693,8 +3710,8 @@ int resolver_resolve_and_emit_post_setup(resolver* r, llvm_module** module)
 }
 void resolver_setup_blank_resolve(resolver* r)
 {
-    // reserve global symbol slots so that the pprn doesn't overrun the global
-    // ids of other modules it might use
+    // reserve global symbol slots so that the pprn doesn't overrun the
+    // global ids of other modules it might use
     r->public_sym_count = 0;
     r->private_sym_count = 0;
     r->id_space = PRIV_SYMBOL_OFFSET;
