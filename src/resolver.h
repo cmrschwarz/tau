@@ -34,6 +34,9 @@ typedef struct pp_resolve_node_s {
     ast_node* node; // either expr_pp, stmt_use or func or var
     symbol_table* declaring_st; // for continuing top level expressions
     list notify;
+    // stores pointers to the pprn pointer inside the notifying node
+    // this way if the notifying node's pprn gets fin'd we notice that
+    list notified_by;
     ast_node** continue_block;
     ureg dep_count;
     bool nested_pp_exprs;
@@ -57,6 +60,7 @@ typedef struct partial_resolution_data_s {
     ureg id_space;
     ptrlist pprns_pending;
     ptrlist pprns_waiting;
+    ptrlist imports_with_pprns;
     bool deps_required_for_pp;
 } partial_resolution_data;
 
@@ -98,6 +102,9 @@ typedef struct resolver_s {
 
     // resolved and ready to run. cleared after every run
     ptrlist pp_resolve_nodes_ready;
+
+    // imports of modules not yet (known to be) generated
+    ptrlist imports_with_pprns;
 
     pp_resolve_node* curr_pp_node;
     pp_resolve_node* curr_block_pp_node;

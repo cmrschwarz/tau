@@ -480,6 +480,7 @@ typedef struct expr_paste_evaluation_s {
 
 typedef struct stmt_paste_evaluation_s {
     paste_evaluation pe;
+    pp_resolve_node* pprn; // it has a body, it needs a pprn
     ast_body body;
 } stmt_paste_evaluation;
 
@@ -813,4 +814,3 @@ bool is_unary_op_postfix(operator_kind t);
 ast_node* get_parent_body(scope* parent);
 void ast_node_get_bounds(ast_node* n, ureg* start, ureg* end);
 char* op_to_str(operator_kind t);
-

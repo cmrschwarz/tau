@@ -2309,6 +2309,7 @@ parse_error parser_parse_paste_stmt(
         p, epp, STMT_PASTE_EVALUATION, *st, parent_ebb,
         (paste_evaluation**)&eval);
     if (pe) return pe;
+    eval->pprn = NULL;
     p->paste_block = &eval->body;
     p->paste_parent_symtab = st;
     p->paste_parent_owns_st = owned_st;
