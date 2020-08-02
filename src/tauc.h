@@ -22,6 +22,7 @@ typedef enum optimization_strategy_e {
 #define VERBOSITY_FLAGS_STAGE_BEGINS 0x10
 #define VERBOSITY_FLAG_THREAD_SPAWNS 0x20
 #define VERBOSITY_FLAG_PASTES 0x40
+#define VERBOSITY_FLAGS_USED_IN_PP 0x80
 
 typedef struct tauc_s {
     // these two are still needed for error reporting after

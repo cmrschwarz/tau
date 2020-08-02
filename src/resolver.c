@@ -38,7 +38,7 @@ resolve_error
 pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress);
 resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn);
 resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn);
-void free_pprns(resolver* r);
+void free_pprns(resolver* r, bool error_occured);
 void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident);
 // must be a macro so value and ctype become lazily evaluated
 #define RETURN_RESOLVED(pvalue, pctype, value, ctype)                          \
@@ -112,14 +112,16 @@ void remove_pprn_from_waiting_list(resolver* r, pp_resolve_node* pprn)
     last->waiting_list_entry = pprn->waiting_list_entry;
     pprn->waiting_list_entry = NULL;
 }
-void pprn_fin(resolver* r, pp_resolve_node* pprn)
+void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
 {
     ast_node* n = pprn->node;
     assert(n);
-    assert(pprn->dep_count == 0);
+    assert(
+        error_occured || pprn->dep_count == 0 ||
+        !ast_flags_get_used_in_pp(n->flags));
     for (pp_resolve_node* rn = pprn->first_unresolved_child; rn;
          rn = rn->next) {
-        pprn_fin(r, rn);
+        pprn_fin(r, rn, error_occured);
     }
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
         tprintf("freeing pprn: ");
@@ -235,6 +237,31 @@ get_curr_pprn(resolver* r, pp_resolve_node** curr_pprn)
     }
     return get_curr_block_pprn(r, curr_pprn);
 }
+void ast_node_set_used_in_pp(resolver* r, ast_node* n)
+{
+    assert(!ast_flags_get_used_in_pp(n->flags));
+    ast_flags_set_used_in_pp(&n->flags);
+    if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_USED_IN_PP) {
+        tprintf("used in pp: ");
+        print_ast_node(n, NULL, 0);
+        tputs("");
+        tflush();
+    }
+}
+resolve_error pprn_set_used_in_pp(resolver* r, pp_resolve_node* pprn)
+{
+    if (ast_flags_get_used_in_pp(pprn->node->flags)) return RE_OK;
+    ast_node_set_used_in_pp(r, pprn->node);
+    list_it it;
+    list_it_begin(&it, &pprn->notified_by);
+    pp_resolve_node** pprnp;
+    while ((pprnp = list_it_next(&it, &pprn->notified_by))) {
+        if (!*pprnp) continue;
+        resolve_error re = pprn_set_used_in_pp(r, *pprnp);
+        if (re) return re;
+    }
+    return RE_OK;
+}
 static resolve_error
 curr_pprn_depend_on(resolver* r, pp_resolve_node** dependency_p)
 {
@@ -243,6 +270,9 @@ curr_pprn_depend_on(resolver* r, pp_resolve_node** dependency_p)
     resolve_error re = get_curr_pprn(r, &depending);
     if (re) return re;
     if (!depending) return RE_OK;
+    if (ast_flags_get_used_in_pp(depending->node->flags)) {
+        pprn_set_used_in_pp(r, dependency);
+    }
     if (dependency->notify_when_ready && dependency->ready) return RE_OK;
     if (list_append(&dependency->notify, NULL, depending)) return RE_FATAL;
     if (list_append(&depending->notified_by, NULL, dependency_p))
@@ -1574,6 +1604,7 @@ static inline resolve_error resolve_var(
             r, (ast_node*)v, v->osym.sym.declaring_st, true, false, false,
             true);
         if (!v->pprn) return RE_FATAL;
+        ast_node_set_used_in_pp(r, (ast_node*)v);
     }
     // we only need this in public scope because for function scopes / ordered
     // scopes we will never reach following lines if the var above is still
@@ -1889,6 +1920,7 @@ static inline resolve_error resolve_expr_pp(
             r, (ast_node*)ppe, st, true, false, false, false);
         if (!pprn) return RE_FATAL;
         ppe->pprn = pprn;
+        ast_node_set_used_in_pp(r, &ppe->node);
     }
     if (r->curr_pp_node) {
         r->curr_pp_node->nested_pp_exprs = true;
@@ -3269,7 +3301,7 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
         re = pp_resolve_node_dep_done(r, rn, progress);
         if (re) return re;
     }
-    pprn_fin(r, pprn);
+    pprn_fin(r, pprn, false);
     return RE_OK;
 }
 resolve_error
@@ -3471,7 +3503,7 @@ resolve_error resolver_handle_post_pp(resolver* r)
     return report_cyclic_pp_deps(r);
 }
 
-void free_pprnlist(resolver* r, sbuffer* buff)
+void free_pprnlist(resolver* r, sbuffer* buff, bool error_occured)
 {
     sbuffer_iterator sbi = sbuffer_iterator_begin(buff);
     for (pp_resolve_node** rn =
@@ -3480,15 +3512,27 @@ void free_pprnlist(resolver* r, sbuffer* buff)
         if (buff == &r->pp_resolve_nodes_waiting && (**rn).waiting_list_entry) {
             (**rn).waiting_list_entry = NULL; // prevent iterator invalidation
         }
-        pprn_fin(r, *rn);
+        pprn_fin(r, *rn, error_occured);
     }
     sbuffer_clear(buff);
 }
-void free_pprns(resolver* r)
+void free_pprns(resolver* r, bool error_occured)
 {
-    free_pprnlist(r, &r->pp_resolve_nodes_pending);
-    free_pprnlist(r, &r->pp_resolve_nodes_ready);
-    free_pprnlist(r, &r->pp_resolve_nodes_waiting);
+    pli it = pli_begin(&r->imports_with_pprns);
+    for (ast_node* n = pli_next(&it); n; n = pli_next(&it)) {
+        if (n->kind == SYM_IMPORT_MODULE) {
+            sym_import_module* im = (sym_import_module*)n;
+            pprn_fin(r, im->pprn, error_occured);
+        }
+        else {
+            assert(n->kind == SYM_IMPORT_GROUP);
+            sym_import_group* ig = (sym_import_group*)n;
+            pprn_fin(r, ig->pprn, error_occured);
+        }
+    }
+    free_pprnlist(r, &r->pp_resolve_nodes_pending, error_occured);
+    free_pprnlist(r, &r->pp_resolve_nodes_ready, error_occured);
+    free_pprnlist(r, &r->pp_resolve_nodes_waiting, error_occured);
     assert(r->pp_resolve_nodes.alloc_count == 0);
     freelist_clear(&r->pp_resolve_nodes);
     pool_clear(&r->pprn_mem);
@@ -3517,7 +3561,7 @@ int resolver_resolve(resolver* r)
     if (re) return re;
     re = resolver_handle_post_pp(r);
     if (re) return re;
-    free_pprns(r);
+    free_pprns(r, false);
     return RE_OK;
 }
 resolve_error lookup_priv_module_symbol(
@@ -3671,7 +3715,7 @@ int resolver_resolve_and_emit_post_setup(resolver* r, llvm_module** module)
     TAU_TIME_STAGE_CTX(r->tc->t, res = resolver_resolve(r);
                        , print_debug_info(r, "resolving"));
     if (res) {
-        free_pprns(r);
+        free_pprns(r, true);
         return ERR;
     }
     TAU_TIME_STAGE_CTX(
