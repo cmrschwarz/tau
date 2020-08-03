@@ -41,10 +41,10 @@ typedef enum module_stage_e {
 
 typedef enum pp_emission_stage_e {
     PPES_UNNEEDED,
-    PPES_SKIPPED,
     PPES_REQUESTED,
     PPES_RUNNING,
     PPES_DONE,
+    PPES_SKIPPED,
 } pp_emission_stage;
 
 static inline bool module_stage_deps_needed(module_stage ms, bool* exploration)

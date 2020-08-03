@@ -38,6 +38,10 @@ resolve_error
 pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress);
 resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn);
 resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn);
+resolve_error resolve_import_module(
+    resolver* r, sym_import_module* im, symbol_table* st, bool dep_prop,
+    ast_elem** value, ast_elem** ctype);
+
 void free_pprns(resolver* r, bool error_occured);
 void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident);
 // must be a macro so value and ctype become lazily evaluated
@@ -252,9 +256,6 @@ void ast_node_set_used_in_pp(resolver* r, ast_node* n)
 {
     assert(!ast_flags_get_used_in_pp(n->flags));
     ast_flags_set_used_in_pp(&n->flags);
-    if (n->kind == SYM_IMPORT_GROUP || n->kind == SYM_IMPORT_MODULE) {
-        // TODO: add notification
-    }
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_USED_IN_PP) {
         tprintf("used in pp: ");
         print_ast_node(n, NULL, 0);
@@ -266,6 +267,12 @@ resolve_error pprn_set_used_in_pp(resolver* r, pp_resolve_node* pprn)
 {
     if (ast_flags_get_used_in_pp(pprn->node->flags)) return RE_OK;
     ast_node_set_used_in_pp(r, pprn->node);
+    if (ast_elem_is_import_module((ast_elem*)pprn->node)) {
+        sym_import_module* im = (sym_import_module*)pprn->node;
+        resolve_error re =
+            resolve_import_module(r, im, pprn->declaring_st, true, NULL, NULL);
+        if (re) return re;
+    }
     if (pprn->waiting_list_entry) {
         r->committed_waiters++;
     }
@@ -279,7 +286,7 @@ resolve_error pprn_set_used_in_pp(resolver* r, pp_resolve_node* pprn)
     }
     return RE_OK;
 }
-static resolve_error
+static inline resolve_error
 curr_pprn_depend_on(resolver* r, pp_resolve_node** dependency_p)
 {
     pp_resolve_node* dependency = *dependency_p;
@@ -2047,84 +2054,83 @@ static inline resolve_error resolve_expr_paste_str(
     RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
 }
 static inline void report_type_loop(resolver* r, ast_node* n, symbol_table* st);
-
-static inline resolve_error require_module_in_pp(
-    resolver* r, ast_node* n, symbol_table* st, mdg_node* mdg,
-    atomic_boolean* done, pp_resolve_node** tgt_pprn)
+resolve_error resolve_import_module(
+    resolver* r, sym_import_module* im, symbol_table* st, bool dep_prop,
+    ast_elem** value, ast_elem** ctype)
 {
     resolve_error re;
-    if (*tgt_pprn) {
-        if (atomic_boolean_load(done)) {
-            re = pp_resolve_node_ready(r, *tgt_pprn);
-            if (re) return re;
-            *tgt_pprn = NULL;
-        }
-        return RE_OK;
+    bool used_in_pp;
+    if (dep_prop) {
+        used_in_pp = true;
     }
-    bool pp_done;
-    bool diy = false;
-    atomic_boolean_init(done, false);
-    rwlock_write(&mdg->lock);
-    pp_done = (mdg->stage >= MS_GENERATED);
-    // TODO: do this properly
-    if (mdg->stage > MS_GENERATED) {
-        rwlock_end_write(&mdg->lock);
-        return RE_FATAL;
-    }
-    if (pp_done) {
-        if (mdg->ppe_stage == PPES_DONE) {
-            pp_done = true;
-        }
-        else if (mdg->ppe_stage != PPES_RUNNING) {
-            diy = true;
-            mdg->ppe_stage = PPES_RUNNING;
-            list_append(&mdg->notify, NULL, n);
+    else if (im->pprn) {
+        re = curr_pprn_depend_on(r, &im->pprn);
+        if (re) return re;
+        used_in_pp = ast_flags_get_used_in_pp(im->osym.sym.node.flags);
+        if (!used_in_pp) {
+            ast_flags_clear_resolving(&im->osym.sym.node.flags);
+            RETURN_RESOLVED(value, ctype, im, NULL);
         }
     }
     else {
-        if (mdg->ppe_stage == PPES_SKIPPED) {
-            diy = true;
-            mdg->ppe_stage = PPES_RUNNING;
-        }
-        else {
+        pp_resolve_node* depending;
+        re = get_curr_pprn(r, &depending);
+        if (re) return re;
+        used_in_pp =
+            depending && ast_flags_get_used_in_pp(depending->node->flags);
+    }
+    bool available = false;
+    bool request_pp = false;
+    mdg_node* mdg = im->module;
+    atomic_boolean_init(&im->done, false);
+    rwlock_write(&mdg->lock);
+    if (mdg->stage >= MS_PARSING_ERROR) {
+        // TODO: some poisoning or error message idk
+        rwlock_end_write(&mdg->lock);
+        return RE_ERROR;
+    }
+    switch (mdg->ppe_stage) {
+        case PPES_UNNEEDED: mdg->ppe_stage = PPES_REQUESTED; break;
+        case PPES_REQUESTED: break;
+        case PPES_RUNNING: break;
+        case PPES_DONE: available = true; break;
+        case PPES_SKIPPED:
             mdg->ppe_stage = PPES_REQUESTED;
-            list_append(&mdg->notify, NULL, n);
+            request_pp = true;
+            break;
+    }
+    if (!available && used_in_pp) {
+        if (list_append(&mdg->notify, NULL, im)) {
+            rwlock_end_write(&mdg->lock);
+            return RE_FATAL;
         }
     }
     rwlock_end_write(&mdg->lock);
-    if (!pp_done || diy) {
-        pp_resolve_node* pprn =
-            pp_resolve_node_create(r, n, st, false, false, true, true);
-        if (!pprn) return RE_FATAL;
-        *tgt_pprn = pprn;
-        re = pp_resolve_node_activate(r, tgt_pprn, false);
-        if (re) return re;
-        if (ptrlist_append(&r->imports_with_pprns, n)) return RE_FATAL;
-    }
-    else {
-        *tgt_pprn = NULL;
-    }
-    if (diy) {
+    if (request_pp) {
         if (tauc_request_pp_module(r->tc->t, mdg)) return RE_FATAL;
     }
-    return RE_OK;
-}
-resolve_error resolve_import_module(
-    resolver* r, sym_import_module* im, symbol_table* st, ast_elem** value,
-    ast_elem** ctype)
-{
-    resolve_error re = require_module_in_pp(
-        r, (ast_node*)im, st, im->module, &im->done, &im->pprn);
-    if (re) return re;
-    if (!im->pprn) {
-        // we can't mark it as resolved since we need to go
-        // though it again
+    if (im->pprn) {
+        if (available) {
+            re = pp_resolve_node_ready(r, im->pprn);
+            if (re) return re;
+        }
+    }
+    else if (!available) {
+        im->pprn = pp_resolve_node_create(
+            r, (ast_node*)im, st, false, false, true, true);
+        if (!im->pprn) return re;
+        if (ptrlist_append(&r->imports_with_pprns, im)) {
+            pprn_fin(r, im->pprn, true);
+            return RE_FATAL;
+        }
+        re = curr_pprn_depend_on(r, &im->pprn);
+        if (re) return re;
+    }
+    if (used_in_pp || available) {
         ast_flags_set_resolved(&im->osym.sym.node.flags);
     }
     else {
-        re = curr_pprn_depend_on(r, &im->pprn);
         ast_flags_clear_resolving(&im->osym.sym.node.flags);
-        if (re) return re;
     }
     RETURN_RESOLVED(value, ctype, im, NULL);
 }
@@ -2370,9 +2376,14 @@ static inline resolve_error resolve_ast_node_raw(
         } // fallthrough
         case SYM_IMPORT_MODULE: {
             sym_import_module* im = (sym_import_module*)n;
-            if (!resolved)
-                return resolve_import_module(r, im, st, value, ctype);
-            RETURN_RESOLVED(value, ctype, n, NULL);
+            if (resolved) {
+                if (im->pprn) {
+                    resolve_error re = curr_pprn_depend_on(r, &im->pprn);
+                    if (re) return re;
+                }
+                RETURN_RESOLVED(value, ctype, n, NULL);
+            }
+            return resolve_import_module(r, im, st, false, value, ctype);
         }
         case STMT_USE:
         case SYM_NAMED_USE:
@@ -3099,6 +3110,7 @@ resolve_error resolve_module_frame(resolver* r, module_frame* mf, ast_body* b)
         if (re) break;
     }
     r->curr_block_owner = parent_block_owner;
+    assert(re != RE_TYPE_LOOP); // that must have been caught already
     return re;
 }
 static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n);
@@ -3449,21 +3461,26 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
         }
         if (!progress && r->committed_waiters) {
             it = pli_begin(&r->imports_with_pprns);
+            bool awaiting = false;
             for (ast_node* n = pli_next(&it); n; n = pli_next(&it)) {
                 sym_import_module* im = (sym_import_module*)n;
-                re = require_module_in_pp(
-                    r, n, im->osym.sym.declaring_st, im->module, &im->done,
-                    &im->pprn);
-                if (re) return re;
+                if (im->pprn) {
+                    if (ast_flags_get_used_in_pp(im->osym.sym.node.flags)) {
+                        awaiting = true;
+                        if (atomic_boolean_load(&im->done)) {
+                            re = pp_resolve_node_ready(r, im->pprn);
+                            if (re) return re;
+                            progress = true;
+                        }
+                    }
+                }
                 if (!im->pprn) {
-                    ast_flags_set_resolving(&n->flags);
-                    ast_flags_set_resolved(&n->flags);
                     pli_prev(&it);
                     ptrlist_remove(&r->imports_with_pprns, &it);
-                    progress = true;
                 }
-                // HACK: this busy waits until deps are done
-                // TODO: proper check whether we are still needed
+            }
+            // hack: busy wait for now until we have proper suspend resume
+            if (awaiting && r->committed_waiters) {
                 progress = true;
             }
         }
