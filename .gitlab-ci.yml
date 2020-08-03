@@ -6,32 +6,29 @@ stages:
     - build
     - test
 
-precompile:
+linux:precompile:
     stage: precompile
+    needs: []
+    tags: [g++, CMake, amd64, debian]
     script: 
         - ./precompile_llvm.sh
     cache:
         key: precompile
         paths:
-            - precompile_llvm
             - deps/llvm-project-prebuild/
             - precompile_llvm/
     only:
         - master
         - testing
 
-build:
+linux:build:debug:
     stage: build
-    dependencies: [precompile]
+    needs: ["linux:precompile"]
+    tags: [g++, CMake, amd64, debian]
     script:
         - mkdir build
         - cd build
         - cmake -DCMAKE_BUILD_TYPE=Debug ..
-        - make -j$(nproc)
-        - cd ..
-        - mkdir build_release
-        - cd build_release
-        - cmake ..
         - make -j$(nproc)
     cache:
         key: precompile
@@ -41,20 +38,51 @@ build:
     artifacts:
         paths:
             - ./build/tauc
-            - ./build_release/tauc
         expire_in: 20 minutes
     only:
         - master
         - testing
 
-test:
+
+linux:build:release:
+    stage: build
+    needs: ["linux:precompile"]
+    tags: [g++, CMake, amd64, debian]
+    script:
+        - mkdir build
+        - cd build
+        - cmake -DCMAKE_BUILD_TYPE=Release ..
+        - make -j$(nproc)
+    cache:
+        key: precompile
+        paths:
+            - deps/llvm-project-prebuild/
+        policy: pull
+    artifacts:
+        paths:
+            - ./build/tauc
+        expire_in: 20 minutes
+    only:
+        - master
+        - testing
+
+
+linux:test:debug:
     stage: test
-    dependencies: [build]
+    needs: ["linux:build:debug"]
+    tags: [g++, CMake, amd64, debian]
     script:
        - ./tests/run_all_tests.sh
-        #TODO: make build path configurable in test scripts
-       - mv ./build ./build_debug
-       - mv ./build_release ./build 
+    only:
+        - master
+        - testing
+
+
+linux:test:release:
+    stage: test
+    needs: ["linux:build:release"]
+    tags: [g++, CMake, amd64, debian]
+    script:
        - ./tests/run_all_tests.sh
     only:
         - master
