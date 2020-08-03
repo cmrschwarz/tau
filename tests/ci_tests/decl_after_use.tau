@@ -1,0 +1,15 @@
+func main() -> int{
+    return #x;
+}
+#x := bar();
+
+func bar() -> int{
+    return a::foo();
+}
+
+import a;
+module a{
+    public func foo() -> int{
+        return 0;
+    }
+}
