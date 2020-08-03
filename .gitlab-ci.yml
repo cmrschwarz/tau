@@ -13,6 +13,7 @@ precompile:
     cache:
         key: precompile
         paths:
+            - precompile_llvm
             - deps/llvm-project-prebuild/
             - precompile_llvm/
     only:
@@ -21,10 +22,16 @@ precompile:
 
 build:
     stage: build
+    dependencies: [precompile]
     script:
         - mkdir build
         - cd build
-        - cmake -DCMAKE_BUILD_TYPE=Debug ../
+        - cmake -DCMAKE_BUILD_TYPE=Debug ..
+        - make -j$(nproc)
+        - cd ..
+        - mkdir build_release
+        - cd build_release
+        - cmake ..
         - make -j$(nproc)
     cache:
         key: precompile
@@ -33,8 +40,8 @@ build:
         policy: pull
     artifacts:
         paths:
-            - ./build
             - ./build/tauc
+            - ./build_release/tauc
         expire_in: 20 minutes
     only:
         - master
@@ -42,7 +49,12 @@ build:
 
 test:
     stage: test
+    dependencies: [build]
     script:
+       - ./tests/run_all_tests.sh
+        #TODO: make build path configurable in test scripts
+       - mv ./build ./build_debug
+       - mv ./build_release ./build 
        - ./tests/run_all_tests.sh
     only:
         - master
