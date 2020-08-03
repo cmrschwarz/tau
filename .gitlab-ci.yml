@@ -39,6 +39,10 @@ linux:build:debug:
         paths:
             - ./build/tauc
         expire_in: 20 minutes
+    only:
+        - master
+        - testing
+
 
 linux:build:release:
     stage: build
@@ -58,6 +62,9 @@ linux:build:release:
         paths:
             - ./build/tauc
         expire_in: 20 minutes
+    only:
+        - master
+        - testing
 
 
 linux:test:debug:
@@ -66,6 +73,9 @@ linux:test:debug:
     tags: [g++, CMake, amd64, debian]
     script:
        - ./tests/run_all_tests.sh
+    only:
+        - master
+        - testing
 
 
 linux:test:release:
@@ -74,3 +84,6 @@ linux:test:release:
     tags: [g++, CMake, amd64, debian]
     script:
        - ./tests/run_all_tests.sh
+    only:
+        - master
+        - testing
