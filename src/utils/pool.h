@@ -17,7 +17,7 @@ typedef struct pool_s {
 int pool_init(pool* p);
 void pool_fin(pool* p);
 void* pool_alloc(pool* p, ureg size);
-void* pool_undo_last_alloc(pool* p, ureg size);
+void pool_undo_last_alloc(pool* p, ureg size);
 void pool_clear(pool* p);
 
 void pool_steal_all(pool* p, pool* donor);

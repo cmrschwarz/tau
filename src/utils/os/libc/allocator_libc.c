@@ -9,10 +9,12 @@
 #include "../../panic.h"
 #include "../../threading.h"
 #include <stdio.h>
-#include "../../../error_log.h"
 static atomic_sreg allocations;
-static master_error_log* mel = NULL;
 #endif
+
+#include "../../../error_log.h"
+static master_error_log* mel = NULL;
+
 static inline void count_alloc(void* v, ureg size)
 {
 #if DEBUG
@@ -76,7 +78,6 @@ void* tmalloc(ureg size)
             }
         }
         master_error_log_report(mel, "allocation failure");
-        debugbreak();
         return NULL;
     }
     return r;

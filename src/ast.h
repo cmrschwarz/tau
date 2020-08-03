@@ -342,7 +342,7 @@ typedef struct expr_continue_s {
     ast_node node;
     union {
         expr_block_base* ebb;
-        char* label;
+        const char* label;
     } target;
 } expr_continue;
 
@@ -350,7 +350,7 @@ typedef struct expr_break_s {
     ast_node node;
     union {
         expr_block_base* ebb;
-        char* label;
+        const char* label;
     } target;
     ast_node* value; // NULL if no value provided
     ast_elem* value_ctype; // void if value not provided

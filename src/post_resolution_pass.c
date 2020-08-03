@@ -177,7 +177,6 @@ prp_error prp_handle_assign(post_resolution_pass* prp, expr_op_binary* assign)
     sym_var* v = (sym_var*)id->value.sym;
     if (v->prpvn == NULL) return PRPE_OK; // external variable
     prp_var_state new_state;
-    prp_var_data* vd = v->prpvn->curr_data;
     bool defined;
     if (assignment_is_meta_assignment(assign, &defined)) {
         new_state = defined ? VAR_STATE_INVALID : VAR_STATE_VALID;
@@ -186,9 +185,11 @@ prp_error prp_handle_assign(post_resolution_pass* prp, expr_op_binary* assign)
         // TODO: make this valid for POD's because we are nice citizens
         // TODO: error
         // HACK
+        prp_var_data* vd = v->prpvn->curr_data;
         assert(
             vd->var_node->var->ctype->kind == SYM_PRIMITIVE ||
             vd->curr_state == VAR_STATE_INVALID);
+        UNUSED(vd);
         new_state = VAR_STATE_INVALID;
     }
     err = prp_var_set_state(prp, v, new_state);
@@ -505,7 +506,7 @@ void prp_free_owned_vars(post_resolution_pass* prp)
                 break;
             case VAR_STATE_UNKNOWN:
                 assert(false); // well we failed then :/
-                break;
+                return;
         }
         ast_flags_set_dtor_kind(&vd->var_node->var->osym.sym.node.flags, dk);
         vd->var_node->var->prpvn = NULL;

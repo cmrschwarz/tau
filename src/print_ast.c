@@ -566,7 +566,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case EXPR_BREAK: {
             expr_break* b = (expr_break*)n;
             p("break");
-            char* n = NULL;
+            const char* n = NULL;
             if (ast_flags_get_resolved(b->node.flags)) {
                 n = b->target.ebb->name;
             }
@@ -586,7 +586,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case EXPR_CONTINUE: {
             expr_continue* c = (expr_continue*)n;
             p("continue");
-            char* n = NULL;
+            const char* n = NULL;
             if (ast_flags_get_resolved(c->node.flags)) {
                 n = c->target.ebb->name;
             }

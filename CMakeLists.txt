@@ -53,32 +53,35 @@ set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "")
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/deps")
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+
+if (CMAKE_BUILD_TYPE MATCHES ".*Debug.*")
+    set (TAUC_DEBUG true)
     set(TAUC_C_TESTS
         ./src/test/unit_tests.c
     )
     set(TAUC_CPP_TESTS)
-    # add "-pg -no-pie" for profiling with gprof
     message("Creating Debug Buildfiles")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0 -g")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0 -g")
     set(TAUC_C_SRCS ${TAUC_C_SRCS} ${TAUC_C_TESTS})
     set(TAUC_CPP_SRCS ${TAUC_CPP_SRCS} ${TAUC_CPP_TESTS})
+    set(TAUC_PP_DIRECTIVES ${TAUC_PP_DIRECTIVES} TAUC_DEBUG)
 else()
+    set (TAUC_DEBUG false)
     message("Creating Release Buildfiles")
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O3 -flto")
-    set(TAUC_PP_DIRECTIVES ${TAUC_PP_DIRECTIVES} CMAKE_NO_DEBUG)
 endif()
 
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR 
     "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"
 )
+    # add "-pg -no-pie" for profiling with gprof
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter -pedantic")
+    set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic -fno-rtti -fno-exceptions")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")
 endif ()
 
 add_executable(tauc ${TAUC_C_SRCS} ${TAUC_CPP_SRCS})
+
 
 target_compile_definitions(tauc PRIVATE 
     ${TAUC_PP_DIRECTIVES}

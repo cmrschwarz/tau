@@ -13,7 +13,7 @@ extern "C" {
 #include "ast_flags.h"
 #include "utils/pool.h"
 #include "tauc.h"
-#include <utils/debug_utils.h>
+#include "utils/debug_utils.h"
 
 static ureg globals_refcount = 0;
 int llvm_backend_init_globals(tauc* t)

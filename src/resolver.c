@@ -1396,7 +1396,7 @@ ast_node* get_current_ebb(resolver* r)
     }
 }
 resolve_error resolve_break_target(
-    resolver* r, char* name, expr_block_base** tgt_ebb, ast_elem*** ctype)
+    resolver* r, const char* name, expr_block_base** tgt_ebb, ast_elem*** ctype)
 {
     // TODO: error
     ast_node* ebb_or_func = get_current_ebb(r);
@@ -1529,7 +1529,7 @@ resolve_param(resolver* r, sym_param* p, bool generic, ast_elem** ctype)
     }
     if (ctype) *ctype = p->ctype;
     ast_flags_set_resolved(&p->sym.node.flags);
-    return PE_OK;
+    return RE_OK;
 }
 resolve_error resolver_lookup_single(
     resolver* r, symbol_table* st, sc_struct* struct_inst,
@@ -1767,7 +1767,8 @@ resolve_return(resolver* r, symbol_table* st, expr_return* er)
         tgt_type = ((sc_func_base*)er->target)->return_ctype;
     }
     else {
-        assert(false);
+        assert(false); // TODO: error
+        return RE_ERROR;
     }
     if (!ctypes_unifiable(er->value_ctype, tgt_type)) {
         ureg vstart, vend;
@@ -2094,7 +2095,7 @@ static inline resolve_error require_module_in_pp(
     if (!pp_done || diy) {
         pp_resolve_node* pprn =
             pp_resolve_node_create(r, n, st, false, false, true, true);
-        if (!pprn) return PE_FATAL;
+        if (!pprn) return RE_FATAL;
         *tgt_pprn = pprn;
         re = pp_resolve_node_activate(r, tgt_pprn, false);
         if (re) return re;
@@ -2699,6 +2700,7 @@ static inline void report_type_loop(resolver* r, ast_node* n, symbol_table* st)
     }
     ast_node* n_s = (ast_node*)stack_pop(&r->error_stack);
     assert(n == n_s);
+    UNUSED(n_s);
     stack_pop(&r->error_stack);
     stack_ec -= 2;
     src_range_large srl;
@@ -3386,7 +3388,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 r->deps_required_for_pp = true;
                 for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
                     int res = mdg_node_require_requirements(*n, r->tc, true);
-                    if (res) return LLE_FATAL;
+                    if (res) return RE_FATAL;
                 }
             }
             lle = llvm_backend_run_pp(
@@ -3426,7 +3428,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             assert(rn->node->kind != ELEM_MDG_NODE);
             r->curr_block_owner = (ast_node*)rn->declaring_st->owning_node;
             ast_node* astn = rn->node;
-            re = resolve_ast_node(r, rn->node, rn->declaring_st, NULL, NULL);
+            re = resolve_ast_node(r, astn, rn->declaring_st, NULL, NULL);
             if (re == RE_UNREALIZED_COMPTIME) {
                 pli_prev(&it);
                 ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
@@ -3515,7 +3517,9 @@ void free_pprns(resolver* r, bool error_occured)
     free_pprnlist(r, &r->pp_resolve_nodes_pending, error_occured);
     free_pprnlist(r, &r->pp_resolve_nodes_ready, error_occured);
     free_pprnlist(r, &r->pp_resolve_nodes_waiting, error_occured);
+#if DEBUG
     assert(r->pp_resolve_nodes.alloc_count == 0);
+#endif
     freelist_clear(&r->pp_resolve_nodes);
     pool_clear(&r->pprn_mem);
 }

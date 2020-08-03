@@ -33,6 +33,7 @@ static inline void lx_dec_iter(lexer* lx, token** t)
         *t = lx->token_buffer_end - 1;
     }
 }
+/*
 static inline void lx_dec_iter_n(lexer* lx, token** t, ureg n)
 {
     ureg rem = *t - lx->token_buffer;
@@ -40,9 +41,9 @@ static inline void lx_dec_iter_n(lexer* lx, token** t, ureg n)
         *t -= n;
     }
     else {
-        *t = lx->token_buffer_end - (n - rem); /*% LX_TOKEN_BUFFER_SIZE*/
+        *t = lx->token_buffer_end - (n - rem); //% LX_TOKEN_BUFFER_SIZE
     }
-}
+}*/
 token* lx_peek_nth(lexer* lx, ureg n)
 {
     token* t = lx->loaded_tokens_start;

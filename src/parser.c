@@ -113,7 +113,7 @@ static const unsigned char op_precedence[] = {
 #define OP_PREC_BASELINE 0
 #define OP_PREC_MAX 15
 
-static inline bool is_left_associative(ast_node_kind t)
+static inline bool is_left_associative(operator_kind t)
 {
     switch (t) {
         case OP_ASSIGN:
@@ -264,10 +264,6 @@ static inline bool is_kw_valid_label(token_kind t)
 static inline void* alloc_ppool(parser* p, ureg size, pool* pool)
 {
     return pool_alloc(pool, size);
-}
-static inline void* alloc_temp(parser* p, ureg size)
-{
-    return alloc_ppool(p, size, &p->lx.tc->tempmem);
 }
 static inline void* alloc_perm(parser* p, ureg size)
 {
@@ -522,16 +518,6 @@ static inline void parser_error_2a_pc(
     }
     parser_error_2a(p, msg, start, end, annot, start2, end2, annot2);
 }
-
-static inline void parser_error_unexpected_token(
-    parser* p, token* t, token_kind exp_tt, char* msg, char* ctx,
-    ureg ctx_start, ureg ctx_end)
-{
-    const char* strs[] = {"expected ", "'", token_strings[exp_tt], "'"};
-    char* annot = error_log_cat_strings(
-        p->lx.tc->err_log, sizeof(strs) / sizeof(char*), strs);
-    parser_error_2a(p, msg, t->start, t->end, annot, ctx_start, ctx_end, ctx);
-}
 static inline void
 ast_node_init_with_flags(ast_node* n, ast_node_kind kind, ast_flags flags)
 {
@@ -553,12 +539,6 @@ ast_node_init_with_pk(ast_node* n, ast_node_kind kind, primitive_kind pk)
 static inline void ast_node_init(ast_node* n, ast_node_kind kind)
 {
     ast_node_init_with_flags(n, kind, AST_NODE_FLAGS_DEFAULT);
-}
-
-static inline void body_init_empty(ast_body* b)
-{
-    b->elements = (ast_node**)NULL_PTR_PTR;
-    b->symtab = NULL;
 }
 int parser_init(parser* p, thread_context* tc)
 {
@@ -1282,8 +1262,8 @@ parse_prefix_unary_op(parser* p, operator_kind op, ast_node** ex)
     return PE_OK;
 }
 parse_error get_breaking_target(
-    parser* p, ast_node* requiring, ureg req_start, ureg req_end, char** label,
-    ureg* lbl_end)
+    parser* p, ast_node* requiring, ureg req_start, ureg req_end,
+    const char** label, ureg* lbl_end)
 {
     // TODO: break targets might be hidden due to macros
     token* t;
@@ -1291,7 +1271,15 @@ parse_error get_breaking_target(
     if (t->kind == TK_AT) {
         token* t2;
         PEEK_SND(p, t2);
-        if (t2->kind != TK_IDENTIFIER) {
+        if (t2->kind == TK_IDENTIFIER) {
+            char* lbl = alloc_string_perm(p, t2->str);
+            if (!lbl) return PE_FATAL;
+            *label = lbl;
+        }
+        else if (is_kw_valid_label(t2->kind)) {
+            *label = token_strings[t2->kind];
+        }
+        else {
             parser_error_3a(
                 p, "expected label identifier", t2->start, t2->end,
                 "expected label identifier", t->start, t->end,
@@ -1299,9 +1287,6 @@ parse_error get_breaking_target(
                 get_context_msg(p, (ast_node*)requiring));
             return PE_ERROR;
         }
-        char* lbl = alloc_string_perm(p, t2->str);
-        if (!lbl) return PE_FATAL;
-        *label = lbl;
         lx_void_n(&p->lx, 2);
         *lbl_end = t2->end;
     }
@@ -3279,7 +3264,7 @@ parse_error parse_import_with_parent(
             ig->children.symtab = st;
             if (re) return PE_ERROR;
         }
-        return RE_OK;
+        return PE_OK;
     }
     char* expected;
     if (has_ident)
@@ -3460,7 +3445,7 @@ static inline parse_error parse_pp_stmt(
         ast_elem_is_func_base(ppe)) {
         ast_flags_set_comptime(&pp_stmt->flags);
         *tgt = pp_stmt;
-        return RE_OK;
+        return PE_OK;
     }
     expr_pp* sp = alloc_perm(p, sizeof(expr_pp));
     if (!sp) return PE_FATAL;

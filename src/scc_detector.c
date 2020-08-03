@@ -311,7 +311,7 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
     mdg_node* stack_top = *nodes;
     mdg_nodes_quick_sort(nodes, node_count);
     bool outdated = false;
-    bool notify_anways;
+    bool notify = true;
     for (ni = nodes; ni != nodes_end; ni++) {
         n = *ni;
         rwlock_write(&n->lock);
@@ -328,13 +328,13 @@ int sccd_emit_mdg(scc_detector* sccd, sccd_stack_entry* se_curr)
             // pickedup a new dependant
             // if it will still send out notifications that works for us
             // but if it's done we can't expect updates from it
-            notify_anways = n->stage < MS_RESOLVED_UNNEEDED;
+            notify = n->stage < MS_RESOLVED_UNNEEDED;
             break;
         }
         deps_count_now += list_length(&n->dependencies);
     }
     int r = OK;
-    if (notify_anways) r = notify_dependants(sccd, stack_top);
+    if (notify) r = notify_dependants(sccd, stack_top);
     if (r || outdated || deps_count_now != deps_count_expected) {
         // rollback. we failed or somebody else is already doing our job
         for (mdg_node** ni_redo = nodes; ni_redo != ni; ni_redo++) {

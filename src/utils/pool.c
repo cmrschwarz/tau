@@ -107,7 +107,7 @@ void pool_steal_used(pool* p, pool* donor)
     if (donor_unused) donor_unused->prev = NULL;
 }
 
-void* pool_undo_last_alloc(pool* p, ureg size)
+void pool_undo_last_alloc(pool* p, ureg size)
 {
     // it's either in the current segment or the current segment is empty
     // there could be multiple emptys because of steals
