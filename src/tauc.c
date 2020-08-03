@@ -106,9 +106,7 @@ int handle_cmd_args(
     tauc* t, error_log* el, int argc, char** argv, bool* files_found)
 {
     int r = 0;
-#if DEBUG
     bool tests_run = false;
-#endif
     for (int i = 1; i < argc; i++) {
         char* arg = argv[i];
         assert(arg);
@@ -273,14 +271,17 @@ int handle_cmd_args(
         else if (!strcmp(arg, "--ok-on-error")) {
             t->ok_on_error = true;
         }
-
-#if DEBUG
         else if (!strcmp(arg, "--run-unit-tests")) {
+#if DEBUG
             r = run_unit_tests(argc, argv);
-            tests_run = true;
             if (r) return r;
-        }
+#else
+            master_error_log_report(
+                &t->mel, "unit tests not available in release build");
 #endif
+            tests_run = true;
+        }
+
         else {
             // TODO: rework this to avoid the alloc, its kinda stupid
             char* msg = error_log_cat_strings_3(
@@ -291,20 +292,16 @@ int handle_cmd_args(
     }
     t->needs_emit_stage = (t->emit_exe || t->emit_asm || t->emit_ll);
     if (!*files_found) {
-#if DEBUG
         if (!tests_run || (t->emit_asm || t->emit_ast || t->explicit_exe)) {
-#endif
             master_error_log_report(&t->mel, "no input files");
             r |= ERR;
-#if DEBUG
         }
-#endif
     }
     target_platform_fill_gaps(&t->target, &t->host_target);
     if (t->opt_strat == OPT_STRAT_UNSPECIFIED) {
         t->opt_strat = OPT_STRAT_O0;
     }
-    return OK;
+    return r;
 }
 int tauc_scaffolding_init(tauc* t)
 {
@@ -389,7 +386,7 @@ int tauc_run(int argc, char** argv)
     if (t.ok_on_error) return OK;
     if (!r) {
         if (tauc_success_so_far(&t)) return OK;
-        return atomic_sreg_load(&t.error_code);
+        r = atomic_sreg_load(&t.error_code);
     }
     return r;
 }

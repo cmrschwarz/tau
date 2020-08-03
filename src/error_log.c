@@ -348,13 +348,13 @@ void print_msg(master_error_log* mel, const char* msg, ureg msg_len)
 }
 void print_critical_thread_error(master_error_log* mel, const char* msg)
 {
-    pect(mel, ANSICOLOR_RED ANSICOLOR_BOLD, "fatal error: ");
+    pect(mel, ANSICOLOR_RED ANSICOLOR_BOLD, "error: ");
     pe(msg);
     pect(mel, ANSICOLOR_CLEAR, "\n");
 }
 void print_critical_error_begin(master_error_log* mel)
 {
-    pect(mel, ANSICOLOR_RED ANSICOLOR_BOLD, "fatal error: ");
+    pect(mel, ANSICOLOR_RED ANSICOLOR_BOLD, "error: ");
 }
 void print_critical_error_end(master_error_log* mel)
 {
