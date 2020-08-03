@@ -130,6 +130,9 @@ mdg_node* mdg_node_create(
     atomic_ureg_init(&n->unparsed_files, 0);
     atomic_ureg_init(&n->decl_count, 0);
     atomic_ureg_init(&n->using_count, 0);
+    // we init this to 1 so we don't get notified while the mdg  is still
+    // resolving itself. before its suspended this is decremented
+    atomic_ureg_init(&n->ungenerated_pp_deps, 1);
     n->stage = initial_stage;
     n->symtab = NULL;
     n->notifier = NULL;
@@ -577,9 +580,9 @@ int mdg_nodes_generated(
             assert(ast_elem_is_import_module(dep));
             sym_import_module* im = (sym_import_module*)dep;
             atomic_boolean_store(&im->done, true);
-            symbol_table* st = im->osym.sym.declaring_st;
-            while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
-            mdg_node* dep_mdg = (mdg_node*)st->owning_node;
+            mdg_node* dep_mdg = (mdg_node*)symbol_table_get_module_table(
+                                    im->osym.sym.declaring_st)
+                                    ->owning_node;
             if (atomic_ureg_dec(&dep_mdg->ungenerated_pp_deps) == 1) {
                 if (sccd_run(
                         &tc->sccd, (mdg_node*)dep, SCCD_PP_DEPS_GENERATED)) {

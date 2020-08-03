@@ -2082,7 +2082,14 @@ resolve_error resolve_import_module(
     bool available = false;
     bool request_pp = false;
     mdg_node* mdg = im->module;
-    atomic_boolean_init(&im->done, false);
+    mdg_node* im_mdg;
+    if (used_in_pp) {
+        atomic_boolean_init(&im->done, false);
+        im_mdg =
+            (mdg_node*)symbol_table_get_module_table(im->osym.sym.declaring_st)
+                ->owning_node;
+        atomic_ureg_inc(&im_mdg->ungenerated_pp_deps);
+    }
     rwlock_write(&mdg->lock);
     if (mdg->stage >= MS_PARSING_ERROR) {
         // TODO: some poisoning or error message idk
@@ -2125,6 +2132,9 @@ resolve_error resolve_import_module(
         }
         re = curr_pprn_depend_on(r, &im->pprn);
         if (re) return re;
+    }
+    if (used_in_pp && available) {
+        atomic_ureg_dec(&im_mdg->ungenerated_pp_deps);
     }
     if (used_in_pp || available) {
         ast_flags_set_resolved(&im->osym.sym.node.flags);
@@ -3479,9 +3489,11 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                     ptrlist_remove(&r->imports_with_pprns, &it);
                 }
             }
-            // hack: busy wait for now until we have proper suspend resume
-            if (awaiting && r->committed_waiters) {
+            if (!progress && awaiting && r->committed_waiters) {
+                // hack: busy wait for now until we have proper suspend resume
                 progress = true;
+                // eventual goal:
+                // return resolver_suspend(r);
             }
         }
     } while (progress);
@@ -3798,15 +3810,19 @@ int resolver_suspend(resolver* r)
     ptrlist_clear(&r->pp_resolve_nodes_pending);
     ptrlist_clear(&r->pp_resolve_nodes_waiting);
     freelist_clear(&r->pp_resolve_nodes);
-    // TODO: this is really dumb. consider getting rid of the difference
-    // entirely
+    // TODO: this is kinda dumb. consider getting rid of the difference
     if (ptrdiff(r->mdgs_end, r->mdgs_begin) == sizeof(mdg_node*)) {
-        return tauc_request_resolve_single(r->tc->t, *r->mdgs_begin, p);
+        res = tauc_request_resolve_single(r->tc->t, *r->mdgs_begin, p);
     }
     else {
-        return tauc_request_resolve_multiple(
+        res = tauc_request_resolve_multiple(
             r->tc->t, r->mdgs_begin, r->mdgs_end, p);
     }
+    if (res) {
+        // TODO: cleanup
+        return RE_FATAL;
+    }
+    return RE_SUSPENDED;
 }
 int resolver_partial_fin(resolver* r, int i, int res)
 {

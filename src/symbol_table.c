@@ -91,7 +91,10 @@ symbol_table* symbol_table_nonmeta(symbol_table* st)
 }
 symbol_table* symbol_table_get_module_table(symbol_table* st)
 {
-    while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
+    while (st->owning_node->kind != ELEM_MDG_NODE) {
+        st = st->parent;
+        assert(st);
+    }
     return st;
 }
 static inline ureg symbol_table_get_capacity(symbol_table* st)

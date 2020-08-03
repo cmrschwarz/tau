@@ -101,6 +101,8 @@ typedef struct mdg_node_s {
     struct mdg_node_s* parent;
     char* name;
     atomic_ureg unparsed_files;
+    // relevant for mdgs in the MS_AWAITING_PP_DEPENDENCIES state
+    // used to wake them up when the deps are ready
     atomic_ureg ungenerated_pp_deps;
     // these ids are used in the scc detector. don't confuse these with
     // the symbol ids used in the llvm backend, they don't share an "id space"
