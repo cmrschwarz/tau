@@ -14,6 +14,7 @@ precompile:
         key: precompile
         paths:
             - deps/llvm-project-prebuild/
+            - precompile_llvm/
     only:
         - master
         - testing

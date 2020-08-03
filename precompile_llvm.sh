@@ -3,20 +3,24 @@ set -Eeuo pipefail
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd $SCRIPT_DIR
 
-keep_build=false
+keep_build=true
 force_override=false
+full_rerun=false
 while [ $# -gt 0 ]; do
-    if  [ "$1" = "-k" ] || [ "$1" = "--keep-build" ]; then
-        keep_build=true
+    if  [ "$1" = "-c" ] || [ "$1" = "--cleanup" ]; then
+        keep_build=false
         shift
     elif  [ "$1" = "-f" ] || [ "$1" = "--force" ]; then
         force_override=true
         shift
+    elif  [ "$1" = "-r" ] || [ "$1" = "--full" ]; then
+        full_rerun=true
+        shift
     fi
 done
 
-# # make sure llvm is up to date
-# git submodule update --init --recursive --remote
+# make sure llvm is up to date
+git submodule update --init --recursive
 cd ./deps/llvm-project/
 
 #if this dir exist we already precompiled
@@ -27,7 +31,9 @@ if [ -d "../llvm-project-prebuild" ]; then
         exit 0
     fi
     rm -rf ../llvm-project-prebuild
-    rm -rf ../../precomile_llvm
+    if $full_rerun; then
+        rm -rf ../../precomile_llvm
+    fi
 fi
 cd ../../
 mkdir -p ./precompile_llvm
