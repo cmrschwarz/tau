@@ -54,18 +54,16 @@ set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "")
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/deps")
 
 
-if (CMAKE_BUILD_TYPE MATCHES ".*Debug.*")
-    set (TAUC_DEBUG true)
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message("Creating Debug Buildfiles")
     set(TAUC_C_TESTS
         ./src/test/unit_tests.c
     )
     set(TAUC_CPP_TESTS)
-    message("Creating Debug Buildfiles")
     set(TAUC_C_SRCS ${TAUC_C_SRCS} ${TAUC_C_TESTS})
     set(TAUC_CPP_SRCS ${TAUC_CPP_SRCS} ${TAUC_CPP_TESTS})
     set(TAUC_PP_DIRECTIVES ${TAUC_PP_DIRECTIVES} TAUC_DEBUG)
 else()
-    set (TAUC_DEBUG false)
     message("Creating Release Buildfiles")
 endif()
 
@@ -74,7 +72,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR
     "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"
 )
     # add "-pg -no-pie" for profiling with gprof
-    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter -pedantic")
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wno-unused-parameter -Wno-maybe-uninitialized -pedantic")
     set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -g")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -pedantic -fno-rtti -fno-exceptions")
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g")

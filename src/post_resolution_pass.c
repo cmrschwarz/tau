@@ -1,6 +1,7 @@
 #include "post_resolution_pass.h"
 #include "mdg.h"
 #include "error_log.h"
+#include "utils/panic.h"
 #include "thread_context.h"
 #include "print_ast.h"
 #include "tauc.h"
@@ -504,8 +505,9 @@ void prp_free_owned_vars(post_resolution_pass* prp)
                 dk = DTOR_KIND_KNOWN_DEAD;
                 if (p) tputs("no dtor");
                 break;
-            case VAR_STATE_UNKNOWN:
+            default:
                 assert(false); // well we failed then :/
+                panic("compiler bug");
                 return;
         }
         ast_flags_set_dtor_kind(&vd->var_node->var->osym.sym.node.flags, dk);

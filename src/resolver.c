@@ -3416,7 +3416,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                         r, (expr_block*)rn->node, rn->declaring_st, NULL, NULL);
                 }
                 else {
-                    assert(false);
+                    panic("compiler bug");
                 }
                 re = handle_resolve_error(r, rn->node, rn->declaring_st, re);
                 if (re) return re;

@@ -2519,7 +2519,7 @@ parse_error parse_func_decl(
     PEEK(p, t);
     sc_func_base* fnb;
     sc_func_generic* fng = NULL;
-    sc_func* fn;
+    sc_func* fn = NULL;
     if (t->kind == TK_BRACKET_OPEN) {
         fng = alloc_perm(p, sizeof(sc_func_generic));
         if (!fng) return PE_FATAL;
