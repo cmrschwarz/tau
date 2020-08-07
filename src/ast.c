@@ -260,9 +260,9 @@ ast_body* ast_elem_get_body(ast_elem* s)
         return &((scope*)s)->body;
     }
     switch (s->kind) {
-        case EXPR_BLOCK: return &((expr_block*)s)->body;
+        case EXPR_BLOCK: return &((expr_block*)s)->ebb.body;
         case EXPR_MATCH: return &((expr_match*)s)->body;
-        case EXPR_LOOP: return &((expr_loop*)s)->body;
+        case EXPR_LOOP: return &((expr_loop*)s)->ebb.body;
         case STMT_PASTE_EVALUATION: return &((stmt_paste_evaluation*)s)->body;
         case MF_EXTEND:
         case MF_MODULE: return &((module_frame*)s)->body;

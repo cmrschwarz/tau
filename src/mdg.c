@@ -166,7 +166,7 @@ void free_astn_symtabs(ast_node* n)
         case EXPR_RETURN: free_astn_symtabs(((expr_break*)n)->value); break;
 
         case EXPR_BLOCK: {
-            free_body_symtabs(n, &((expr_block*)n)->body);
+            free_body_symtabs(n, &((expr_block*)n)->ebb.body);
         } break;
 
         case SYM_IMPORT_PARENT: {
@@ -197,7 +197,7 @@ void free_astn_symtabs(ast_node* n)
             free_astn_symtabs(ei->if_body);
             free_astn_symtabs(ei->else_body);
         } break;
-        case EXPR_LOOP: free_body_symtabs(n, &((expr_loop*)n)->body); break;
+        case EXPR_LOOP: free_body_symtabs(n, &((expr_loop*)n)->ebb.body); break;
 
         case EXPR_MACRO_CALL: {
             expr_macro_call* emc = (expr_macro_call*)n;

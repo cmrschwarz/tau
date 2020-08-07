@@ -200,7 +200,7 @@ prp_error prp_handle_assign(post_resolution_pass* prp, expr_op_binary* assign)
 prp_error prp_handle_break(post_resolution_pass* prp, expr_break* b)
 {
     prp_block_node* bn = prp->curr_block;
-    prp_block_node* break_bn = b->target.ebb->prpbn;
+    prp_block_node* break_bn = b->target.ebb->body.prpbn;
     // the exit state of the vars in this link chain will be updated for the
     // block that we break from
     prp_var_node* break_chain = NULL;
@@ -286,21 +286,21 @@ prp_error prp_handle_node(post_resolution_pass* prp, ast_node* n)
         }
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
-            if (b->ebb.prpbn) {
-                prp_block_node_activate_on_demand(prp, b->ebb.prpbn);
+            if (b->ebb.body.prpbn) {
+                prp_block_node_activate_on_demand(prp, b->ebb.body.prpbn);
                 return PRPE_OK;
             }
             return prp_block_node_push(
-                prp, n, &((expr_block*)n)->body, &b->ebb.prpbn);
+                prp, n, &((expr_block*)n)->ebb.body, &b->ebb.body.prpbn);
         }
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)n;
-            if (l->ebb.prpbn) {
-                prp_block_node_activate_on_demand(prp, l->ebb.prpbn);
+            if (l->ebb.body.prpbn) {
+                prp_block_node_activate_on_demand(prp, l->ebb.body.prpbn);
                 return PRPE_OK;
             }
             return prp_block_node_push(
-                prp, n, &((expr_loop*)n)->body, &l->ebb.prpbn);
+                prp, n, &((expr_loop*)n)->ebb.body, &l->ebb.body.prpbn);
         }
         case EXPR_IF: {
             expr_if* i = (expr_if*)n;
@@ -535,11 +535,11 @@ void prp_assign_func_dtors(post_resolution_pass* prp)
                 case EXPR_LOOP:
                 case EXPR_BLOCK: {
                     expr_block_base* ebb = (expr_block_base*)curr;
-                    assert(ebb->prpbn);
-                    prp->curr_block = ebb->prpbn;
+                    assert(ebb->body.prpbn);
+                    prp->curr_block = ebb->body.prpbn;
                     prp->curr_block->next_expr =
                         prp->curr_block->body->elements;
-                    ebb->prpbn = NULL;
+                    ebb->body.prpbn = NULL;
                     prp_free_owned_vars(prp);
                     break;
                 }

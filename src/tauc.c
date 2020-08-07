@@ -17,6 +17,7 @@ static inline int global_scope_init(scope* gs)
     gs->osym.sym.name = "__global_scope__";
     gs->osym.sym.node.kind = MF_MODULE; // this is a lie, but it works :)
     gs->osym.sym.node.flags = AST_NODE_FLAGS_DEFAULT;
+    gs->body.pprn = NULL;
     gs->osym.sym.declaring_st = NULL;
     gs->osym.visible_within = NULL;
     gs->body.elements = NULL;

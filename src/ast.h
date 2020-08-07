@@ -253,6 +253,17 @@ typedef struct open_symbol_s {
 typedef struct ast_body_s {
     ast_node** elements; // zero terminated
     symbol_table* symtab;
+    // this is always NULL for module frames, but
+    // it's still necessary because we want to be able to get the
+    // pprn of the cuurent body
+    union {
+        prp_block_node* prpbn;
+        void* control_flow_ctx;
+        // this works, since the block ITSELF (not its children)
+        // won't be touched by the backend until its fully resolved
+        // and then we don't need the pprn anymore
+        pp_resolve_node* pprn;
+    };
     src_range srange;
 } ast_body;
 
@@ -316,26 +327,17 @@ typedef struct expr_block_base_s {
     ast_node node;
     ast_node* parent; // either another expr_block_base or a function
     char* name;
-    union {
-        prp_block_node* prpbn;
-        void* control_flow_ctx;
-        // this works, since the block ITSELF (not its children)
-        // won't be touched by the backend until its fully resolved
-        // and then we don't need the pprn anymore
-        pp_resolve_node* pprn;
-    };
     ast_elem* ctype;
+    ast_body body;
 } expr_block_base;
 
 // these two are currently identical, so this is a little silly
 typedef struct expr_block_s {
     expr_block_base ebb;
-    ast_body body;
 } expr_block;
 
 typedef struct expr_loop_s {
     expr_block_base ebb;
-    ast_body body;
 } expr_loop;
 
 typedef struct expr_continue_s {
@@ -477,7 +479,6 @@ typedef struct expr_paste_evaluation_s {
 
 typedef struct stmt_paste_evaluation_s {
     paste_evaluation pe;
-    pp_resolve_node* pprn; // it has a body, it needs a pprn
     ast_body body;
 } stmt_paste_evaluation;
 
@@ -501,7 +502,6 @@ typedef struct sc_func_base_s {
     ureg param_count;
     ast_node* return_type;
     ast_elem* return_ctype;
-    pp_resolve_node* pprn;
 } sc_func_base;
 
 typedef struct sc_func_s {
@@ -530,7 +530,6 @@ typedef struct sc_struct_s sc_struct;
 
 typedef struct sc_struct_base_s {
     scope sc;
-    pp_resolve_node* pprn;
     sc_struct* extends;
     ast_node* extends_spec;
 } sc_struct_base;
@@ -576,7 +575,6 @@ typedef struct sym_var_s {
     union {
         pp_resolve_node* pprn;
         prp_var_node* prpvn;
-        ureg rt_initialization_tracker_id;
     };
     ureg var_id;
 } sym_var;

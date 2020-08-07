@@ -147,12 +147,12 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
     }
     switch (n->kind) {
         case SC_FUNC:
-        case SC_FUNC_GENERIC: ((sc_func_base*)n)->pprn = NULL; break;
+        case SC_FUNC_GENERIC: ((sc_func_base*)n)->sc.body.pprn = NULL; break;
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: ((sym_var*)n)->pprn = NULL; break;
-        case EXPR_BLOCK: ((expr_block*)n)->ebb.pprn = NULL; break;
-        case EXPR_LOOP: ((expr_loop*)n)->ebb.pprn = NULL; break;
-        case SC_STRUCT: ((sc_struct*)n)->sb.pprn = NULL; break;
+        case EXPR_BLOCK: ((expr_block*)n)->ebb.body.pprn = NULL; break;
+        case EXPR_LOOP: ((expr_loop*)n)->ebb.body.pprn = NULL; break;
+        case SC_STRUCT: ((sc_struct*)n)->sb.sc.body.pprn = NULL; break;
         case SYM_IMPORT_GROUP:
             ((sym_import_group*)n)->parent_im.pprn = NULL;
             break;
@@ -778,7 +778,7 @@ static resolve_error add_ast_node_decls(
                     pp_resolve_node* pprn = pp_resolve_node_create(
                         r, (ast_node*)fn, body, true, true, false, false);
                     if (!pprn) return RE_FATAL;
-                    fn->fnb.pprn = pprn;
+                    fn->fnb.sc.body.pprn = pprn;
                     r->module_group_constructor = fn;
                 }
                 else if (cstr_eq(fn->fnb.sc.osym.sym.name, COND_KW_DESTRUCT)) {
@@ -808,7 +808,7 @@ static resolve_error add_ast_node_decls(
                     pp_resolve_node* pprn = pp_resolve_node_create(
                         r, (ast_node*)fn, body, true, true, false, false);
                     if (!pprn) return RE_FATAL;
-                    fn->fnb.pprn = pprn;
+                    fn->fnb.sc.body.pprn = pprn;
                     r->module_group_destructor = fn;
                 }
             }
@@ -2172,7 +2172,8 @@ static inline resolve_error resolve_expr_block(
 {
     bool end_reachable;
     resolve_error re = resolve_expr_body(
-        r, parent_body, (ast_node*)b, &b->body, &b->ebb.pprn, &end_reachable);
+        r, parent_body, (ast_node*)b, &b->ebb.body, &b->ebb.body.pprn,
+        &end_reachable);
     if (re == RE_UNREALIZED_COMPTIME) {
         if (b->ebb.ctype || !end_reachable) re = RE_OK;
     }
@@ -2479,7 +2480,7 @@ static inline resolve_error resolve_ast_node_raw(
             }
             bool end_reachable;
             re = resolve_expr_body(
-                r, body, n, &l->body, &l->ebb.pprn, &end_reachable);
+                r, body, n, &l->ebb.body, &l->ebb.body.pprn, &end_reachable);
             if (re == RE_UNREALIZED_COMPTIME) {
                 if (l->ebb.ctype || !end_reachable) re = RE_OK;
             }
@@ -2512,7 +2513,7 @@ static inline resolve_error resolve_ast_node_raw(
             }
             bool end_reachable;
             re = resolve_expr_body(
-                r, body, n, &spe->body, &spe->pprn, &end_reachable);
+                r, body, n, &spe->body, &spe->body.pprn, &end_reachable);
             if (re == RE_UNREALIZED_COMPTIME) {
                 if (!end_reachable) re = RE_OK;
             }
@@ -2921,7 +2922,7 @@ resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ast_elem** ctype)
     resolve_error re;
     if (ast_flags_get_resolved(fn->fnb.sc.osym.sym.node.flags)) {
         if (ctype) *ctype = fn->fnb.return_ctype;
-        if (fn->fnb.pprn == NULL) return RE_OK; // fn already emitted
+        if (fn->fnb.sc.body.pprn == NULL) return RE_OK; // fn already emitted
         mdg_node* fn_mdg = (mdg_node*)symbol_table_get_module_table(
                                fn->fnb.sc.osym.sym.declaring_st)
                                ->owning_node;
@@ -2931,18 +2932,18 @@ resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ast_elem** ctype)
     else {
         ast_body* decl_body =
             ast_elem_get_body(fn->fnb.sc.osym.sym.declaring_st->owning_node);
-        if (!fn->fnb.pprn) {
+        if (!fn->fnb.sc.body.pprn) {
 
-            fn->fnb.pprn = pp_resolve_node_create(
+            fn->fnb.sc.body.pprn = pp_resolve_node_create(
                 r, (ast_node*)fn, decl_body, false, true, false, false);
-            if (!fn->fnb.pprn) return RE_FATAL;
+            if (!fn->fnb.sc.body.pprn) return RE_FATAL;
         }
         re = resolve_ast_node(
             r, fn->fnb.return_type, decl_body, &fn->fnb.return_ctype, NULL);
         if (re) return re;
         if (ctype) *ctype = fn->fnb.return_ctype;
     }
-    re = curr_pprn_depend_on(r, &fn->fnb.pprn);
+    re = curr_pprn_depend_on(r, &fn->fnb.sc.body.pprn);
     if (re) return re;
     return RE_OK;
 }
@@ -2950,14 +2951,14 @@ resolve_error
 resolve_struct(resolver* r, sc_struct* st, ast_elem** value, ast_elem** ctype)
 {
     resolve_error re = RE_OK;
-    if (st->sb.pprn && st->sb.pprn->dep_count) {
-        re = curr_pprn_depend_on(r, &st->sb.pprn);
+    if (st->sb.sc.body.pprn && st->sb.sc.body.pprn->dep_count) {
+        re = curr_pprn_depend_on(r, &st->sb.sc.body.pprn);
         if (re) return re;
         return RE_UNREALIZED_COMPTIME;
     }
     ast_node* parent_block_owner = r->curr_block_owner;
     pp_resolve_node* parent_pprn = r->curr_block_pp_node;
-    r->curr_block_pp_node = st->sb.pprn;
+    r->curr_block_pp_node = st->sb.sc.body.pprn;
     r->curr_block_owner = (ast_node*)st;
     ast_body* b = &st->sb.sc.body;
     bool unrealized_comptime = false;
@@ -2971,12 +2972,14 @@ resolve_struct(resolver* r, sc_struct* st, ast_elem** value, ast_elem** ctype)
             break;
         }
     }
-    st->sb.pprn = r->curr_block_pp_node;
+    st->sb.sc.body.pprn = r->curr_block_pp_node;
     r->curr_block_owner = parent_block_owner;
     r->curr_block_pp_node = parent_pprn;
-    if (st->sb.pprn) {
-        resolve_error re2 = curr_pprn_depend_on(r, &st->sb.pprn);
-        if (!re2) re2 = pp_resolve_node_activate(r, &st->sb.pprn, re == RE_OK);
+    if (st->sb.sc.body.pprn) {
+        resolve_error re2 = curr_pprn_depend_on(r, &st->sb.sc.body.pprn);
+        if (!re2)
+            re2 =
+                pp_resolve_node_activate(r, &st->sb.sc.body.pprn, re == RE_OK);
         if (re2) {
             assert(re2 == RE_FATAL);
             return re2;
@@ -3045,19 +3048,19 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
             ast_flags_set_resolved(&fnb->sc.osym.sym.node.flags);
             r->curr_block_owner = parent_block_owner;
             r->generic_context = generic_parent;
-            if (fnb->pprn) {
-                return pp_resolve_node_activate(r, &fnb->pprn, true);
+            if (fnb->sc.body.pprn) {
+                return pp_resolve_node_activate(r, &fnb->sc.body.pprn, true);
             }
             return RE_OK;
         }
     }
-    r->curr_block_pp_node = fnb->pprn;
+    r->curr_block_pp_node = fnb->sc.body.pprn;
     ast_elem* stmt_ctype;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
     ast_node** n = body->elements;
     if (continue_block) {
         n = continue_block;
-        if (!fnb->pprn->block_pos_reachable) stmt_ctype_ptr = NULL;
+        if (!fnb->sc.body.pprn->block_pos_reachable) stmt_ctype_ptr = NULL;
     }
     // since curr_pprn is expression based we want to reset it so
     // we don't add children to the caller of our func
@@ -3095,12 +3098,12 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
     // this must be reset before we call add dependency
     r->curr_block_owner = parent_block_owner;
     pp_resolve_node* bpprn = r->curr_block_pp_node;
-    fnb->pprn = bpprn;
+    fnb->sc.body.pprn = bpprn;
     r->curr_block_pp_node = prev_block_pprn;
     r->generic_context = generic_parent;
     if (re == RE_UNREALIZED_COMPTIME) {
         assert(bpprn);
-        re = pp_resolve_node_activate(r, &fnb->pprn, re == RE_OK);
+        re = pp_resolve_node_activate(r, &fnb->sc.body.pprn, re == RE_OK);
         if (re) return re;
         bpprn->continue_block = n;
         bpprn->block_pos_reachable = (stmt_ctype_ptr != NULL);
@@ -3108,12 +3111,12 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
     }
     if (bpprn) {
         if (!re) bpprn->continue_block = NULL;
-        if (!fnb->pprn->first_unresolved_child &&
+        if (!fnb->sc.body.pprn->first_unresolved_child &&
             fnb != (sc_func_base*)r->module_group_constructor) {
-            fnb->pprn->dummy = true;
+            fnb->sc.body.pprn->dummy = true;
         }
         resolve_error re2 =
-            pp_resolve_node_activate(r, &fnb->pprn, re == RE_OK);
+            pp_resolve_node_activate(r, &fnb->sc.body.pprn, re == RE_OK);
         if (re2) {
             assert(re2 == RE_FATAL);
             return re2;
@@ -3522,8 +3525,8 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             }
             if (!progress && awaiting && r->committed_waiters) {
                 // hack: busy wait for now until we have proper suspend resume
-                // progress = true;
-                return resolver_suspend(r);
+                progress = true;
+                // return resolver_suspend(r);
             }
         }
     } while (progress);

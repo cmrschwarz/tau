@@ -969,7 +969,8 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
 ControlFlowContext* LLVMBackend::getTartetCFC(ast_node* target)
 {
     assert(target->kind == EXPR_BLOCK || target->kind == EXPR_LOOP);
-    return (ControlFlowContext*)((expr_block_base*)target)->control_flow_ctx;
+    return (ControlFlowContext*)((expr_block_base*)target)
+        ->body.control_flow_ctx;
 }
 bool LLVMBackend::isIDInModule(ureg id)
 {
@@ -1033,9 +1034,9 @@ llvm_error LLVMBackend::genIfBranch(ast_node* branch)
         // TODO: we might need to cast the expr block
         // return type?
         auto eb = (expr_block*)branch;
-        eb->ebb.control_flow_ctx = &ctx;
+        eb->ebb.body.control_flow_ctx = &ctx;
         ret = (eb->ebb.ctype != UNREACHABLE_ELEM);
-        lle = genExecutableAstBody(&eb->body, ret);
+        lle = genExecutableAstBody(&eb->ebb.body, ret);
         if (lle) return lle;
     }
     else if (ctx.value) {
@@ -1576,7 +1577,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (lle) return lle;
             _control_flow_ctx.emplace_back();
             ControlFlowContext* ctx = &_control_flow_ctx.back();
-            l->ebb.control_flow_ctx = ctx;
+            l->ebb.body.control_flow_ctx = ctx;
             ctx->following_block = following_block;
             lle = genScopeValue(l->ebb.ctype, *ctx);
             if (lle) return lle;
@@ -1585,7 +1586,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (!ctx->first_block) return LLE_FATAL;
             if (!_builder.CreateBr(ctx->first_block)) return LLE_FATAL;
             _builder.SetInsertPoint(ctx->first_block);
-            lle = genExecutableAstBody(&l->body, true);
+            lle = genExecutableAstBody(&l->ebb.body, true);
             if (lle) return lle;
             if (!_builder.CreateBr(ctx->first_block)) return LLE_FATAL;
             _builder.SetInsertPoint(following_block);
@@ -1605,12 +1606,12 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (lle) return lle;
             _control_flow_ctx.emplace_back();
             ControlFlowContext* ctx = &_control_flow_ctx.back();
-            b->ebb.control_flow_ctx = ctx;
+            b->ebb.body.control_flow_ctx = ctx;
             ctx->following_block = following_block;
             lle = genScopeValue(b->ebb.ctype, *ctx);
             if (lle) return lle;
             ctx->first_block = _builder.GetInsertBlock();
-            lle = genExecutableAstBody(&b->body, true);
+            lle = genExecutableAstBody(&b->ebb.body, true);
             if (lle) return lle;
             if (!_builder.CreateBr(following_block)) return LLE_FATAL;
             _builder.SetInsertPoint(following_block);

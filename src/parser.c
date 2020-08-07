@@ -1379,17 +1379,17 @@ static inline parse_error parse_expr_block(
     if (!first_stmt) lx_void(&p->lx);
     expr_block* b = alloc_perm(p, sizeof(expr_block));
     if (!b) return PE_FATAL;
-    b->ebb.pprn = NULL;
     b->ebb.ctype = NULL;
     ast_node_init((ast_node*)b, EXPR_BLOCK);
     *ex = (ast_node*)b;
     init_expr_block_base(
         p, (expr_block_base*)b, first_stmt ? true : false, label);
     parse_error pe = parse_delimited_body(
-        p, &b->body, (ast_node*)b, 0, first_stmt, bstart, bend, TK_BRACE_CLOSE);
+        p, &b->ebb.body, (ast_node*)b, 0, first_stmt, bstart, bend,
+        TK_BRACE_CLOSE);
     if (pe) return pe;
     pe = ast_node_fill_srange(
-        p, (ast_node*)b, bstart, src_range_get_end(b->body.srange));
+        p, (ast_node*)b, bstart, src_range_get_end(b->ebb.body.srange));
     return pe;
 }
 
@@ -1444,12 +1444,12 @@ parse_error parse_loop(parser* p, ast_node** tgt)
     expr_loop* l = alloc_perm(p, sizeof(expr_loop));
     if (!l) return PE_FATAL;
     l->ebb.ctype = NULL;
-    l->ebb.pprn = NULL;
     if (ast_node_fill_srange(p, (ast_node*)l, start, t->end)) return PE_FATAL;
     ast_node_init((ast_node*)l, EXPR_LOOP);
     *tgt = (ast_node*)l;
     init_expr_block_base(p, (expr_block_base*)l, false, NULL);
-    return parse_braced_namable_body(p, (ast_node*)l, &l->body, &l->ebb.name);
+    return parse_braced_namable_body(
+        p, (ast_node*)l, &l->ebb.body, &l->ebb.name);
 }
 parse_error parse_paste(parser* p, ast_node** tgt)
 {
@@ -2294,7 +2294,6 @@ parse_error parser_parse_paste_stmt(
         p, epp, STMT_PASTE_EVALUATION, *st, parent_ebb,
         (paste_evaluation**)&eval);
     if (pe) return pe;
-    eval->pprn = NULL;
     p->paste_block = &eval->body;
     p->paste_parent_symtab = st;
     p->paste_parent_owns_st = owned_st;
@@ -2529,7 +2528,6 @@ parse_error parse_func_decl(
             p, (symbol*)fng, &fng->generic_params, &fng->generic_param_count,
             true, start, decl_end, "in this function declaration");
         if (pe) return pe;
-        // TODO: fng->pprn = NULL;
         PEEK(p, t);
     }
     else {
@@ -2537,7 +2535,6 @@ parse_error parse_func_decl(
         if (!fn) return PE_FATAL;
         fnb = (sc_func_base*)fn;
     }
-    fnb->pprn = NULL;
     fnb->sc.osym.sym.name = name;
     fnb->sc.osym.visible_within = NULL; // TODO
     ast_node_init_with_flags(
@@ -2584,6 +2581,7 @@ parse_error parse_func_decl(
         fn->fnb.sc.body.elements = (ast_node**)NULL_PTR_PTR;
         fn->fnb.sc.body.srange = SRC_RANGE_INVALID;
         fn->fnb.sc.body.symtab = NULL;
+        fnb->sc.body.pprn = NULL;
         if (push_bpd(p, (ast_node*)fn, &fn->fnb.sc.body)) return PE_FATAL;
         curr_scope_add_decls(p, AM_LOCAL, fn->fnb.param_count);
         if (pop_bpd(p, PE_OK)) return PE_FATAL;
@@ -2685,7 +2683,7 @@ parse_error parse_struct_decl(
     else {
         sp = alloc_perm(p, sizeof(sc_struct));
         if (!sp) return PE_FATAL;
-        sp->sb.pprn = NULL;
+        sp->sb.sc.body.pprn = NULL;
         s = (open_symbol*)sp;
     }
     ast_node_init_with_flags(
@@ -3629,6 +3627,7 @@ static inline parse_error parse_delimited_body(
     }
     b->elements = (ast_node**)list_builder_pop_list_zt(
         &p->lx.tc->listb2, elements_list_start, &p->lx.tc->permmem);
+    b->pprn = NULL;
     if (!b->elements) {
         free_failed_ast_node_list_symtabs(
             &p->lx.tc->listb2, elements_list_start, &b->elements);

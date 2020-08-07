@@ -465,7 +465,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
-            print_namable_braced_body(&b->body, b->ebb.name, cmdg, indent);
+            print_namable_braced_body(&b->ebb.body, b->ebb.name, cmdg, indent);
         } break;
         case SYM_VAR: {
             sym_var* v = (sym_var*)n;
@@ -610,7 +610,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)n;
             p("loop ");
-            print_namable_braced_body(&l->body, l->ebb.name, cmdg, indent);
+            print_namable_braced_body(&l->ebb.body, l->ebb.name, cmdg, indent);
         } break;
         case EXPR_MATCH: {
             expr_match* m = (expr_match*)n;
