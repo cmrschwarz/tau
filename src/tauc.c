@@ -416,7 +416,6 @@ void worker_thread_fn(void* ctx)
 int tauc_add_worker_thread(tauc* t)
 {
     // preorder a job for the new thread
-    job_queue_preorder_job(&t->jobqueue);
     // TODO: better mem management
     worker_thread* wt = tmalloc(sizeof(worker_thread));
     if (!wt) return ERR;
@@ -437,6 +436,7 @@ int tauc_add_worker_thread(tauc* t)
         tputs("");
         tflush();
     }
+    thread_context_preorder_job(&wt->tc);
     r = thread_launch(&wt->thr, worker_thread_fn, wt);
     if (r) {
         master_error_log_report(&t->mel, "failed to spawn worker thread");

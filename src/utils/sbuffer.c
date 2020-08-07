@@ -63,7 +63,13 @@ void* sbuffer_front(sbuffer* sb, ureg size)
 }
 void* sbuffer_back(sbuffer* sb, ureg size)
 {
-    assert(ptrdiff(sb->tail_seg->tail, sb->tail_seg + 1) >= size);
+    while (true) {
+        ureg tss = ptrdiff(sb->tail_seg->tail, sb->tail_seg + 1);
+        assert(tss == 0 || tss >= size);
+        if (tss) break;
+        sb->tail_seg = sb->tail_seg->prev;
+        assert(sb->tail_seg);
+    }
     return ptrsub(sb->tail_seg->tail, size);
 }
 void* sbuffer_prepend(sbuffer* sb, ureg size)

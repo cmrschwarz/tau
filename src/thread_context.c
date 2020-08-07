@@ -90,6 +90,7 @@ int thread_context_do_job(thread_context* tc, job* j)
         llvm_module* mod;
         re = resolver_resolve_and_emit(
             &tc->r, start, end, j->concrete.resolve.partial_res_data, &mod);
+        if (re == RE_SUSPENDED) return RE_OK;
         if (re) tauc_error_occured(tc->t, re);
         if (re == RE_FATAL) r = ERR;
         // don't bother creating objs if we had any error somewhere

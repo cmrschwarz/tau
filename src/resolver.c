@@ -263,6 +263,13 @@ void ast_node_set_used_in_pp(resolver* r, ast_node* n)
         tflush();
     }
 }
+mdg_node* resolver_resolving_root(resolver* r)
+{
+    // since these are sorted ascending by id from the
+    // sccd, root will always be the first
+    mdg_node* rn = *r->mdgs_begin;
+    return (rn == r->tc->t->mdg.root_node) ? rn : NULL;
+}
 resolve_error pprn_set_used_in_pp(resolver* r, pp_resolve_node* pprn)
 {
     if (ast_flags_get_used_in_pp(pprn->node->flags)) return RE_OK;
@@ -993,7 +1000,7 @@ resolve_error add_body_decls(
     }
     return RE_OK;
 }
-static inline void print_debug_info(resolver* r, char* flavortext)
+static inline void print_debug_info(resolver* r, const char* flavortext)
 {
     tprintf("%s {", flavortext);
     mdg_node** i = r->mdgs_begin;
@@ -2084,11 +2091,14 @@ resolve_error resolve_import_module(
     mdg_node* mdg = im->module;
     mdg_node* im_mdg;
     if (used_in_pp) {
-        atomic_boolean_init(&im->done, false);
-        im_mdg =
-            (mdg_node*)symbol_table_get_module_table(im->osym.sym.declaring_st)
-                ->owning_node;
-        atomic_ureg_inc(&im_mdg->ungenerated_pp_deps);
+        if (!ast_flags_get_emitted_for_pp(im->osym.sym.node.flags)) {
+            ast_flags_set_emitted_for_pp(&im->osym.sym.node.flags);
+            atomic_boolean_init(&im->done, false);
+            im_mdg = (mdg_node*)symbol_table_get_module_table(
+                         im->osym.sym.declaring_st)
+                         ->owning_node;
+            atomic_ureg_inc(&im_mdg->ungenerated_pp_deps);
+        }
     }
     rwlock_write(&mdg->lock);
     if (mdg->stage >= MS_PARSING_ERROR) {
@@ -3175,12 +3185,7 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
 }
 resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
 {
-    bool contains_root = false;
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
-        if (*i == r->tc->t->mdg.root_node) {
-            if (tauc_request_finalize(r->tc->t)) return RE_FATAL;
-            contains_root = true;
-        }
         // TODO: init pp symtabs
         int res = symbol_table_init(
             &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
@@ -3189,7 +3194,11 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
         (**i).symtab->parent = NULL; // assertion in set parent symtabs
         set_parent_symtabs(&(**i).symtab, r->tc->t->root_symtab);
     }
-    if (!contains_root) atomic_ureg_inc(&r->tc->t->linking_holdups);
+    if (!resolver_resolving_root(r)) {
+        // root is marked as a linking holdup from the beginning to prevent
+        // immediate linking
+        atomic_ureg_inc(&r->tc->t->linking_holdups);
+    }
     return RE_OK;
 }
 resolve_error resolver_add_mf_decls(resolver* r)
@@ -3563,19 +3572,19 @@ void resolver_reset_resolution_state(resolver* r)
     r->module_group_constructor = NULL;
     r->module_group_destructor = NULL;
 }
-int resolver_resolve(resolver* r)
+resolve_error resolver_resolve(resolver* r)
 {
     resolver_reset_resolution_state(r);
     resolve_error re;
-    re = resolver_init_mdg_symtabs_and_handle_root(r);
-    if (re) return re;
-    re = resolver_add_mf_decls(r);
-    if (re) return re;
+    if (!r->resumed) {
+        re = resolver_init_mdg_symtabs_and_handle_root(r);
+        if (re) return re;
+        re = resolver_add_mf_decls(r);
+        if (re) return re;
+    }
     re = resolver_run_pp_resolve_nodes(r);
-    if (re == RE_SUSPENDED) return RE_OK;
     if (re) return re;
     re = resolver_handle_post_pp(r);
-    if (re == RE_SUSPENDED) return RE_OK;
     if (re) return re;
     free_pprns(r, false);
     assert(r->committed_waiters == 0);
@@ -3723,23 +3732,40 @@ int resolver_emit(resolver* r, llvm_module** module)
     }
     return OK;
 }
-int resolver_resolve_and_emit_post_setup(resolver* r, llvm_module** module)
+resolve_error
+resolver_resolve_and_emit_post_setup(resolver* r, llvm_module** module)
 {
     ureg curr_max_glob_id = atomic_ureg_load(&r->tc->t->node_ids);
     llvm_error lle =
         llvm_backend_reserve_symbols(r->backend, 0, curr_max_glob_id);
     if (lle) return RE_ERROR;
-    int res;
-    TAU_TIME_STAGE_CTX(r->tc->t, res = resolver_resolve(r);
-                       , print_debug_info(r, "resolving"));
+    resolve_error res = RE_OK;
+    TAU_TIME_STAGE_CTX(r->tc->t, res = resolver_resolve(r), {
+        const char* msg;
+        if (!res) {
+            msg = "resolving";
+        }
+        else if (res == RE_SUSPENDED) {
+            msg = "suspended resolving";
+        }
+        else {
+            msg = "failed resolving";
+        }
+        print_debug_info(r, msg);
+    });
     if (res) {
+        // noo need for free, we 'moved'
+        if (res == RE_SUSPENDED) return res;
         free_pprns(r, true);
-        return ERR;
+        return res;
     }
     TAU_TIME_STAGE_CTX(
         r->tc->t, res = prp_run_modules(&r->prp, r->mdgs_begin, r->mdgs_end);
         , print_debug_info(r, "running prp for"));
     if (res) return ERR;
+    if (resolver_resolving_root(r)) {
+        if (tauc_request_finalize(r->tc->t)) return ERR;
+    }
     return resolver_emit(r, module);
 }
 void resolver_setup_blank_resolve(resolver* r)
@@ -3752,6 +3778,7 @@ void resolver_setup_blank_resolve(resolver* r)
     r->deps_required_for_pp = false;
     r->committed_waiters = 0;
 }
+// this can't return an error since we also use it in an aborted suspend
 void resolver_unpack_partial_resolution_data(
     resolver* r, partial_resolution_data* prd)
 {
@@ -3767,8 +3794,14 @@ void resolver_unpack_partial_resolution_data(
         &r->pp_resolve_nodes_pending, &prd->pprns_pending);
     sbuffer_take_and_invalidate(
         &r->pp_resolve_nodes_waiting, &prd->pprns_waiting);
+    sbuffer_take_and_invalidate(
+        &r->imports_with_pprns, &prd->imports_with_pprns);
+#if DEBUG
+    assert(r->pp_resolve_nodes.alloc_count == 0);
+    r->pp_resolve_nodes.alloc_count = prd->pprn_count;
+#endif
 }
-int resolver_resolve_and_emit(
+resolve_error resolver_resolve_and_emit(
     resolver* r, mdg_node** start, mdg_node** end, partial_resolution_data* prd,
     llvm_module** module)
 {
@@ -3780,6 +3813,7 @@ int resolver_resolve_and_emit(
     else {
         resolver_setup_blank_resolve(r);
     }
+    r->resumed = (prd != NULL);
     return resolver_resolve_and_emit_post_setup(r, module);
 }
 resolve_error resolver_suspend(resolver* r)
@@ -3801,6 +3835,16 @@ resolve_error resolver_suspend(resolver* r)
         pool_undo_last_alloc(&r->pprn_mem, sizeof(partial_resolution_data));
         return RE_FATAL;
     }
+    res = sbuffer_steal_used(
+        &p->imports_with_pprns, &r->imports_with_pprns, false);
+    if (res) {
+        sbuffer_take_and_invalidate(
+            &r->pp_resolve_nodes_waiting, &p->pprns_waiting);
+        sbuffer_take_and_invalidate(
+            &r->pp_resolve_nodes_pending, &p->pprns_pending);
+        pool_undo_last_alloc(&r->pprn_mem, sizeof(partial_resolution_data));
+        return RE_FATAL;
+    }
 
     pool_steal_used(&p->pprn_mem, &r->pprn_mem);
     p->deps_required_for_pp = r->deps_required_for_pp;
@@ -3810,6 +3854,10 @@ resolve_error resolver_suspend(resolver* r)
 
     // since we currently resolve that module nobody may race us
     (**r->mdgs_begin).partial_res_data = p;
+#if DEBUG
+    p->pprn_count = r->pp_resolve_nodes.alloc_count;
+    r->pp_resolve_nodes.alloc_count = 0;
+#endif
     assert(sbuffer_get_used_size(&r->pp_resolve_nodes_ready) == 0);
     ptrlist_clear(&r->pp_resolve_nodes_pending);
     ptrlist_clear(&r->pp_resolve_nodes_waiting);
@@ -3831,13 +3879,13 @@ resolve_error resolver_suspend(resolver* r)
         (**n).stage = ms;
         rwlock_end_write(&(**n).lock);
     }
-    if (job_queue_preorder_job(&r->tc->t->jobqueue)) {
+    if (thread_context_preorder_job(r->tc)) {
         resolver_unpack_partial_resolution_data(r, p);
         return RE_FATAL;
     }
     // we might already be ready by this time but since the stages are updated
     // one after the other we need to do one final check
-    if (sccd_run(&r->tc->sccd, *r->mdgs_begin, SCCD_PP_DEPS_GENERATED)) {
+    if (sccd_run(&r->tc->sccd, *r->mdgs_begin, SCCD_CHECK_PP_DEPS_GENERATED)) {
         // this might be ready but unnoticed otherwise
         bool undo_required = false;
         rwlock_write(&(**r->mdgs_begin).lock);

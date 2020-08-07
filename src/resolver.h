@@ -62,6 +62,9 @@ typedef struct partial_resolution_data_s {
     ptrlist pprns_waiting;
     ptrlist imports_with_pprns;
     bool deps_required_for_pp;
+#if DEBUG
+    ureg pprn_count;
+#endif
 } partial_resolution_data;
 
 typedef struct resolver_s {
@@ -84,6 +87,7 @@ typedef struct resolver_s {
     bool allow_type_loops;
     bool retracing_type_loop;
     bool generic_context;
+    bool resumed; // whether we come from a partial resolution
     // ids distributed during declaration adding starting from PRIV_SYM_OFFSET
     ureg id_space;
     ureg public_sym_count;
@@ -120,7 +124,7 @@ typedef struct resolver_s {
 
 int resolver_init(resolver* r, thread_context* tc);
 void resolver_fin(resolver* r);
-int resolver_resolve_and_emit(
+resolve_error resolver_resolve_and_emit(
     resolver* r, mdg_node** start, mdg_node** end, partial_resolution_data* prd,
     llvm_module** module);
 ast_elem* get_resolved_ast_node_ctype(ast_node* n);

@@ -25,6 +25,7 @@ int pool_init(pool* p)
 }
 void pool_fin(pool* p)
 {
+    if (!p->head_segment) return;
     pool_segment* next = p->head_segment->next;
     pool_segment* seg = p->head_segment;
     while (seg != NULL) {
@@ -41,6 +42,11 @@ void pool_fin(pool* p)
 }
 void* pool_alloc(pool* p, ureg size)
 {
+    // PERF: this is quite a hot function so not doing this and adjusting
+    // the steal functions to leave a segment instead might be a good idea
+    if (!p->head_segment) {
+        if (pool_init(p)) return NULL;
+    }
     while (true) {
         if (p->head_segment->head + size <= p->head_segment->end) {
             void* res = p->head_segment->head;
@@ -69,6 +75,7 @@ void* pool_alloc(pool* p, ureg size)
 void pool_clear(pool* p)
 {
     pool_segment* seg = p->head_segment;
+    if (!seg) return; // see alloc for thoghts on these NULL pools
     while (true) {
         seg->head = ptradd(seg, sizeof(pool_segment));
         if (!seg->prev) {

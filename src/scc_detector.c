@@ -504,9 +504,36 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
             exploratory_resolve = true;
             assert(false); // TODO: implement this
         } break;
-        case SCCD_PP_DEPS_GENERATED: {
-            assert(false); // TODO
+        case SCCD_PP_DEP_GENERATED:
+        case SCCD_CHECK_PP_DEPS_GENERATED: {
+            bool checking_only = (sccdrr == SCCD_CHECK_PP_DEPS_GENERATED);
+            if (checking_only) {
+                if (atomic_ureg_load(&n->ungenerated_pp_deps) != 0) {
+                    r = SCCD_HANDLED;
+                }
+            }
+            else {
+                if (atomic_ureg_dec(&n->ungenerated_pp_deps) != 1) {
+                    r = SCCD_HANDLED;
+                }
+            }
+            if (r) break;
+            awaiting = true;
+            if (n->stage == MS_AWAITING_PP_DEPENDENCIES_EXPLORATION) {
+                exploratory = true;
+                exploratory_resolve = true;
+                n->stage = MS_AWAITING_DEPENDENCIES_EXPLORATION;
+            }
+            else if (n->stage == MS_AWAITING_PP_DEPENDENCIES) {
+                n->stage = MS_AWAITING_DEPENDENCIES;
+            }
+            else {
+                // if we decremented nobody could have changed the stage yet
+                assert(checking_only);
+                r = SCCD_HANDLED;
+            }
         } break;
+        default: assert(false);
     }
     mdg_node* notifier = n->notifier;
     list_bounded_it it;
@@ -592,6 +619,23 @@ int sccd_handle_node(
         case MS_GENERATING:
         case MS_GENERATED: {
             resolved = true;
+        } break;
+        case MS_AWAITING_PP_DEPENDENCIES_EXPLORATION: {
+            if (explore) {
+                if (atomic_ureg_load(&n->ungenerated_pp_deps) == 0) {
+                    n->stage = MS_AWAITING_DEPENDENCIES_EXPLORATION;
+                    awaiting = true;
+                }
+                break;
+            }
+            n->stage = MS_AWAITING_DEPENDENCIES;
+            propagate_required = true;
+        } // fallthrough
+        case MS_AWAITING_PP_DEPENDENCIES: {
+            if (atomic_ureg_load(&n->ungenerated_pp_deps) == 0) {
+                n->stage = MS_AWAITING_DEPENDENCIES;
+                awaiting = true;
+            }
         } break;
         default: assert(false); break;
     }

@@ -583,12 +583,10 @@ int mdg_nodes_generated(
             mdg_node* dep_mdg = (mdg_node*)symbol_table_get_module_table(
                                     im->osym.sym.declaring_st)
                                     ->owning_node;
-            if (atomic_ureg_dec(&dep_mdg->ungenerated_pp_deps) == 1) {
-                if (sccd_run(
-                        &tc->sccd, (mdg_node*)dep, SCCD_PP_DEPS_GENERATED)) {
-                    ok = false;
-                }
-            };
+            if (sccd_run(
+                    &tc->sccd, (mdg_node*)dep_mdg, SCCD_PP_DEP_GENERATED)) {
+                ok = false;
+            }
         }
         // we just replace the old notify list with a new one and free the old
         // one without reusing any allocations. we have SSO anyways and a big
