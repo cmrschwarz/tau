@@ -12,6 +12,34 @@
 #endif
 #include <stdlib.h>
 
+static inline int global_scope_init(scope* gs)
+{
+    gs->osym.sym.name = "__global_scope__";
+    gs->osym.sym.node.kind = MF_MODULE; // this is a lie, but it works :)
+    gs->osym.sym.node.flags = AST_NODE_FLAGS_DEFAULT;
+    gs->osym.sym.declaring_st = NULL;
+    gs->osym.visible_within = NULL;
+    gs->body.elements = NULL;
+    gs->body.srange = SRC_RANGE_INVALID;
+    if (symbol_table_init(
+            &gs->body.symtab, PRIMITIVE_COUNT + 1, 0, true, (ast_elem*)gs)) {
+        return ERR;
+    }
+    gs->body.symtab->parent = NULL;
+    for (int i = 0; i < PRIMITIVE_COUNT; i++) {
+        if (symbol_table_insert(gs->body.symtab, (symbol*)&PRIMITIVES[i])) {
+            symbol_table_fin(gs->body.symtab);
+            return ERR;
+        }
+        PRIMITIVES[i].sym.declaring_st = gs->body.symtab;
+    }
+    return OK;
+}
+static inline void global_scope_fin(scope* gs)
+{
+    symbol_table_fin(gs->body.symtab);
+}
+
 static inline int tauc_core_partial_fin(tauc* t, int r, int i)
 {
     switch (i) {
@@ -22,7 +50,7 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
         case 7: aseglist_fin(&t->module_dtors); // fallthrough
         case 6: aseglist_fin(&t->module_ctors); // fallthrough
         case 5: thread_context_fin(&t->main_thread_context); // fallthrough
-        case 4: fin_root_symtab(t->root_symtab); // fallthrough
+        case 4: global_scope_fin(&t->global_scope); // fallthrough
         case 3: aseglist_fin(&t->worker_threads); // fallthrough
         case 2: job_queue_fin(&t->jobqueue); // fallthrough
         case 1: llvm_backend_fin_globals(); // fallthrough
@@ -41,7 +69,7 @@ int tauc_core_init(tauc* t)
     if (r) return tauc_core_partial_fin(t, r, 1);
     r = aseglist_init(&t->worker_threads);
     if (r) return tauc_core_partial_fin(t, r, 2);
-    r = init_root_symtab(&t->root_symtab); // needs node_ids
+    r = global_scope_init(&t->global_scope); // needs node_ids
     if (r) return tauc_core_partial_fin(t, r, 3);
     r = thread_context_init(&t->main_thread_context, t);
     if (r) return tauc_core_partial_fin(t, r, 4);

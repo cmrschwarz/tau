@@ -40,7 +40,7 @@ typedef struct tauc_s {
     job_queue jobqueue;
     atomic_sreg error_code;
     atomic_ureg node_ids; // stores the max used id
-    symbol_table* root_symtab;
+    scope global_scope;
     aseglist module_ctors;
     aseglist module_dtors;
     target_platform host_target;

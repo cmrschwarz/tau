@@ -67,8 +67,6 @@ src_map* symbol_table_get_smap(symbol_table* st);
 // used when the pp introduces additional symbols
 int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings);
 
-int init_root_symtab(symbol_table** root_st);
-void fin_root_symtab(symbol_table* root_st);
 symbol_table* symbol_table_nonmeta(symbol_table* st);
 void symbol_table_set_parent(symbol_table* st, symbol_table* parent);
 symbol_table* symbol_table_get_module_table(symbol_table* st);

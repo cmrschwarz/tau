@@ -528,8 +528,6 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
                 n->stage = MS_AWAITING_DEPENDENCIES;
             }
             else {
-                // if we decremented nobody could have changed the stage yet
-                assert(checking_only);
                 r = SCCD_HANDLED;
             }
         } break;

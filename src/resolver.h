@@ -32,7 +32,7 @@ typedef struct thread_context_s thread_context;
 
 typedef struct pp_resolve_node_s {
     ast_node* node; // either expr_pp, stmt_use or func or var
-    symbol_table* declaring_st; // for continuing top level expressions
+    ast_body* declaring_body; // for continuing top level expressions
     list notify;
     // stores pointers to the pprn pointer inside the notifying node
     // this way if the notifying node's pprn gets fin'd we notice that
@@ -130,7 +130,7 @@ resolve_error resolver_resolve_and_emit(
 ast_elem* get_resolved_ast_node_ctype(ast_node* n);
 
 resolve_error resolve_ast_node(
-    resolver* r, ast_node* n, symbol_table* st, ast_elem** value,
+    resolver* r, ast_node* n, ast_body* body, ast_elem** value,
     ast_elem** ctype);
 resolve_error resolve_import_symbol(resolver* r, sym_import_symbol* is);
 resolve_error add_body_decls(

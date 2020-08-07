@@ -240,26 +240,6 @@ src_map* symbol_table_get_smap(symbol_table* st)
     if (st->parent) return symbol_table_get_smap(st->parent);
     return NULL;
 }
-int init_root_symtab(symbol_table** root_symtab)
-{
-    if (symbol_table_init(root_symtab, PRIMITIVE_COUNT + 1, 0, true, NULL)) {
-        return ERR;
-    }
-    (**root_symtab).parent = NULL;
-    for (int i = 0; i < PRIMITIVE_COUNT; i++) {
-        if (symbol_table_insert(*root_symtab, (symbol*)&PRIMITIVES[i])) {
-            fin_root_symtab(*root_symtab);
-            return ERR;
-        }
-        PRIMITIVES[i].sym.declaring_st = *root_symtab;
-    }
-    (**root_symtab).decl_count = PRIMITIVE_COUNT;
-    return OK;
-}
-void fin_root_symtab(symbol_table* root_symtab)
-{
-    symbol_table_fin(root_symtab);
-}
 void symtab_it_begin(symtab_it* stit, symbol_table* st)
 {
     stit->pos = st->table;

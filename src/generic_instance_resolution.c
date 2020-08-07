@@ -143,7 +143,7 @@ instantiate_ast_node(resolver* r, ast_node* n, ast_node** tgt, symbol_table* st)
 }
 resolve_error instantiate_generic_struct(
     resolver* r, expr_access* ea, ast_elem** args, ast_elem** ctypes,
-    sc_struct_generic* sg, symbol_table* st, sc_struct_generic_inst** tgt)
+    sc_struct_generic* sg, ast_body* parent_body, sc_struct_generic_inst** tgt)
 {
     resolve_error re;
     sc_struct_generic_inst* sgi =
@@ -187,7 +187,7 @@ resolve_error instantiate_generic_struct(
 
 // PERF: create a hashmap for this
 resolve_error resolve_generic_struct(
-    resolver* r, expr_access* ea, sc_struct_generic* sg, symbol_table* st,
+    resolver* r, expr_access* ea, sc_struct_generic* sg, ast_body* parent_body,
     ast_elem** value, ast_elem** ctype)
 {
     if (ea->arg_count != sg->generic_param_count) {
@@ -201,7 +201,8 @@ resolve_error resolve_generic_struct(
     if (!ctypes) return RE_FATAL;
     resolve_error re;
     for (ureg i = 0; i < ea->arg_count; i++) {
-        re = resolve_ast_node(r, ea->args[i], st, &args[i], &ctypes[i]);
+        re =
+            resolve_ast_node(r, ea->args[i], parent_body, &args[i], &ctypes[i]);
         if (re) return re;
     }
     for (sc_struct_generic_inst* sgi = sg->instances; sgi;
@@ -224,10 +225,12 @@ resolve_error resolve_generic_struct(
         }
     }
     sc_struct_generic_inst* sgi;
-    re = instantiate_generic_struct(r, ea, args, ctypes, sg, st, &sgi);
+    re = instantiate_generic_struct(r, ea, args, ctypes, sg, parent_body, &sgi);
     sbuffer_remove_back(&r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
     sbuffer_remove_back(&r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
     if (re) return re;
+    ast_body* declaring_body =
+        ast_elem_get_body(sgi->st.sb.sc.osym.sym.declaring_st->owning_node);
     re = add_body_decls(
         r, sgi->st.sb.sc.osym.sym.declaring_st, NULL, &sgi->st.sb.sc.body,
         false);
@@ -235,6 +238,5 @@ resolve_error resolve_generic_struct(
     sgi->st.id = claim_symbol_id(
         r, (symbol*)sgi,
         symbol_table_is_public(sg->sb.sc.osym.sym.declaring_st));
-    return resolve_ast_node(
-        r, (ast_node*)sgi, sgi->st.sb.sc.osym.sym.declaring_st, value, ctype);
+    return resolve_ast_node(r, (ast_node*)sgi, declaring_body, value, ctype);
 }

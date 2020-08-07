@@ -72,8 +72,11 @@ static inline resolve_error update_ams(
                     }
                     if (!looking_struct->sb.extends_spec) break;
                     if (!looking_struct->sb.extends) {
+                        // PERF: meh
+                        ast_body* decl_body =
+                            ast_elem_get_body(lookup_st->owning_node);
                         resolve_error re = resolve_ast_node(
-                            r, looking_struct->sb.extends_spec, lookup_st,
+                            r, looking_struct->sb.extends_spec, decl_body,
                             (ast_elem**)&looking_struct->sb.extends, NULL);
                         if (re) return re;
                         assert(ast_elem_is_struct(
@@ -196,8 +199,10 @@ resolve_error symbol_lookup_level_run(
             // TODO: respect extends visibility
             if (st->sb.extends_spec) {
                 if (!st->sb.extends) {
+                    ast_body* decl_body =
+                        ast_elem_get_body(lookup_st->owning_node);
                     re = resolve_ast_node(
-                        sli->r, st->sb.extends_spec, lookup_st,
+                        sli->r, st->sb.extends_spec, decl_body,
                         (ast_elem**)&st->sb.extends, NULL);
                     if (re) return re;
                     assert(ast_elem_is_struct((ast_elem*)st->sb.extends));
