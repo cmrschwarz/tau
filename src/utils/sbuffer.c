@@ -201,7 +201,7 @@ void sbuffer_take_and_invalidate(sbuffer* sb, sbuffer* donor)
         sb->tail_seg->next = donor_rem;
     }
 }
-int sbuffer_steal_used(sbuffer* sb, sbuffer* donor)
+int sbuffer_steal_used(sbuffer* sb, sbuffer* donor, bool sb_initialized)
 {
     sbuffer_segment* donor_rem = donor->tail_seg->next;
     sbuffer_segment* donor_new = NULL;
@@ -214,7 +214,14 @@ int sbuffer_steal_used(sbuffer* sb, sbuffer* donor)
         donor_new->next = NULL;
         if (!donor_new) return ERR;
     }
-    sb->first_seg->prev = donor->first_seg;
+    if (sb_initialized) {
+        sb->first_seg->prev = donor->first_seg;
+    }
+    else {
+        sb->biggest_seg_size = ptrdiff(donor->tail_seg->end, donor->tail_seg);
+        sb->first_seg = NULL;
+        sb->tail_seg = donor->tail_seg;
+    }
     donor->tail_seg->next = sb->first_seg;
     sb->first_seg = donor->first_seg;
     if (donor_rem) {

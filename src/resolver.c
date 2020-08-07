@@ -41,7 +41,7 @@ resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn);
 resolve_error resolve_import_module(
     resolver* r, sym_import_module* im, symbol_table* st, bool dep_prop,
     ast_elem** value, ast_elem** ctype);
-
+resolve_error resolver_suspend(resolver* r);
 void free_pprns(resolver* r, bool error_occured);
 void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident);
 // must be a macro so value and ctype become lazily evaluated
@@ -3491,9 +3491,8 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             }
             if (!progress && awaiting && r->committed_waiters) {
                 // hack: busy wait for now until we have proper suspend resume
-                progress = true;
-                // eventual goal:
-                // return resolver_suspend(r);
+                // progress = true;
+                return resolver_suspend(r);
             }
         }
     } while (progress);
@@ -3573,8 +3572,10 @@ int resolver_resolve(resolver* r)
     re = resolver_add_mf_decls(r);
     if (re) return re;
     re = resolver_run_pp_resolve_nodes(r);
+    if (re == RE_SUSPENDED) return RE_OK;
     if (re) return re;
     re = resolver_handle_post_pp(r);
+    if (re == RE_SUSPENDED) return RE_OK;
     if (re) return re;
     free_pprns(r, false);
     assert(r->committed_waiters == 0);
@@ -3781,45 +3782,73 @@ int resolver_resolve_and_emit(
     }
     return resolver_resolve_and_emit_post_setup(r, module);
 }
-int resolver_suspend(resolver* r)
+resolve_error resolver_suspend(resolver* r)
 {
     // this alloc will be undone by the continue
     partial_resolution_data* p =
         pool_alloc(&r->pprn_mem, sizeof(partial_resolution_data));
+    int res = sbuffer_steal_used(
+        &p->pprns_pending, &r->pp_resolve_nodes_pending, false);
+    if (res) {
+        pool_undo_last_alloc(&r->pprn_mem, sizeof(partial_resolution_data));
+        return RE_FATAL;
+    }
+    res = sbuffer_steal_used(
+        &p->pprns_waiting, &r->pp_resolve_nodes_waiting, false);
+    if (res) {
+        sbuffer_take_and_invalidate(
+            &r->pp_resolve_nodes_pending, &p->pprns_pending);
+        pool_undo_last_alloc(&r->pprn_mem, sizeof(partial_resolution_data));
+        return RE_FATAL;
+    }
+
     pool_steal_used(&p->pprn_mem, &r->pprn_mem);
     p->deps_required_for_pp = r->deps_required_for_pp;
     p->id_space = r->id_space;
     // TODO: we could very much avoid the allocs here using some
     // steal strategy but eh
-    int res =
-        sbuffer_steal_used(&p->pprns_pending, &r->pp_resolve_nodes_pending);
-    if (res) {
-        pool_steal_all(&r->pprn_mem, &p->pprn_mem);
-        return res;
-    }
-    res = sbuffer_steal_used(&p->pprns_waiting, &r->pp_resolve_nodes_waiting);
-    if (res) {
-        sbuffer_take_and_invalidate(
-            &r->pp_resolve_nodes_pending, &p->pprns_pending);
-        pool_steal_all(&r->pprn_mem, &p->pprn_mem);
-        return res;
-    }
+
     // since we currently resolve that module nobody may race us
     (**r->mdgs_begin).partial_res_data = p;
     assert(sbuffer_get_used_size(&r->pp_resolve_nodes_ready) == 0);
     ptrlist_clear(&r->pp_resolve_nodes_pending);
     ptrlist_clear(&r->pp_resolve_nodes_waiting);
     freelist_clear(&r->pp_resolve_nodes);
-    // TODO: this is kinda dumb. consider getting rid of the difference
-    if (ptrdiff(r->mdgs_end, r->mdgs_begin) == sizeof(mdg_node*)) {
-        res = tauc_request_resolve_single(r->tc->t, *r->mdgs_begin, p);
+    // put partial res data in scc. no need for a lock since nobody accesses
+    // this while we are in the resolving stage
+    (**r->mdgs_begin).partial_res_data = p;
+    // 'unblock' the mdg in the scc and decrement the dummy ungenerated pps
+    // since we can't do all at once we need to check afterwards
+    // if everybody is done already (using scc to avoid double fire)
+    for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
+        atomic_ureg_dec(&(**n).ungenerated_pp_deps);
+        // we can do this unrwlock'ed read since we are sure that whille
+        // we are resolving nobody may change the state but us
+        module_stage ms = ((**n).stage == MS_RESOLVING_EXPLORATION)
+                              ? MS_AWAITING_PP_DEPENDENCIES_EXPLORATION
+                              : MS_AWAITING_PP_DEPENDENCIES;
+        rwlock_write(&(**n).lock);
+        (**n).stage = ms;
+        rwlock_end_write(&(**n).lock);
     }
-    else {
-        res = tauc_request_resolve_multiple(
-            r->tc->t, r->mdgs_begin, r->mdgs_end, p);
+    if (job_queue_preorder_job(&r->tc->t->jobqueue)) {
+        resolver_unpack_partial_resolution_data(r, p);
+        return RE_FATAL;
     }
-    if (res) {
-        // TODO: cleanup
+    // we might already be ready by this time but since the stages are updated
+    // one after the other we need to do one final check
+    if (sccd_run(&r->tc->sccd, *r->mdgs_begin, SCCD_PP_DEPS_GENERATED)) {
+        // this might be ready but unnoticed otherwise
+        bool undo_required = false;
+        rwlock_write(&(**r->mdgs_begin).lock);
+        if ((**r->mdgs_begin).partial_res_data == p) {
+            undo_required = true;
+            (**r->mdgs_begin).partial_res_data = NULL;
+        }
+        rwlock_end_write(&(**r->mdgs_begin).lock);
+        if (undo_required) {
+            resolver_unpack_partial_resolution_data(r, p);
+        }
         return RE_FATAL;
     }
     return RE_SUSPENDED;
