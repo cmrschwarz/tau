@@ -10,6 +10,7 @@ func bar() -> int{
 import a;
 module a{
     public func foo() -> int{
-        return 0;
+        return x;
     }
+    #paste("x: int;");
 }

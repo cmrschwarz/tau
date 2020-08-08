@@ -26,7 +26,7 @@ resolve_error
 resolve_struct(resolver* r, sc_struct* st, ast_elem** value, ast_elem** ctype);
 resolve_error resolve_expr_body(
     resolver* r, ast_body* parent_body, ast_node* expr, ast_body* b,
-    pp_resolve_node** block_pprn, bool* end_reachable);
+    bool* end_reachable);
 resolve_error resolve_expr_scope_access(
     resolver* r, expr_scope_access* esa, symbol_table* st,
     access_modifier* access, ast_elem** value, ast_elem** ctype);
@@ -140,6 +140,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
         tprintf("freeing pprn: ");
         print_pprn(r, pprn, false, 0);
+        print_pprns(r, "remaining:\n", true);
         tflush();
     }
     if (pprn->waiting_list_entry) {
@@ -160,6 +161,8 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
         case EXPR_PP: ((expr_pp*)n)->pprn = NULL; break;
         case EXPR_PASTE_EVALUATION:
         case STMT_PASTE_EVALUATION:
+            ((stmt_paste_evaluation*)n)->body.pprn = NULL;
+            break;
         default: assert(false); panic("invalid pprn node type");
     }
     list_fin(&pprn->notified_by, true);
@@ -182,6 +185,7 @@ static pp_resolve_node* pp_resolve_node_create(
         return NULL;
     }
     pprn->dep_count = 0;
+    pprn->activated = false;
     pprn->nested_pp_exprs = false;
     pprn->notify_when_ready = notify_when_ready;
     pprn->pending_pastes = false;
@@ -332,6 +336,7 @@ resolve_error
 pp_resolve_node_activate(resolver* r, pp_resolve_node** pprn_p, bool resolved)
 {
     pp_resolve_node* pprn = *pprn_p;
+    pprn->activated = true;
     if (pprn->dep_count == 0 && r->module_group_constructor) {
         // HACK: make sure the module group ctor runs first
         // TODO: implement this properly
@@ -842,6 +847,7 @@ static resolve_error add_ast_node_decls(
         }
         case STMT_PASTE_EVALUATION: {
             stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
+            set_parent_symtabs(&spe->body.symtab, body->symtab);
             for (ast_node** e = spe->body.elements; *e; e++) {
                 re = add_ast_node_decls(r, &spe->body, sst, *e, public_st);
                 if (re) return re;
@@ -1929,26 +1935,37 @@ static inline resolve_error resolve_expr_pp(
 {
     if (ppe->pprn && ppe->pprn->pending_pastes) return RE_UNREALIZED_COMPTIME;
     bool is_stmt = !ast_flags_get_pp_expr_res_used(ppe->node.flags);
+    resolve_error re;
     if (ppe->ctype == PASTED_EXPR_ELEM) {
+        if (ppe->pprn) {
+            re = pp_resolve_node_done(r, ppe->pprn, NULL);
+            if (re) return re;
+        }
         *ppe->result_buffer.paste_result.last_next = NULL;
         parse_error pe;
         if (!is_stmt) {
             pe = parser_parse_paste_expr(
                 &r->tc->p, ppe, body->symtab, get_current_ebb(r));
             if (pe) return RE_ERROR;
-            return resolve_ast_node(r, (ast_node*)ppe, body, value, ctype);
+            return resolve_ast_node_raw(r, (ast_node*)ppe, body, value, ctype);
         }
         else {
-            ast_body* b = ast_elem_get_body((ast_elem*)r->curr_block_owner);
+            bool paste_parent_owns_st =
+                ast_elem_get_body(body->symtab->owning_node) == body;
             pe = parser_parse_paste_stmt(
-                &r->tc->p, ppe, &b->symtab, get_current_ebb(r),
-                b->symtab->owning_node == (ast_elem*)r->curr_block_owner);
+                &r->tc->p, ppe, &body->symtab, get_current_ebb(r),
+                paste_parent_owns_st);
             if (pe) return RE_ERROR;
-            return resolve_ast_node(r, (ast_node*)ppe, body, value, ctype);
+            symbol_table* st = symbol_table_nonmeta(body->symtab);
+            bool public_st = ast_elem_is_module_frame(st->owning_node);
+            symbol_table* sst =
+                public_st ? symbol_table_nonmeta(st->parent) : NULL;
+            re = add_ast_node_decls(r, body, sst, (ast_node*)ppe, public_st);
+            if (re) return re;
+            return resolve_ast_node_raw(r, (ast_node*)ppe, body, value, ctype);
         }
     }
     pp_resolve_node* pprn = NULL;
-    resolve_error re;
     if (ppe->pprn) {
         pprn = ppe->pprn;
     }
@@ -1990,6 +2007,10 @@ static inline resolve_error resolve_expr_pp(
         if (curr_pp_block_add_child(r, &ppe->pprn)) return RE_FATAL;
         if (pp_resolve_node_activate(r, &ppe->pprn, true)) {
             return RE_FATAL;
+        }
+        // we just need to mark it for reexec, no specific value required
+        if (pprn->pending_pastes && pprn->run_individually) {
+            pprn->continue_block = (ast_node**)NULL_PTR_PTR;
         }
     }
     if (re) {
@@ -2123,6 +2144,8 @@ resolve_error resolve_import_module(
         }
         re = curr_pprn_depend_on(r, &im->pprn);
         if (re) return re;
+        re = pp_resolve_node_activate(r, &im->pprn, false);
+        if (re) return re;
     }
     if (im_mdg && available) { // we set im_mdg iff we inc'ed the dep count
         atomic_ureg_dec(&im_mdg->ungenerated_pp_deps);
@@ -2141,8 +2164,7 @@ static inline resolve_error resolve_expr_block(
 {
     bool end_reachable;
     resolve_error re = resolve_expr_body(
-        r, parent_body, (ast_node*)b, &b->ebb.body, &b->ebb.body.pprn,
-        &end_reachable);
+        r, parent_body, (ast_node*)b, &b->ebb.body, &end_reachable);
     if (re == RE_UNREALIZED_COMPTIME) {
         if (b->ebb.ctype || !end_reachable) re = RE_OK;
     }
@@ -2448,8 +2470,7 @@ static inline resolve_error resolve_ast_node_raw(
                 RETURN_RESOLVED(value, ctype, NULL, l->ebb.ctype);
             }
             bool end_reachable;
-            re = resolve_expr_body(
-                r, body, n, &l->ebb.body, &l->ebb.body.pprn, &end_reachable);
+            re = resolve_expr_body(r, body, n, &l->ebb.body, &end_reachable);
             if (re == RE_UNREALIZED_COMPTIME) {
                 if (l->ebb.ctype || !end_reachable) re = RE_OK;
             }
@@ -2481,8 +2502,7 @@ static inline resolve_error resolve_ast_node_raw(
                         : VOID_ELEM);
             }
             bool end_reachable;
-            re = resolve_expr_body(
-                r, body, n, &spe->body, &spe->body.pprn, &end_reachable);
+            re = resolve_expr_body(r, body, n, &spe->body, &end_reachable);
             if (re == RE_UNREALIZED_COMPTIME) {
                 if (!end_reachable) re = RE_OK;
             }
@@ -2786,7 +2806,7 @@ resolve_error resolve_ast_node(
 }
 resolve_error resolve_expr_body(
     resolver* r, ast_body* parent_body, ast_node* expr, ast_body* b,
-    pp_resolve_node** block_pprn, bool* end_reachable)
+    bool* end_reachable)
 {
     ast_node* parent_block_owner = r->curr_block_owner;
     r->curr_block_owner = expr;
@@ -2795,7 +2815,7 @@ resolve_error resolve_expr_body(
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
     ureg saved_decl_count = 0;
     pp_resolve_node* prev_block_pprn = r->curr_block_pp_node;
-    pp_resolve_node* pprn = block_pprn ? *block_pprn : NULL;
+    pp_resolve_node* pprn = b->pprn;
     bool resumed = (pprn != NULL);
     r->curr_block_pp_node = pprn;
 
@@ -2849,12 +2869,12 @@ resolve_error resolve_expr_body(
         b->symtab->decl_count = saved_decl_count;
     }
     pprn = r->curr_block_pp_node;
-    *block_pprn = pprn;
     r->curr_block_owner = parent_block_owner;
     r->curr_block_pp_node = prev_block_pprn;
     *end_reachable = (stmt_ctype_ptr != NULL);
     r->allow_type_loops = parent_allows_type_loops;
     r->curr_block_owner = parent_block_owner;
+    b->pprn = pprn;
     if (pprn) {
         pprn->block_pos_reachable = *end_reachable;
         pprn->declaring_body = parent_body;
@@ -2874,9 +2894,9 @@ resolve_error resolve_expr_body(
             pprn->dummy = true;
         }
         else {
-            if (curr_pp_block_add_child(r, block_pprn)) return RE_FATAL;
+            if (curr_pp_block_add_child(r, &b->pprn)) return RE_FATAL;
         }
-        re2 = pp_resolve_node_activate(r, block_pprn, re == RE_OK);
+        re2 = pp_resolve_node_activate(r, &b->pprn, re == RE_OK);
         if (re2) return re2;
     }
     if (re) return re; // This includes unrealized paste
@@ -3276,6 +3296,7 @@ void print_pprns(resolver* r, char* msg, bool verbose)
 }
 resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn)
 {
+    if (!pprn->activated) return RE_OK;
     resolve_error re;
     pprn->ready = true;
     if (pprn->waiting_list_entry) {
@@ -3332,6 +3353,7 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
             if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn))
                 return RE_FATAL;
         }
+        pprn->activated = false;
         return RE_OK;
     }
     list_it it;
@@ -3439,11 +3461,31 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                         r, (expr_block*)rn->node, rn->declaring_body, NULL,
                         NULL);
                 }
+                else if (rn->node->kind == STMT_PASTE_EVALUATION) {
+                    bool end_reachable;
+                    re = resolve_expr_body(
+                        r, rn->declaring_body, rn->node,
+                        &((stmt_paste_evaluation*)rn->node)->body,
+                        &end_reachable);
+                }
+                else if (rn->node->kind == EXPR_PP) {
+                    rn->pending_pastes = false;
+                    rn->continue_block = NULL;
+                    re = resolve_expr_pp(
+                        r, rn->declaring_body, (expr_pp*)rn->node, NULL, NULL);
+                }
                 else {
                     panic("compiler bug");
                 }
                 re = handle_resolve_error(r, rn->node, rn->declaring_body, re);
-                if (re) return re;
+                if (re) {
+                    if (re == RE_UNREALIZED_COMPTIME) {
+                        progress = true;
+                    }
+                    else {
+                        return re;
+                    }
+                }
                 continue;
             }
             assert(r->curr_pp_node == NULL);

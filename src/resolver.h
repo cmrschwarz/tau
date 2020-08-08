@@ -42,6 +42,7 @@ typedef struct pp_resolve_node_s {
     bool nested_pp_exprs;
     bool pending_pastes;
     bool ready;
+    bool activated; // prevent early ready
     bool run_individually; // false for exprs in functions
     bool block_pos_reachable; // for continuing blocks
     bool sequential_block;
