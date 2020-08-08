@@ -236,21 +236,6 @@ get_curr_pprn(resolver* r, pp_resolve_node** curr_pprn)
         *curr_pprn = r->curr_pp_node;
         return RE_OK;
     }
-
-    if (r->curr_var_decl &&
-        r->curr_block_owner == r->curr_var_decl_block_owner) {
-        if (r->curr_var_pp_node) {
-            *curr_pprn = r->curr_var_pp_node;
-            return RE_OK;
-        }
-        *curr_pprn = pp_resolve_node_create(
-            r, (ast_node*)r->curr_var_decl,
-            ast_elem_get_body((ast_elem*)r->curr_var_decl_block_owner), false,
-            false, false, true);
-        if (!*curr_pprn) return RE_FATAL;
-        r->curr_var_pp_node = *curr_pprn;
-        return RE_OK;
-    }
     return get_curr_block_pprn(r, curr_pprn);
 }
 void ast_node_set_used_in_pp(resolver* r, ast_node* n)
@@ -373,7 +358,8 @@ pp_resolve_node_activate(resolver* r, pp_resolve_node** pprn_p, bool resolved)
     pp_resolve_node* block_pprn;
     resolve_error re = get_curr_block_pprn(r, &block_pprn);
     if (re) return re;
-    if (block_pprn && block_pprn->sequential_block) {
+    if (block_pprn && block_pprn->sequential_block &&
+        !ast_elem_is_var((ast_elem*)pprn->node)) {
         if (list_append(&pprn->notify, NULL, block_pprn)) return RE_FATAL;
         if (list_append(&block_pprn->notified_by, NULL, pprn_p))
             return RE_FATAL;
@@ -1638,31 +1624,20 @@ static inline resolve_error resolve_var(
 {
     resolve_error re;
     bool comptime = ast_flags_get_comptime(v->osym.sym.node.flags);
-    bool public_symbol = symbol_table_is_public(body->symtab);
-    sym_var* prev_var_decl;
-    pp_resolve_node* prev_pp_node;
-    pp_resolve_node* prev_var_pp_node;
-    ast_node* prev_var_decl_block_owner;
-
-    if (comptime && !v->pprn) {
+    ast_elem* owner = symbol_table_nonmeta(body->symtab)->owning_node;
+    bool public_symbol = ast_elem_is_module_frame(owner);
+    if (!public_symbol) {
+        bool is_static = ast_flags_get_static(v->osym.sym.node.flags);
+        public_symbol = (ast_elem_is_struct(owner) && is_static);
+    }
+    if ((comptime || public_symbol) && !v->pprn) {
         v->pprn = pp_resolve_node_create(
-            r, (ast_node*)v, body, true, false, false, true);
+            r, (ast_node*)v, body, true, false, !comptime, true);
         if (!v->pprn) return RE_FATAL;
         ast_node_set_used_in_pp(r, (ast_node*)v);
     }
-    // we only need this in public scope because for function scopes / ordered
-    // scopes we will never reach following lines if the var above is still
-    // unresolved
-    prev_pp_node = r->curr_pp_node;
+    pp_resolve_node* prev_pp_node = r->curr_pp_node;
     r->curr_pp_node = v->pprn;
-    if (!comptime && public_symbol) {
-        prev_var_decl = r->curr_var_decl;
-        prev_var_pp_node = r->curr_var_pp_node;
-        prev_var_decl_block_owner = r->curr_var_decl_block_owner;
-        r->curr_var_decl = v;
-        r->curr_var_pp_node = v->pprn;
-        r->curr_var_decl_block_owner = r->curr_block_owner;
-    }
     if (v->osym.sym.node.kind == SYM_VAR) {
         ast_elem* type;
         re = resolve_ast_node(r, v->type, body, &type, NULL);
@@ -1718,12 +1693,6 @@ static inline resolve_error resolve_var(
         }
     }
     r->curr_pp_node = prev_pp_node;
-    if (!comptime && public_symbol) {
-        v->pprn = r->curr_var_pp_node;
-        r->curr_var_decl = prev_var_decl;
-        r->curr_var_pp_node = prev_var_pp_node;
-        r->curr_var_decl_block_owner = prev_var_decl_block_owner;
-    }
     if (re) {
         // so we can free it... sigh
         if (v->pprn) add_pprn_to_waiting_list(r, v->pprn);
@@ -3590,9 +3559,6 @@ void resolver_reset_resolution_state(resolver* r)
     r->generic_context = false;
     r->curr_pp_node = NULL;
     r->curr_block_pp_node = NULL;
-    r->curr_var_decl = NULL;
-    r->curr_var_decl_block_owner = NULL;
-    r->curr_var_pp_node = NULL;
     r->retracing_type_loop = false;
     r->module_group_constructor = NULL;
     r->module_group_destructor = NULL;

@@ -115,11 +115,6 @@ typedef struct resolver_s {
     pp_resolve_node* curr_block_pp_node;
     sc_func* module_group_constructor;
     sc_func* module_group_destructor;
-    sym_var* curr_var_decl;
-    pp_resolve_node* curr_var_pp_node;
-    // this is used to determine whether the curr block is inside the decl
-    // or the other way round by storing the block the func decl is in
-    ast_node* curr_var_decl_block_owner;
 } resolver;
 
 int resolver_init(resolver* r, thread_context* tc);
