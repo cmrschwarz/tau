@@ -2070,7 +2070,7 @@ resolve_error resolve_import_module(
     bool available = false;
     bool request_pp = false;
     mdg_node* mdg = im->module;
-    mdg_node* im_mdg;
+    mdg_node* im_mdg = NULL; // only set this when incrementing dep count!
     if (used_in_pp) {
         if (!ast_flags_get_emitted_for_pp(im->osym.sym.node.flags)) {
             ast_flags_set_emitted_for_pp(&im->osym.sym.node.flags);
@@ -2124,7 +2124,7 @@ resolve_error resolve_import_module(
         re = curr_pprn_depend_on(r, &im->pprn);
         if (re) return re;
     }
-    if (used_in_pp && available) {
+    if (im_mdg && available) { // we set im_mdg iff we inc'ed the dep count
         atomic_ureg_dec(&im_mdg->ungenerated_pp_deps);
     }
     if (used_in_pp || available) {
