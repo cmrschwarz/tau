@@ -599,7 +599,8 @@ int mdg_nodes_generated(
 }
 // FIXME: rename this to add_external_requirements
 int module_frame_require_requirements(
-    module_frame* mf, mdg_node* n, thread_context* tc, bool in_pp)
+    module_frame* mf, mdg_node* n, thread_context* tc, bool in_pp,
+    bool module_requred)
 {
     file_require* r = mf->requires;
     // TODO: rethink this handled thing and make it apply to the pp
@@ -610,7 +611,7 @@ int module_frame_require_requirements(
         }
         int res = file_map_head_require(
             r->fmh, tc->t, module_frame_get_smap(mf), r->srange, n,
-            r->is_pp || in_pp);
+            r->is_pp || in_pp, module_requred);
         r++;
         if (res) return res;
     }
@@ -629,10 +630,8 @@ int mdg_node_add_frame(mdg_node* n, module_frame* mf, thread_context* tc)
     needed = module_stage_requirements_needed(n->stage, NULL);
     rwlock_end_read(&n->lock);
     if (r) return r;
-    if (needed) {
-        r = module_frame_require_requirements(mf, n, tc, false);
-        if (r) return r;
-    }
+    r = module_frame_require_requirements(mf, n, tc, false, needed);
+    if (r) return r;
     return r;
 }
 
@@ -653,7 +652,7 @@ int mdg_node_require_requirements(mdg_node* n, thread_context* tc, bool in_pp)
     while (true) {
         module_frame* mf = aseglist_iterator_next(&it);
         if (!mf) break;
-        module_frame_require_requirements(mf, n, tc, in_pp);
+        module_frame_require_requirements(mf, n, tc, in_pp, true);
     }
     if (in_pp) {
         list_it it;

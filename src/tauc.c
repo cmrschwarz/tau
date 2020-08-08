@@ -148,7 +148,7 @@ int handle_cmd_args(
                 return ERR;
             }
             r = src_file_require(
-                f, t, NULL, SRC_RANGE_INVALID, t->mdg.root_node);
+                f, t, NULL, SRC_RANGE_INVALID, t->mdg.root_node, true);
             if (r) return r;
             continue;
         }

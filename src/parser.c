@@ -2808,15 +2808,17 @@ parse_error parse_module_frame_decl(
     }
     int r = mdg_node_add_frame(mdgn, (module_frame*)md, p->lx.tc);
     if (r) return RE_FATAL;
-    rwlock_read(&mdgn->lock);
     if (atomic_ureg_load(&mdgn->unparsed_files) == 1) {
-        rwlock_end_read(&mdgn->lock);
-        r = mdg_node_file_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc);
+        aseglist_iterator it;
+        aseglist_iterator_begin(&it, &p->current_file->requiring_modules);
+        mdg_node* n;
+        while ((n = aseglist_iterator_next(&it))) {
+            if (n == mdgn) break;
+        }
+        if (n != mdgn) {
+            r = mdg_node_file_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc);
+        }
     }
-    else {
-        rwlock_end_read(&mdgn->lock);
-    }
-
     if (r) return RE_FATAL;
     return PE_OK; // consider PE_NO_STMT
 }
@@ -3345,11 +3347,9 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
         src_file* f = file_map_get_file_from_path(
             &p->lx.tc->t->filemap, p->current_file->head.parent, t->str);
         rq.fmh = (file_map_head*)f;
-        if (needed) {
-            int r = src_file_require(
-                f, p->lx.tc->t, p->lx.smap, rq.srange, p->current_module);
-            if (r == ERR) return PE_FATAL;
-        }
+        int r = src_file_require(
+            f, p->lx.tc->t, p->lx.smap, rq.srange, p->current_module, needed);
+        if (r == ERR) return PE_FATAL;
     }
     else {
         src_lib* l = file_map_get_lib_from_path(

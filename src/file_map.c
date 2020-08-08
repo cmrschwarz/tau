@@ -128,33 +128,23 @@ src_file_init(src_file* f, file_map* fm, src_dir* parent, string name)
 
 int src_file_require(
     src_file* f, tauc* t, src_map* requiring_smap, src_range requiring_srange,
-    mdg_node* requiring_mdgn)
+    mdg_node* requiring_mdgn, bool requirer_needed)
 {
     src_file_stage prev_stage;
     rwslock_write(&f->stage_lock);
     prev_stage = f->stage;
-    if (prev_stage == SFS_PARSING) {
-        aseglist_add(&f->requiring_modules, requiring_mdgn);
-        atomic_ureg_inc(&requiring_mdgn->unparsed_files);
-    }
-    else if (f->stage == SFS_UNNEEDED) {
+    if (prev_stage == SFS_UNNEEDED && requirer_needed) {
         f->stage = SFS_UNPARSED;
     }
+    // we do this inside the lock because if the stage finishes we need our
+    // notification
+    atomic_ureg_inc(&requiring_mdgn->unparsed_files);
+    aseglist_add(&f->requiring_modules, requiring_mdgn);
     rwslock_end_write(&f->stage_lock);
-    switch (prev_stage) {
-        case SFS_PARSED:
-        case SFS_PARSING:
-        case SFS_UNPARSED: return OK;
-        case SFS_UNNEEDED: {
-            aseglist_add(&f->requiring_modules, requiring_mdgn);
-            atomic_ureg_inc(&requiring_mdgn->unparsed_files);
-            return tauc_request_parse(t, f, requiring_smap, requiring_srange);
-        }
-        default: {
-            panic("unkown file stage");
-            return ERR;
-        }
+    if (prev_stage == SFS_UNNEEDED && requirer_needed) {
+        return tauc_request_parse(t, f, requiring_smap, requiring_srange);
     }
+    return OK;
 }
 
 int src_lib_require(
@@ -182,13 +172,16 @@ int src_lib_require(
 
 int file_map_head_require(
     file_map_head* h, tauc* t, src_map* requiring_smap,
-    src_range requiring_srange, mdg_node* requiring_mdgn, bool in_pp)
+    src_range requiring_srange, mdg_node* requiring_mdgn, bool in_pp,
+    bool requirer_needed)
 {
     if (h->elem.kind == ELEM_SRC_FILE) {
         return src_file_require(
-            (src_file*)h, t, requiring_smap, requiring_srange, requiring_mdgn);
+            (src_file*)h, t, requiring_smap, requiring_srange, requiring_mdgn,
+            requirer_needed);
     }
     else if (h->elem.kind == ELEM_SRC_LIB) {
+        if (!requirer_needed) return OK;
         return src_lib_require(
             (src_lib*)h, t, requiring_smap, requiring_srange, in_pp);
     }

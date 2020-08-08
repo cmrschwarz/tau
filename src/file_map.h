@@ -66,7 +66,7 @@ int src_file_done_parsing(src_file* f, thread_context* tc);
 // requiring file and srange are purely for error reporting
 int src_file_require(
     src_file* f, tauc* t, src_map* requiring_smap, src_range requiring_srange,
-    mdg_node* n);
+    mdg_node* requiring_mdgn, bool requirer_needed);
 
 int src_lib_require(
     src_lib* l, tauc* t, src_map* requiring_smap, src_range requiring_srange,
@@ -106,5 +106,6 @@ src_lib* file_map_get_lib_from_path(
 
 int file_map_head_require(
     file_map_head* h, tauc* t, src_map* requiring_smap,
-    src_range requiring_srange, mdg_node* requiring_mdgn, bool in_pp);
+    src_range requiring_srange, mdg_node* requiring_mdgn, bool in_pp,
+    bool requirer_needed);
 #endif
