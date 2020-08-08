@@ -131,16 +131,26 @@ int src_file_require(
     mdg_node* requiring_mdgn, bool requirer_needed)
 {
     src_file_stage prev_stage;
-    rwslock_write(&f->stage_lock);
+    rwslock_read(&f->stage_lock);
     prev_stage = f->stage;
-    if (prev_stage == SFS_UNNEEDED && requirer_needed) {
-        f->stage = SFS_UNPARSED;
-    }
     // we do this inside the lock because if the stage finishes we need our
     // notification
-    atomic_ureg_inc(&requiring_mdgn->unparsed_files);
+    if (prev_stage != SFS_PARSED) {
+        atomic_ureg_inc(&requiring_mdgn->unparsed_files);
+    }
     aseglist_add(&f->requiring_modules, requiring_mdgn);
-    rwslock_end_write(&f->stage_lock);
+    rwslock_end_read(&f->stage_lock);
+    if (prev_stage == SFS_UNNEEDED && requirer_needed) {
+        rwslock_write(&f->stage_lock);
+        if (prev_stage == SFS_UNNEEDED) f->stage = SFS_UNPARSED;
+        rwslock_end_write(&f->stage_lock);
+    }
+    if (t->verbosity_flags & VERBOSITY_FLAGS_FILES) {
+        tprintf("%s requires file ", requiring_mdgn->name);
+        twrite(f->head.name.start, f->head.name.end);
+        tputchar('\n');
+        tflush();
+    }
     if (prev_stage == SFS_UNNEEDED && requirer_needed) {
         return tauc_request_parse(t, f, requiring_smap, requiring_srange);
     }
@@ -264,6 +274,12 @@ int src_file_done_parsing(src_file* f, thread_context* tc)
         if (!m) break;
         int r = mdg_node_file_parsed(&tc->t->mdg, m, tc);
         if (r) return r;
+        if (tc->t->verbosity_flags & VERBOSITY_FLAGS_FILES) {
+            tput("file ");
+            twrite(f->head.name.start, f->head.name.end);
+            tprintf(" done: notifying %s\n", m->name);
+            tflush();
+        }
     }
     return OK;
 }

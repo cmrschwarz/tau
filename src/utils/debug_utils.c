@@ -89,6 +89,15 @@ void tputs(const char* c)
     dbuffer_append(&buff, c, strlen(c));
     *(char*)dbuffer_claim(&buff, 1) = '\n';
 }
+void twrite(const char* begin, const char* end)
+{
+    if (init_buffers()) {
+        fwrite(begin, end - begin, 1, stdout);
+        return;
+    }
+    char* tgt = dbuffer_claim(&buff, end - begin);
+    memcpy(tgt, begin, end - begin);
+}
 void tputchar(const char c)
 {
     if (init_buffers()) {

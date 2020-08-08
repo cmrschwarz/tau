@@ -2,11 +2,12 @@ module m{
     require "module_extend_same_file.tau";
 }
 extend m{
-    func foo(){
+    public func foo() -> int{
+        return 0;
     }
 }
 
-func main(){
+func main() -> int {
     import m;
-    m::foo();
+    return m::foo();
 }

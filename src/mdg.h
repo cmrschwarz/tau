@@ -51,6 +51,7 @@ static inline bool module_stage_deps_needed(module_stage ms, bool* exploration)
 {
     switch (ms) {
         case MS_UNFOUND:
+        case MS_FOUND_UNNEEDED:
         case MS_PARSING:
         case MS_AWAITING_DEPENDENCIES:
             if (exploration) *exploration = false;
@@ -65,14 +66,14 @@ static inline bool module_stage_deps_needed(module_stage ms, bool* exploration)
         // TODO: well we could speculate on this one if we have absolutely
         // nothing better to do
         case MS_PARSING_EXPLORATION:
-        default: return false;
+        default: assert(false); return false;
     }
 }
 static inline bool
 module_stage_requirements_needed(module_stage ms, bool* exploring)
 {
     // why would we be handling requires otherwise?
-    assert(ms < MS_PARSED_UNNEEDED);
+    assert(ms < MS_PARSED_UNNEEDED || ms > MS_PARSING_ERROR);
     switch (ms) {
         case MS_UNFOUND:
         case MS_PARSING:
@@ -154,6 +155,7 @@ typedef struct module_dependency_graph_s {
     mdg_new_node changes[MDG_MAX_CHANGES];
     ureg change_count;
     mdg_node* root_node;
+    mdg_node* invalid_node; // used as a dump non required extends
     atomic_ureg node_ids; // stores max used id for modules
 } module_dependency_graph;
 
@@ -167,8 +169,9 @@ void mdg_end_read(module_dependency_graph* m, mdght* h);
 mdght* mdg_start_write(module_dependency_graph* m);
 void mdg_end_write(module_dependency_graph* m);
 
-mdg_node*
-mdg_found_node(module_dependency_graph* m, mdg_node* parent, string ident);
+mdg_node* mdg_found_node(
+    thread_context* tc, mdg_node* parent, string ident, src_map* smap,
+    src_range sr);
 mdg_node* mdg_get_node(
     module_dependency_graph* m, mdg_node* parent, string ident,
     module_stage initial_stage);

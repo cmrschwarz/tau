@@ -1,0 +1,13 @@
+module m{
+    require "test1.tau";
+}
+extend m{
+    public func foo() -> int{
+        return 0;
+    }
+}
+
+func main() -> int {
+    import m;
+    return m::foo();
+}

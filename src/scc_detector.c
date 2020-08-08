@@ -432,6 +432,7 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
     bool exploratory_resolve = false;
     bool propagate_required = false;
     bool awaiting = false;
+    bool require_deps = false;
     int r = OK;
     rwlock_write(&n->lock);
     switch (sccdrr) {
@@ -480,15 +481,18 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
                 case MS_FOUND_UNNEEDED: {
                     n->stage = MS_PARSING;
                     propagate_required = true;
+                    require_deps = true;
                 } break;
                 case MS_PARSED_UNNEEDED: {
                     n->stage = MS_AWAITING_DEPENDENCIES;
                     awaiting = true;
                     propagate_required = true;
+                    require_deps = true;
                 } break;
                 case MS_PARSING_EXPLORATION: {
                     n->stage = MS_PARSING;
                     propagate_required = true;
+                    require_deps = true;
                 } break;
                 case MS_RESOLVED_UNNEEDED: {
                     // TODO: emit generate job
@@ -537,6 +541,10 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
     list_bounded_it it;
     list_bounded_it_begin(&it, &n->dependencies);
     rwlock_end_write(&n->lock);
+    if (require_deps) {
+        r = mdg_node_require_requirements(n, sccd->tc, false);
+        if (r) return ERR;
+    }
     if (r) return r;
     sccd_node* sn = sccd_get(sccd, n->id);
     if (!sn) return ERR;

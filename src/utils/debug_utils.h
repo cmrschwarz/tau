@@ -10,6 +10,7 @@ void limit_mem(ureg max_bytes);
 void tprintf(const char* format, ...);
 void tputs(const char* c);
 void tput(const char* c);
+void twrite(const char* begin, const char* end);
 void tputchar(const char c);
 void tflush();
 void tprintn(const char* c, ureg n);

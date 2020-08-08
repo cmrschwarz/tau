@@ -2744,9 +2744,6 @@ parse_error parse_module_frame_decl(
             "in this module declaration");
         return PE_ERROR;
     }
-    mdg_node* mdgn =
-        mdg_found_node(&p->lx.tc->t->mdg, p->current_module, t->str);
-    if (mdgn == NULL) return PE_FATAL;
     ureg decl_end = t->end;
 
     t2 = lx_peek_2nd(&p->lx);
@@ -2780,6 +2777,9 @@ parse_error parse_module_frame_decl(
     ast_node_init_with_flags((ast_node*)md, kind, flags);
     md->node.srange = src_range_pack(p->lx.tc, start, decl_end, p->lx.smap);
     if (md->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
+    mdg_node* mdgn = mdg_found_node(
+        p->lx.tc, p->current_module, t->str, p->lx.smap, md->node.srange);
+    if (mdgn == NULL) return PE_FATAL;
     PEEK(p, t);
     mdg_node* parent = p->current_module;
     p->current_module = mdgn;
@@ -2808,10 +2808,14 @@ parse_error parse_module_frame_decl(
     }
     int r = mdg_node_add_frame(mdgn, (module_frame*)md, p->lx.tc);
     if (r) return RE_FATAL;
-    if (atomic_ureg_load(&mdgn->unparsed_files) == 1) {
+    ureg up = atomic_ureg_load(&mdgn->unparsed_files);
+    if (up == 0 && !extend) {
+        r = mdg_node_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc);
+    }
+    else if (up == 1) {
         aseglist_iterator it;
         aseglist_iterator_begin(&it, &p->current_file->requiring_modules);
-        mdg_node* n;
+        mdg_node* n = NULL;
         while ((n = aseglist_iterator_next(&it))) {
             if (n == mdgn) break;
         }

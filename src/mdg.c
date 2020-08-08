@@ -13,10 +13,11 @@ int mdg_fin_partial(module_dependency_graph* m, int i, int r)
 {
     switch (i) {
         case -1:
-            mdg_node_fin(m->root_node);
             mdght_fin_contained_nodes(mdg_start_write(m));
             mdg_end_write(m);
+            mdg_node_fin(m->invalid_node);
             // fallthrough
+        case 6: mdg_node_fin(m->root_node); // fallthrough
         case 5: mdght_fin(&m->mdghts[1]); // fallthrough
         case 4: mdght_fin(&m->mdghts[0]); // fallthrough
         case 3: evmap2_fin(&m->evm); // fallthrough
@@ -47,8 +48,10 @@ int mdg_init(module_dependency_graph* m)
     m->root_node = mdg_node_create(m, string_from_cstr("_"), NULL, MS_PARSING);
     if (!m->root_node) return mdg_fin_partial(m, 5, ERR);
 
-    // this gets increased when we use src_file_require on the root file
-    atomic_ureg_init(&m->root_node->unparsed_files, 0);
+    m->invalid_node = mdg_node_create(
+        m, string_from_cstr("_invalid_node_"), NULL, MS_RESOLVING_ERROR);
+    if (!m->root_node) return mdg_fin_partial(m, 6, ERR);
+
     m->change_count = 0;
     return 0;
 }
@@ -367,17 +370,29 @@ mdg_node* mdg_get_node(
     }
     return n;
 }
-
-mdg_node*
-mdg_found_node(module_dependency_graph* m, mdg_node* parent, string ident)
+// the source range and smap are in case we need to report an error
+mdg_node* mdg_found_node(
+    thread_context* tc, mdg_node* parent, string ident, src_map* smap,
+    src_range sr)
 {
-    mdg_node* n = mdg_get_node(m, parent, ident, MS_FOUND_UNNEEDED);
+    mdg_node* n = mdg_get_node(&tc->t->mdg, parent, ident, MS_FOUND_UNNEEDED);
     if (!n) return NULL;
     rwlock_write(&n->lock);
-    assert(n->stage < MS_PARSED_UNNEEDED); // TODO: handle error. user lied
-    atomic_ureg_inc(&n->unparsed_files);
-    if (n->stage == MS_UNFOUND) n->stage = MS_PARSING;
-    if (n->stage == MS_UNFOUND_UNNEEDED) n->stage = MS_FOUND_UNNEEDED;
+    if (n->stage == MS_UNFOUND) {
+        n->stage = MS_PARSING;
+    }
+    else if (n->stage == MS_UNFOUND_UNNEEDED) {
+        n->stage = MS_FOUND_UNNEEDED;
+    }
+    else if (n->stage >= MS_PARSED_UNNEEDED) {
+        // TODO: the parser stage isn't really appropriate here
+        error_log_report_annotated(
+            tc->err_log, ES_PARSER, false, "extend in non required file", smap,
+            src_range_get_start(sr), src_range_get_end(sr),
+            "the file containing this has not been required by this module");
+        rwlock_end_write(&n->lock);
+        return tc->t->mdg.invalid_node;
+    }
     rwlock_end_write(&n->lock);
     return n;
 }
@@ -630,8 +645,12 @@ int mdg_node_add_frame(mdg_node* n, module_frame* mf, thread_context* tc)
     needed = module_stage_requirements_needed(n->stage, NULL);
     rwlock_end_read(&n->lock);
     if (r) return r;
-    r = module_frame_require_requirements(mf, n, tc, false, needed);
-    if (r) return r;
+    // the actual require already added the 'require entry'
+    // so we only do this when we might trigger file parsing
+    if (needed) {
+        r = module_frame_require_requirements(mf, n, tc, false, needed);
+        if (r) return r;
+    }
     return r;
 }
 
