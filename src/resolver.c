@@ -3366,7 +3366,7 @@ resolve_error report_cyclic_pp_deps(resolver* r)
     // they can't cause a cycle
     pli it = pli_rbegin(&r->pp_resolve_nodes_waiting);
     for (pp_resolve_node* pprn = pli_prev(&it); pprn; pprn = pli_prev(&it)) {
-        if (!ast_flags_get_used_in_pp(pprn->node->flags)) {
+        if (pprn->dummy && !ast_flags_get_used_in_pp(pprn->node->flags)) {
             pprn_fin(r, pprn, true);
         }
     }
