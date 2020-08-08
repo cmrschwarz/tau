@@ -49,6 +49,7 @@ typedef struct pp_resolve_node_s {
     bool notify_when_ready; // by default we notify when done
     bool dummy; // clean once ready messages sent, no running required
     // struct pp_resolve_node_s* parent; // gets informed once this is pending
+    bool considered_committed; // incremented 'committed waiter' count
     struct pp_resolve_node_s** waiting_list_entry;
     struct pp_resolve_node_s* first_unresolved_child;
     struct pp_resolve_node_s* last_unresolved_child;

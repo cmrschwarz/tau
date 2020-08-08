@@ -113,7 +113,15 @@ resolve_error add_pprn_to_waiting_list(resolver* r, pp_resolve_node* pprn)
     int res = ptrlist_append_get_pos(
         &r->pp_resolve_nodes_waiting, pprn, (void***)&pprn->waiting_list_entry);
     if (res) return RE_FATAL;
-    if (ast_flags_get_used_in_pp(pprn->node->flags)) r->committed_waiters++;
+    if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
+        tprintf("adding waiter: ");
+        print_pprn(r, pprn, false, 0);
+        tflush();
+    }
+    if (ast_flags_get_used_in_pp(pprn->node->flags) || !pprn->dummy) {
+        r->committed_waiters++;
+        pprn->considered_committed = true;
+    }
     return RE_OK;
 }
 void remove_pprn_from_waiting_list(resolver* r, pp_resolve_node* pprn)
@@ -124,7 +132,14 @@ void remove_pprn_from_waiting_list(resolver* r, pp_resolve_node* pprn)
     *pprn->waiting_list_entry = last;
     last->waiting_list_entry = pprn->waiting_list_entry;
     pprn->waiting_list_entry = NULL;
-    if (ast_flags_get_used_in_pp(pprn->node->flags)) r->committed_waiters--;
+    if (pprn->considered_committed) {
+        r->committed_waiters--;
+    }
+    if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
+        tprintf("removed waiter: ");
+        print_pprn(r, pprn, false, 0);
+        tflush();
+    }
 }
 void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
 {
@@ -140,7 +155,6 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
         tprintf("freeing pprn: ");
         print_pprn(r, pprn, false, 0);
-        print_pprns(r, "remaining:\n", true);
         tflush();
     }
     if (pprn->waiting_list_entry) {
@@ -270,8 +284,9 @@ resolve_error pprn_set_used_in_pp(resolver* r, pp_resolve_node* pprn)
             r, im, pprn->declaring_body, true, NULL, NULL);
         if (re) return re;
     }
-    if (pprn->waiting_list_entry) {
+    if (pprn->waiting_list_entry && !pprn->considered_committed) {
         r->committed_waiters++;
+        pprn->considered_committed = true;
     }
     list_it it;
     list_it_begin(&it, &pprn->notified_by);
@@ -2879,6 +2894,14 @@ resolve_error resolve_expr_body(
         pprn->block_pos_reachable = *end_reachable;
         pprn->declaring_body = parent_body;
         resolve_error re2;
+        if (!pprn->first_unresolved_child) {
+            // this is a rerun and everyting got resolved
+            // detach this from parent and free it individually
+            pprn->dummy = true;
+        }
+        else {
+            if (curr_pp_block_add_child(r, &b->pprn)) return RE_FATAL;
+        }
         if (re) {
             pprn->continue_block = n;
             // so it gets freed on error
@@ -2887,14 +2910,6 @@ resolve_error resolve_expr_body(
         }
         else {
             pprn->continue_block = NULL;
-        }
-        if (!pprn->first_unresolved_child) {
-            // this is a rerun and everyting got resolved
-            // detach this from parent and free it individually
-            pprn->dummy = true;
-        }
-        else {
-            if (curr_pp_block_add_child(r, &b->pprn)) return RE_FATAL;
         }
         re2 = pp_resolve_node_activate(r, &b->pprn, re == RE_OK);
         if (re2) return re2;
@@ -3413,6 +3428,7 @@ resolve_error report_cyclic_pp_deps(resolver* r)
                 "execution",
                 srl.smap, srl.start, srl.end, "loop contains this element");
             re = RE_PP_DEPS_LOOP;
+            if (r->tc->t->trap_on_error) debugbreak();
         }
     }
     return re;
@@ -3605,7 +3621,7 @@ void resolver_reset_resolution_state(resolver* r)
     r->module_group_constructor = NULL;
     r->module_group_destructor = NULL;
 }
-resolve_error resolver_resolve(resolver* r)
+static inline resolve_error resolver_resolve_raw(resolver* r)
 {
     resolver_reset_resolution_state(r);
     resolve_error re;
@@ -3619,9 +3635,16 @@ resolve_error resolver_resolve(resolver* r)
     if (re) return re;
     re = resolver_handle_post_pp(r);
     if (re) return re;
-    free_pprns(r, false);
     assert(r->committed_waiters == 0);
     return RE_OK;
+}
+resolve_error resolver_resolve(resolver* r)
+{
+    resolve_error re = resolver_resolve_raw(r);
+    if (re == RE_SUSPENDED) return re;
+    free_pprns(r, re != RE_OK);
+    if (re && r->tc->t->trap_on_error) debugbreak();
+    return re;
 }
 resolve_error lookup_priv_module_symbol(
     resolver* r, mdg_node* mod, const char* name, symbol** result,
@@ -3772,13 +3795,13 @@ resolver_resolve_and_emit_post_setup(resolver* r, llvm_module** module)
     llvm_error lle =
         llvm_backend_reserve_symbols(r->backend, 0, curr_max_glob_id);
     if (lle) return RE_ERROR;
-    resolve_error res = RE_OK;
-    TAU_TIME_STAGE_CTX(r->tc->t, res = resolver_resolve(r), {
+    resolve_error re = RE_OK;
+    TAU_TIME_STAGE_CTX(r->tc->t, re = resolver_resolve(r), {
         const char* msg;
-        if (!res) {
+        if (!re) {
             msg = "resolving";
         }
-        else if (res == RE_SUSPENDED) {
+        else if (re == RE_SUSPENDED) {
             msg = "suspended resolving";
         }
         else {
@@ -3786,16 +3809,12 @@ resolver_resolve_and_emit_post_setup(resolver* r, llvm_module** module)
         }
         print_debug_info(r, msg);
     });
-    if (res) {
-        // noo need for free, we 'moved'
-        if (res == RE_SUSPENDED) return res;
-        free_pprns(r, true);
-        return res;
-    }
+    if (re) return re;
+    prp_error pre;
     TAU_TIME_STAGE_CTX(
-        r->tc->t, res = prp_run_modules(&r->prp, r->mdgs_begin, r->mdgs_end);
+        r->tc->t, pre = prp_run_modules(&r->prp, r->mdgs_begin, r->mdgs_end);
         , print_debug_info(r, "running prp for"));
-    if (res) return ERR;
+    if (pre) return ERR;
     if (resolver_resolving_root(r)) {
         if (tauc_request_finalize(r->tc->t)) return ERR;
     }
