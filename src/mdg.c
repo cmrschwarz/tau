@@ -373,6 +373,17 @@ mdg_node* mdg_get_node(
     }
     return n;
 }
+void report_module_redeclaration(
+    thread_context* tc, module_frame* mod_1, src_map* mod2_smap,
+    src_range mod2_sr)
+{
+    error_log_report_annotated_twice(
+        tc->err_log, ES_RESOLVER, false, "module redeclaration", mod_1->smap,
+        src_range_get_start(mod_1->node.srange),
+        src_range_get_end(mod_1->node.srange), "one declaration here",
+        mod2_smap, src_range_get_start(mod2_sr), src_range_get_end(mod2_sr),
+        "another conflicting declaration here");
+}
 void report_unrequired_extend(thread_context* tc, src_map* smap, src_range sr)
 {
     error_log_report_annotated(
@@ -382,8 +393,8 @@ void report_unrequired_extend(thread_context* tc, src_map* smap, src_range sr)
 }
 // the source range and smap are in case we need to report an error
 mdg_node* mdg_found_node(
-    thread_context* tc, mdg_node* parent, string ident, src_map* smap,
-    src_range sr)
+    thread_context* tc, mdg_node* parent, string ident, bool extend,
+    src_map* smap, src_range sr)
 {
     mdg_node* n = mdg_get_node(&tc->t->mdg, parent, ident, MS_FOUND_UNNEEDED);
     if (!n) return NULL;
@@ -396,8 +407,21 @@ mdg_node* mdg_found_node(
     }
     else if (n->stage >= MS_PARSED_UNNEEDED) {
         // TODO: the resolver stage isn't really appropriate here
-        report_unrequired_extend(tc, smap, sr);
         rwlock_end_write(&n->lock);
+        if (extend) {
+            report_unrequired_extend(tc, smap, sr);
+        }
+        else {
+            aseglist_iterator it;
+            aseglist_iterator_begin(&it, &n->module_frames);
+            module_frame* f;
+            while ((f = aseglist_iterator_next(&it))) {
+                if (f->node.kind != MF_MODULE) continue;
+                report_module_redeclaration(tc, f, smap, sr);
+                break;
+            }
+            assert(f && f->node.kind == MF_MODULE);
+        }
         return tc->t->mdg.invalid_node;
     }
     rwlock_end_write(&n->lock);

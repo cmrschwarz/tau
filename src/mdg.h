@@ -169,8 +169,8 @@ mdght* mdg_start_write(module_dependency_graph* m);
 void mdg_end_write(module_dependency_graph* m);
 
 mdg_node* mdg_found_node(
-    thread_context* tc, mdg_node* parent, string ident, src_map* smap,
-    src_range sr);
+    thread_context* tc, mdg_node* parent, string ident, bool extend,
+    src_map* smap, src_range sr);
 mdg_node* mdg_get_node(
     module_dependency_graph* m, mdg_node* parent, string ident,
     module_stage initial_stage);

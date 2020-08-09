@@ -2118,7 +2118,7 @@ static inline parse_error parse_delimited_module_frame(
         return PE_LX_ERROR;
     }
     ureg start = t->start;
-    parse_error pe;
+    parse_error pe = PE_OK;
     ast_node* target;
     while (t->kind != delimiter_1 && t->kind != delimiter_2) {
         pe = parse_statement(p, &target);
@@ -2779,7 +2779,8 @@ parse_error parse_module_frame_decl(
     md->smap = p->lx.smap;
     if (md->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     mdg_node* mdgn = mdg_found_node(
-        p->lx.tc, p->current_module, t->str, p->lx.smap, md->node.srange);
+        p->lx.tc, p->current_module, t->str, extend, p->lx.smap,
+        md->node.srange);
     if (mdgn == NULL) return PE_FATAL;
     PEEK(p, t);
     mdg_node* parent = p->current_module;

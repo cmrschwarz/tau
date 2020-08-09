@@ -3276,6 +3276,7 @@ resolve_error resolver_mark_required_module_fill_buffer(
     *frames_buffer = frames;
     *buffer_end = frames + count;
     *root_frame = root;
+    assert(count > 0 || root);
     return RE_OK;
 }
 static inline void resolver_mark_required_frame(
@@ -3298,9 +3299,7 @@ static inline void resolver_mark_required_frame(
         else {
             break;
         }
-        if (left == right) {
-            return;
-        }
+        if (left == right) return;
     }
     while (center != *last_unverified) {
         if ((center + 1)->file == file)
@@ -3327,6 +3326,7 @@ resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
     resolve_error re =
         resolver_mark_required_module_fill_buffer(r, n, &frames, &end, &root);
     if (re) return re;
+
     unverified_module_frame* begin = frames - 1;
     unverified_module_frame* last_pending = end - 1;
     unverified_module_frame* last_unverified = last_pending;
