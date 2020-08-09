@@ -717,6 +717,9 @@ typedef struct module_frame_s {
     ast_node node;
     ast_body body;
     file_require* requires;
+    // TODO: take out all smap annotations from src_range and rely solely on
+    // these (put some in paste stmt/expr aswell)
+    src_map* smap;
 } module_frame;
 
 typedef struct module_frame_generic_s {

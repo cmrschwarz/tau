@@ -92,6 +92,9 @@ bool ast_flags_get_implicit(ast_flags f);
 void ast_flags_set_explicit(ast_flags* f);
 bool ast_flags_get_explicit(ast_flags f);
 
+void ast_flags_set_not_required(ast_flags* f);
+bool ast_flags_get_not_required(ast_flags f);
+
 void ast_flags_set_func_is_op(ast_flags* f);
 bool ast_flags_get_func_is_op(ast_flags f);
 

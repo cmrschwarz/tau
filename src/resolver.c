@@ -3212,9 +3212,188 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
         default: return;
     }
 }
+
+typedef struct unverified_module_frame_s {
+    file_map_head* file;
+    module_frame* frame;
+} unverified_module_frame;
+
+#define SORT_NAME unverified_module_frame
+#define SORT_TYPE unverified_module_frame
+#define SORT_CMP(x, y) (ptrcmp((x).file, (y).file))
+#include "sort.h"
+resolve_error resolver_mark_required_module_fill_buffer(
+    resolver* r, mdg_node* n, unverified_module_frame** frames_buffer,
+    unverified_module_frame** buffer_end, module_frame** root_frame)
+{
+    aseglist_iterator it;
+    aseglist_iterator_begin(&it, &n->module_frames);
+    module_frame* root = NULL;
+    ureg count = 0;
+    for (module_frame* mf = aseglist_iterator_next(&it); mf != NULL;
+         mf = aseglist_iterator_next(&it)) {
+        if (mf->node.kind == MF_MODULE) {
+            if (root) {
+                assert(false); // TODO: report double root
+            }
+            root = mf;
+            continue;
+        }
+        ast_elem* src = mf->smap->source;
+        while (src->kind != ELEM_SRC_FILE) {
+            if (src->kind == STMT_PASTE_EVALUATION) {
+                stmt_paste_evaluation* pe = (stmt_paste_evaluation*)src;
+                src = src_range_get_smap(pe->pe.source_pp_srange)->source;
+            }
+            else {
+                assert(false);
+            }
+        }
+        unverified_module_frame* f =
+            sbuffer_append(&r->temp_stack, sizeof(unverified_module_frame));
+        if (!f) {
+            sbuffer_clear(&r->temp_stack);
+            return RE_FATAL;
+        }
+        f->frame = mf;
+        f->file = (file_map_head*)src;
+        count++;
+    }
+    if (n != r->tc->t->mdg.root_node) {
+        if (!root) {
+            assert("false"); // TODO: report missing root
+        }
+    }
+    ureg alloc_size = count * sizeof(unverified_module_frame);
+    unverified_module_frame* frames = pool_alloc(&r->tc->tempmem, alloc_size);
+    if (!frames) {
+        sbuffer_clear(&r->temp_stack);
+        return RE_FATAL;
+    }
+    sbuffer_memcpy(frames, sbuffer_iterator_begin(&r->temp_stack), alloc_size);
+    sbuffer_clear(&r->temp_stack);
+    unverified_module_frame_quick_sort(frames, count);
+    *frames_buffer = frames;
+    *buffer_end = frames + count;
+    *root_frame = root;
+    return RE_OK;
+}
+static inline void resolver_mark_required_frame(
+    resolver* r, file_map_head* file, unverified_module_frame* frames,
+    unverified_module_frame** last_unverified)
+{
+    unverified_module_frame tmp;
+    unverified_module_frame *left, *right, *center;
+    left = frames;
+    right = *last_unverified + 1;
+    while (true) {
+        center = left + (right - left) / 2;
+        int cmp = ptrcmp(file, center->file);
+        if (cmp < 0) {
+            right = center;
+        }
+        else if (cmp > 0) {
+            left = center + 1;
+        }
+        else {
+            break;
+        }
+        if (left == right) {
+            return;
+        }
+    }
+    while (center != *last_unverified) {
+        if ((center + 1)->file == file)
+            center = center + 1;
+        else
+            break;
+    }
+    while (center->file == file) {
+        tmp = **last_unverified;
+        **last_unverified = *center;
+        *center = tmp;
+        (*last_unverified)--;
+        if (*last_unverified == frames - 1) break;
+        if (center == frames) break;
+        center--;
+    }
+    return;
+}
+resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
+{
+    unverified_module_frame* frames;
+    unverified_module_frame* end;
+    module_frame* root;
+    resolve_error re =
+        resolver_mark_required_module_fill_buffer(r, n, &frames, &end, &root);
+    if (re) return re;
+    unverified_module_frame* begin = frames - 1;
+    unverified_module_frame* last_pending = end - 1;
+    unverified_module_frame* last_unverified = last_pending;
+    module_frame* curr = root;
+    if (!curr) {
+        assert(n == r->tc->t->mdg.root_node);
+        list_it it;
+        list_it_begin(&it, &r->tc->t->required_files);
+        src_file* f;
+        while ((f = list_it_next(&it, &r->tc->t->required_files))) {
+            resolver_mark_required_frame(r, &f->head, frames, &last_unverified);
+            if (last_unverified == begin) break;
+        }
+        if (last_unverified != begin && last_unverified != last_pending) {
+            curr = last_pending->frame;
+            last_pending--;
+        }
+    }
+    if (curr) {
+        while (true) {
+            for (file_require* req = curr->requires; req->fmh != NULL; req++) {
+                if (req->is_extern) continue;
+                resolver_mark_required_frame(
+                    r, req->fmh, frames, &last_unverified);
+                if (last_unverified == begin) break;
+            }
+            if (last_pending == last_unverified) break;
+            curr = last_pending->frame;
+            last_pending--;
+        }
+    }
+    if (last_unverified != begin) {
+        r->error_occured = true;
+        aseglist old_list = n->module_frames;
+        aseglist_init(&n->module_frames);
+        if (root) {
+            if (aseglist_add(&n->module_frames, root)) {
+                aseglist_fin(&n->module_frames);
+                n->module_frames = old_list;
+                return RE_FATAL;
+            };
+        }
+        for (unverified_module_frame* m = end - 1; m != last_unverified; m--) {
+            if (aseglist_add(&n->module_frames, m->frame)) {
+                aseglist_fin(&n->module_frames);
+                n->module_frames = old_list;
+                return RE_FATAL;
+            };
+        }
+        aseglist_fin(&old_list);
+        for (unverified_module_frame* m = last_unverified; m != begin; m--) {
+            report_unrequired_extend(
+                r->tc, m->frame->smap, m->frame->node.srange);
+            if (aseglist_add(
+                    &r->tc->t->mdg.invalid_node->module_frames, m->frame)) {
+                return RE_FATAL;
+            }
+        }
+    }
+    pool_undo_last_alloc(&r->tc->tempmem, ptrdiff(end, frames));
+    return RE_OK;
+}
 resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
 {
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
+        resolve_error re = resolver_mark_required_modules(r, *i);
+        if (re) return re;
         // TODO: init pp symtabs
         r->error_occured |= (**i).error_occured;
         int res = symbol_table_init(
@@ -3676,6 +3855,7 @@ resolve_error resolver_finalize_resolution(resolver* r)
     if (res) return RE_FATAL;
     assert(glob_id_head - glob_id_start == r->public_sym_count);
     r->glob_id_start = glob_id_start;
+    if (r->error_occured) tauc_error_occured(r->tc->t, ERR);
     return RE_OK;
 }
 resolve_error resolver_resolve(resolver* r)
@@ -3781,24 +3961,6 @@ int resolver_emit(resolver* r, llvm_module** module)
         if (lle) return RE_ERROR;
     }
     else {
-        /* for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
-             rwlock_write(&(**i).lock);
-             (**i).stage = MS_RESOLVING_ERROR;
-             rwlock_end_write(&(**i).lock);
-         }
-         for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
-             list_rit rit;
-             rwlock_read(&(**i).lock);
-             list_rit_begin_at_end(&rit, &(**i).notify);
-             rwlock_end_read(&(**i).lock);
-             while (true) {
-                 mdg_node* dep = list_rit_prev(&rit);
-                 if (!dep) break;
-                 if (sccd_run(&r->tc->sccd, dep, SCCD_NOTIFY_DEP_ERROR)) {
-                     return ERR;
-                 }
-             }
-         }*/
         *module = NULL;
     }
     return OK;

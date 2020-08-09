@@ -87,7 +87,7 @@ int thread_context_do_job(thread_context* tc, job* j)
             end = j->concrete.resolve.end;
         }
         resolve_error re;
-        llvm_module* mod;
+        llvm_module* mod = NULL;
         re = resolver_resolve_and_emit(
             &tc->r, start, end, j->concrete.resolve.partial_res_data, &mod);
         if (re == RE_SUSPENDED) return RE_OK;

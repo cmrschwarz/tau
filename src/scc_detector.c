@@ -470,7 +470,6 @@ int sccd_prepare(scc_detector* sccd, mdg_node* n, sccd_run_reason sccdrr)
                 default: r = SCCD_HANDLED;
             }
         } break;
-        case SCCD_NOTIFY_DEP_ERROR: assert(false); return ERR; // TODO
         case SCCD_NODE_REQUIRE: {
             switch (n->stage) {
                 case MS_UNFOUND_UNNEEDED:

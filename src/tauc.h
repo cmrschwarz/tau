@@ -49,6 +49,7 @@ typedef struct tauc_s {
     optimization_strategy opt_strat;
     ureg verbosity_flags;
     timer total_time;
+    list required_files; // used to get 'roots of trust' for the root module
     bool emit_ll;
     bool emit_asm;
     bool emit_exe;

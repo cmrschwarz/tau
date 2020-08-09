@@ -4,10 +4,12 @@
 #include "../../math_utils.h"
 
 #include <memory.h>
-#define PRINT_ALLOCS 0
 #if DEBUG
+#define PRINT_ALLOCS 0
+#define DISABLE_LEAKCHECK 0
 #include "../../panic.h"
 #include "../../threading.h"
+#include "utils/debug_utils.h"
 #include <stdio.h>
 static atomic_sreg allocations;
 #endif
@@ -50,7 +52,7 @@ void talloc_fin()
 {
     assert(mel);
     mel = NULL;
-#if DEBUG
+#if DEBUG && !DISABLE_LEAKCHECK
     sreg a = atomic_sreg_load(&allocations);
     if (a) {
         fprintf(stderr, "MEMORY LEAK! (allocs - frees) = %zd\n", a);

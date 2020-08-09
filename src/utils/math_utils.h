@@ -70,6 +70,12 @@ static inline bool ptreq(void* a, void* b)
 {
     return a == b;
 }
+static inline int ptrcmp(void* a, void* b)
+{
+    if ((ureg)a < (ureg)b) return -1;
+    if (a == b) return 0;
+    return 1;
+}
 static inline void ptrswap(void** a, void** b)
 {
     void* a_tmp = *a;

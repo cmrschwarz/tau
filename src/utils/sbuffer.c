@@ -239,3 +239,20 @@ int sbuffer_steal_used(sbuffer* sb, sbuffer* donor, bool sb_initialized)
     donor->tail_seg = donor_new;
     return OK;
 }
+
+void sbuffer_memcpy(void* target, sbuffer_iterator src, ureg size)
+{
+    while (true) {
+        ureg s = ptrdiff(src.seg->tail, src.pos);
+        if (s >= size) {
+            memcpy(target, src.pos, size);
+            return;
+        }
+        memcpy(target, src.pos, s);
+        target = ptradd(target, s);
+        src.seg = src.seg->next;
+        assert(src.seg);
+        size -= s;
+        src.pos = ptradd(src.seg, sizeof(sbuffer_segment));
+    }
+}

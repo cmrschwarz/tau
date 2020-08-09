@@ -2197,6 +2197,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     }
     p->current_module = p->lx.tc->t->mdg.root_node;
     p->file_root = &j->file->root;
+    p->file_root->smap = p->lx.smap;
     ast_node_init((ast_node*)&j->file->root, MF_EXTEND);
     parse_error pe = parse_eof_delimited_module_frame(p, &j->file->root);
     lx_close_file(&p->lx);
@@ -2775,6 +2776,7 @@ parse_error parse_module_frame_decl(
     }
     ast_node_init_with_flags((ast_node*)md, kind, flags);
     md->node.srange = src_range_pack(p->lx.tc, start, decl_end, p->lx.smap);
+    md->smap = p->lx.smap;
     if (md->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     mdg_node* mdgn = mdg_found_node(
         p->lx.tc, p->current_module, t->str, p->lx.smap, md->node.srange);

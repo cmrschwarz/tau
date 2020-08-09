@@ -45,9 +45,10 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
 {
     switch (i) {
         case -1:
-        case 8: mdg_fin(&t->mdg); // fallthrough
+        case 9: mdg_fin(&t->mdg); // fallthrough
         case -2: // skip mdg because we freed that earlier when we still had all
                  // threads and their permmem
+        case 8: list_fin(&t->required_files, false); // fallthrough
         case 7: aseglist_fin(&t->module_dtors); // fallthrough
         case 6: aseglist_fin(&t->module_ctors); // fallthrough
         case 5: thread_context_fin(&t->main_thread_context); // fallthrough
@@ -78,8 +79,10 @@ int tauc_core_init(tauc* t)
     if (r) return tauc_core_partial_fin(t, r, 5);
     r = aseglist_init(&t->module_dtors);
     if (r) return tauc_core_partial_fin(t, r, 6);
-    r = mdg_init(&t->mdg);
+    r = list_init(&t->required_files);
     if (r) return tauc_core_partial_fin(t, r, 7);
+    r = mdg_init(&t->mdg);
+    if (r) return tauc_core_partial_fin(t, r, 8);
 
     atomic_ureg_init(&t->active_thread_count, 1);
     atomic_ureg_init(&t->node_ids, 0);
@@ -150,6 +153,12 @@ int handle_cmd_args(
             r = src_file_require(
                 f, t, NULL, SRC_RANGE_INVALID, t->mdg.root_node, true);
             if (r) return r;
+            r = list_append(
+                &t->required_files, &t->main_thread_context.permmem, f);
+            if (r) {
+                tauc_error_occured(t, ERR);
+                return ERR;
+            }
             continue;
         }
         if (*files_found) return complain_trailing_args(t, el, arg);
@@ -468,6 +477,7 @@ int tauc_add_worker_thread(tauc* t)
         tputs("");
         tflush();
     }
+    wt->tc.has_preordered = false;
     thread_context_preorder_job(&wt->tc);
     r = thread_launch(&wt->thr, worker_thread_fn, wt);
     if (r) {

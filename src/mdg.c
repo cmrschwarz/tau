@@ -7,6 +7,7 @@
 #include "utils/threading.h"
 #include "utils/zero.h"
 #include "scc_detector.h"
+#include "print_ast.h"
 #include <assert.h>
 
 int mdg_fin_partial(module_dependency_graph* m, int i, int r)
@@ -52,6 +53,7 @@ int mdg_init(module_dependency_graph* m)
         m, string_from_cstr("_invalid_node_"), NULL, MS_GENERATED);
     if (!m->root_node) return mdg_fin_partial(m, 6, ERR);
     m->invalid_node->error_occured = true;
+    m->invalid_node->symtab = NULL;
     m->change_count = 0;
     return 0;
 }
@@ -371,6 +373,13 @@ mdg_node* mdg_get_node(
     }
     return n;
 }
+void report_unrequired_extend(thread_context* tc, src_map* smap, src_range sr)
+{
+    error_log_report_annotated(
+        tc->err_log, ES_RESOLVER, false, "extend in non required file", smap,
+        src_range_get_start(sr), src_range_get_end(sr),
+        "the file containing this has not been required by this module");
+}
 // the source range and smap are in case we need to report an error
 mdg_node* mdg_found_node(
     thread_context* tc, mdg_node* parent, string ident, src_map* smap,
@@ -386,11 +395,8 @@ mdg_node* mdg_found_node(
         n->stage = MS_FOUND_UNNEEDED;
     }
     else if (n->stage >= MS_PARSED_UNNEEDED) {
-        // TODO: the parser stage isn't really appropriate here
-        error_log_report_annotated(
-            tc->err_log, ES_PARSER, false, "extend in non required file", smap,
-            src_range_get_start(sr), src_range_get_end(sr),
-            "the file containing this has not been required by this module");
+        // TODO: the resolver stage isn't really appropriate here
+        report_unrequired_extend(tc, smap, sr);
         rwlock_end_write(&n->lock);
         return tc->t->mdg.invalid_node;
     }
@@ -782,5 +788,5 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
         rwlock_end_read(&n->lock);
     }
     mdg_end_write(m);
-    return res;
+    return res | atomic_sreg_load(&tc->t->error_code);
 }
