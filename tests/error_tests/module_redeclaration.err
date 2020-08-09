@@ -1,0 +1,4 @@
+resolver error: extend in non required file
+ ==> ./tests/error_tests/module_redeclaration.tau:2:1
+2 |module a{}
+  |^^^^^^^^ the file containing this has not been required by this module

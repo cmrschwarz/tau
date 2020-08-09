@@ -50,7 +50,7 @@ int mdg_init(module_dependency_graph* m)
     if (!m->root_node) return mdg_fin_partial(m, 5, ERR);
 
     m->invalid_node = mdg_node_create(
-        m, string_from_cstr("_invalid_node_"), NULL, MS_GENERATED);
+        m, string_from_cstr("_invalid_node_"), NULL, MS_PARSING);
     if (!m->root_node) return mdg_fin_partial(m, 6, ERR);
     m->invalid_node->error_occured = true;
     m->invalid_node->symtab = NULL;
