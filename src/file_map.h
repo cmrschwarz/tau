@@ -61,7 +61,7 @@ void file_map_head_write_path(file_map_head* h, char* tgt);
 char* file_map_head_tmalloc_path(file_map_head* h);
 
 int src_file_start_parse(src_file* f, thread_context* tc);
-int src_file_done_parsing(src_file* f, thread_context* tc);
+int src_file_done_parsing(src_file* f, thread_context* tc, bool error_occured);
 
 // requiring file and srange are purely for error reporting
 int src_file_require(

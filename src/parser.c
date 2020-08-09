@@ -2191,6 +2191,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
                 error_log_report_general(
                     p->lx.tc->err_log, ES_TOKENIZER, false, msg);
             }
+            if (src_file_done_parsing(j->file, p->lx.tc, true)) return PE_FATAL;
         }
         return PE_LX_ERROR;
     }
@@ -2199,15 +2200,13 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     ast_node_init((ast_node*)&j->file->root, MF_EXTEND);
     parse_error pe = parse_eof_delimited_module_frame(p, &j->file->root);
     lx_close_file(&p->lx);
-    if (!pe) {
-        pe = thread_context_preorder_job(p->lx.tc);
-        if (!pe) {
-            if (src_file_done_parsing(j->file, p->lx.tc)) pe = PE_FATAL;
-        }
-    }
-    else {
+    if (pe) {
         free_body_symtabs((ast_node*)&j->file->root, &j->file->root.body);
+        if (pe == PE_FATAL) return pe;
     }
+    int r = thread_context_preorder_job(p->lx.tc);
+    if (src_file_done_parsing(j->file, p->lx.tc, pe != PE_OK)) pe = PE_FATAL;
+    if (r) return PE_FATAL;
     return pe;
 }
 parse_error init_paste_evaluation_parse(
@@ -2811,17 +2810,6 @@ parse_error parse_module_frame_decl(
     ureg up = atomic_ureg_load(&mdgn->unparsed_files);
     if (up == 0 && !extend) {
         r = mdg_node_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc);
-    }
-    else if (up == 1) {
-        aseglist_iterator it;
-        aseglist_iterator_begin(&it, &p->current_file->requiring_modules);
-        mdg_node* n = NULL;
-        while ((n = aseglist_iterator_next(&it))) {
-            if (n == mdgn) break;
-        }
-        if (n != mdgn) {
-            r = mdg_node_file_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc);
-        }
     }
     if (r) return RE_FATAL;
     return PE_OK; // consider PE_NO_STMT

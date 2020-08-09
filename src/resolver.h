@@ -64,6 +64,7 @@ typedef struct partial_resolution_data_s {
     ptrlist pprns_waiting;
     ptrlist imports_with_pprns;
     bool deps_required_for_pp;
+    bool error_occured;
 #if DEBUG
     ureg pprn_count;
 #endif
@@ -90,10 +91,12 @@ typedef struct resolver_s {
     bool retracing_type_loop;
     bool generic_context;
     bool resumed; // whether we come from a partial resolution
+    bool error_occured;
     // ids distributed during declaration adding starting from PRIV_SYM_OFFSET
     ureg id_space;
     ureg public_sym_count;
     ureg private_sym_count;
+    ureg glob_id_start;
 
     // dealing with the preprocessor
     pool pprn_mem;

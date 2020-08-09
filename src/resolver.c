@@ -2118,8 +2118,11 @@ resolve_error resolve_import_module(
         }
     }
     rwlock_write(&mdg->lock);
-    if (mdg->stage >= MS_PARSING_ERROR) {
+    // we can check this since we are sure it is resolved since we
+    // otherwise wouldn't be resolving this which depends on it
+    if (mdg->error_occured) {
         // TODO: some poisoning or error message idk
+        r->error_occured = true;
         rwlock_end_write(&mdg->lock);
         return RE_ERROR;
     }
@@ -3213,6 +3216,7 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
 {
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         // TODO: init pp symtabs
+        r->error_occured |= (**i).error_occured;
         int res = symbol_table_init(
             &(**i).symtab, atomic_ureg_load(&(**i).decl_count),
             atomic_ureg_load(&(**i).using_count), true, (ast_elem*)*i);
@@ -3638,12 +3642,50 @@ static inline resolve_error resolver_resolve_raw(resolver* r)
     assert(r->committed_waiters == 0);
     return RE_OK;
 }
+resolve_error resolver_finalize_resolution(resolver* r)
+{
+    // add module ctors and dtors
+    if (r->module_group_constructor) {
+        aseglist_add(&r->tc->t->module_ctors, r->module_group_constructor);
+    }
+    if (r->module_group_destructor) {
+        // TODO: figure out when to run these
+        aseglist_add(&r->tc->t->module_dtors, r->module_group_destructor);
+    }
+
+    // reserve symbols and claim ids
+    ureg sym_count = r->private_sym_count + r->public_sym_count;
+    ureg glob_id_start =
+        atomic_ureg_add(&r->tc->t->node_ids, r->public_sym_count);
+    llvm_error lle = llvm_backend_reserve_symbols(
+        r->backend, sym_count, glob_id_start + r->public_sym_count);
+    if (lle) return RE_ERROR;
+
+    // mark nodes as resolved and remap ids
+    ureg glob_id_head = glob_id_start;
+    for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
+        aseglist_iterator it;
+        aseglist_iterator_begin(&it, &(**n).module_frames);
+        for (module_frame* mf = aseglist_iterator_next(&it); mf;
+             mf = aseglist_iterator_next(&it)) {
+            adjust_body_ids(r, &glob_id_head, &mf->body);
+        }
+    }
+    int res =
+        mdg_nodes_resolved(r->mdgs_begin, r->mdgs_end, r->tc, r->error_occured);
+    if (res) return RE_FATAL;
+    assert(glob_id_head - glob_id_start == r->public_sym_count);
+    r->glob_id_start = glob_id_start;
+    return RE_OK;
+}
 resolve_error resolver_resolve(resolver* r)
 {
     resolve_error re = resolver_resolve_raw(r);
     if (re == RE_SUSPENDED) return re;
     free_pprns(r, re != RE_OK);
     if (re && r->tc->t->trap_on_error) debugbreak();
+    resolve_error re2 = resolver_finalize_resolution(r);
+    if (re2) return re2;
     return re;
 }
 resolve_error lookup_priv_module_symbol(
@@ -3694,40 +3736,10 @@ resolve_error lookup_priv_module_symbol(
 }
 int resolver_emit(resolver* r, llvm_module** module)
 {
+    llvm_error lle;
     int res = llvm_backend_init_module(
         r->backend, r->mdgs_begin, r->mdgs_end, module);
     if (res) return res;
-    // add module ctors and dtors
-    if (r->module_group_constructor) {
-        aseglist_add(&r->tc->t->module_ctors, r->module_group_constructor);
-    }
-    if (r->module_group_destructor) {
-        // TODO: figure out when to run these
-        aseglist_add(&r->tc->t->module_dtors, r->module_group_destructor);
-    }
-
-    // reserve symbols and claim ids
-    ureg sym_count = r->private_sym_count + r->public_sym_count;
-    ureg glob_id_start =
-        atomic_ureg_add(&r->tc->t->node_ids, r->public_sym_count);
-    llvm_error lle = llvm_backend_reserve_symbols(
-        r->backend, sym_count, glob_id_start + r->public_sym_count);
-    if (lle) return RE_ERROR;
-
-    // mark nodes as resolved and remap ids
-    ureg glob_id_head = glob_id_start;
-    for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
-        aseglist_iterator it;
-        aseglist_iterator_begin(&it, &(**n).module_frames);
-        for (module_frame* mf = aseglist_iterator_next(&it); mf;
-             mf = aseglist_iterator_next(&it)) {
-            adjust_body_ids(r, &glob_id_head, &mf->body);
-        }
-    }
-    res = mdg_nodes_resolved(r->mdgs_begin, r->mdgs_end, r->tc);
-    if (res) return RE_FATAL;
-    assert(glob_id_head - glob_id_start == r->public_sym_count);
-
     // gen entrypoint in case if we are the root module
     mdg_node* root = r->tc->t->mdg.root_node;
     if (*r->mdgs_begin == root) {
@@ -3754,36 +3766,39 @@ int resolver_emit(resolver* r, llvm_module** module)
         assert(!startfn || startfn->node.kind == SC_FUNC);
         lle = llvm_backend_generate_entrypoint(
             r->backend, (sc_func*)mainfn, (sc_func*)startfn,
-            &r->tc->t->module_ctors, &r->tc->t->module_dtors, glob_id_start,
-            glob_id_head, sym_count);
+            &r->tc->t->module_ctors, &r->tc->t->module_dtors, r->glob_id_start,
+            r->glob_id_start + r->public_sym_count,
+            r->private_sym_count + r->public_sym_count);
         if (lle) return RE_ERROR;
     }
 
     if (tauc_success_so_far(r->tc->t) && r->tc->t->needs_emit_stage) {
-        llvm_error lle = llvm_backend_emit_module(
-            r->backend, glob_id_start, glob_id_head, r->private_sym_count);
+        lle = llvm_backend_emit_module(
+            r->backend, r->glob_id_start,
+            r->glob_id_start + r->public_sym_count,
+            r->private_sym_count + r->public_sym_count);
         if (lle == LLE_FATAL) return RE_FATAL;
         if (lle) return RE_ERROR;
     }
     else {
-        for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
-            rwlock_write(&(**i).lock);
-            (**i).stage = MS_RESOLVING_ERROR;
-            rwlock_end_write(&(**i).lock);
-        }
-        for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
-            list_rit rit;
-            rwlock_read(&(**i).lock);
-            list_rit_begin_at_end(&rit, &(**i).notify);
-            rwlock_end_read(&(**i).lock);
-            while (true) {
-                mdg_node* dep = list_rit_prev(&rit);
-                if (!dep) break;
-                if (sccd_run(&r->tc->sccd, dep, SCCD_NOTIFY_DEP_ERROR)) {
-                    return ERR;
-                }
-            }
-        }
+        /* for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
+             rwlock_write(&(**i).lock);
+             (**i).stage = MS_RESOLVING_ERROR;
+             rwlock_end_write(&(**i).lock);
+         }
+         for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
+             list_rit rit;
+             rwlock_read(&(**i).lock);
+             list_rit_begin_at_end(&rit, &(**i).notify);
+             rwlock_end_read(&(**i).lock);
+             while (true) {
+                 mdg_node* dep = list_rit_prev(&rit);
+                 if (!dep) break;
+                 if (sccd_run(&r->tc->sccd, dep, SCCD_NOTIFY_DEP_ERROR)) {
+                     return ERR;
+                 }
+             }
+         }*/
         *module = NULL;
     }
     return OK;
@@ -3818,6 +3833,7 @@ resolver_resolve_and_emit_post_setup(resolver* r, llvm_module** module)
     if (resolver_resolving_root(r)) {
         if (tauc_request_finalize(r->tc->t)) return ERR;
     }
+    if (r->error_occured) return RE_OK;
     return resolver_emit(r, module);
 }
 void resolver_setup_blank_resolve(resolver* r)
@@ -3829,6 +3845,7 @@ void resolver_setup_blank_resolve(resolver* r)
     r->id_space = PRIV_SYMBOL_OFFSET;
     r->deps_required_for_pp = false;
     r->committed_waiters = 0;
+    r->error_occured = false;
 }
 // this can't return an error since we also use it in an aborted suspend
 void resolver_unpack_partial_resolution_data(
@@ -3841,6 +3858,7 @@ void resolver_unpack_partial_resolution_data(
     pool_steal_all(&r->pprn_mem, &prd->pprn_mem);
     pool_fin(&prd->pprn_mem);
     r->id_space = prd->id_space;
+    r->error_occured = prd->error_occured;
     r->deps_required_for_pp = prd->deps_required_for_pp;
     sbuffer_take_and_invalidate(
         &r->pp_resolve_nodes_pending, &prd->pprns_pending);
@@ -3900,6 +3918,7 @@ resolve_error resolver_suspend(resolver* r)
 
     pool_steal_used(&p->pprn_mem, &r->pprn_mem);
     p->deps_required_for_pp = r->deps_required_for_pp;
+    p->error_occured = r->error_occured;
     p->id_space = r->id_space;
     // TODO: we could very much avoid the allocs here using some
     // steal strategy but eh

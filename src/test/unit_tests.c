@@ -110,7 +110,7 @@ int mdg_test()
                 }
                 r = mdg_nodes_resolved(
                     j.concrete.resolve.start, j.concrete.resolve.end,
-                    &t.main_thread_context);
+                    &t.main_thread_context, false);
                 if (!j.concrete.resolve.single_store) {
                     tfree(j.concrete.resolve.start);
                 }

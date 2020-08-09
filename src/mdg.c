@@ -49,9 +49,9 @@ int mdg_init(module_dependency_graph* m)
     if (!m->root_node) return mdg_fin_partial(m, 5, ERR);
 
     m->invalid_node = mdg_node_create(
-        m, string_from_cstr("_invalid_node_"), NULL, MS_RESOLVING_ERROR);
+        m, string_from_cstr("_invalid_node_"), NULL, MS_GENERATED);
     if (!m->root_node) return mdg_fin_partial(m, 6, ERR);
-
+    m->invalid_node->error_occured = true;
     m->change_count = 0;
     return 0;
 }
@@ -142,6 +142,7 @@ mdg_node* mdg_node_create(
     n->ppe_stage = PPES_UNNEEDED;
     n->requested_for_pp = false;
     n->partial_res_data = NULL;
+    n->error_occured = false;
     return n;
 }
 void free_body_symtabs(ast_node* node, ast_body* b);
@@ -402,10 +403,16 @@ int mdg_node_parsed(module_dependency_graph* m, mdg_node* n, thread_context* tc)
     return sccd_run(&tc->sccd, n, SCCD_PARSED);
 }
 int mdg_node_file_parsed(
-    module_dependency_graph* m, mdg_node* n, thread_context* tc)
+    module_dependency_graph* m, mdg_node* n, thread_context* tc,
+    bool error_occured)
 {
     ureg up = atomic_ureg_dec(&n->unparsed_files);
     assert(up != 0);
+    if (error_occured) {
+        rwlock_write(&n->lock);
+        n->error_occured = true;
+        rwlock_end_write(&n->lock);
+    }
     if (up == 1) return mdg_node_parsed(m, n, tc);
     return OK;
 }
@@ -512,7 +519,8 @@ void mdg_node_report_missing_import(
         tgt_sym_srl.end, "imported here", smap, tgt_group_srl.start,
         tgt_group_srl.end, NULL);
 }
-int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc)
+int mdg_nodes_resolved(
+    mdg_node** start, mdg_node** end, thread_context* tc, bool error_occured)
 {
     for (mdg_node** i = start; i != end; i++) {
         rwlock_write(&(**i).lock);
@@ -523,6 +531,12 @@ int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc)
         else {
             assert(ms == MS_RESOLVING_EXPLORATION);
             (**i).stage = MS_RESOLVED_UNNEEDED;
+        }
+        if (error_occured) {
+            (**i).error_occured = true;
+        }
+        else {
+            assert(!(**i).error_occured);
         }
         list* l = sbuffer_append(&tc->temp_buffer, sizeof(list));
         if (!l) {

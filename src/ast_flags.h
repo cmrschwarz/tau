@@ -44,7 +44,7 @@ typedef enum PACK_ENUM dtor_kind_e {
 #define ASTF_PP_EXPR_RES_USED 6 // on expr_pp
 #define ASTF_IMPORT_GROUP_MODULE_USED 6 // om sym_import_group ({(),..} or not)
 
-#define ASTF_ERROR_OFFSET 7 // TODO: implement poisoning
+#define ASTF_POISONED_OFFSET 7 // TODO: implement poisoning
 
 // shared bit since applied to different nodes
 #define ASTF_COMPUND_DECL_OFFSET 8 // on sym_var
@@ -131,8 +131,8 @@ bool ast_flags_get_overloaded_in_pp(ast_flags f);
 void ast_flags_set_used_in_pp(ast_flags* f);
 bool ast_flags_get_used_in_pp(ast_flags f);
 
-void ast_flags_set_error(ast_flags* f);
-bool ast_flags_get_error(ast_flags f);
+void ast_flags_set_poisoned(ast_flags* f);
+bool ast_flags_get_poisoned(ast_flags f);
 
 void ast_flags_set_instance_member(ast_flags* f);
 bool ast_flags_get_instance_member(ast_flags f);

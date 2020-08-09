@@ -180,13 +180,13 @@ bool ast_flags_get_relative_import(ast_flags f)
     return bitmask_get_bit(f, ASTF_RELATIVE_IMPORT_OFFSET);
 }
 
-void ast_flags_set_error(ast_flags* f)
+void ast_flags_set_posioned(ast_flags* f)
 {
-    bitmask_set_bit(f, ASTF_ERROR_OFFSET);
+    bitmask_set_bit(f, ASTF_POISONED_OFFSET);
 }
-bool ast_flags_get_error(ast_flags f)
+bool ast_flags_get_posioned(ast_flags f)
 {
-    return bitmask_get_bit(f, ASTF_ERROR_OFFSET);
+    return bitmask_get_bit(f, ASTF_POISONED_OFFSET);
 }
 
 void ast_flags_set_resolved(ast_flags* f)

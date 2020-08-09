@@ -261,18 +261,20 @@ int src_file_start_parse(src_file* f, thread_context* tc)
     rwslock_end_write(&f->stage_lock);
     return src_map_init(&f->smap, (ast_elem*)f, tc);
 }
-int src_file_done_parsing(src_file* f, thread_context* tc)
+int src_file_done_parsing(src_file* f, thread_context* tc, bool error_occured)
 {
     rwslock_write(&f->stage_lock);
     f->stage = SFS_PARSED;
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &f->requiring_modules);
     rwslock_end_write(&f->stage_lock);
-    aseglist_add(&tc->t->mdg.root_node->module_frames, &f->root);
+    if (!error_occured) {
+        aseglist_add(&tc->t->mdg.root_node->module_frames, &f->root);
+    }
     while (true) {
         mdg_node* m = aseglist_iterator_next(&it);
         if (!m) break;
-        int r = mdg_node_file_parsed(&tc->t->mdg, m, tc);
+        int r = mdg_node_file_parsed(&tc->t->mdg, m, tc, error_occured);
         if (r) return r;
         if (tc->t->verbosity_flags & VERBOSITY_FLAGS_FILES) {
             tput("file ");

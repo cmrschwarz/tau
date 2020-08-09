@@ -33,10 +33,6 @@ typedef enum module_stage_e {
     MS_GENERATING, // resolved, generating IR
     MS_GENERATED, // generation completed successfully and written to disk
     // since linking must be done in one unit we don't track it here
-
-    MS_PARSING_ERROR, // TODO: actually integrate this
-    MS_RESOLVING_ERROR,
-    MS_GENERATNG_ERROR,
 } module_stage;
 
 typedef enum pp_emission_stage_e {
@@ -73,7 +69,7 @@ static inline bool
 module_stage_requirements_needed(module_stage ms, bool* exploring)
 {
     // why would we be handling requires otherwise?
-    assert(ms < MS_PARSED_UNNEEDED || ms > MS_PARSING_ERROR);
+    assert(ms < MS_PARSED_UNNEEDED);
     switch (ms) {
         case MS_UNFOUND:
         case MS_PARSING:
@@ -135,8 +131,11 @@ typedef struct mdg_node_s {
     // we set unfound_children in the parent
     bool exploring_parent;
 
-    // we are currently (unnecessarily) parsing this node in hopes of finding
-    // a missing child. once it is found we should stop working on this.
+    bool error_occured;
+
+    // we are currently (unnecessarily) parsing this node in hopes of
+    // finding a missing child. once it is found we should stop working on
+    // this.
     // TODO: implement this
     ureg unfound_children;
 } mdg_node;
@@ -179,8 +178,10 @@ mdg_node* mdg_get_node(
 int mdg_node_parsed(
     module_dependency_graph* m, mdg_node* n, thread_context* tc);
 int mdg_node_file_parsed(
-    module_dependency_graph* m, mdg_node* n, thread_context* tc);
-int mdg_nodes_resolved(mdg_node** start, mdg_node** end, thread_context* tc);
+    module_dependency_graph* m, mdg_node* n, thread_context* tc,
+    bool error_occured);
+int mdg_nodes_resolved(
+    mdg_node** start, mdg_node** end, thread_context* tc, bool error_occured);
 int mdg_nodes_generated(
     mdg_node** start, mdg_node** end, thread_context* tc, bool pp_generated);
 int mdg_node_add_dependency(
