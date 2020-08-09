@@ -1,0 +1,5 @@
+extend a;
+require "c.tau";
+private func b() -> int{
+    return c();
+}

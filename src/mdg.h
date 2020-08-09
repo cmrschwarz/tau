@@ -175,7 +175,8 @@ mdg_node* mdg_get_node(
     module_dependency_graph* m, mdg_node* parent, string ident,
     module_stage initial_stage);
 
-void report_unrequired_extend(thread_context* tc, src_map* smap, src_range sr);
+int report_unrequired_extend(
+    thread_context* tc, mdg_node* mod, src_map* smap, src_range sr);
 
 int mdg_node_parsed(
     module_dependency_graph* m, mdg_node* n, thread_context* tc);

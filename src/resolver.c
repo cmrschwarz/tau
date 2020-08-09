@@ -1096,11 +1096,18 @@ resolve_error overload_applicable(
     if (fn) {
         if (!ast_flags_get_resolved(fn->fnb.sc.osym.sym.node.flags)) {
             // PERF: this is horrible, consider storing owning body instead
-            ast_body* decl_body =
-                ast_elem_get_body(overload->osym.sym.declaring_st->owning_node);
-            resolve_error re = resolve_ast_node(
-                r, fn->fnb.return_type, decl_body, &fn->fnb.return_ctype, NULL);
-            if (re) return re;
+            if (!fn->fnb.return_type) {
+                fn->fnb.return_ctype = VOID_ELEM;
+            }
+            else {
+                ast_body* decl_body = ast_elem_get_body(
+                    overload->osym.sym.declaring_st->owning_node);
+
+                resolve_error re = resolve_ast_node(
+                    r, fn->fnb.return_type, decl_body, &fn->fnb.return_ctype,
+                    NULL);
+                if (re) return re;
+            }
         }
         if (ctype) *ctype = fn->fnb.return_ctype;
     }
@@ -2945,9 +2952,14 @@ resolve_error resolve_func_from_call(resolver* r, sc_func* fn, ast_elem** ctype)
                 r, (ast_node*)fn, decl_body, false, true, false, false);
             if (!fn->fnb.sc.body.pprn) return RE_FATAL;
         }
-        re = resolve_ast_node(
-            r, fn->fnb.return_type, decl_body, &fn->fnb.return_ctype, NULL);
-        if (re) return re;
+        if (fn->fnb.return_type) {
+            re = resolve_ast_node(
+                r, fn->fnb.return_type, decl_body, &fn->fnb.return_ctype, NULL);
+            if (re) return re;
+        }
+        else {
+            fn->fnb.return_ctype = VOID_ELEM;
+        }
         if (ctype) *ctype = fn->fnb.return_ctype;
     }
     re = curr_pprn_depend_on(r, &fn->fnb.sc.body.pprn);
@@ -3216,6 +3228,7 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
 typedef struct unverified_module_frame_s {
     file_map_head* file;
     module_frame* frame;
+    struct unverified_module_frame_s* next_verified;
 } unverified_module_frame;
 
 #define SORT_NAME unverified_module_frame
@@ -3257,6 +3270,7 @@ resolve_error resolver_mark_required_module_fill_buffer(
         }
         f->frame = mf;
         f->file = (file_map_head*)src;
+        f->next_verified = NULL;
         count++;
     }
     if (n != r->tc->t->mdg.root_node) {
@@ -3276,22 +3290,22 @@ resolve_error resolver_mark_required_module_fill_buffer(
     *frames_buffer = frames;
     *buffer_end = frames + count;
     *root_frame = root;
-    assert(count > 0 || root);
+    // assert(count > 0 || root);
     return RE_OK;
 }
 static inline void resolver_mark_required_frame(
     resolver* r, file_map_head* file, unverified_module_frame* frames,
-    unverified_module_frame** last_unverified)
+    unverified_module_frame* frames_end, unverified_module_frame** verified,
+    ureg* unverified_count)
 {
-    unverified_module_frame tmp;
     unverified_module_frame *left, *right, *center;
     left = frames;
-    right = *last_unverified + 1;
+    right = frames_end;
     while (true) {
         center = left + (right - left) / 2;
         int cmp = ptrcmp(file, center->file);
         if (cmp < 0) {
-            right = center;
+            right = center - 1;
         }
         else if (cmp > 0) {
             left = center + 1;
@@ -3299,20 +3313,20 @@ static inline void resolver_mark_required_frame(
         else {
             break;
         }
-        if (left == right) return;
+        if (left > right) return;
     }
-    while (center != *last_unverified) {
+    while (center != frames_end) {
         if ((center + 1)->file == file)
             center = center + 1;
         else
             break;
     }
     while (center->file == file) {
-        tmp = **last_unverified;
-        **last_unverified = *center;
-        *center = tmp;
-        (*last_unverified)--;
-        if (*last_unverified == frames - 1) break;
+        if (!center->next_verified) {
+            center->next_verified = *verified;
+            *verified = center;
+            (*unverified_count)--;
+        }
         if (center == frames) break;
         center--;
     }
@@ -3322,14 +3336,13 @@ resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
 {
     unverified_module_frame* frames;
     unverified_module_frame* end;
+    unverified_module_frame* verified = (unverified_module_frame*)NULL_PTR_PTR;
     module_frame* root;
     resolve_error re =
         resolver_mark_required_module_fill_buffer(r, n, &frames, &end, &root);
     if (re) return re;
+    ureg unverified_count = end - frames;
 
-    unverified_module_frame* begin = frames - 1;
-    unverified_module_frame* last_pending = end - 1;
-    unverified_module_frame* last_unverified = last_pending;
     module_frame* curr = root;
     if (!curr) {
         assert(n == r->tc->t->mdg.root_node);
@@ -3337,28 +3350,28 @@ resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
         list_it_begin(&it, &r->tc->t->required_files);
         src_file* f;
         while ((f = list_it_next(&it, &r->tc->t->required_files))) {
-            resolver_mark_required_frame(r, &f->head, frames, &last_unverified);
-            if (last_unverified == begin) break;
+            resolver_mark_required_frame(
+                r, &f->head, frames, end, &verified, &unverified_count);
+            if (!unverified_count) break;
         }
-        if (last_unverified != begin && last_unverified != last_pending) {
-            curr = last_pending->frame;
-            last_pending--;
-        }
-    }
-    if (curr) {
-        while (true) {
-            for (file_require* req = curr->requires; req->fmh != NULL; req++) {
-                if (req->is_extern) continue;
-                resolver_mark_required_frame(
-                    r, req->fmh, frames, &last_unverified);
-                if (last_unverified == begin) break;
-            }
-            if (last_pending == last_unverified) break;
-            curr = last_pending->frame;
-            last_pending--;
+        if (verified != (unverified_module_frame*)NULL_PTR_PTR) {
+            curr = verified->frame;
+            verified = verified->next_verified;
         }
     }
-    if (last_unverified != begin) {
+
+    while (curr) {
+        for (file_require* req = curr->requires; req->fmh != NULL; req++) {
+            if (req->is_extern) continue;
+            resolver_mark_required_frame(
+                r, req->fmh, frames, end, &verified, &unverified_count);
+            if (!unverified_count) break;
+        }
+        if (verified == (unverified_module_frame*)NULL_PTR_PTR) break;
+        curr = verified->frame;
+        verified = verified->next_verified;
+    }
+    if (unverified_count != 0) {
         r->error_occured = true;
         aseglist old_list = n->module_frames;
         aseglist_init(&n->module_frames);
@@ -3369,7 +3382,8 @@ resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
                 return RE_FATAL;
             };
         }
-        for (unverified_module_frame* m = end - 1; m != last_unverified; m--) {
+        for (unverified_module_frame* m = frames; m != end; m++) {
+            if (!m->next_verified) continue;
             if (aseglist_add(&n->module_frames, m->frame)) {
                 aseglist_fin(&n->module_frames);
                 n->module_frames = old_list;
@@ -3377,9 +3391,11 @@ resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
             };
         }
         aseglist_fin(&old_list);
-        for (unverified_module_frame* m = last_unverified; m != begin; m--) {
-            report_unrequired_extend(
-                r->tc, m->frame->smap, m->frame->node.srange);
+        for (unverified_module_frame* m = frames; m != end; m++) {
+            if (m->next_verified) continue;
+            if (report_unrequired_extend(
+                    r->tc, n, m->frame->smap, m->frame->node.srange))
+                return RE_FATAL;
             if (aseglist_add(
                     &r->tc->t->mdg.invalid_node->module_frames, m->frame)) {
                 return RE_FATAL;

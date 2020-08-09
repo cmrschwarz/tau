@@ -1,0 +1,5 @@
+extend a;
+require "a.tau"; //intentional loop
+private func d() -> int{
+    return 0;
+}

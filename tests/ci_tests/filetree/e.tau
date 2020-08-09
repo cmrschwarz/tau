@@ -1,0 +1,4 @@
+extend a;
+private func e() -> int{
+    return 0;
+}

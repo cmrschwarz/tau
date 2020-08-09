@@ -384,12 +384,18 @@ void report_module_redeclaration(
         mod2_smap, src_range_get_start(mod2_sr), src_range_get_end(mod2_sr),
         "another conflicting declaration here");
 }
-void report_unrequired_extend(thread_context* tc, src_map* smap, src_range sr)
+int report_unrequired_extend(
+    thread_context* tc, mdg_node* mod, src_map* smap, src_range sr)
 {
+    // TODO: give full module name foo::bar instead of just bar
+    const char* msg = error_log_cat_strings_2(
+        tc->err_log,
+        "the file containing this has not been required by module ", mod->name);
+    if (!msg) return ERR;
     error_log_report_annotated(
         tc->err_log, ES_RESOLVER, false, "extend in non required file", smap,
-        src_range_get_start(sr), src_range_get_end(sr),
-        "the file containing this has not been required by this module");
+        src_range_get_start(sr), src_range_get_end(sr), msg);
+    return OK;
 }
 // the source range and smap are in case we need to report an error
 mdg_node* mdg_found_node(
@@ -409,7 +415,7 @@ mdg_node* mdg_found_node(
         // TODO: the resolver stage isn't really appropriate here
         rwlock_end_write(&n->lock);
         if (extend) {
-            report_unrequired_extend(tc, smap, sr);
+            report_unrequired_extend(tc, n, smap, sr);
         }
         else {
             aseglist_iterator it;

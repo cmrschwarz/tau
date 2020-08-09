@@ -1,0 +1,10 @@
+module a{
+    require "filetree/a.tau";
+    public func foo(){
+        return a();
+    }
+}
+func main(){
+    import a;
+    return a::foo();
+}

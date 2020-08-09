@@ -387,8 +387,13 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
     body_parse_data bpd = *(body_parse_data*)sbuffer_iterator_previous(
         &i, sizeof(body_parse_data));
     sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
-    if (prec_pe) return OK;
     bool is_mf = ast_elem_is_module_frame((ast_elem*)bpd.node);
+    if (prec_pe == PE_NO_STMT) {
+        assert(is_mf);
+        is_mf = false;
+        prec_pe = PE_OK;
+    }
+    if (prec_pe) return OK;
     if (bpd.shared_decl_count > 0 || bpd.shared_uses_count > 0) {
         assert(is_mf);
         // assert(*mf is member of current module*);
@@ -405,7 +410,7 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
                  (ast_elem*)bpd.node)) {
         return ERR;
     }
-    (**st).parent = NULL;
+    if (*st) (**st).parent = NULL;
     return OK;
 }
 
@@ -2104,8 +2109,10 @@ parse_error handle_semicolon_after_statement(parser* p, ast_node* s)
     return PE_OK;
 }
 static inline parse_error parse_delimited_module_frame(
-    parser* p, module_frame* mf, token_kind delimiter_1, token_kind delimiter_2)
+    parser* p, module_frame* mf, token_kind delimiter_1, token_kind delimiter_2,
+    bool* content)
 {
+    bool cntnt = false;
     // to allow deallocation in case of early failiure
     mf->body.elements = (ast_node**)NULL_PTR_PTR;
     if (push_bpd(p, (ast_node*)mf, &mf->body)) return PE_FATAL;
@@ -2117,25 +2124,26 @@ static inline parse_error parse_delimited_module_frame(
         if (pop_bpd(p, PE_LX_ERROR)) return PE_FATAL;
         return PE_LX_ERROR;
     }
-    ureg start = t->start;
     parse_error pe = PE_OK;
     ast_node* target;
+
     while (t->kind != delimiter_1 && t->kind != delimiter_2) {
         pe = parse_statement(p, &target);
-        if (pe) {
-            if (pe == PE_NO_STMT) {
-                pe = PE_OK;
-                t = lx_peek(&p->lx);
-                if (t) continue;
-                pe = PE_LX_ERROR;
-            }
+        bool stmt = true;
+        if (pe == PE_NO_STMT) {
+            stmt = false;
+        }
+        else if (pe) {
             break;
         }
         pe = handle_semicolon_after_statement(p, target);
         if (pe) break;
-        if (list_builder_add(&p->lx.tc->listb2, target)) {
-            pe = PE_FATAL;
-            break;
+        if (stmt) {
+            if (list_builder_add(&p->lx.tc->listb2, target)) {
+                pe = PE_FATAL;
+                break;
+            }
+            cntnt = true;
         }
         t = lx_peek(&p->lx);
         if (!t) {
@@ -2147,25 +2155,24 @@ static inline parse_error parse_delimited_module_frame(
         &p->lx.tc->listb2, element_list_start, &p->lx.tc->permmem);
     mf->requires = (file_require*)list_builder_pop_block_list_zt(
         &p->lx.tc->listb, requires_list_start, &p->lx.tc->permmem);
+    if (mf->requires->fmh) cntnt = true;
     if (!mf->body.elements) {
         free_failed_ast_node_list_symtabs(
             &p->lx.tc->listb2, element_list_start, &mf->body.elements);
         pe = PE_FATAL;
     }
-    if (pop_bpd(p, pe)) return PE_FATAL;
+    parse_error pop_pe = pe;
+    if (!pe && content && !cntnt) pop_pe = PE_NO_STMT;
+    if (pop_bpd(p, pop_pe)) return PE_FATAL;
     if (!mf->requires) return PE_FATAL;
     if (pe) return pe;
-    src_range_large srl;
-    srl.start = start;
-    srl.end = t->end;
-    srl.smap = p->lx.smap;
-    mf->node.srange = src_range_large_pack(p->lx.tc, &srl);
-    if (mf->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
+    if (content) *content = cntnt;
     return PE_OK;
 }
-parse_error parse_eof_delimited_module_frame(parser* p, module_frame* mf)
+parse_error
+parse_eof_delimited_module_frame(parser* p, module_frame* mf, bool* content)
 {
-    return parse_delimited_module_frame(p, mf, TK_EOF, TK_EOF);
+    return parse_delimited_module_frame(p, mf, TK_EOF, TK_EOF, content);
 }
 parse_error parser_parse_file(parser* p, job_parse* j)
 {
@@ -2199,13 +2206,29 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     p->file_root = &j->file->root;
     p->file_root->smap = p->lx.smap;
     ast_node_init((ast_node*)&j->file->root, MF_EXTEND);
-    parse_error pe = parse_eof_delimited_module_frame(p, &j->file->root);
+    bool content = false;
+    token* t;
+    PEEK(p, t); // TODO: better error handling
+    src_range_large srl;
+    srl.start = t->start;
+    parse_error pe =
+        parse_eof_delimited_module_frame(p, &j->file->root, &content);
+    PEEK(p, t);
+    srl.end = t->end;
+    srl.smap = p->lx.smap;
+    p->file_root->node.srange = src_range_large_pack(p->lx.tc, &srl);
+    if (p->file_root->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     lx_close_file(&p->lx);
     if (pe) {
         free_body_symtabs((ast_node*)&j->file->root, &j->file->root.body);
         if (pe == PE_FATAL) return pe;
     }
     int r = thread_context_preorder_job(p->lx.tc);
+    if (content && !pe) {
+        if (aseglist_add(
+                &p->lx.tc->t->mdg.root_node->module_frames, &j->file->root))
+            return RE_FATAL;
+    }
     if (src_file_done_parsing(j->file, p->lx.tc, pe != PE_OK)) pe = PE_FATAL;
     if (r) return PE_FATAL;
     return pe;
@@ -2786,12 +2809,13 @@ parse_error parse_module_frame_decl(
     mdg_node* parent = p->current_module;
     p->current_module = mdgn;
     bool single_file_module = false;
-    if (!extend && t->kind == TK_SEMICOLON) {
+    if (t->kind == TK_SEMICOLON) {
         pe = check_if_first_stmt(p, n, start, t->end, false);
         if (!pe) {
             lx_consume(&p->lx);
             single_file_module = true;
-            pe = parse_delimited_module_frame(p, md, TK_EOF, TK_BRACE_CLOSE);
+            pe = parse_delimited_module_frame(
+                p, md, TK_EOF, TK_BRACE_CLOSE, NULL);
         }
     }
     else {
@@ -2815,7 +2839,7 @@ parse_error parse_module_frame_decl(
         r = mdg_node_parsed(&p->lx.tc->t->mdg, mdgn, p->lx.tc);
     }
     if (r) return RE_FATAL;
-    return PE_OK; // consider PE_NO_STMT
+    return PE_NO_STMT; // consider PE_NO_STMT
 }
 parse_error parse_trait_decl(
     parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** n)
@@ -3341,6 +3365,7 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     if (!is_extern) {
         src_file* f = file_map_get_file_from_path(
             &p->lx.tc->t->filemap, p->current_file->head.parent, t->str);
+        if (!f) return RE_FATAL;
         rq.fmh = (file_map_head*)f;
         int r = src_file_require(
             f, p->lx.tc->t, p->lx.smap, rq.srange, p->current_module, needed);
@@ -3350,18 +3375,13 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
         src_lib* l = file_map_get_lib_from_path(
             &p->lx.tc->t->filemap, p->current_file->head.parent, t->str,
             is_dynamic);
+        if (!l) return RE_FATAL;
         rq.fmh = (file_map_head*)l;
         if (needed && !exploring) {
             int r = src_lib_require(
                 l, p->lx.tc->t, p->lx.smap, rq.srange, rq.is_pp);
             if (r == ERR) return PE_FATAL;
         }
-    }
-    lx_void(&p->lx);
-    PEEK(p, t);
-    if (t->kind != TK_SEMICOLON) {
-        report_missing_semicolon(p, start, end);
-        return PE_ERROR;
     }
     lx_void(&p->lx);
     rq.handled = needed;
@@ -3585,18 +3605,11 @@ static inline parse_error parse_delimited_body(
     while (t->kind != delimiter) {
         if (t->kind != TK_EOF) {
             pe = parse_statement(p, &target);
-            if (pe) {
-                if (pe == PE_NO_STMT) {
-                    pe = PE_OK;
-                    t = lx_peek(&p->lx);
-                    if (t) continue;
-                    pe = PE_LX_ERROR;
-                }
-                break;
-            }
+            bool stmt = (pe != PE_NO_STMT);
+            if (pe && pe != PE_NO_STMT) break;
             pe = handle_semicolon_after_statement(p, target);
             if (pe) break;
-            if (list_builder_add(&p->lx.tc->listb2, target)) {
+            if (stmt && list_builder_add(&p->lx.tc->listb2, target)) {
                 pe = PE_FATAL;
                 break;
             }
