@@ -97,9 +97,11 @@ bool ast_elem_is_struct_base(ast_elem* s)
 }
 bool ast_elem_is_any_import(ast_elem* s)
 {
-    return s->kind == ELEM_ANONYMOUS_IMPORT_GROUP ||
-           s->kind == SYM_NAMED_IMPORT_GROUP || s->kind == SYM_IMPORT_MODULE ||
-           s->kind == SYM_IMPORT_PARENT;
+    return s->kind == ASTN_ANONYMOUS_SYM_IMPORT_GROUP ||
+           s->kind == ASTN_ANONYMOUS_MOD_IMPORT_GROUP ||
+           s->kind == SYM_NAMED_SYM_IMPORT_GROUP ||
+           s->kind == SYM_NAMED_MOD_IMPORT_GROUP ||
+           s->kind == SYM_IMPORT_MODULE || s->kind == SYM_IMPORT_PARENT;
 }
 bool ast_elem_is_symbol(ast_elem* s)
 {

@@ -1672,8 +1672,10 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             return LLE_OK;
         }
         case SYM_IMPORT_PARENT:
-        case ASTN_ANONYMOUS_IMPORT_GROUP:
-        case SYM_NAMED_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_SYM_IMPORT_GROUP:
+        case SYM_NAMED_SYM_IMPORT_GROUP:
+        case SYM_NAMED_MOD_IMPORT_GROUP:
         case SYM_IMPORT_MODULE: return LLE_OK;
         case EXPR_IF: {
             expr_if* i = (expr_if*)n;

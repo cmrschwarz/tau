@@ -29,14 +29,14 @@ typedef enum PACK_ENUM ast_node_kind_e {
     ELEM_INVALID, // make 0 invalid for debugging
     ELEM_FIRST_ID,
     ELEM_MDG_NODE = ELEM_FIRST_ID,
-    ELEM_ANONYMOUS_IMPORT_GROUP,
     ELEM_SRC_FILE,
     ELEM_SRC_LIB,
     ELEM_SRC_DIR,
     ELEM_LAST_ID = ELEM_SRC_DIR,
 
     ASTN_FIRST_ID,
-    ASTN_ANONYMOUS_IMPORT_GROUP = ASTN_FIRST_ID,
+    ASTN_ANONYMOUS_SYM_IMPORT_GROUP = ASTN_FIRST_ID,
+    ASTN_ANONYMOUS_MOD_IMPORT_GROUP,
 
     MF_FIRST_ID,
     MF_MODULE = MF_FIRST_ID,
@@ -68,7 +68,8 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SYM_NAMED_USE,
     SYM_IMPORT_MODULE,
     SYM_IMPORT_SYMBOL,
-    SYM_NAMED_IMPORT_GROUP,
+    SYM_NAMED_MOD_IMPORT_GROUP,
+    SYM_NAMED_SYM_IMPORT_GROUP,
     SYM_IMPORT_PARENT,
     SYM_FUNC_EXTERN, // TODO
     SYM_LAST_ID = SYM_FUNC_EXTERN,
@@ -292,11 +293,15 @@ typedef struct stmt_use_s {
     ast_node* target;
 } stmt_use;
 
-typedef struct sym_import_module_s {
-    open_symbol osym;
+typedef struct module_import_data_s {
     mdg_node* module;
     atomic_boolean done;
     pp_resolve_node* pprn;
+} module_import_data;
+
+typedef struct sym_import_module_s {
+    open_symbol osym;
+    module_import_data mi_data;
 } sym_import_module;
 
 // the foo in import foo::bar;
@@ -317,16 +322,34 @@ typedef struct sym_import_parent_s {
     };
 } sym_import_parent;
 
-typedef struct sym_named_import_group_s {
-    open_symbol sym;
-    symbol_table* symtab;
-    list children_ordered; // allocated from module pool
-} sym_named_import_group;
-
-typedef struct astn_anonymous_import_group_s {
-    ast_node node;
+typedef struct import_group_data_s {
+    mdg_node* relative_to;
     list children_ordered; // allocated from module poo
-} elem_anonymous_import_group;
+} import_group_data;
+
+typedef struct sym_named_sym_import_group_s {
+    open_symbol osym;
+    module_import_data mi_data;
+    import_group_data ig_data;
+    symbol_table* symtab;
+} sym_named_sym_import_group;
+
+typedef struct sym_named_mod_import_group_s {
+    open_symbol osym;
+    import_group_data ig_data;
+    symbol_table* symtab;
+} sym_named_mod_import_group;
+
+typedef struct astn_anonymous_mod_import_group_s {
+    ast_node node;
+    import_group_data ig_data;
+} astn_anonymous_mod_import_group;
+
+typedef struct astn_anonymous_sym_import_group_s {
+    ast_node node;
+    import_group_data ig_data;
+    module_import_data mi_data;
+} astn_anonymous_sym_import_group;
 
 struct mdg_node_s;
 typedef struct sym_import_symbol_s {

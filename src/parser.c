@@ -383,7 +383,7 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
     sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
     if (prec_pe) return OK;
     if (bpd.shared_decl_count > 0 || bpd.shared_uses_count > 0) {
-        assert(st_elem_is_module_frame((ast_elem*)bpd.node));
+        assert(ast_elem_is_module_frame((ast_elem*)bpd.node));
         // assert(*mf is member of current module*);
         atomic_ureg_add(&p->current_module->decl_count, bpd.shared_decl_count);
         atomic_ureg_add(&p->current_module->using_count, bpd.shared_uses_count);
@@ -427,8 +427,10 @@ char* get_context_msg(parser* p, ast_node* node)
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return "in this variable declaration";
         case SYM_IMPORT_SYMBOL:
-        case SYM_NAMED_IMPORT_GROUP:
-        case ASTN_ANONYMOUS_IMPORT_GROUP:
+        case SYM_NAMED_MOD_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP:
+        case SYM_NAMED_SYM_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_SYM_IMPORT_GROUP:
         case SYM_IMPORT_MODULE: return "in this import statement";
         case SYM_NAMED_USE:
         case STMT_USE: return "in this using statement";
@@ -2996,7 +2998,7 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
 }
 parse_error parse_import_with_parent(
     parser* p, ast_flags flags, ureg start, ureg kw_end, mdg_node* parent,
-    ureg* decl_cnt, symbol** tgt);
+    ureg* decl_cnt, ast_node** tgt, bool child);
 parse_error parse_use(
     parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** tgt)
 {
@@ -3051,15 +3053,16 @@ parse_error parse_use(
     return pe;
 }
 parse_error parse_braced_imports(
-    parser* p, ast_flags flags, ureg start, ureg kw_end, mdg_node* parent,
-    ureg* end, ureg* decl_cnt, symbol** tgt)
+    parser* p, ast_flags flags, import_group_data* ig_data, ureg start,
+    ureg kw_end, mdg_node* parent, ureg* end, ureg* decl_cnt)
 {
     lx_void(&p->lx);
     while (true) {
+        ast_node* tgt;
         parse_error pe = parse_import_with_parent(
-            p, flags, start, kw_end, parent, decl_cnt, tgt);
+            p, flags, start, kw_end, parent, decl_cnt, &tgt, true);
         if (pe) return pe;
-        tgt = &(**tgt).next;
+        list_append(&ig_data->children_ordered, &p->lx.tc->permmem, tgt);
         token* t;
         PEEK(p, t);
         if (t->kind == TK_COMMA || t->kind == TK_BRACE_CLOSE) {
@@ -3069,7 +3072,6 @@ parse_error parse_braced_imports(
             if (t->kind == TK_BRACE_CLOSE) {
                 *end = t->end;
                 lx_void(&p->lx);
-                *tgt = NULL;
                 return PE_OK;
             }
         }
@@ -3081,8 +3083,8 @@ parse_error parse_braced_imports(
     }
 }
 parse_error parse_symbol_imports(
-    parser* p, sym_import_group* group, ast_flags flags, ureg start,
-    ureg kw_end, ureg* end, ureg* decl_cnt, symbol** tgt)
+    parser* p, import_group_data* ig_data, ast_flags flags, ureg start,
+    ureg kw_end, ureg* end, ureg* decl_cnt)
 {
     lx_void(&p->lx);
     token* t;
@@ -3131,18 +3133,18 @@ parse_error parse_symbol_imports(
             if (!im) return PE_FATAL;
             ast_node_init_with_flags((ast_node*)im, SYM_IMPORT_SYMBOL, flags);
             ast_node_fill_srange(p, (ast_node*)im, symstart, symend);
-            im->import_group = group;
             im->osym.sym.name = id1_str;
             im->osym.visible_within_body = NULL; // TODO
             im->target.name = symname;
-            *tgt = (symbol*)im;
-            tgt = &im->osym.sym.next;
+            if (list_append(
+                    &ig_data->children_ordered, &p->lx.tc->permmem, im)) {
+                return PE_FATAL;
+            }
             *decl_cnt = *decl_cnt + 1;
             // fallthrough to allow trailing comma
             if (t->kind == TK_PAREN_CLOSE) {
                 *end = t->end;
                 lx_void(&p->lx);
-                *tgt = NULL;
                 return PE_OK;
             }
         }
@@ -3155,11 +3157,13 @@ parse_error parse_symbol_imports(
 }
 parse_error parse_import_with_parent(
     parser* p, ast_flags flags, ureg start, ureg kw_end, mdg_node* parent,
-    ureg* decl_cnt, symbol** tgt)
+    ureg* decl_cnt, ast_node** tgt, bool child)
 {
+    mdg_node* relative_to = parent;
+    parse_error pe;
     token *t, *t2;
     PEEK(p, t);
-    ureg istart = (parent == p->lx.tc->t->mdg.root_node) ? start : t->start;
+    ureg istart = child ? t->start : start;
     ureg end;
     PEEK_SND(p, t2);
     char* name = NULL;
@@ -3169,7 +3173,8 @@ parse_error parse_import_with_parent(
         lx_void_n(&p->lx, 2);
         PEEK(p, t);
     }
-    if (t->kind == TK_KW_SELF && p->lx.tc->t->mdg.root_node == parent) {
+    // TODO: maybe provide a special message in case child is true
+    if (t->kind == TK_KW_SELF && !child) {
         parent = p->current_module;
         ast_flags_set_relative_import(&flags);
         if (t2->kind == TK_DOUBLE_COLON) {
@@ -3201,10 +3206,10 @@ parse_error parse_import_with_parent(
         else {
             sym_import_module* im = alloc_perm(p, sizeof(sym_import_module));
             if (!im) return PE_FATAL;
-            im->pprn = NULL;
+            im->mi_data.pprn = NULL;
             ast_node_init_with_flags((ast_node*)im, SYM_IMPORT_MODULE, flags);
             ast_node_fill_srange(p, (ast_node*)im, istart, end);
-            im->module = parent;
+            im->mi_data.module = parent;
             im->osym.visible_within_body = NULL; // TODO
             if (name) {
                 im->osym.sym.name = name;
@@ -3216,67 +3221,89 @@ parse_error parse_import_with_parent(
             if (mdg_node_add_dependency(p->current_module, parent, p->lx.tc)) {
                 return PE_FATAL;
             }
-            *tgt = (symbol*)im;
+            *tgt = (ast_node*)im;
             *decl_cnt = *decl_cnt + 1;
             return PE_OK;
         }
     }
-    // TODO: also select this branch if we want unnamed groups
-    // for better ast printing
-    if (t->kind == TK_PAREN_OPEN || t->kind == TK_BRACE_OPEN) {
-        sym_import_group* ig;
-        ig = alloc_perm(p, sizeof(sym_import_group));
-        if (!ig) return PE_FATAL;
-        ig->parent_im.pprn = NULL;
-        ast_node_init_with_flags((ast_node*)ig, SYM_IMPORT_GROUP, flags);
-        ig->parent_im.module = parent;
-        ig->parent_im.osym.sym.name = name;
-        ig->parent_im.osym.visible_within_body = NULL; // TODO
-        *tgt = (symbol*)ig;
-        tgt = &ig->children.symbols;
-
-        ureg ndecl_cnt = 0;
+    ureg ndecl_cnt = 0;
+    if (name) {
+        *decl_cnt = *decl_cnt + 1;
+        decl_cnt = &ndecl_cnt;
+    }
+    import_group_data* ig_data;
+    if (t->kind == TK_PAREN_OPEN) {
+        module_import_data* mi_data;
         if (name) {
-            *decl_cnt = *decl_cnt + 1;
-            decl_cnt = &ndecl_cnt;
-        }
-        parse_error re;
-        if (t->kind == TK_PAREN_OPEN) {
-            if (mdg_node_add_dependency(p->current_module, parent, p->lx.tc)) {
-                return PE_FATAL;
-            }
-            ast_flags_set_import_group_module_used(
-                &ig->parent_im.osym.sym.node.flags);
-            re = parse_symbol_imports(
-                p, ig, flags, start, kw_end, &end, decl_cnt, tgt);
+            sym_named_sym_import_group* nsig =
+                alloc_perm(p, sizeof(sym_named_sym_import_group));
+            if (!nsig) return PE_FATAL;
+            nsig->osym.sym.name = name;
+            nsig->osym.visible_within_body = NULL; // TODO
+            ast_node_init_with_flags(
+                (ast_node*)nsig, SYM_NAMED_SYM_IMPORT_GROUP, flags);
+            *tgt = (ast_node*)nsig;
+            ig_data = &nsig->ig_data;
+            mi_data = &nsig->mi_data;
         }
         else {
-            re = parse_braced_imports(
-                p, flags, start, kw_end, parent, &end, decl_cnt, tgt);
+            astn_anonymous_sym_import_group* asig =
+                alloc_perm(p, sizeof(astn_anonymous_sym_import_group));
+            if (!asig) return PE_FATAL;
+            ast_node_init_with_flags(
+                (ast_node*)asig, ASTN_ANONYMOUS_SYM_IMPORT_GROUP, flags);
+            *tgt = (ast_node*)asig;
+            ig_data = &asig->ig_data;
         }
-        if (re) return re;
-        ast_node_fill_srange(p, (ast_node*)ig, istart, end);
-        if (name) {
-            symbol_table* st;
-            if (symbol_table_init(&st, ndecl_cnt, 0, false, (ast_elem*)ig)) {
-                return RE_FATAL;
-            }
-            st->parent = NULL;
-            assert(ndecl_cnt); // otherwise we error'd already
-            *(symbol**)(st + 1) = ig->children.symbols;
-            ig->children.symtab = st;
-            if (re) return PE_ERROR;
+        if (mdg_node_add_dependency(p->current_module, parent, p->lx.tc)) {
+            return PE_FATAL;
         }
-        return PE_OK;
+        if (list_init(&ig_data->children_ordered)) return PE_FATAL;
+        pe = parse_symbol_imports(
+            p, ig_data, flags, start, kw_end, &end, decl_cnt);
+        if (pe) return pe;
+        mi_data->module = parent;
+        mi_data->pprn = NULL;
     }
-    char* expected;
-    if (has_ident)
-        expected = "expected identifier or ( or {";
-    else
-        expected = "expected identifier or {";
-    return parser_error_2a(
-        p, "invalid import syntax", t->start, t->end, expected, start, kw_end,
-        "in this import statement");
+    else if (t->kind == TK_BRACE_OPEN) {
+        if (name) {
+            sym_named_mod_import_group* nmig =
+                alloc_perm(p, sizeof(sym_named_mod_import_group));
+            if (!nmig) return PE_FATAL;
+            ast_node_init_with_flags(
+                (ast_node*)nmig, SYM_NAMED_MOD_IMPORT_GROUP, flags);
+            nmig->osym.sym.name = name;
+            nmig->osym.visible_within_body = NULL; // TODO
+            *tgt = (ast_node*)nmig;
+            ig_data = &nmig->ig_data;
+        }
+        else {
+            astn_anonymous_mod_import_group* amig =
+                alloc_perm(p, sizeof(astn_anonymous_mod_import_group));
+            if (!amig) return PE_FATAL;
+            ast_node_init_with_flags(
+                (ast_node*)amig, SYM_NAMED_MOD_IMPORT_GROUP, flags);
+            *tgt = (ast_node*)amig;
+            ig_data = &amig->ig_data;
+        }
+        if (list_init(&ig_data->children_ordered)) return PE_FATAL;
+        pe = parse_braced_imports(
+            p, flags, ig_data, start, kw_end, parent, &end, decl_cnt);
+        if (pe) return pe;
+    }
+    else {
+        char* expected;
+        if (has_ident || child)
+            expected = "expected identifier or ( or {";
+        else
+            expected = "expected identifier or {";
+        return parser_error_2a(
+            p, "invalid import syntax", t->start, t->end, expected, start,
+            kw_end, "in this import statement");
+    }
+    ig_data->relative_to = relative_to;
+    ast_node_fill_srange(p, *tgt, istart, end);
+    return PE_OK;
 }
 parse_error parse_import(
     parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** tgt)
@@ -3286,8 +3313,8 @@ parse_error parse_import(
     lx_void(&p->lx);
     ureg decl_cnt = 0;
     parse_error pe = parse_import_with_parent(
-        p, flags, start, kw_end, p->lx.tc->t->mdg.root_node, &decl_cnt,
-        (symbol**)tgt);
+        p, flags, start, kw_end, p->lx.tc->t->mdg.root_node, &decl_cnt, tgt,
+        false);
     if (pe) return pe;
     curr_scope_add_decls(p, ast_flags_get_access_mod(flags), decl_cnt);
     return PE_OK;
@@ -3544,16 +3571,17 @@ static inline void init_expr_block_base(
         bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
         if (!bpd) break;
         if (!bpd->node) continue;
+        // TODO: rework this mess
         if (ast_elem_is_expr_block_base((ast_elem*)bpd->node)) {
-            ebb->parent = bpd->node;
+            ebb->body.parent = bpd->body;
             return;
         }
         if (bpd->node->kind == SC_FUNC || bpd->node->kind == SC_FUNC_GENERIC) {
-            ebb->parent = bpd->node;
+            ebb->body.parent = bpd->body;
             return;
         }
         if (ast_elem_is_paste_evaluation((ast_elem*)bpd->node)) {
-            ebb->parent = ((paste_evaluation*)bpd->node)->parent_ebb;
+            ebb->body.parent = bpd->body;
             return;
         }
     }
@@ -3574,6 +3602,7 @@ static inline parse_error parse_delimited_body(
     if (first_stmt) {
         body_parse_data* bpd = get_bpd(p);
         bpd->body = b;
+        bpd->body->parent = b->parent;
         bpd->body->symtab = NULL;
         bpd->node = parent;
         if (list_builder_add(&p->lx.tc->listb2, first_stmt)) {
@@ -3582,7 +3611,7 @@ static inline parse_error parse_delimited_body(
         }
         if (ast_elem_is_expr_block_base((ast_elem*)first_stmt)) {
             assert(ast_elem_is_expr_block_base((ast_elem*)parent));
-            ((expr_block_base*)first_stmt)->parent = parent;
+            ((expr_block_base*)first_stmt)->body.parent = b;
         }
     }
     curr_scope_add_decls(p, AM_LOCAL, param_count);
