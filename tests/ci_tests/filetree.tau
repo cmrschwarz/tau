@@ -1,10 +1,10 @@
 module a{
     require "filetree/a.tau";
-    public func foo(){
+    public func foo() -> int{
         return a();
     }
 }
-func main(){
+func main() -> int{
     import a;
     return a::foo();
 }
