@@ -154,12 +154,17 @@ void print_ast_node_nl(ast_node* n, mdg_node* cmdg, ureg indent)
     print_ast_node(n, cmdg, indent);
     pc('\n');
 }
-bool print_mdg_node_until(mdg_node* m, mdg_node* stop)
+// skipping zero means printing including the start
+ureg print_mdg_node_until(mdg_node* start, mdg_node* m, ureg skip_levels)
 {
-    if (m->parent == stop) return false;
-    if (print_mdg_node_until(m->parent, stop)) p("::");
-    p(m->name);
-    return true;
+    if (m == start) {
+        if (skip_levels == 0) p(m->name);
+        return 1;
+    }
+    ureg lvl = print_mdg_node_until(start, m->parent, skip_levels);
+    if (lvl > skip_levels) p("::");
+    if (lvl >= skip_levels) p(m->name);
+    return lvl + 1;
 }
 void print_expr_in_parens(ast_node* ex, mdg_node* cmdg, ureg indent)
 {
@@ -189,95 +194,81 @@ void print_ast_elem_name(ast_elem* n)
         pu("<unknown node>");
     }
 }
-void print_import_group(sym_import_group* g, mdg_node* curr_mdg, ureg indent)
+void print_import_symbol(ast_node* n)
 {
-    if (g->parent_im.osym.sym.name) {
-        p(g->parent_im.osym.sym.name);
+    sym_import_symbol* is = (sym_import_symbol*)n;
+    char* tgt_name = is->target_body ? is->target.name : is->target.name;
+    // doing a pointer comparison is actually the right thing to do
+    // here: in the common case we reuse the string, and if the
+    // user gave the thing the same name it had a new string will
+    // have been allocated which gives the correct behavior this
+    // will some day break when we do string interning :D
+    if (is->osym.sym.name != tgt_name) {
+        p(is->osym.sym.name);
         p(" = ");
     }
-    if (ast_flags_get_relative_import(g->parent_im.osym.sym.node.flags)) {
+    p(tgt_name);
+}
+void print_import_module(ast_node* n, mdg_node* group_parent)
+{
+    if (!group_parent) p("import ");
+    sym_import_module* im = (sym_import_module*)n;
+    if (im->osym.sym.name != im->im_data.imported_module->name) {
+        p(im->osym.sym.name);
+        p(" = ");
+    }
+    if (ast_flags_get_relative_import(n->flags)) {
+        assert(!group_parent || group_parent == im->im_data.importing_module);
         p("self::");
-        if (print_mdg_node_until(g->parent_im.module, curr_mdg)) p("::");
+        print_mdg_node_until(
+            im->im_data.importing_module, im->im_data.imported_module, 1);
     }
     else {
-        if (print_mdg_node_until(g->parent_im.module, NULL)) p("::");
+        print_mdg_node_until(
+            group_parent, im->im_data.imported_module, group_parent ? 1 : 2);
     }
-    // TODO: improve this mess, we can't even preserve import order right now
-
-    symtab_it stit;
-    symbol* c;
-    bool use_stit = false;
-    if (ast_flags_get_declared(g->parent_im.osym.sym.node.flags)) {
-        use_stit = true;
-        stit = symtab_it_make(g->children.symtab);
-        c = symtab_it_next(&stit);
+    if (!group_parent) p(";");
+}
+void print_import_group(ast_node* node, bool child, ureg indent)
+{
+    if (!child) p("import ");
+    import_group_data* ig_data;
+    import_module_data* im_data;
+    const char* name;
+    mdg_node* group_parent;
+    import_group_get_data(node, &ig_data, &im_data, &name, &group_parent);
+    if (name) {
+        p(name);
+        p(" = ");
     }
-    else {
-        c = g->children.symbols;
+    if (ast_flags_get_relative_import(node->flags)) {
+        assert(!child);
+        p("self::");
     }
-    bool syms = (c->node.kind == SYM_IMPORT_SYMBOL);
-    p(syms ? "(" : "{\n");
-    while (c) {
-        bool skip = false;
-        char* tgt_str = c->name;
-        if (!syms) print_indent(indent + 1);
-        if (c->node.kind == SYM_IMPORT_GROUP) {
-            print_import_group(
-                (sym_import_group*)c, g->parent_im.module, indent + 1);
+    if (print_mdg_node_until(ig_data->relative_to, group_parent, 1) >= 2) {
+        p("::");
+    }
+    list_it it;
+    list_it_begin(&it, &ig_data->children_ordered);
+    ast_node* n;
+    bool first = true;
+    p(im_data ? "(" : "{");
+    while ((n = list_it_next(&it, &ig_data->children_ordered))) {
+        if (!first) p(", ");
+        first = false;
+        if (ast_elem_is_import_group((ast_elem*)n)) {
+            print_import_group(n, true, indent + 1);
         }
-        else if (c->node.kind == SYM_IMPORT_MODULE) {
-            sym_import_module* im = (sym_import_module*)c;
-            // TODO: figure out if it's really ours
-            if (!cstr_eq(c->name, im->module->name)) {
-                p(c->name);
-                p(" = ");
-            }
-            print_mdg_node_until(im->module, g->parent_im.module->parent);
-        }
-        else if (c->node.kind == SYM_IMPORT_SYMBOL) {
-            sym_import_symbol* is = (sym_import_symbol*)c;
-            if (is->import_group == g) {
-                char* name = is->osym.sym.name;
-                if (ast_flags_get_resolved(is->osym.sym.node.flags) &&
-                    !is->target_st) {
-                    tgt_str = is->target.sym->name;
-                }
-                else {
-                    tgt_str = is->target.name;
-                }
-                if (!cstr_eq(name, tgt_str)) {
-                    p(name);
-                    p(" = ");
-                }
-            }
-            else {
-                skip = true;
-            }
+        else if (n->kind == SYM_IMPORT_SYMBOL) {
+            print_import_symbol(n);
         }
         else {
-            skip = true;
-        }
-        if (!skip) {
-            p(tgt_str);
-        }
-        if (use_stit) {
-            c = symtab_it_next(&stit);
-        }
-        else {
-            c = c->next;
-        }
-        if (!skip) {
-            if (c) p(", ");
-            if (!syms) pc('\n');
+            assert(n->kind == SYM_IMPORT_MODULE);
+            print_import_module(n, group_parent);
         }
     }
-    if (!syms) {
-        print_indent(indent);
-        pc('}');
-    }
-    else {
-        pc(')');
-    }
+    p(im_data ? ")" : "}");
+    if (!child) p(";");
 }
 void print_ast_node_modifiers(ast_flags flags)
 {
@@ -297,24 +288,20 @@ void print_ast_node_modifiers(ast_flags flags)
         pc(' ');
     }
 }
+// TODO: we can fully get rid of cmdg by using importing_module in
+// import_module
 void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
 {
     // TODO: print access modifiers
     switch (n->kind) {
         case SYM_IMPORT_MODULE: {
-            p("import ");
-            sym_import_module* im = (sym_import_module*)n;
-            if (ast_flags_get_relative_import(n->flags)) {
-                p("self::");
-                print_mdg_node_until(im->module, cmdg->parent);
-            }
-            else {
-                print_mdg_node_until(im->module, NULL);
-            }
+            print_import_module(n, NULL);
         } break;
-        case SYM_IMPORT_GROUP: {
-            p("import ");
-            print_import_group((sym_import_group*)n, cmdg, indent);
+        case SYM_NAMED_MOD_IMPORT_GROUP:
+        case SYM_NAMED_SYM_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_SYM_IMPORT_GROUP: {
+            print_import_group(n, false, indent);
         } break;
         case STMT_COMPOUND_ASSIGN: {
             stmt_compound_assignment* ca = (stmt_compound_assignment*)n;
@@ -668,11 +655,14 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             }
         } break;
         case EXPR_PASTE_EVALUATION: {
-            print_ast_node(((expr_paste_evaluation*)n)->expr, cmdg, indent);
+            print_ast_node(((paste_evaluation*)n)->expr, cmdg, indent);
             break;
         }
         case STMT_PASTE_EVALUATION: {
-            print_body(&((stmt_paste_evaluation*)n)->body, cmdg, indent);
+            for (ast_node** n = ((paste_evaluation*)n)->body.elements; *n;
+                 n++) {
+                print_ast_node(*n, cmdg, indent);
+            }
             break;
         }
         default: {

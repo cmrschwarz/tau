@@ -147,6 +147,15 @@ mdg_node* mdg_node_create(
     n->error_occured = false;
     return n;
 }
+void free_import_group(import_group_data* ig_data)
+{
+    list_it it;
+    list_it_begin(&it, &ig_data->children_ordered);
+    ast_node* n;
+    while ((n = list_it_next(&it, &ig_data->children_ordered))) {
+        free_astn_symtabs(n);
+    }
+}
 void free_body_symtabs(ast_body* b);
 void free_astn_symtabs(ast_node* n)
 {
@@ -176,26 +185,17 @@ void free_astn_symtabs(ast_node* n)
         } break;
 
         case SYM_IMPORT_PARENT: {
+            // TODO: think about handling this properly
             sym_import_parent* ip = (sym_import_parent*)n;
-            if (!ast_flags_get_resolved(n->flags)) break;
-            if (!ip->symtab) break;
-            symtab_it it = symtab_it_make(ip->symtab);
-            for (symbol* s = symtab_it_next(&it); s != NULL;
-                 s = symtab_it_next(&it)) {
-                free_astn_symtabs((ast_node*)s);
-            }
             symbol_table_destroy(ip->symtab);
         } break;
-        case SYM_NAMED_IMPORT_GROUP: {
-            sym_named_import_group* ig = (sym_named_import_group*)n;
-            if (!ast_flags_get_resolved(n->flags)) break;
-            if (!ig->symtab) break;
-            symtab_it it = symtab_it_make(ig->symtab);
-            for (symbol* s = symtab_it_next(&it); s != NULL;
-                 s = symtab_it_next(&it)) {
-                free_astn_symtabs((ast_node*)s);
-            }
-            symbol_table_destroy(ig->symtab);
+        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_SYM_IMPORT_GROUP:
+        case SYM_NAMED_MOD_IMPORT_GROUP:
+        case SYM_NAMED_SYM_IMPORT_GROUP: {
+            import_group_data* ig_data;
+            import_group_get_data(n, &ig_data, NULL, NULL, NULL);
+            free_import_group(ig_data);
         } break;
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
@@ -638,14 +638,10 @@ int mdg_nodes_generated(
         list_it it;
         list_it_begin(&it, l);
         while (ok) {
-            ast_elem* dep = list_it_next(&it, l);
-            if (!dep) break;
-            assert(dep->kind == SYM_IMPORT_MODULE);
-            sym_import_module* im = (sym_import_module*)dep;
-            atomic_boolean_store(&im->done, true);
-            mdg_node* dep_mdg = (mdg_node*)ast_body_get_parent_module_body(
-                                    im->osym.sym.declaring_body)
-                                    ->owning_node;
+            import_module_data* im_data = list_it_next(&it, l);
+            if (!im_data) break;
+            atomic_boolean_store(&im_data->done, true);
+            mdg_node* dep_mdg = im_data->importing_module;
             if (sccd_run(
                     &tc->sccd, (mdg_node*)dep_mdg, SCCD_PP_DEP_GENERATED)) {
                 ok = false;

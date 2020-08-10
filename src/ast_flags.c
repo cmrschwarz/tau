@@ -179,6 +179,10 @@ bool ast_flags_get_relative_import(ast_flags f)
 {
     return bitmask_get_bit(f, ASTF_RELATIVE_IMPORT_OFFSET);
 }
+void ast_flags_clear_relative_import(ast_flags* f)
+{
+    bitmask_clear_bit(f, ASTF_RELATIVE_IMPORT_OFFSET);
+}
 
 void ast_flags_set_posioned(ast_flags* f)
 {

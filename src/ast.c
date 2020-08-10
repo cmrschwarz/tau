@@ -97,11 +97,15 @@ bool ast_elem_is_struct_base(ast_elem* s)
 }
 bool ast_elem_is_any_import(ast_elem* s)
 {
-    return s->kind == ASTN_ANONYMOUS_SYM_IMPORT_GROUP ||
-           s->kind == ASTN_ANONYMOUS_MOD_IMPORT_GROUP ||
-           s->kind == SYM_NAMED_SYM_IMPORT_GROUP ||
-           s->kind == SYM_NAMED_MOD_IMPORT_GROUP ||
-           s->kind == SYM_IMPORT_MODULE || s->kind == SYM_IMPORT_PARENT;
+    switch (s->kind) {
+        case SYM_IMPORT_MODULE:
+        case SYM_IMPORT_PARENT:
+        case SYM_NAMED_MOD_IMPORT_GROUP:
+        case SYM_NAMED_SYM_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_SYM_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP: return true;
+        default: return false;
+    }
 }
 bool ast_elem_is_symbol(ast_elem* s)
 {
@@ -304,5 +308,58 @@ src_map* ast_body_get_smap(ast_body* b)
         if (smap) return smap;
         b = b->parent;
         assert(b);
+    }
+}
+
+void import_group_get_data(
+    ast_node* n, import_group_data** ig_data, import_module_data** im_data,
+    const char** name, mdg_node** group_parent)
+{
+    switch (n->kind) {
+        case SYM_NAMED_MOD_IMPORT_GROUP: {
+            sym_named_mod_import_group* ig = (sym_named_mod_import_group*)n;
+            if (ig_data) *ig_data = &ig->ig_data;
+            if (im_data) *im_data = NULL;
+            if (name) *name = ig->osym.sym.name;
+            if (group_parent) *group_parent = ig->group_parent;
+        } break;
+        case SYM_NAMED_SYM_IMPORT_GROUP: {
+            sym_named_sym_import_group* ig = (sym_named_sym_import_group*)n;
+            if (ig_data) *ig_data = &ig->ig_data;
+            if (im_data) *im_data = &ig->im_data;
+            if (name) *name = ig->osym.sym.name;
+            if (group_parent) *group_parent = ig->im_data.imported_module;
+        } break;
+        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP: {
+            astn_anonymous_mod_import_group* ig =
+                (astn_anonymous_mod_import_group*)n;
+            if (ig_data)
+                *ig_data = &((astn_anonymous_mod_import_group*)n)->ig_data;
+            if (im_data) *im_data = NULL;
+            if (name) *name = NULL;
+            if (group_parent) *group_parent = ig->group_parent;
+        } break;
+        case ASTN_ANONYMOUS_SYM_IMPORT_GROUP: {
+            astn_anonymous_sym_import_group* ig =
+                (astn_anonymous_sym_import_group*)n;
+            if (ig_data)
+                *ig_data = &((astn_anonymous_sym_import_group*)n)->ig_data;
+            if (im_data)
+                *im_data = &((astn_anonymous_sym_import_group*)n)->im_data;
+            if (name) *name = NULL;
+            if (group_parent) *group_parent = ig->im_data.imported_module;
+        } break;
+        default: assert(false);
+    }
+}
+
+bool ast_elem_is_import_group(ast_elem* s)
+{
+    switch (s->kind) {
+        case SYM_NAMED_MOD_IMPORT_GROUP:
+        case SYM_NAMED_SYM_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_SYM_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP: return true;
+        default: return false;
     }
 }

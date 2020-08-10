@@ -115,6 +115,7 @@ bool ast_flags_get_compound_decl(ast_flags f);
 
 void ast_flags_set_relative_import(ast_flags* f);
 bool ast_flags_get_relative_import(ast_flags f);
+void ast_flags_clear_relative_import(ast_flags* f);
 
 void ast_flags_set_declared(ast_flags* f);
 bool ast_flags_get_declared(ast_flags f);

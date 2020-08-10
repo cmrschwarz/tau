@@ -3206,10 +3206,11 @@ parse_error parse_import_with_parent(
         else {
             sym_import_module* im = alloc_perm(p, sizeof(sym_import_module));
             if (!im) return PE_FATAL;
-            im->mi_data.pprn = NULL;
+            im->im_data.pprn = NULL;
             ast_node_init_with_flags((ast_node*)im, SYM_IMPORT_MODULE, flags);
             ast_node_fill_srange(p, (ast_node*)im, istart, end);
-            im->mi_data.module = parent;
+            im->im_data.imported_module = parent;
+            im->im_data.importing_module = p->current_module;
             im->osym.visible_within_body = NULL; // TODO
             if (name) {
                 im->osym.sym.name = name;
@@ -3233,7 +3234,7 @@ parse_error parse_import_with_parent(
     }
     import_group_data* ig_data;
     if (t->kind == TK_PAREN_OPEN) {
-        module_import_data* mi_data;
+        import_module_data* im_data;
         if (name) {
             sym_named_sym_import_group* nsig =
                 alloc_perm(p, sizeof(sym_named_sym_import_group));
@@ -3244,7 +3245,7 @@ parse_error parse_import_with_parent(
                 (ast_node*)nsig, SYM_NAMED_SYM_IMPORT_GROUP, flags);
             *tgt = (ast_node*)nsig;
             ig_data = &nsig->ig_data;
-            mi_data = &nsig->mi_data;
+            im_data = &nsig->im_data;
         }
         else {
             astn_anonymous_sym_import_group* asig =
@@ -3254,16 +3255,19 @@ parse_error parse_import_with_parent(
                 (ast_node*)asig, ASTN_ANONYMOUS_SYM_IMPORT_GROUP, flags);
             *tgt = (ast_node*)asig;
             ig_data = &asig->ig_data;
+            im_data = &asig->im_data;
         }
         if (mdg_node_add_dependency(p->current_module, parent, p->lx.tc)) {
             return PE_FATAL;
         }
         if (list_init(&ig_data->children_ordered)) return PE_FATAL;
+        ast_flags_clear_relative_import(&flags);
         pe = parse_symbol_imports(
             p, ig_data, flags, start, kw_end, &end, decl_cnt);
         if (pe) return pe;
-        mi_data->module = parent;
-        mi_data->pprn = NULL;
+        im_data->imported_module = parent;
+        im_data->importing_module = p->current_module;
+        im_data->pprn = NULL;
     }
     else if (t->kind == TK_BRACE_OPEN) {
         if (name) {
@@ -3287,6 +3291,7 @@ parse_error parse_import_with_parent(
             ig_data = &amig->ig_data;
         }
         if (list_init(&ig_data->children_ordered)) return PE_FATAL;
+        ast_flags_clear_relative_import(&flags);
         pe = parse_braced_imports(
             p, flags, ig_data, start, kw_end, parent, &end, decl_cnt);
         if (pe) return pe;

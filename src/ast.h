@@ -293,15 +293,17 @@ typedef struct stmt_use_s {
     ast_node* target;
 } stmt_use;
 
-typedef struct module_import_data_s {
-    mdg_node* module;
+typedef struct import_module_data_s {
+    // not relative to what, but who actually imported
+    mdg_node* importing_module;
+    mdg_node* imported_module;
     atomic_boolean done;
     pp_resolve_node* pprn;
-} module_import_data;
+} import_module_data;
 
 typedef struct sym_import_module_s {
     open_symbol osym;
-    module_import_data mi_data;
+    import_module_data im_data;
 } sym_import_module;
 
 // the foo in import foo::bar;
@@ -329,26 +331,28 @@ typedef struct import_group_data_s {
 
 typedef struct sym_named_sym_import_group_s {
     open_symbol osym;
-    module_import_data mi_data;
+    import_module_data im_data;
     import_group_data ig_data;
     symbol_table* symtab;
 } sym_named_sym_import_group;
 
 typedef struct sym_named_mod_import_group_s {
     open_symbol osym;
+    mdg_node* group_parent;
     import_group_data ig_data;
     symbol_table* symtab;
 } sym_named_mod_import_group;
 
 typedef struct astn_anonymous_mod_import_group_s {
     ast_node node;
+    mdg_node* group_parent;
     import_group_data ig_data;
 } astn_anonymous_mod_import_group;
 
 typedef struct astn_anonymous_sym_import_group_s {
     ast_node node;
     import_group_data ig_data;
-    module_import_data mi_data;
+    import_module_data im_data;
 } astn_anonymous_sym_import_group;
 
 struct mdg_node_s;
@@ -847,3 +851,9 @@ bool is_unary_op_postfix(operator_kind t);
 ast_node* get_parent_body(scope* parent);
 void ast_node_get_bounds(ast_node* n, ureg* start, ureg* end);
 char* op_to_str(operator_kind t);
+
+void import_group_get_data(
+    ast_node* n, import_group_data** ig_data, import_module_data** im_data,
+    const char** name, mdg_node** group_parent);
+
+bool ast_elem_is_import_group(ast_elem* e);
