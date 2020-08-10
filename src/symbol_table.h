@@ -36,6 +36,12 @@ symbol_table* symbol_table_create(ureg sym_count, ureg using_count);
 
 void symbol_table_destroy(symbol_table* st);
 
+ureg symbol_table_has_usings(symbol_table* st);
+ureg symbol_table_get_symbol_capacity(symbol_table* st);
+ureg symbol_table_get_using_capacity(symbol_table* st);
+ureg symbol_table_get_using_count(symbol_table* st);
+ureg symbol_table_get_symbol_count(symbol_table* st);
+
 // if a symbol of that name already exists returns pointer to that entry
 // otherwise inserts and returns NULL
 symbol** symbol_table_insert(symbol_table* st, symbol* s);

@@ -32,18 +32,16 @@ static inline void* alloc_perm(resolver* r, ureg size)
 // inst indicates whether we are in a generic instance, or if we are currently
 // copying a nested generic. in that case we don't want to claim var ids
 resolve_error instantiate_body(
-    resolver* r, ast_body* src, ast_body* tgt, ast_node* generic_owner,
-    ast_node* inst_owner)
+    resolver* r, ast_body* src, ast_body* tgt, ast_node* inst_owner)
 {
-    symbol_table* stc = src->symtab;
-    if (stc->owning_node == (ast_elem*)generic_owner) {
-        ureg using_count =
-            src->symtab->usings ? src->symtab->usings->usings_count : 0;
-        int r = symbol_table_init(
-            &tgt->symtab, src->symtab->decl_count, using_count, false,
-            (ast_elem*)inst_owner);
-        if (r) return RE_FATAL;
-        tgt->symtab->parent = NULL;
+    if (src->symtab) {
+        ureg using_count = symbol_table_get_using_count(src->symtab);
+        ureg sym_count = symbol_table_get_symbol_count(src->symtab);
+        tgt->symtab = symbol_table_create(sym_count, using_count);
+        if (!tgt->symtab) return RE_FATAL;
+    }
+    else {
+        tgt->symtab = NULL;
     }
     // TODO: switch to count instead of zero termination to get rid of this
     // mess
@@ -110,8 +108,7 @@ instantiate_ast_node(resolver* r, ast_node* n, ast_node** tgt, symbol_table* st)
                 if (re) return re;
             }
             return instantiate_body(
-                r, &f->fnb.sc.body, &fc->fnb.sc.body, (ast_node*)f,
-                (ast_node*)fc);
+                r, &f->fnb.sc.body, &fc->fnb.sc.body, (ast_node*)fc);
         }
         case SC_FUNC_GENERIC: {
         }
@@ -156,7 +153,7 @@ resolve_error instantiate_generic_struct(
     if (!sgi->generic_args) return RE_FATAL;
     sgi->generic_arg_count = ea->arg_count;
     re = instantiate_body(
-        r, &sg->sb.sc.body, &sgi->st.sb.sc.body, (ast_node*)sg, (ast_node*)sgi);
+        r, &sg->sb.sc.body, &sgi->st.sb.sc.body, (ast_node*)sgi);
     for (ureg i = 0; i < sg->generic_param_count; i++) {
         sym_param* gp = &sg->generic_params[i];
         sym_param_generic_inst* gpi = &sgi->generic_args[i];
@@ -229,14 +226,9 @@ resolve_error resolve_generic_struct(
     sbuffer_remove_back(&r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
     sbuffer_remove_back(&r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
     if (re) return re;
-    ast_body* declaring_body =
-        ast_elem_get_body(sgi->st.sb.sc.osym.sym.declaring_st->owning_node);
-    re = add_body_decls(
-        r, sgi->st.sb.sc.osym.sym.declaring_st, NULL, &sgi->st.sb.sc.body,
-        false);
+    re = add_body_decls(r, parent_body, NULL, &sgi->st.sb.sc.body, false);
     if (re) return re;
-    sgi->st.id = claim_symbol_id(
-        r, (symbol*)sgi,
-        symbol_table_is_public(sg->sb.sc.osym.sym.declaring_st));
-    return resolve_ast_node(r, (ast_node*)sgi, declaring_body, value, ctype);
+    sgi->st.id =
+        claim_symbol_id(r, (symbol*)sgi, ast_body_is_public(&sg->sb.sc.body));
+    return resolve_ast_node(r, (ast_node*)sgi, parent_body, value, ctype);
 }

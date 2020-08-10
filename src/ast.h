@@ -240,18 +240,21 @@ typedef struct symbol_s {
     // (not necessarily the one it resides in)
     // for pasted blocks this points to the metatable
     // for mdg node symbols it points to the declaring module frame
-    symbol_table* declaring_st;
+    ast_body* declaring_body;
     struct symbol_s* next;
 } symbol;
 
 // all symbols with specifieable visibility
 typedef struct open_symbol_s {
     symbol sym;
-    symbol_table* visible_within; // inclusive limit for private[foo] visibility
+    // inclusive limit for private[foo] visibility
+    ast_body* visible_within_body;
 } open_symbol;
 
 typedef struct ast_body_s {
     ast_node** elements; // zero terminated
+    struct ast_body_s* parent;
+    ast_elem* owning_node;
     symbol_table* symtab;
     // this is always NULL for module frames, but
     // it's still necessary because we want to be able to get the
@@ -325,7 +328,6 @@ typedef struct sym_import_symbol_s {
 
 typedef struct expr_block_base_s {
     ast_node node;
-    ast_node* parent; // either another expr_block_base or a function
     char* name;
     ast_elem* ctype;
     ast_body body;
@@ -798,6 +800,7 @@ bool ast_elem_is_expr_block_base(ast_elem* n);
 bool ast_elem_is_paste_evaluation(ast_elem* s);
 bool assignment_is_meta_assignment(expr_op_binary* ob, bool* defined);
 ast_body* ast_elem_get_body(ast_elem* s);
+ast_body* ast_body_get_non_paste_parent(ast_body* b);
 char* ast_elem_get_label(ast_elem* n, bool* lbl);
 src_map* scope_get_smap(scope* s);
 src_map* module_frame_get_smap(module_frame* mf);
@@ -807,7 +810,7 @@ void ast_node_get_src_range(
 void ast_node_get_full_src_range(
     ast_node* n, symbol_table* st, src_range_large* srl);
 bool ast_body_is_braced(ast_body* b);
-bool symbol_table_is_public(symbol_table* st);
+bool ast_body_is_public(ast_body* st);
 
 bool is_unary_op_postfix(operator_kind t);
 ast_node* get_parent_body(scope* parent);

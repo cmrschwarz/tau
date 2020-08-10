@@ -95,6 +95,7 @@ static inline bool module_stage_is_exploring(module_stage ms)
 typedef struct partial_resolution_data_s partial_resolution_data;
 typedef struct mdg_node_s {
     ast_elem elem;
+    ast_body body;
     struct mdg_node_s* parent;
     char* name;
     atomic_ureg unparsed_files;

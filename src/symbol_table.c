@@ -12,21 +12,21 @@
 #include "utils/error.h"
 #include "tauc.h"
 
-static inline ureg symbol_table_has_usings(symbol_table* st)
+ureg symbol_table_has_usings(symbol_table* st)
 {
     return st->table_offset != sizeof(symbol_table);
 }
-static inline ureg symbol_table_get_symbol_capacity(symbol_table* st)
+ureg symbol_table_get_symbol_capacity(symbol_table* st)
 {
     assert(st->bitcount);
     return (1 << st->bitcount) - st->table_offset;
 }
-static inline ureg symbol_table_get_using_capacity(symbol_table* st)
+ureg symbol_table_get_using_capacity(symbol_table* st)
 {
     assert(symbol_table_has_usings(st));
     return (st->table_offset - sizeof(usings_table)) / (2 * sizeof(void*));
 }
-static inline ureg symbol_table_get_using_count(symbol_table* st)
+ureg symbol_table_get_using_count(symbol_table* st)
 {
     if (!symbol_table_has_usings(st)) return 0;
     usings_table* ut = (usings_table*)st;
@@ -34,7 +34,7 @@ static inline ureg symbol_table_get_using_count(symbol_table* st)
             sizeof(usings_table)) /
            sizeof(ast_body*);
 }
-static inline ureg symbol_table_get_symbol_count(symbol_table* st)
+ureg symbol_table_get_symbol_count(symbol_table* st)
 {
     return st->sym_count;
 }

@@ -2,10 +2,10 @@
 #include "resolver.h"
 typedef struct symbol_lookup_level {
     struct symbol_lookup_level* parent;
-    symbol_table* lookup_st;
-    symbol_table** usings_head;
-    symbol_table** usings_end;
-    symbol_table* extends_sc;
+    ast_body* lookup_body;
+    ast_body** usings_head;
+    ast_body** usings_end;
+    ast_body* extends_body;
     open_symbol* overloaded_sym_head;
     access_modifier am_start;
     access_modifier am_end;
@@ -17,12 +17,12 @@ typedef struct symbol_lookup_iterator {
     symbol_lookup_level sll_prealloc;
     resolver* r;
     symbol_lookup_level* head;
-    symbol_table* next_lookup_st;
-    symbol_table* looking_st;
+    ast_body* next_lookup_body;
+    ast_body* looking_body;
     sc_struct* struct_inst_lookup;
     sc_struct* looking_struct;
-    symbol_table* looking_mf;
-    symbol_table* looking_mod;
+    ast_body* looking_mf_body;
+    ast_body* looking_mod_body;
     ureg hash;
     const char* tgt_name;
     symbol* first_hidden_match;
@@ -34,9 +34,9 @@ typedef struct symbol_lookup_iterator {
 } symbol_lookup_iterator;
 
 resolve_error symbol_lookup_iterator_init(
-    symbol_lookup_iterator* sli, resolver* r, symbol_table* lookup_st,
-    sc_struct* struct_inst_lookup, symbol_table* looking_st,
-    const char* tgt_name, bool enable_shadowing, bool deref_aliases);
+    symbol_lookup_iterator* sli, resolver* r, ast_body* lookup_body,
+    sc_struct* struct_inst_lookup, ast_body* looking_body, const char* tgt_name,
+    bool enable_shadowing, bool deref_aliases);
 
 resolve_error
 symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res);

@@ -995,11 +995,11 @@ static resolve_error evaluate_array_bounds(
     return RE_OK;
 }
 resolve_error add_body_decls(
-    resolver* r, symbol_table* parent_st, symbol_table* shared_st, ast_body* b,
+    resolver* r, ast_body* parent_body, symbol_table* shared_st, ast_body* body,
     bool public_st)
 {
-    set_parent_symtabs(&b->symtab, parent_st);
-    for (ast_node** n = b->elements; *n; n++) {
+    body->parent = parent_body;
+    for (ast_node** n = body->elements; *n; n++) {
         resolve_error re = add_ast_node_decls(r, b, shared_st, *n, public_st);
         assert(r->curr_pp_node == NULL);
         if (re) return re;

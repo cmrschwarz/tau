@@ -278,12 +278,20 @@ bool ast_elem_is_var(ast_elem* s)
 {
     return s->kind == SYM_VAR || s->kind == SYM_VAR_INITIALIZED;
 }
-bool symbol_table_is_public(symbol_table* st)
-{
-    ast_elem* owner = symbol_table_nonmeta(st)->owning_node;
-    return ast_elem_is_module_frame(owner) || owner->kind == SC_STRUCT;
-}
 bool ast_elem_is_node(ast_elem* e)
 {
     return e->kind >= ASTN_FIRST_ID && e->kind <= ASTN_LAST_ID;
+}
+bool ast_body_is_public(ast_body* body)
+{
+    return body->owning_node->kind == ELEM_MDG_NODE;
+}
+ast_body* ast_body_get_non_paste_parent(ast_body* b)
+{
+    while (b->owning_node->kind == STMT_PASTE_EVALUATION ||
+           b->owning_node->kind == EXPR_PASTE_EVALUATION) {
+        b = b->parent;
+        assert(b);
+    }
+    return b;
 }
