@@ -11,251 +11,126 @@
 #include <assert.h>
 #include "utils/error.h"
 #include "tauc.h"
-#define USING_BIT (((ureg)1) << (REG_BITS - 1))
-#define EMPTY_TABLE ((symbol**)&NULL_BYTES[0])
-#define META_TABLE ((symbol**)&NULL_BYTES[1])
-static inline bool symbol_table_should_be_meta(ast_elem* owning_node)
-{
-    return owning_node->kind == STMT_PASTE_EVALUATION;
-}
-void symbol_table_init_dummy(
-    symbol_table* st, symbol_table* parent, ast_elem* owning_node)
-{
-    st->table = META_TABLE;
-    st->owning_node = owning_node;
-    st->parent = parent;
-    st->hash_mask = 0;
-    st->decl_count = 0;
-    st->usings = NULL;
-    st->non_meta_parent = symbol_table_nonmeta(parent);
-}
-int symbol_table_init(
-    symbol_table** tgt, ureg decl_count, ureg using_count, bool force_unique,
-    ast_elem* owning_node)
-{
-    if (!force_unique && decl_count == 0 && using_count == 0) {
-        *tgt = NULL;
-        return OK;
-    }
-    symbol_table* st = tmalloc(sizeof(symbol_table));
-    if (!st) return ERR;
-    st->decl_count = decl_count;
-    if (decl_count) {
-        ureg table_capacity = (decl_count == 1) ? 2 : ceil_to_pow2(decl_count);
-        st->hash_mask = table_capacity - 1;
-        st->table = tmallocz(table_capacity * sizeof(symbol*));
-        if (!st->table) {
-            tfree(st);
-            return ERR;
-        }
-        memset(st->table, 0, table_capacity * sizeof(symbol*));
-    }
-    else {
-        st->hash_mask = 0;
-        if (symbol_table_should_be_meta(owning_node)) {
-            st->table = META_TABLE;
-        }
-        else {
-            st->table = EMPTY_TABLE;
-        }
-    }
-    st->owning_node = owning_node;
-    *tgt = st;
 
-    if (using_count != 0) {
-        ureg usings_size =
-            using_count * sizeof(symbol_table*) + sizeof(usings_table);
-        st->usings = tmalloc(usings_size);
-        if (!st->usings) {
-            if (decl_count) tfree(st->table);
-            tfree(st);
-            return ERR;
-        }
-        for (ureg i = 0; i < AM_ENUM_ELEMENT_COUNT; i++) {
-            st->usings->using_ends[i] = (symbol_table**)(st->usings + 1);
-        }
-    }
-    else {
-        st->usings = NULL;
-    }
+static inline ureg symbol_table_has_usings(symbol_table* st)
+{
+    return st->table_offset != sizeof(symbol_table);
+}
+static inline ureg symbol_table_get_symbol_capacity(symbol_table* st)
+{
+    assert(st->bitcount);
+    return (1 << st->bitcount) - st->table_offset;
+}
+static inline ureg symbol_table_get_using_capacity(symbol_table* st)
+{
+    assert(symbol_table_has_usings(st));
+    return (st->table_offset - sizeof(usings_table)) / (2 * sizeof(void*));
+}
+static inline ureg symbol_table_get_using_count(symbol_table* st)
+{
+    if (!symbol_table_has_usings(st)) return 0;
+    usings_table* ut = (usings_table*)st;
+    return (ptrdiff(ut->using_ends[AM_ENUM_ELEMENT_COUNT - 1], ut) -
+            sizeof(usings_table)) /
+           sizeof(ast_body*);
+}
+static inline ureg symbol_table_get_symbol_count(symbol_table* st)
+{
+    return st->sym_count;
+}
 
-    return OK;
-}
-static inline bool symbol_table_is_metatable(symbol_table* st)
-{
-    return (st->table == META_TABLE);
-}
-symbol_table* symbol_table_nonmeta(symbol_table* st)
-{
-    return (st->table == META_TABLE) ? st->non_meta_parent : st;
-}
-symbol_table* symbol_table_get_module_table(symbol_table* st)
-{
-    while (st->owning_node->kind != ELEM_MDG_NODE) {
-        st = st->parent;
-        assert(st);
-    }
-    return st;
-}
-static inline ureg symbol_table_get_capacity(symbol_table* st)
-{
-    return st->hash_mask ? st->hash_mask + 1 : 0;
-}
-void symbol_table_set_parent(symbol_table* st, symbol_table* parent)
-{
-    st->parent = parent;
-    if (symbol_table_is_metatable(st)) {
-        st->non_meta_parent = symbol_table_nonmeta(parent);
-    }
-}
 void symbol_table_insert_use(
     symbol_table* st, access_modifier am, ast_node* using_node,
-    symbol_table* used_symtab)
+    ast_body* using_body)
 {
-    st = symbol_table_nonmeta(st);
-    // reverse the am so it goes from public to unspecified upwars in
-    // memory
     am = AM_ENUM_ELEMENT_COUNT - am;
-    usings_table* ut = st->usings;
-    ureg usings_size = st->usings->usings_count * sizeof(symbol_table*);
-    assert(st->usings);
+    usings_table* ut = (usings_table*)st;
+    ureg usings_cap = symbol_table_get_using_capacity(st) * sizeof(ast_body*);
+    assert(symbol_table_get_using_count(st) * sizeof(void*) < usings_cap);
     for (int i = AM_ENUM_ELEMENT_COUNT - 1; i != am; i--) {
         *ut->using_ends[i] = *ut->using_ends[i - 1];
-        *(ast_node**)ptradd(ut->using_ends[i], usings_size) =
-            *(ast_node**)ptradd(ut->using_ends[i - 1], usings_size);
+        *(ast_node**)ptradd(ut->using_ends[i], usings_cap) =
+            *(ast_node**)ptradd(ut->using_ends[i - 1], usings_cap);
         ut->using_ends[i]++;
     }
-    *ut->using_ends[am] = used_symtab;
-    *(ast_node**)ptradd(ut->using_ends[am], usings_size) = using_node;
+    *ut->using_ends[am] = using_body;
+    *(ast_node**)ptradd(ut->using_ends[am], usings_cap) = using_node;
     ut->using_ends[am]++;
 }
 
-symbol_table** symbol_table_get_uses_start(symbol_table* st, access_modifier am)
+ast_body** symbol_table_get_uses_start(symbol_table* st, access_modifier am)
 {
-    assert(st->usings);
-    if (am == 0)
-        return (symbol_table**)ptradd(st->usings, sizeof(usings_table));
-    return st->usings->using_ends[am - 1];
+    assert(symbol_table_has_usings(st));
+    usings_table* ut = (usings_table*)st;
+    if (am == 0) return (ast_body**)ptradd(ut, sizeof(usings_table));
+    return ut->using_ends[am - 1];
 }
-symbol_table** symbol_table_get_uses_end(symbol_table* st, access_modifier am)
+ast_body** symbol_table_get_uses_end(symbol_table* st, access_modifier am)
 {
-    assert(st->usings);
-    return st->usings->using_ends[am];
+    assert(symbol_table_has_usings(st));
+    usings_table* ut = (usings_table*)st;
+    return ut->using_ends[am];
 }
-ast_node** symbol_table_get_use_node(symbol_table* st, symbol_table** using_st)
+ast_node** symbol_table_get_use_node(symbol_table* st, ast_body** using_st)
 {
-    assert(st->usings);
-    return (ast_node**)ptradd(
-        using_st, st->usings->usings_count * sizeof(symbol_table**));
+    assert(symbol_table_has_usings(st));
+    ureg usings_cap = symbol_table_get_using_capacity(st) * sizeof(ast_body*);
+    return (ast_node**)ptradd(using_st, usings_cap * sizeof(ast_body*));
 }
-void symbol_table_fin(symbol_table* st)
+
+symbol** symbol_table_calculate_position(symbol_table* st, ureg hash)
 {
-    if (st != NULL) {
-        // avoid throwing of our allocation counter
-        if (st->usings) tfree(st->usings);
-        // avoid freeing NULL_PTR_PTR
-        if (!symbol_table_is_metatable(st) && st->decl_count) {
-            tfree(st->table);
-        }
-        tfree(st);
-    }
+    ureg mask = (1 << st->bitcount) - 1;
+    ureg idx = hash;
+    idx = fnv_fold(idx, st->bitcount, mask);
+    idx -= st->table_offset;
+    idx &= mask;
+    idx += st->table_offset;
+    return (symbol**)ptradd(st, idx * sizeof(void*));
 }
-int symbol_table_amend(symbol_table* st, ureg decl_count, ureg usings)
+
+symbol** symbol_table_insert(symbol_table* st, symbol* s)
 {
-    st = symbol_table_nonmeta(st);
-    st->decl_count += decl_count;
-    if (st->decl_count > symbol_table_get_capacity(st)) {
-        ureg cap_new = (st->decl_count == 1) ? 2 : ceil_to_pow2(st->decl_count);
-        symtab_it it;
-        if (st->hash_mask) it = symtab_it_make(st);
-        symbol** table_new = tmallocz(cap_new * sizeof(symbol*));
-        if (!table_new) return ERR;
-        ureg mask_old = st->hash_mask;
-        st->hash_mask = cap_new - 1;
-        symbol** table_old = st->table;
-        st->table = table_new;
-        if (mask_old) {
-            for (symbol* s = symtab_it_next(&it); s; s = symtab_it_next(&it)) {
-                symbol** r = symbol_table_insert(st, s);
-                assert(r == NULL);
-                UNUSED(r); // make Release build happy
-            }
-            tfree(table_old);
-        }
-    }
-    if (usings) {
-        assert(false); // TODO
-    }
-    return OK;
+    symbol** tgt = symbol_table_lookup(st, s->name);
+    *tgt = s;
+    s->next = NULL;
+    st->sym_count++;
+    return tgt;
 }
-symbol** symbol_table_find_insert_position(symbol_table* st, char* name)
+
+ureg symbol_table_prehash(const char* s)
 {
-    st = symbol_table_nonmeta(st);
-    ureg idx = fnv_hash_str(FNV_START_HASH, name) & st->hash_mask;
-    symbol** tgt = &st->table[idx];
+    return fnv_hash_str(FNV_START_HASH, s);
+}
+symbol** symbol_table_lookup_raw(symbol_table* st, ureg hash, const char* name)
+{
+    symbol** tgt = symbol_table_calculate_position(st, hash);
     while (*tgt) {
         if (strcmp((**tgt).name, name) == 0) return tgt;
         tgt = (symbol**)&(**tgt).next;
     }
     return tgt;
 }
-symbol** symbol_table_insert(symbol_table* st, symbol* s)
+symbol** symbol_table_lookup(symbol_table* st, char* name)
 {
-    st = symbol_table_nonmeta(st);
-    ureg idx = fnv_hash_str(FNV_START_HASH, s->name) & st->hash_mask;
-    symbol** tgt = &st->table[idx];
-    while (*tgt) {
-        if (strcmp((**tgt).name, s->name) == 0) return tgt;
-        tgt = (symbol**)&(**tgt).next;
-    }
-    *tgt = s;
-    s->next = NULL;
-    return NULL;
+    return symbol_table_lookup_raw(st, symbol_table_prehash(name), name);
 }
-ureg symbol_table_prehash(const char* s)
+void symbol_table_inc_sym_count(symbol_table* st)
 {
-    return fnv_hash_str(FNV_START_HASH, s);
+    st->sym_count++;
+    assert(st->sym_count <= symbol_table_get_symbol_capacity(st));
 }
 
-symbol* symbol_table_lookup_raw(symbol_table* st, ureg hash, const char* name)
+void symtab_it_init(symtab_it* stit, symbol_table* st)
 {
-    ureg idx = hash & st->hash_mask;
-    symbol* tgt = st->table[idx];
-    while (tgt) {
-        if (cstr_eq(tgt->name, name)) return tgt;
-        tgt = tgt->next;
-    }
-    return tgt;
-}
-
-src_map* symbol_table_get_smap(symbol_table* st)
-{
-    // TODO: this can happen if neither the func nor the mf have a single
-    // symbol
-    assert(st->owning_node->kind != ELEM_MDG_NODE);
-    src_map* smap = src_range_get_smap(((ast_node*)st->owning_node)->srange);
-    if (smap) return smap;
-    // because pp tables parent the postprocessing table
-    // we naturally transition out of pp levels
-    if (st->parent) return symbol_table_get_smap(st->parent);
-    return NULL;
-}
-void symtab_it_begin(symtab_it* stit, symbol_table* st)
-{
-    stit->pos = st->table;
-    ureg cap = symbol_table_get_capacity(st);
-    if (cap == 0) {
-        stit->end = stit->pos;
-        stit->subpos = NULL;
-        return;
-    }
-    stit->end = stit->pos + cap - 1;
-    stit->subpos = *stit->pos;
+    stit->pos = ptradd(st, st->table_offset * sizeof(void*));
+    stit->end = ptradd(st, ((ureg)1 << st->bitcount) * sizeof(void*));
+    stit->subpos = NULL;
 }
 symtab_it symtab_it_make(symbol_table* st)
 {
     symtab_it it;
-    symtab_it_begin(&it, st);
+    symtab_it_init(&it, st);
     return it;
 }
 symbol* symtab_it_next(symtab_it* stit)
@@ -272,4 +147,81 @@ symbol* symtab_it_next(symtab_it* stit)
         stit->pos++;
         stit->subpos = *stit->pos;
     }
+}
+
+symbol_table* symbol_table_create(ureg sym_count, ureg using_count)
+{
+    ureg size = sym_count * sizeof(symbol*);
+    ureg size_ceiled;
+    symbol_table* st;
+    if (using_count) {
+        size += using_count * sizeof(ast_body**);
+        size += sizeof(usings_table);
+        size_ceiled = ceil_to_pow2(size);
+        ureg cap_space = (size_ceiled - size) / sizeof(void*);
+        ureg using_cap;
+        if (using_count < cap_space) {
+            using_cap = using_count * 2;
+        }
+        else {
+            using_cap = using_count + cap_space / 2;
+        }
+        usings_table* ut = tmalloc(size_ceiled);
+        if (!ut) return NULL;
+        st = (symbol_table*)ut;
+        ureg using_part_size = sizeof(usings_table) + using_cap;
+        st->table_offset = using_part_size / sizeof(void*);
+        // if table size is not a multiple of sizeof(void*) everything breaks
+        assert(st->table_offset * sizeof(void*) == using_part_size);
+        st = &ut->symtab;
+        ast_body** using_ends = ptradd(ut, sizeof(usings_table));
+        for (ureg i = 0; i < AM_ENUM_ELEMENT_COUNT; i++) {
+            ut->using_ends[i] = using_ends;
+        }
+    }
+    else {
+        size += sizeof(symbol_table);
+        ureg size_ceiled = ceil_to_pow2(size);
+        symbol_table* st = tmalloc(size_ceiled);
+        if (!st) return NULL;
+        st->table_offset = sizeof(symbol_table) / sizeof(void*);
+    }
+    st->sym_count = 0;
+    st->bitcount = ulog2(size_ceiled / sizeof(void*));
+    return OK;
+}
+void symbol_table_destroy(symbol_table* st)
+{
+    tfree(st);
+}
+int symbol_table_amend(symbol_table** stp, ureg sym_count, ureg using_count)
+{
+    symbol_table* st = *stp;
+    ureg new_using_count = symbol_table_get_using_count(st) + using_count;
+    st->sym_count += sym_count;
+    ureg using_cap = symbol_table_get_using_capacity(st);
+    ureg sym_cap = symbol_table_get_symbol_capacity(st);
+    if (st->sym_count <= sym_cap && new_using_count <= using_cap) return OK;
+    symbol_table* st_new = symbol_table_create(st->sym_count, new_using_count);
+    symtab_it it;
+    symtab_it_init(&it, st);
+    for (symbol* s = symtab_it_next(&it); s; s = symtab_it_next(&it)) {
+        symbol** r = symbol_table_insert(st_new, s);
+        if (r != NULL) assert(false);
+    }
+    if (symbol_table_has_usings(st)) {
+        // PERF: memcopy the entire thing instead
+        for (access_modifier am = 0; am < AM_ENUM_ELEMENT_COUNT; am++) {
+            ast_body** start = symbol_table_get_uses_start(st, am);
+            ast_body** end = symbol_table_get_uses_end(st, am);
+            while (start != end) {
+                symbol_table_insert_use(
+                    st_new, am, *symbol_table_get_use_node(st, start), *start);
+                start++;
+            }
+        }
+    }
+    symbol_table_destroy(st);
+    *stp = st_new;
+    return OK;
 }
