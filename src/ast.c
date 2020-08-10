@@ -281,7 +281,13 @@ bool ast_elem_is_node(ast_elem* e)
 }
 bool ast_body_is_public(ast_body* body)
 {
-    return body->owning_node->kind == ELEM_MDG_NODE;
+    switch (body->owning_node->kind) {
+        case ELEM_MDG_NODE: return true;
+        case MF_EXTEND: return true;
+        case MF_MODULE: return true;
+        case STMT_PASTE_EVALUATION: return ast_body_is_public(body->parent);
+        default: return false;
+    }
 }
 ast_body* ast_body_get_non_paste_parent(ast_body* b)
 {

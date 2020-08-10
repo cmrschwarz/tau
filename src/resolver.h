@@ -62,7 +62,7 @@ typedef struct partial_resolution_data_s {
     ureg id_space;
     ptrlist pprns_pending;
     ptrlist pprns_waiting;
-    ptrlist imports_with_pprns;
+    ptrlist import_module_data_nodes;
     bool deps_required_for_pp;
     bool error_occured;
 #if DEBUG
@@ -114,7 +114,7 @@ typedef struct resolver_s {
     ptrlist pp_resolve_nodes_ready;
 
     // imports of modules not yet (known to be) generated
-    ptrlist imports_with_pprns;
+    ptrlist import_module_data_nodes;
 
     pp_resolve_node* curr_pp_node;
     pp_resolve_node* curr_block_pp_node;
@@ -134,10 +134,10 @@ resolve_error resolve_ast_node(
     ast_elem** ctype);
 resolve_error resolve_import_symbol(resolver* r, sym_import_symbol* is);
 resolve_error add_body_decls(
-    resolver* r, ast_body* parent_body, symbol_table* shared_st, ast_body* body,
+    resolver* r, ast_body* parent_body, ast_body* shared_body, ast_body* body,
     bool public_st);
 ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st);
-resolve_error report_redeclaration_error(
-    resolver* r, symbol* redecl, symbol* prev, symbol_table* st);
+resolve_error
+report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev);
 ureg claim_symbol_id(resolver* r, symbol* s, bool public_st);
 bool ctypes_unifiable(ast_elem* a, ast_elem* b);
