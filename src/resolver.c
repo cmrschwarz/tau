@@ -1972,11 +1972,12 @@ static inline resolve_error resolve_expr_pp(
             return resolve_ast_node_raw(r, (ast_node*)ppe, body, value, ctype);
         }
         else {
-            bool paste_parent_owns_st =
-                ast_elem_get_body(body->symtab->owning_node) == body;
+            // we have no way to obtain the parent node otherwise
+            // refactor incoming
+            assert(ast_elem_get_body(body->symtab->owning_node) == body);
             pe = parser_parse_paste_stmt(
                 &r->tc->p, ppe, &body->symtab, get_current_ebb(r),
-                paste_parent_owns_st);
+                body->symtab->owning_node);
             if (pe) return RE_ERROR;
             symbol_table* st = symbol_table_nonmeta(body->symtab);
             bool public_st = ast_elem_is_module_frame(st->owning_node);

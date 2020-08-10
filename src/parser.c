@@ -353,10 +353,10 @@ static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
     return OK;
 }
 static inline int
-handle_paste_bpd(parser* p, body_parse_data* bpd, symbol_table*** st)
+handle_paste_bpd(parser* p, body_parse_data* bpd, symbol_table** st)
 {
     if (bpd->decl_count || bpd->usings_count) {
-        if (p->paste_parent_owns_st) {
+        if ((**p->paste_parent_symtab).owning_node == p->paste_parent_node) {
             symbol_table** s = p->paste_parent_symtab;
             if (!*s) {
                 assert(false); // TODO: handle inserting (!) symbol tables
@@ -367,14 +367,20 @@ handle_paste_bpd(parser* p, body_parse_data* bpd, symbol_table*** st)
             }
         }
         else {
-            assert(false); // TODO: handle inserting (!) symbol tables
-            p->paste_parent_symtab = NULL;
-            p->paste_parent_owns_st = true;
+            symbol_table* paste_parent_parent_symtab = *p->paste_parent_symtab;
+            if (symbol_table_init(
+                    p->paste_parent_symtab, bpd->decl_count, bpd->usings_count,
+                    true, p->paste_parent_node)) {
+                return ERR;
+            }
+            (**p->paste_parent_symtab).parent = paste_parent_parent_symtab;
         }
     }
-    if (symbol_table_init(*st, 0, 0, true, (ast_elem*)bpd->node)) {
+    if (symbol_table_init(st, 0, 0, true, (ast_elem*)bpd->node)) {
         return ERR;
     }
+    (**st).parent = *p->paste_parent_symtab;
+    (**st).non_meta_parent = symbol_table_nonmeta(*p->paste_parent_symtab);
     return OK;
 }
 static inline void drop_bpd(parser* p)
@@ -401,16 +407,16 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
         atomic_ureg_add(&p->current_module->using_count, bpd.shared_uses_count);
     }
     ast_body* bd = bpd.body;
-    symbol_table** st = &bd->symtab;
     if (bpd.body == p->paste_block) {
-        if (handle_paste_bpd(p, &bpd, &st)) return ERR;
+        if (handle_paste_bpd(p, &bpd, &bd->symtab)) return ERR;
     }
-    else if (symbol_table_init(
-                 st, bpd.decl_count, bpd.usings_count, is_mf,
-                 (ast_elem*)bpd.node)) {
-        return ERR;
+    else {
+        int r = symbol_table_init(
+            &bd->symtab, bpd.decl_count, bpd.usings_count, is_mf,
+            (ast_elem*)bpd.node);
+        if (r) return ERR;
+        if (bd->symtab) bd->symtab->parent = NULL;
     }
-    if (*st) (**st).parent = NULL;
     return OK;
 }
 
@@ -2309,7 +2315,7 @@ parse_error parser_parse_paste_expr(
 }
 parse_error parser_parse_paste_stmt(
     parser* p, expr_pp* epp, symbol_table** st, ast_node* parent_ebb,
-    bool owned_st)
+    ast_elem* parent_node)
 {
     assert(sizeof(expr_pp) >= sizeof(stmt_paste_evaluation));
     stmt_paste_evaluation* eval;
@@ -2319,7 +2325,7 @@ parse_error parser_parse_paste_stmt(
     if (pe) return pe;
     p->paste_block = &eval->body;
     p->paste_parent_symtab = st;
-    p->paste_parent_owns_st = owned_st;
+    p->paste_parent_node = parent_node;
     pe = parse_delimited_body(
         p, &eval->body, (ast_node*)eval, 0, NULL, 0, 1, TK_EOF);
     lx_close_paste(&p->lx);
