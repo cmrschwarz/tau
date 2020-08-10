@@ -23,8 +23,7 @@ typedef struct parser_s {
     bool disable_macro_body_call;
     module_frame* file_root;
     ast_body* paste_block;
-    symbol_table** paste_parent_symtab;
-    ast_elem* paste_parent_node;
+    ast_body* paste_parent_body;
     sbuffer body_stack; // sounds kinda morbid :)
 } parser;
 
@@ -42,10 +41,9 @@ typedef struct body_parse_data_s {
 int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
 parse_error parser_parse_file(parser* p, job_parse* j);
-parse_error parser_parse_paste_expr(
-    parser* p, expr_pp* epp, symbol_table* st, ast_node* parent_ebb);
-parse_error parser_parse_paste_stmt(
-    parser* p, expr_pp* epp, symbol_table** st, ast_node* parent_ebb,
-    ast_elem* parent_node);
+parse_error
+parser_parse_paste_expr(parser* p, expr_pp* epp, ast_body* parent_body);
+parse_error
+parser_parse_paste_stmt(parser* p, expr_pp* epp, ast_body* parent_body);
 
 bool ast_node_may_drop_semicolon(ast_node* n);

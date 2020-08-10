@@ -877,35 +877,44 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
                 // might be too big because of nested
                 // structs etc. but it's definitely big
                 // enough
-                auto members = (llvm::Type**)pool_alloc(
-                    &_tc->permmem,
-                    sizeof(llvm::Type*) * sb->sc.body.symtab->decl_count);
-                ureg memcnt = 0;
-                symtab_it it = symtab_it_make(sb->sc.body.symtab);
-                for (ast_node* s = (ast_node*)symtab_it_next(&it); s;
-                     s = (ast_node*)symtab_it_next(&it)) {
-                    // TODO: usings, static members,
-                    // etc.
-                    if (s->kind == SYM_VAR || s->kind == SYM_VAR_INITIALIZED) {
-                        if (ast_flags_get_static(s->flags)) {
-                            llvm_error lle =
-                                genAstNode((ast_node*)s, NULL, NULL);
-                            if (lle) return lle;
-                        }
-                        else {
-                            assert(ast_flags_get_instance_member(s->flags));
-                            ((sym_var*)s)->var_id = memcnt;
-                            lle = lookupCType(
-                                ((sym_var*)s)->ctype, &members[memcnt], NULL,
-                                NULL);
-                            if (lle) return lle;
-                            memcnt++;
+                llvm::StructType* strct;
+                if (sb->sc.body.symtab) {
+                    auto members = (llvm::Type**)pool_alloc(
+                        &_tc->permmem,
+                        sizeof(llvm::Type*) *
+                            symbol_table_get_symbol_count(sb->sc.body.symtab));
+                    ureg memcnt = 0;
+                    symtab_it it = symtab_it_make(sb->sc.body.symtab);
+                    for (ast_node* s = (ast_node*)symtab_it_next(&it); s;
+                         s = (ast_node*)symtab_it_next(&it)) {
+                        // TODO: usings, static members,
+                        // etc.
+                        if (s->kind == SYM_VAR ||
+                            s->kind == SYM_VAR_INITIALIZED) {
+                            if (ast_flags_get_static(s->flags)) {
+                                llvm_error lle =
+                                    genAstNode((ast_node*)s, NULL, NULL);
+                                if (lle) return lle;
+                            }
+                            else {
+                                assert(ast_flags_get_instance_member(s->flags));
+                                ((sym_var*)s)->var_id = memcnt;
+                                lle = lookupCType(
+                                    ((sym_var*)s)->ctype, &members[memcnt],
+                                    NULL, NULL);
+                                if (lle) return lle;
+                                memcnt++;
+                            }
                         }
                     }
+                    llvm::ArrayRef<llvm::Type*> member_types{members, memcnt};
+                    strct = llvm::StructType::create(
+                        _context, member_types, "", false);
                 }
-                llvm::ArrayRef<llvm::Type*> member_types{members, memcnt};
-                auto strct =
+                else {
+                    llvm::ArrayRef<llvm::Type*> member_types{NULL, 0};
                     llvm::StructType::create(_context, member_types, "", false);
+                }
                 if (!strct) return LLE_FATAL;
                 *tp = strct;
                 if (t) *t = strct;
@@ -990,7 +999,7 @@ bool LLVMBackend::isGlobalID(ureg id)
 }
 bool LLVMBackend::isPPSymbolGlobal(symbol* sym)
 {
-    if (sym->declaring_st->owning_node->kind != MF_EXTEND) return false;
+    if (sym->declaring_body->owning_node->kind != MF_EXTEND) return false;
     auto am = ast_flags_get_access_mod(sym->node.flags);
     return (am == AM_PUBLIC || am == AM_PROTECTED);
 }
@@ -1261,7 +1270,8 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         // HACK: should allow local variables for pp by checking for "internal"
         // vars
         ast_node_kind k =
-            symbol_table_nonmeta(var->osym.sym.declaring_st)->owning_node->kind;
+            ast_body_get_non_paste_parent(var->osym.sym.declaring_body)
+                ->owning_node->kind;
         llvm::Value* var_val;
         if (k == ELEM_MDG_NODE || k == MF_MODULE || k == MF_EXTEND ||
             (_pp_mode && !_curr_fn_ast_node)) {
@@ -1436,9 +1446,9 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case EXPR_PARENTHESES:
             return genAstNode(((expr_parentheses*)n)->child, vl, vl_loaded);
         case EXPR_PASTE_EVALUATION:
-            return genAstNode(((expr_paste_evaluation*)n)->expr, vl, vl_loaded);
+            return genAstNode(((paste_evaluation*)n)->expr, vl, vl_loaded);
         case STMT_PASTE_EVALUATION: {
-            for (ast_node** e = ((stmt_paste_evaluation*)n)->body.elements; *e;
+            for (ast_node** e = ((paste_evaluation*)n)->body.elements; *e;
                  e++) {
                 llvm_error lle = genAstNode(*e, NULL, NULL);
                 if (lle) return lle;
@@ -1480,7 +1490,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         }
         case SYM_PARAM: {
             sym_param* p = (sym_param*)n;
-            sc_func* f = (sc_func*)p->sym.declaring_st->owning_node;
+            sc_func* f = (sc_func*)p->sym.declaring_body->owning_node;
             ureg param_nr = p - f->fnb.params;
             llvm::Function* fn;
 #if DEBUG
@@ -1641,9 +1651,9 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             lle = genAstNode(ema->lhs, &v, NULL);
 
             if (lle) return lle;
-            auto st =
-                (sc_struct*)symbol_table_nonmeta(ema->target.sym->declaring_st)
-                    ->owning_node;
+            auto st = (sc_struct*)ast_body_get_non_paste_parent(
+                          ema->target.sym->declaring_body)
+                          ->owning_node;
             assert(ast_elem_is_struct((ast_elem*)st));
             ureg align;
             lle = lookupCType((ast_elem*)st, NULL, &align, NULL);
@@ -1661,7 +1671,9 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             if (vl) *vl = gep;
             return LLE_OK;
         }
-        case SYM_IMPORT_GROUP:
+        case SYM_IMPORT_PARENT:
+        case ASTN_ANONYMOUS_IMPORT_GROUP:
+        case SYM_NAMED_IMPORT_GROUP:
         case SYM_IMPORT_MODULE: return LLE_OK;
         case EXPR_IF: {
             expr_if* i = (expr_if*)n;
@@ -2004,9 +2016,9 @@ llvm_error LLVMBackend::genBinaryOp(
 const char* LLVMBackend::nameMangle(sc_func_base* fn)
 {
     std::string name = fn->sc.osym.sym.name;
-    symbol_table* st = fn->sc.body.symtab;
-    while (st->owning_node->kind != ELEM_MDG_NODE) st = st->parent;
-    mdg_node* n = (mdg_node*)st->owning_node;
+    ast_body* bd = &fn->sc.body;
+    while (bd->owning_node->kind != ELEM_MDG_NODE) bd = bd->parent;
+    mdg_node* n = (mdg_node*)bd->owning_node;
     while (n->parent != NULL) {
         name = n->name + ("_" + name);
         n = n->parent;
@@ -2106,9 +2118,9 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         if (!params) return LLE_FATAL;
         ureg i = 0;
         if (mem_func) {
-            ast_elem* owner =
-                symbol_table_nonmeta(fn->fnb.sc.osym.sym.declaring_st)
-                    ->owning_node;
+            ast_elem* owner = ast_body_get_non_paste_parent(
+                                  fn->fnb.sc.osym.sym.declaring_body)
+                                  ->owning_node;
             assert(ast_elem_is_struct_base(owner));
             llvm::Type* struct_type;
             /*

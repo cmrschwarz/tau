@@ -18,27 +18,25 @@ static inline int global_scope_init(scope* gs)
     gs->osym.sym.node.kind = MF_MODULE; // this is a lie, but it works :)
     gs->osym.sym.node.flags = AST_NODE_FLAGS_DEFAULT;
     gs->body.pprn = NULL;
-    gs->osym.sym.declaring_st = NULL;
-    gs->osym.visible_within = NULL;
+    gs->osym.sym.declaring_body = NULL;
+    gs->osym.visible_within_body = NULL;
     gs->body.elements = NULL;
     gs->body.srange = SRC_RANGE_INVALID;
-    if (symbol_table_init(
-            &gs->body.symtab, PRIMITIVE_COUNT + 1, 0, true, (ast_elem*)gs)) {
-        return ERR;
-    }
-    gs->body.symtab->parent = NULL;
+    gs->body.symtab = symbol_table_create(PRIMITIVE_COUNT + 1, 0);
+    if (!gs->body.symtab) return ERR;
+    gs->body.parent = NULL;
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {
         if (symbol_table_insert(gs->body.symtab, (symbol*)&PRIMITIVES[i])) {
-            symbol_table_fin(gs->body.symtab);
+            symbol_table_destroy(gs->body.symtab);
             return ERR;
         }
-        PRIMITIVES[i].sym.declaring_st = gs->body.symtab;
+        PRIMITIVES[i].sym.declaring_body = &gs->body;
     }
     return OK;
 }
 static inline void global_scope_fin(scope* gs)
 {
-    symbol_table_fin(gs->body.symtab);
+    symbol_table_destroy(gs->body.symtab);
 }
 
 static inline int tauc_core_partial_fin(tauc* t, int r, int i)

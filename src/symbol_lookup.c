@@ -164,9 +164,9 @@ resolve_error symbol_lookup_level_run(
                 re = resolve_import_symbol(sli->r, (sym_import_symbol*)sym);
                 if (re) return re;
             }
-            if (is->target_st) {
+            if (is->target_body) {
                 if (sli->enable_shadowing) {
-                    return symbol_lookup_level_run(sli, is->target_st, res);
+                    return symbol_lookup_level_run(sli, is->target_body, res);
                 }
                 overloaded_import_symbol = is;
                 sym = NULL;
@@ -254,7 +254,7 @@ resolve_error symbol_lookup_level_run(
     // if overloaded_symbol_head was set than sym was set
     if (overloaded_import_symbol) { // if this is set than sym was NULL
         return symbol_lookup_level_run(
-            sli, overloaded_import_symbol->target_st, res);
+            sli, overloaded_import_symbol->target_body, res);
     }
     if (usings_end != usings_start) {
         if (second_resp) sli->head->usings_head++;

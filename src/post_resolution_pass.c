@@ -317,17 +317,17 @@ prp_error prp_handle_node(post_resolution_pass* prp, ast_node* n)
             return prp_handle_node(prp, ((expr_if*)n)->if_body);
         }
         case STMT_PASTE_EVALUATION: {
-            stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
-            if (spe->pe.prpbn) {
-                prp_block_node_activate_on_demand(prp, spe->pe.prpbn);
+            paste_evaluation* pe = (paste_evaluation*)n;
+            if (pe->body.prpbn) {
+                prp_block_node_activate_on_demand(prp, pe->body.prpbn);
                 return PRPE_OK;
             }
             return prp_block_node_push(
-                prp, (ast_node*)spe, &spe->body, &spe->pe.prpbn);
+                prp, (ast_node*)pe, &pe->body, &pe->body.prpbn);
         }
         case EXPR_PASTE_EVALUATION: {
-            expr_paste_evaluation* epe = (expr_paste_evaluation*)n;
-            return prp_handle_node(prp, epe->expr);
+            paste_evaluation* pe = (paste_evaluation*)n;
+            return prp_handle_node(prp, pe->expr);
         }
         default: break;
     }
@@ -404,10 +404,10 @@ void prp_warn_dead_code(post_resolution_pass* prp)
     if (prp->curr_block->is_rerun) return;
     src_range_large barrier_srl;
     src_range_large following_srl;
-    symbol_table* st = prp->curr_block->body->symtab;
-    ast_node_get_src_range(prp->curr_block->barrier_node, st, &barrier_srl);
+    ast_node_get_src_range(
+        prp->curr_block->barrier_node, prp->curr_block->body, &barrier_srl);
     ast_node_get_full_src_range(
-        *prp->curr_block->next_expr, st, &following_srl);
+        *prp->curr_block->next_expr, prp->curr_block->body, &following_srl);
     error_log_report_annotated_twice(
         prp->tc->err_log, ES_LIFETIMES, true, "dead code", following_srl.smap,
         following_srl.start, following_srl.end,
@@ -486,8 +486,8 @@ void prp_free_owned_vars(post_resolution_pass* prp)
         if (p) {
             print_ast_node(
                 (ast_node*)vd->var_node->var,
-                (mdg_node*)symbol_table_get_module_table(
-                    vd->var_node->var->osym.sym.declaring_st)
+                (mdg_node*)ast_body_get_parent_module_body(
+                    vd->var_node->var->osym.sym.declaring_body)
                     ->owning_node,
                 0);
             tprintf(": ");
@@ -544,18 +544,19 @@ void prp_assign_func_dtors(post_resolution_pass* prp)
                     break;
                 }
                 case EXPR_PASTE_EVALUATION: {
-                    expr_paste_evaluation* epe = (expr_paste_evaluation*)curr;
-                    curr = epe->expr;
+                    paste_evaluation* pe = (paste_evaluation*)curr;
+                    curr = pe->expr;
+                    assert(curr);
                     continue;
                 }
                 case STMT_PASTE_EVALUATION: {
-                    stmt_paste_evaluation* spe = (stmt_paste_evaluation*)curr;
-                    assert(spe->pe.prpbn);
-                    assert(!spe->pe.prpbn->owned_vars);
-                    prp->curr_block = spe->pe.prpbn;
+                    paste_evaluation* pe = (paste_evaluation*)curr;
+                    assert(pe->body.prpbn);
+                    assert(!pe->body.prpbn->owned_vars);
+                    prp->curr_block = pe->body.prpbn;
                     prp->curr_block->next_expr =
                         prp->curr_block->body->elements;
-                    spe->pe.prpbn = NULL;
+                    pe->body.prpbn = NULL;
                     break;
                 }
                 default: break;
@@ -630,7 +631,7 @@ prp_run_modules(post_resolution_pass* prp, mdg_node** start, mdg_node** end)
         aseglist_iterator_begin(&it, &(**n).module_frames);
         for (module_frame* mf = aseglist_iterator_next(&it); mf;
              mf = aseglist_iterator_next(&it)) {
-            if (mf->body.symtab->owning_node != (ast_elem*)mf) continue;
+            assert(mf->body.owning_node == (ast_elem*)mf);
             err = prp_run_symtab(prp, mf->body.symtab);
             if (err) return err;
         }

@@ -2,6 +2,7 @@
 #include "utils/panic.h"
 #include "utils/c_extensions.h"
 #include <assert.h>
+#include "src_map.h"
 
 #define mk_prim(prim_kind, prim_name)                                          \
     [prim_kind] = {                                                            \
@@ -38,24 +39,16 @@ src_map* module_frame_get_smap(module_frame* mf)
 {
     return src_range_get_smap(mf->node.srange);
 }
-src_map* ast_node_get_smap(ast_node* n, symbol_table* st)
-{
-    src_map* smap = src_range_get_smap(n->srange);
-    if (smap) return smap;
-    smap = symbol_table_get_smap(st);
-    assert(smap);
-    return smap;
-}
 void ast_node_get_full_src_range(
-    ast_node* n, symbol_table* st, src_range_large* srl)
+    ast_node* n, ast_body* body, src_range_large* srl)
 {
-    srl->smap = ast_node_get_smap(n, st);
+    srl->smap = ast_body_get_smap(body);
     ast_node_get_bounds(n, &srl->start, &srl->end);
 }
-void ast_node_get_src_range(ast_node* n, symbol_table* st, src_range_large* srl)
+void ast_node_get_src_range(ast_node* n, ast_body* body, src_range_large* srl)
 {
     src_range_unpack(n->srange, srl);
-    if (!srl->smap) srl->smap = ast_node_get_smap(n, st);
+    if (!srl->smap) srl->smap = ast_body_get_smap(body);
 }
 char* ast_elem_get_label(ast_elem* n, bool* lbl)
 {
@@ -104,16 +97,13 @@ bool ast_elem_is_struct_base(ast_elem* s)
 }
 bool ast_elem_is_any_import(ast_elem* s)
 {
-    return s->kind == SYM_IMPORT_GROUP || s->kind == SYM_IMPORT_MODULE ||
+    return s->kind == ELEM_ANONYMOUS_IMPORT_GROUP ||
+           s->kind == SYM_NAMED_IMPORT_GROUP || s->kind == SYM_IMPORT_MODULE ||
            s->kind == SYM_IMPORT_PARENT;
-}
-bool ast_elem_is_import_module(ast_elem* s)
-{
-    return s->kind == SYM_IMPORT_GROUP || s->kind == SYM_IMPORT_MODULE;
 }
 bool ast_elem_is_symbol(ast_elem* s)
 {
-    return s->kind <= SYM_LAST_SYM_ID;
+    return (s->kind >= SYM_FIRST_ID && s->kind <= SYM_LAST_ID);
 }
 bool ast_elem_is_stmt(ast_elem* s)
 {
@@ -263,7 +253,8 @@ ast_body* ast_elem_get_body(ast_elem* s)
         case EXPR_BLOCK: return &((expr_block*)s)->ebb.body;
         case EXPR_MATCH: return &((expr_match*)s)->body;
         case EXPR_LOOP: return &((expr_loop*)s)->ebb.body;
-        case STMT_PASTE_EVALUATION: return &((stmt_paste_evaluation*)s)->body;
+        case EXPR_PASTE_EVALUATION:
+        case STMT_PASTE_EVALUATION: return &((paste_evaluation*)s)->body;
         case MF_EXTEND:
         case MF_MODULE: return &((module_frame*)s)->body;
         default: panic("tried to get body from ast node without body");
@@ -294,4 +285,22 @@ ast_body* ast_body_get_non_paste_parent(ast_body* b)
         assert(b);
     }
     return b;
+}
+ast_body* ast_body_get_parent_module_body(ast_body* b)
+{
+    while (b->owning_node->kind != ELEM_MDG_NODE) {
+        b = b->parent;
+        assert(b);
+    }
+    return b;
+}
+
+src_map* ast_body_get_smap(ast_body* b)
+{
+    while (true) {
+        src_map* smap = src_range_get_smap(b->srange);
+        if (smap) return smap;
+        b = b->parent;
+        assert(b);
+    }
 }

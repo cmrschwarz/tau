@@ -6,6 +6,7 @@
 #include "generic_inst_map.h"
 #include "utils/threading.h"
 #include "utils/c_extensions.h"
+#include "utils/list.h"
 
 #define VOID_ELEM ((ast_elem*)&PRIMITIVES[PT_VOID])
 #define UNREACHABLE_ELEM ((ast_elem*)&PRIMITIVES[PT_UNREACHABLE])
@@ -22,19 +23,30 @@ typedef struct file_map_head_s file_map_head;
 typedef struct type_slice_s type_slice;
 typedef struct sc_func_s sc_func;
 typedef struct expr_block_s expr_block;
+typedef struct src_map_s src_map;
 
 typedef enum PACK_ENUM ast_node_kind_e {
     ELEM_INVALID, // make 0 invalid for debugging
-    MF_MODULE,
-    MF_FIRST_ID = MF_MODULE,
-    ASTN_FIRST_ID = MF_FIRST_ID,
+    ELEM_FIRST_ID,
+    ELEM_MDG_NODE = ELEM_FIRST_ID,
+    ELEM_ANONYMOUS_IMPORT_GROUP,
+    ELEM_SRC_FILE,
+    ELEM_SRC_LIB,
+    ELEM_SRC_DIR,
+    ELEM_LAST_ID = ELEM_SRC_DIR,
+
+    ASTN_FIRST_ID,
+    ASTN_ANONYMOUS_IMPORT_GROUP = ASTN_FIRST_ID,
+
+    MF_FIRST_ID,
+    MF_MODULE = MF_FIRST_ID,
     MF_MODULE_GENERIC,
     MF_EXTEND,
     MF_EXTEND_GENERIC,
     MF_LAST_ID = MF_EXTEND_GENERIC,
 
-    SC_STRUCT,
-    SC_FIRST_ID = SC_STRUCT,
+    SC_FIRST_ID,
+    SC_STRUCT = SC_FIRST_ID,
     SC_STRUCT_GENERIC,
     SC_STRUCT_GENERIC_INST,
     SC_TRAIT,
@@ -44,8 +56,8 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SC_FUNC_GENERIC,
     SC_LAST_ID = SC_FUNC_GENERIC,
 
-    SYM_PRIMITIVE,
-    SYM_FIRST_ID = SYM_PRIMITIVE,
+    SYM_FIRST_ID,
+    SYM_PRIMITIVE = SYM_FIRST_ID,
     SYM_PARAM,
     SYM_GENERIC_PARAM,
     SYM_PARAM_GENERIC_INST,
@@ -56,19 +68,19 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SYM_NAMED_USE,
     SYM_IMPORT_MODULE,
     SYM_IMPORT_SYMBOL,
-    SYM_IMPORT_GROUP,
+    SYM_NAMED_IMPORT_GROUP,
     SYM_IMPORT_PARENT,
     SYM_FUNC_EXTERN, // TODO
-    SYM_LAST_SYM_ID = SYM_FUNC_EXTERN,
+    SYM_LAST_ID = SYM_FUNC_EXTERN,
 
-    STMT_USE,
-    STMT_FIRST_ID = STMT_USE,
+    STMT_FIRST_ID,
+    STMT_USE = STMT_FIRST_ID,
     STMT_PASTE_EVALUATION,
     STMT_COMPOUND_ASSIGN,
     STMT_LAST_ID = STMT_COMPOUND_ASSIGN,
 
-    EXPR_BLOCK,
-    EXPR_FIRST_ID = EXPR_BLOCK,
+    EXPR_FIRST_ID,
+    EXPR_BLOCK = EXPR_FIRST_ID,
     EXPR_CAST,
     EXPR_PP,
     EXPR_PASTE_EVALUATION,
@@ -108,17 +120,12 @@ typedef enum PACK_ENUM ast_node_kind_e {
     EXPR_LAST_ID = EXPR_SLICE_TYPE,
     ASTN_LAST_ID = EXPR_LAST_ID,
 
-    TYPE_POINTER,
-    TYPE_FIRST_ID = TYPE_POINTER,
+    TYPE_FIRST_ID,
+    TYPE_POINTER = TYPE_FIRST_ID,
     TYPE_ARRAY,
     TYPE_SLICE,
     TYPE_TUPLE,
     TYPE_LAST_ID = TYPE_TUPLE,
-
-    ELEM_MDG_NODE,
-    ELEM_SRC_FILE,
-    ELEM_SRC_LIB,
-    ELEM_SRC_DIR,
 } ast_node_kind;
 
 typedef enum PACK_ENUM operator_kind_e {
@@ -285,14 +292,6 @@ typedef struct stmt_use_s {
     ast_node* target;
 } stmt_use;
 
-typedef struct sym_import_parent_s {
-    open_symbol osym;
-    union {
-        symbol_table* symtab;
-        symbol* symbols;
-    } children;
-} sym_import_parent;
-
 typedef struct sym_import_module_s {
     open_symbol osym;
     mdg_node* module;
@@ -300,26 +299,42 @@ typedef struct sym_import_module_s {
     pp_resolve_node* pprn;
 } sym_import_module;
 
-typedef struct sym_import_group_s {
-    sym_import_module parent_im;
+// the foo in import foo::bar;
+// problematic since we can also have import foo::baz;
+// we join these into one and drop the other
+typedef struct sym_import_parent_s {
+    open_symbol osym;
+    // to prevent weird collisions like foo::bar, baz::{foo::bar}
+    mdg_node* module;
+    sym_import_module* original_child; // necessary for ast printing
     union {
-        // used for named groups
-        // the actual symbols are stored in the first element of the symtab
-        symbol_table* symtab;
-        symbol* symbols; // used for unnamed groups
-    } children;
-} sym_import_group;
+        symbol* children; // populated during parsing
+        symbol* siblings; // populated during resolving (add decl)
+    };
+    union {
+        symbol_table* symtab; // created after all siblings are combined
+        ureg sibling_count; // couting up the siblings
+    };
+} sym_import_parent;
+
+typedef struct sym_named_import_group_s {
+    open_symbol sym;
+    symbol_table* symtab;
+    list children_ordered; // allocated from module pool
+} sym_named_import_group;
+
+typedef struct astn_anonymous_import_group_s {
+    ast_node node;
+    list children_ordered; // allocated from module poo
+} elem_anonymous_import_group;
 
 struct mdg_node_s;
 typedef struct sym_import_symbol_s {
     open_symbol osym;
-    // PERF: this member is kinda uneccessary since the group already knows,
-    // but this connection gets lost during the insertion into the target st
-    sym_import_group* import_group;
     // for overloaded symbols, we can't resolve this to a single target symbol
     // therefore we keep the name and store the st to start overload lookup
     // for non overlodable symbols (vars, etc.) this is NULL
-    symbol_table* target_st;
+    ast_body* target_body;
     union {
         char* name;
         symbol* sym;
@@ -463,26 +478,19 @@ typedef struct expr_paste_str_s {
 // the pointers
 typedef struct paste_evaluation_s {
     ast_node node;
-    ast_node* parent_ebb;
+    ast_body body;
     pasted_str* paste_str;
-    char* read_pos;
     union {
         pasted_str* read_str;
-        prp_block_node* prpbn;
+        ast_elem* ctype;
+    };
+    union {
+        char* read_pos;
+        ast_node* expr;
     };
     ast_node* source_pp_expr; // the original expr contained in expr_pp
     src_range source_pp_srange; // the src range OF the original expr_pp
 } paste_evaluation;
-
-typedef struct expr_paste_evaluation_s {
-    paste_evaluation pe;
-    ast_node* expr;
-} expr_paste_evaluation;
-
-typedef struct stmt_paste_evaluation_s {
-    paste_evaluation pe;
-    ast_body body;
-} stmt_paste_evaluation;
 
 // ASSERT: sizeof(stmt_paste_evaluation) < sizeof(expr_pp)
 
@@ -788,7 +796,6 @@ bool ast_elem_is_struct_base(ast_elem* s);
 bool ast_elem_is_struct(ast_elem* s);
 bool ast_elem_is_var(ast_elem* s);
 bool ast_elem_is_any_import(ast_elem* s);
-bool ast_elem_is_import_module(ast_elem* s); // includes import group
 bool ast_elem_is_module_frame(ast_elem* s);
 bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
@@ -804,13 +811,14 @@ ast_body* ast_body_get_non_paste_parent(ast_body* b);
 char* ast_elem_get_label(ast_elem* n, bool* lbl);
 src_map* scope_get_smap(scope* s);
 src_map* module_frame_get_smap(module_frame* mf);
-src_map* ast_node_get_smap(ast_node* n, symbol_table* st);
-void ast_node_get_src_range(
-    ast_node* n, symbol_table* st, src_range_large* srl);
+void ast_node_get_src_range(ast_node* n, ast_body* body, src_range_large* srl);
 void ast_node_get_full_src_range(
-    ast_node* n, symbol_table* st, src_range_large* srl);
+    ast_node* n, ast_body* body, src_range_large* srl);
 bool ast_body_is_braced(ast_body* b);
 bool ast_body_is_public(ast_body* st);
+
+ast_body* ast_body_get_parent_module_body(ast_body* b);
+src_map* ast_body_get_smap(ast_body* b);
 
 bool is_unary_op_postfix(operator_kind t);
 ast_node* get_parent_body(scope* parent);

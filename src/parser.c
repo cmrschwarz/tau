@@ -356,31 +356,19 @@ static inline int
 handle_paste_bpd(parser* p, body_parse_data* bpd, symbol_table** st)
 {
     if (bpd->decl_count || bpd->usings_count) {
-        if ((**p->paste_parent_symtab).owning_node == p->paste_parent_node) {
-            symbol_table** s = p->paste_parent_symtab;
-            if (!*s) {
-                assert(false); // TODO: handle inserting (!) symbol tables
-                return OK;
-            }
-            if (symbol_table_amend(*s, bpd->decl_count, bpd->usings_count)) {
+        ast_body* npp = ast_body_get_non_paste_parent(p->paste_parent_body);
+        if (npp->symtab) {
+            if (symbol_table_amend(
+                    &npp->symtab, bpd->decl_count, bpd->usings_count)) {
                 return ERR;
             }
         }
         else {
-            symbol_table* paste_parent_parent_symtab = *p->paste_parent_symtab;
-            if (symbol_table_init(
-                    p->paste_parent_symtab, bpd->decl_count, bpd->usings_count,
-                    true, p->paste_parent_node)) {
-                return ERR;
-            }
-            (**p->paste_parent_symtab).parent = paste_parent_parent_symtab;
+            npp->symtab =
+                symbol_table_create(bpd->decl_count, bpd->usings_count);
+            if (!npp->symtab) return ERR;
         }
     }
-    if (symbol_table_init(st, 0, 0, true, (ast_elem*)bpd->node)) {
-        return ERR;
-    }
-    (**st).parent = *p->paste_parent_symtab;
-    (**st).non_meta_parent = symbol_table_nonmeta(*p->paste_parent_symtab);
     return OK;
 }
 static inline void drop_bpd(parser* p)
@@ -393,15 +381,9 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
     body_parse_data bpd = *(body_parse_data*)sbuffer_iterator_previous(
         &i, sizeof(body_parse_data));
     sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
-    bool is_mf = ast_elem_is_module_frame((ast_elem*)bpd.node);
-    if (prec_pe == PE_NO_STMT) {
-        assert(is_mf);
-        is_mf = false;
-        prec_pe = PE_OK;
-    }
     if (prec_pe) return OK;
     if (bpd.shared_decl_count > 0 || bpd.shared_uses_count > 0) {
-        assert(is_mf);
+        assert(st_elem_is_module_frame((ast_elem*)bpd.node));
         // assert(*mf is member of current module*);
         atomic_ureg_add(&p->current_module->decl_count, bpd.shared_decl_count);
         atomic_ureg_add(&p->current_module->using_count, bpd.shared_uses_count);
@@ -411,12 +393,10 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
         if (handle_paste_bpd(p, &bpd, &bd->symtab)) return ERR;
     }
     else {
-        int r = symbol_table_init(
-            &bd->symtab, bpd.decl_count, bpd.usings_count, is_mf,
-            (ast_elem*)bpd.node);
-        if (r) return ERR;
-        if (bd->symtab) bd->symtab->parent = NULL;
+        bd->symtab = symbol_table_create(bpd.decl_count, bpd.usings_count);
+        if (!bd->symtab) return ERR;
     }
+    bd->parent = NULL; // TODO:rework this
     return OK;
 }
 
@@ -447,7 +427,8 @@ char* get_context_msg(parser* p, ast_node* node)
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return "in this variable declaration";
         case SYM_IMPORT_SYMBOL:
-        case SYM_IMPORT_GROUP:
+        case SYM_NAMED_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_IMPORT_GROUP:
         case SYM_IMPORT_MODULE: return "in this import statement";
         case SYM_NAMED_USE:
         case STMT_USE: return "in this using statement";
@@ -1012,7 +993,7 @@ parse_uninitialized_var_in_tuple(parser* p, token* t, ast_node** ex)
     sym_var* v = alloc_perm(p, sizeof(tuple_ident_node));
     if (!v) return PE_FATAL;
     ast_node_init((ast_node*)v, SYM_VAR);
-    v->osym.visible_within = NULL;
+    v->osym.visible_within_body = NULL;
     ast_flags_set_compound_decl(&v->osym.sym.node.flags);
     v->osym.sym.name = alloc_string_perm(p, t->str);
     if (!v->osym.sym.name) return PE_FATAL;
@@ -1049,7 +1030,7 @@ build_ident_node_in_tuple(parser* p, token* t, ast_node** ex)
     sym_var* v = &tin->var;
     ast_node_init(&v->osym.sym.node, SYM_VAR);
     v->osym.sym.name = alloc_string_perm(p, t->str);
-    v->osym.visible_within = NULL; // TODO
+    v->osym.visible_within_body = NULL; // TODO
     if (!v->osym.sym.name) return PE_FATAL;
     if (ast_node_fill_srange(p, (ast_node*)v, t->start, t->end))
         return PE_FATAL;
@@ -2226,7 +2207,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     if (p->file_root->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     lx_close_file(&p->lx);
     if (pe) {
-        free_body_symtabs((ast_node*)&j->file->root, &j->file->root.body);
+        free_body_symtabs(&j->file->root.body);
         if (pe == PE_FATAL) return pe;
     }
     int r = thread_context_preorder_job(p->lx.tc);
@@ -2240,14 +2221,15 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     return pe;
 }
 parse_error init_paste_evaluation_parse(
-    parser* p, expr_pp* epp, ast_node_kind kind, symbol_table* st,
-    ast_node* parent_ebb, paste_evaluation** eval)
+    parser* p, expr_pp* epp, ast_node_kind kind, ast_body* parent_body,
+    paste_evaluation** eval)
 {
+    assert(sizeof(expr_pp) >= sizeof(paste_evaluation));
     paste_evaluation* pe = (paste_evaluation*)epp;
     src_range sr = epp->node.srange;
     ast_node* expr = epp->pp_expr;
     pasted_str* ps = epp->result_buffer.paste_result.first;
-    src_map* smap = symbol_table_get_smap(st);
+    src_map* smap = ast_body_get_smap(parent_body);
     pe->node.kind = kind;
     pe->node.flags = AST_NODE_FLAGS_DEFAULT;
     // we only care about the file here
@@ -2256,7 +2238,8 @@ parse_error init_paste_evaluation_parse(
     pe->source_pp_expr = expr;
     pe->paste_str = ps;
     pe->read_str = NULL;
-    pe->parent_ebb = parent_ebb;
+    pe->body.parent = parent_body;
+    pe->body.owning_node = (ast_elem*)pe;
     // eval->read_pos = NULL; //unnecessary
     int r = lx_open_paste(&p->lx, pe, smap);
     smap = p->lx.smap;
@@ -2281,26 +2264,26 @@ parse_error init_paste_evaluation_parse(
     pe->node.srange = src_range_pack(p->lx.tc, 0, 0, smap);
     *eval = pe;
     p->file_root = NULL;
+    p->paste_parent_body = parent_body;
     return PE_OK;
 }
-parse_error parser_parse_paste_expr(
-    parser* p, expr_pp* epp, symbol_table* st, ast_node* parent_ebb)
+parse_error
+parser_parse_paste_expr(parser* p, expr_pp* epp, ast_body* parent_body)
 {
-    assert(sizeof(expr_pp) >= sizeof(expr_paste_evaluation));
-    expr_paste_evaluation* eval;
+    paste_evaluation* eval;
     parse_error pe = init_paste_evaluation_parse(
-        p, epp, EXPR_PASTE_EVALUATION, st, parent_ebb,
-        (paste_evaluation**)&eval);
+        p, epp, EXPR_PASTE_EVALUATION, parent_body, (paste_evaluation**)&eval);
     if (pe) return pe;
-    pe = push_bpd(p, parent_ebb, NULL);
+    pe = push_bpd(p, (ast_node*)parent_body->owning_node, parent_body);
     if (pe) return pe;
     pe = parse_expression(p, &eval->expr);
+    eval->body.elements = NULL;
     drop_bpd(p);
     if (pe) return pe;
     token* t = lx_peek(&p->lx);
     if (t->kind != TK_EOF) {
         src_range_large srl;
-        src_range_unpack(eval->pe.source_pp_srange, &srl);
+        src_range_unpack(eval->source_pp_srange, &srl);
         error_log_report_annotated_thrice(
             p->lx.tc->err_log, ES_PARSER, false, "invalid paste expression",
             p->lx.smap, t->start, t->end,
@@ -2313,19 +2296,15 @@ parse_error parser_parse_paste_expr(
     lx_close_paste(&p->lx);
     return PE_OK;
 }
-parse_error parser_parse_paste_stmt(
-    parser* p, expr_pp* epp, symbol_table** st, ast_node* parent_ebb,
-    ast_elem* parent_node)
+parse_error
+parser_parse_paste_stmt(parser* p, expr_pp* epp, ast_body* parent_body)
 {
-    assert(sizeof(expr_pp) >= sizeof(stmt_paste_evaluation));
-    stmt_paste_evaluation* eval;
+    paste_evaluation* eval;
     parse_error pe = init_paste_evaluation_parse(
-        p, epp, STMT_PASTE_EVALUATION, *st, parent_ebb,
-        (paste_evaluation**)&eval);
+        p, epp, STMT_PASTE_EVALUATION, parent_body, (paste_evaluation**)&eval);
     if (pe) return pe;
     p->paste_block = &eval->body;
-    p->paste_parent_symtab = st;
-    p->paste_parent_node = parent_node;
+    eval->expr = NULL;
     pe = parse_delimited_body(
         p, &eval->body, (ast_node*)eval, 0, NULL, 0, 1, TK_EOF);
     lx_close_paste(&p->lx);
@@ -2452,7 +2431,7 @@ parse_error parse_var_decl(
     v->pprn = NULL;
     v->type = type;
     v->osym.sym.name = ident;
-    v->osym.visible_within = NULL; // TODO: parse this
+    v->osym.visible_within_body = NULL; // TODO: parse this
     if (!v->osym.sym.name) return PE_FATAL;
     v->osym.sym.node.flags = flags;
     *n = (ast_node*)v;
@@ -2565,7 +2544,7 @@ parse_error parse_func_decl(
         fnb = (sc_func_base*)fn;
     }
     fnb->sc.osym.sym.name = name;
-    fnb->sc.osym.visible_within = NULL; // TODO
+    fnb->sc.osym.visible_within_body = NULL; // TODO
     ast_node_init_with_flags(
         (ast_node*)fnb, fng ? SC_FUNC_GENERIC : SC_FUNC, flags);
     pe = sym_fill_srange(p, (symbol*)fnb, start, decl_end);
@@ -2604,7 +2583,7 @@ parse_error parse_func_decl(
     else {
         fnb->return_type = NULL;
     }
-    fnb->sc.osym.visible_within = NULL; // TODO: parse this
+    fnb->sc.osym.visible_within_body = NULL; // TODO: parse this
     PEEK(p, t);
     if (fn && t->kind == TK_SEMICOLON) {
         fn->fnb.sc.body.elements = (ast_node**)NULL_PTR_PTR;
@@ -2641,7 +2620,7 @@ parse_error parse_macro_decl(
     sc_macro* m = alloc_perm(p, sizeof(sc_macro));
     if (!m) return PE_FATAL;
     m->sc.osym.sym.name = name;
-    m->sc.osym.visible_within = NULL; // TODO
+    m->sc.osym.visible_within_body = NULL; // TODO
     ast_node_init_with_flags((ast_node*)m, SC_MACRO, flags);
     pe = sym_fill_srange(p, (symbol*)m, start, decl_end);
     if (pe) return pe;
@@ -2718,7 +2697,7 @@ parse_error parse_struct_decl(
     ast_node_init_with_flags(
         (ast_node*)s, sg ? SC_STRUCT_GENERIC : SC_STRUCT, flags);
     s->sym.name = name;
-    s->visible_within = NULL; // TODO: parse this
+    s->visible_within_body = NULL; // TODO: parse this
     pe = sym_fill_srange(p, &s->sym, start, decl_end);
     if (pe) return pe;
 
@@ -2743,8 +2722,7 @@ parse_error check_if_first_stmt(
     *tgt = NULL;
     ast_node* last_culprit = NULL;
     for (ast_node** n = curr_scope->body.elements; *n; n++) {
-        if ((**n).kind != SYM_IMPORT_GROUP && (**n).kind != SYM_IMPORT_MODULE &&
-            (**n).kind != SYM_IMPORT_SYMBOL) {
+        if (ast_elem_is_any_import((ast_elem*)n)) {
             last_culprit = *n;
         }
     }
@@ -2884,7 +2862,7 @@ parse_error parse_trait_decl(
         if (!tr) return PE_FATAL;
     }
     tr->osym.sym.name = name;
-    tr->osym.visible_within = NULL; // TODO
+    tr->osym.visible_within_body = NULL; // TODO
     pe = sym_fill_srange(p, (symbol*)tr, start, decl_end);
     if (pe) return pe;
     ast_node_init_with_flags(
@@ -3034,7 +3012,7 @@ parse_error parse_use(
             if (!nu) return PE_FATAL;
             ast_node_init_with_flags((ast_node*)nu, SYM_NAMED_USE, flags);
             nu->osym.sym.name = alloc_string_perm(p, t->str);
-            nu->osym.visible_within = NULL; // TODO
+            nu->osym.visible_within_body = NULL; // TODO
             if (!nu->osym.sym.name) return PE_FATAL;
             lx_void_n(&p->lx, 2);
             parse_error pe = parse_expression(p, &nu->target);
@@ -3155,7 +3133,7 @@ parse_error parse_symbol_imports(
             ast_node_fill_srange(p, (ast_node*)im, symstart, symend);
             im->import_group = group;
             im->osym.sym.name = id1_str;
-            im->osym.visible_within = NULL; // TODO
+            im->osym.visible_within_body = NULL; // TODO
             im->target.name = symname;
             *tgt = (symbol*)im;
             tgt = &im->osym.sym.next;
@@ -3227,7 +3205,7 @@ parse_error parse_import_with_parent(
             ast_node_init_with_flags((ast_node*)im, SYM_IMPORT_MODULE, flags);
             ast_node_fill_srange(p, (ast_node*)im, istart, end);
             im->module = parent;
-            im->osym.visible_within = NULL; // TODO
+            im->osym.visible_within_body = NULL; // TODO
             if (name) {
                 im->osym.sym.name = name;
                 curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
@@ -3253,7 +3231,7 @@ parse_error parse_import_with_parent(
         ast_node_init_with_flags((ast_node*)ig, SYM_IMPORT_GROUP, flags);
         ig->parent_im.module = parent;
         ig->parent_im.osym.sym.name = name;
-        ig->parent_im.osym.visible_within = NULL; // TODO
+        ig->parent_im.osym.visible_within_body = NULL; // TODO
         *tgt = (symbol*)ig;
         tgt = &ig->children.symbols;
 

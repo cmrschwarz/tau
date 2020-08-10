@@ -147,7 +147,7 @@ mdg_node* mdg_node_create(
     n->error_occured = false;
     return n;
 }
-void free_body_symtabs(ast_node* node, ast_body* b);
+void free_body_symtabs(ast_body* b);
 void free_astn_symtabs(ast_node* n)
 {
     if (!n) return;
@@ -156,7 +156,7 @@ void free_astn_symtabs(ast_node* n)
         return;
     }
     if (ast_elem_is_scope((ast_elem*)n)) {
-        free_body_symtabs(n, &((scope*)n)->body);
+        free_body_symtabs(&((scope*)n)->body);
         if (n->kind == SC_STRUCT_GENERIC) {
             for (sc_struct_generic_inst* sgi =
                      ((sc_struct_generic*)n)->instances;
@@ -172,30 +172,30 @@ void free_astn_symtabs(ast_node* n)
         case EXPR_RETURN: free_astn_symtabs(((expr_break*)n)->value); break;
 
         case EXPR_BLOCK: {
-            free_body_symtabs(n, &((expr_block*)n)->ebb.body);
+            free_body_symtabs(&((expr_block*)n)->ebb.body);
         } break;
 
         case SYM_IMPORT_PARENT: {
             sym_import_parent* ip = (sym_import_parent*)n;
             if (!ast_flags_get_resolved(n->flags)) break;
-            if (ip->children.symtab->owning_node != (ast_elem*)ip) break;
-            symtab_it it = symtab_it_make(ip->children.symtab);
+            if (!ip->symtab) break;
+            symtab_it it = symtab_it_make(ip->symtab);
             for (symbol* s = symtab_it_next(&it); s != NULL;
                  s = symtab_it_next(&it)) {
                 free_astn_symtabs((ast_node*)s);
             }
-            symbol_table_fin(ip->children.symtab);
+            symbol_table_destroy(ip->symtab);
         } break;
-        case SYM_IMPORT_GROUP: {
-            sym_import_group* ig = (sym_import_group*)n;
+        case SYM_NAMED_IMPORT_GROUP: {
+            sym_named_import_group* ig = (sym_named_import_group*)n;
             if (!ast_flags_get_resolved(n->flags)) break;
-            if (ig->children.symtab->owning_node != (ast_elem*)ig) break;
-            symtab_it it = symtab_it_make(ig->children.symtab);
+            if (!ig->symtab) break;
+            symtab_it it = symtab_it_make(ig->symtab);
             for (symbol* s = symtab_it_next(&it); s != NULL;
                  s = symtab_it_next(&it)) {
                 free_astn_symtabs((ast_node*)s);
             }
-            symbol_table_fin(ig->children.symtab);
+            symbol_table_destroy(ig->symtab);
         } break;
         case EXPR_IF: {
             expr_if* ei = (expr_if*)n;
@@ -203,11 +203,11 @@ void free_astn_symtabs(ast_node* n)
             free_astn_symtabs(ei->if_body);
             free_astn_symtabs(ei->else_body);
         } break;
-        case EXPR_LOOP: free_body_symtabs(n, &((expr_loop*)n)->ebb.body); break;
+        case EXPR_LOOP: free_body_symtabs(&((expr_loop*)n)->ebb.body); break;
 
         case EXPR_MACRO_CALL: {
             expr_macro_call* emc = (expr_macro_call*)n;
-            free_body_symtabs(n, &emc->body);
+            free_body_symtabs(&emc->body);
         } break;
 
         case EXPR_PP: free_astn_symtabs(((expr_pp*)n)->pp_expr); break;
@@ -266,15 +266,12 @@ void free_astn_symtabs(ast_node* n)
         case SYM_IMPORT_MODULE:
         case SYM_IMPORT_SYMBOL:
         case EXPR_LITERAL: break;
-        case EXPR_PASTE_EVALUATION: {
-            expr_paste_evaluation* epe = (expr_paste_evaluation*)n;
-            free_astn_symtabs(epe->expr);
-            free_astn_symtabs(epe->pe.source_pp_expr);
-        } break;
+        case EXPR_PASTE_EVALUATION:
         case STMT_PASTE_EVALUATION: {
-            stmt_paste_evaluation* spe = (stmt_paste_evaluation*)n;
-            free_body_symtabs(n, &spe->body);
-            free_astn_symtabs(spe->pe.source_pp_expr);
+            paste_evaluation* pe = (paste_evaluation*)n;
+            free_astn_symtabs(pe->expr);
+            free_astn_symtabs(pe->source_pp_expr);
+            free_body_symtabs(&pe->body);
         } break;
         case EXPR_ARRAY_TYPE: {
             expr_array_type* eat = (expr_array_type*)n;
@@ -307,14 +304,14 @@ void free_astn_symtabs(ast_node* n)
         default: assert(false);
     }
 }
-void free_body_symtabs(ast_node* node, ast_body* b)
+void free_body_symtabs(ast_body* b)
 {
     // delete children first since children might contain that symtab
     // pointer and check for it's owning node
     for (ast_node** n = b->elements; *n != NULL; n++) {
         free_astn_symtabs(*n);
     }
-    if (b->symtab && b->symtab->owning_node == (ast_elem*)node) {
+    if (b->symtab) {
         symtab_it it = symtab_it_make(b->symtab);
         for (symbol* s = symtab_it_next(&it); s != NULL;
              s = symtab_it_next(&it)) {
@@ -322,7 +319,7 @@ void free_body_symtabs(ast_node* node, ast_body* b)
                 free_astn_symtabs((ast_node*)s);
             }
         }
-        symbol_table_fin(b->symtab);
+        symbol_table_destroy(b->symtab);
     }
 }
 void mdg_node_fin(mdg_node* n)
@@ -333,11 +330,11 @@ void mdg_node_fin(mdg_node* n)
         while (true) {
             module_frame* mf = aseglist_iterator_next(&it);
             if (!mf) break;
-            free_body_symtabs((ast_node*)mf, &mf->body);
+            free_body_symtabs(&mf->body);
         }
     }
     if (n->stage >= MS_RESOLVING) {
-        symbol_table_fin(n->symtab);
+        symbol_table_destroy(n->symtab);
     }
     mdg_node_partial_fin(n, -1);
 }
@@ -452,7 +449,7 @@ int mdg_node_file_parsed(
     if (up == 1) return mdg_node_parsed(m, n, tc);
     return OK;
 }
-
+/*
 bool module_import_group_find_import(
     sym_import_group* ig, mdg_node* import, sym_import_group** tgt_group,
     symbol** tgt_sym)
@@ -555,6 +552,7 @@ void mdg_node_report_missing_import(
         tgt_sym_srl.end, "imported here", smap, tgt_group_srl.start,
         tgt_group_srl.end, NULL);
 }
+*/
 int mdg_nodes_resolved(
     mdg_node** start, mdg_node** end, thread_context* tc, bool error_occured)
 {
@@ -642,11 +640,11 @@ int mdg_nodes_generated(
         while (ok) {
             ast_elem* dep = list_it_next(&it, l);
             if (!dep) break;
-            assert(ast_elem_is_import_module(dep));
+            assert(dep->kind == SYM_IMPORT_MODULE);
             sym_import_module* im = (sym_import_module*)dep;
             atomic_boolean_store(&im->done, true);
-            mdg_node* dep_mdg = (mdg_node*)symbol_table_get_module_table(
-                                    im->osym.sym.declaring_st)
+            mdg_node* dep_mdg = (mdg_node*)ast_body_get_parent_module_body(
+                                    im->osym.sym.declaring_body)
                                     ->owning_node;
             if (sccd_run(
                     &tc->sccd, (mdg_node*)dep_mdg, SCCD_PP_DEP_GENERATED)) {
