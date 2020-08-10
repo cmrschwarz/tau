@@ -1,0 +1,9 @@
+module a{
+    public func foo() {
+        asdf;
+    }
+}
+import a;
+func main(){
+    a::foo();
+}
