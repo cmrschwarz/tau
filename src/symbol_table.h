@@ -44,7 +44,7 @@ ureg symbol_table_get_symbol_count(symbol_table* st);
 
 // if a symbol of that name already exists returns pointer to that entry
 // otherwise inserts and returns NULL
-symbol** symbol_table_insert(symbol_table* st, symbol* s);
+symbol* symbol_table_insert(symbol_table* st, symbol* s);
 
 // returns the symbol found or NULL if nonexistant
 // returns the positon to insert. if a symbol of that name is already present,

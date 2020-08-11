@@ -14,7 +14,7 @@
 
 ureg symbol_table_has_usings(symbol_table* st)
 {
-    return st->table_offset != sizeof(symbol_table);
+    return st->table_offset != sizeof(symbol_table) / sizeof(void*);
 }
 ureg symbol_table_get_symbol_capacity(symbol_table* st)
 {
@@ -83,19 +83,19 @@ symbol** symbol_table_calculate_position(symbol_table* st, ureg hash)
     ureg mask = (1 << st->bitcount) - 1;
     ureg idx = hash;
     idx = fnv_fold(idx, st->bitcount, mask);
-    idx -= st->table_offset;
-    idx &= mask;
-    idx += st->table_offset;
+    // HACK: this is trash, but i just want things to work for now.
+    if (idx < st->table_offset) idx = st->table_offset;
     return (symbol**)ptradd(st, idx * sizeof(void*));
 }
 
-symbol** symbol_table_insert(symbol_table* st, symbol* s)
+symbol* symbol_table_insert(symbol_table* st, symbol* s)
 {
     symbol** tgt = symbol_table_lookup(st, s->name);
+    if (*tgt) return *tgt;
     *tgt = s;
     s->next = NULL;
     st->sym_count++;
-    return tgt;
+    return NULL;
 }
 
 ureg symbol_table_prehash(const char* s)
@@ -181,14 +181,16 @@ symbol_table* symbol_table_create(ureg sym_count, ureg using_count)
     }
     else {
         size += sizeof(symbol_table);
-        ureg size_ceiled = ceil_to_pow2(size);
-        symbol_table* st = tmalloc(size_ceiled);
+        size_ceiled = ceil_to_pow2(size);
+        st = tmalloc(size_ceiled);
         if (!st) return NULL;
         st->table_offset = sizeof(symbol_table) / sizeof(void*);
     }
+    symbol** start = ptradd(st, st->table_offset * sizeof(void*));
+    memset(start, 0, size_ceiled - ptrdiff(start, st));
     st->sym_count = 0;
     st->bitcount = ulog2(size_ceiled / sizeof(void*));
-    return OK;
+    return st;
 }
 void symbol_table_destroy(symbol_table* st)
 {
@@ -206,7 +208,7 @@ int symbol_table_amend(symbol_table** stp, ureg sym_count, ureg using_count)
     symtab_it it;
     symtab_it_init(&it, st);
     for (symbol* s = symtab_it_next(&it); s; s = symtab_it_next(&it)) {
-        symbol** r = symbol_table_insert(st_new, s);
+        symbol* r = symbol_table_insert(st_new, s);
         if (r != NULL) assert(false);
     }
     if (symbol_table_has_usings(st)) {

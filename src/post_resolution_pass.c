@@ -606,6 +606,7 @@ prp_error prp_run_nested_funcs(post_resolution_pass* prp)
 }
 prp_error prp_run_symtab(post_resolution_pass* prp, symbol_table* st)
 {
+    if (!st) return PRPE_OK;
     prp_error err;
     symtab_it stit = symtab_it_make(st);
     for (symbol* s = symtab_it_next(&stit); s; s = symtab_it_next(&stit)) {
@@ -635,7 +636,7 @@ prp_run_modules(post_resolution_pass* prp, mdg_node** start, mdg_node** end)
             err = prp_run_symtab(prp, mf->body.symtab);
             if (err) return err;
         }
-        err = prp_run_symtab(prp, (**n).symtab);
+        err = prp_run_symtab(prp, (**n).body.symtab);
         if (err) return err;
     }
     return PRPE_OK;

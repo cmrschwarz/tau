@@ -310,7 +310,8 @@ ast_body* ast_body_get_parent_module_body(ast_body* b)
 src_map* ast_body_get_smap(ast_body* b)
 {
     while (true) {
-        src_map* smap = src_range_get_smap(b->srange);
+        // HACK: find a proper solution for this
+        src_map* smap = src_range_get_smap(((ast_node*)b->owning_node)->srange);
         if (smap) return smap;
         b = b->parent;
         assert(b);

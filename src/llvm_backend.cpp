@@ -913,7 +913,8 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
                 }
                 else {
                     llvm::ArrayRef<llvm::Type*> member_types{NULL, 0};
-                    llvm::StructType::create(_context, member_types, "", false);
+                    strct = llvm::StructType::create(
+                        _context, member_types, "", false);
                 }
                 if (!strct) return LLE_FATAL;
                 *tp = strct;

@@ -100,11 +100,11 @@ add_symbol(resolver* r, ast_body* body, ast_body* shared_body, symbol* sym)
         (shared_body && ast_flags_get_access_mod(sym->node.flags) != AM_LOCAL)
             ? shared_body
             : body;
-    symbol** conflict;
+    symbol* conflict;
     conflict = symbol_table_insert(tgt_body->symtab, sym);
     // symbol_table_inc_decl_count(tgtst);
     if (conflict) {
-        return report_redeclaration_error(r, sym, *conflict);
+        return report_redeclaration_error(r, sym, conflict);
     }
     return RE_OK;
 }
@@ -3140,7 +3140,7 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
         (**i).body.symtab = symbol_table_create(
             atomic_ureg_load(&(**i).decl_count),
             atomic_ureg_load(&(**i).using_count));
-        if ((**i).body.symtab) return RE_FATAL;
+        if (!(**i).body.symtab) return RE_FATAL;
         (**i).body.parent =
             &r->tc->t->global_scope.body; // assertion in set parent symtabs
     }

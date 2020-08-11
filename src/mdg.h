@@ -107,7 +107,6 @@ typedef struct mdg_node_s {
     ureg id;
     atomic_ureg decl_count;
     atomic_ureg using_count;
-    symbol_table* symtab;
     partial_resolution_data* partial_res_data;
     aseglist module_frames; // doesn't require any locks (?)
 

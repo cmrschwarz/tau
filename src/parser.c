@@ -389,14 +389,22 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
         atomic_ureg_add(&p->current_module->using_count, bpd.shared_uses_count);
     }
     ast_body* bd = bpd.body;
+    bd->owning_node = (ast_elem*)bpd.node;
     if (bpd.body == p->paste_block) {
         if (handle_paste_bpd(p, &bpd, &bd->symtab)) return ERR;
     }
     else {
-        bd->symtab = symbol_table_create(bpd.decl_count, bpd.usings_count);
-        if (!bd->symtab) return ERR;
+        if (bpd.decl_count || bpd.usings_count) {
+            bd->symtab = symbol_table_create(bpd.decl_count, bpd.usings_count);
+            if (!bd->symtab) return ERR;
+        }
+        else {
+            bd->symtab = NULL;
+        }
     }
-    bd->parent = NULL; // TODO:rework this
+    body_parse_data* parent = (body_parse_data*)sbuffer_iterator_previous(
+        &i, sizeof(body_parse_data));
+    bd->parent = parent ? parent->body : &p->current_module->body;
     return OK;
 }
 

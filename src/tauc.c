@@ -22,9 +22,10 @@ static inline int global_scope_init(scope* gs)
     gs->osym.visible_within_body = NULL;
     gs->body.elements = NULL;
     gs->body.srange = SRC_RANGE_INVALID;
+    gs->body.parent = NULL;
+    gs->body.owning_node = (ast_elem*)gs;
     gs->body.symtab = symbol_table_create(PRIMITIVE_COUNT + 1, 0);
     if (!gs->body.symtab) return ERR;
-    gs->body.parent = NULL;
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {
         if (symbol_table_insert(gs->body.symtab, (symbol*)&PRIMITIVES[i])) {
             symbol_table_destroy(gs->body.symtab);

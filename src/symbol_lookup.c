@@ -217,7 +217,8 @@ resolve_error symbol_lookup_level_run(
             }
         }
 
-        if (symbol_table_has_usings(lookup_body->symtab)) {
+        if (lookup_body->symtab &&
+            symbol_table_has_usings(lookup_body->symtab)) {
             re = update_ams(
                 sli->r, lookup_body, sli->looking_body, sli->looking_struct,
                 sli->looking_mf_body, sli->looking_mod_body, NULL, NULL,

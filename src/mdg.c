@@ -53,7 +53,6 @@ int mdg_init(module_dependency_graph* m)
         m, string_from_cstr("_invalid_node_"), NULL, MS_PARSING);
     if (!m->root_node) return mdg_fin_partial(m, 6, ERR);
     m->invalid_node->error_occured = true;
-    m->invalid_node->symtab = NULL;
     m->change_count = 0;
     return 0;
 }
@@ -139,8 +138,11 @@ mdg_node* mdg_node_create(
     // resolving itself. before its suspended this is decremented
     atomic_ureg_init(&n->ungenerated_pp_deps, 1);
     n->stage = initial_stage;
-    n->symtab = NULL;
+    n->body.symtab = NULL;
+    n->body.elements = NULL;
+    n->body.parent = NULL; // TODO: put global scope here
     n->notifier = NULL;
+    n->body.owning_node = (ast_elem*)n;
     n->ppe_stage = PPES_UNNEEDED;
     n->requested_for_pp = false;
     n->partial_res_data = NULL;
@@ -334,7 +336,7 @@ void mdg_node_fin(mdg_node* n)
         }
     }
     if (n->stage >= MS_RESOLVING) {
-        symbol_table_destroy(n->symtab);
+        symbol_table_destroy(n->body.symtab);
     }
     mdg_node_partial_fin(n, -1);
 }

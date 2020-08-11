@@ -165,11 +165,11 @@ resolve_error instantiate_generic_struct(
         ast_flags_set_resolved(&gpi->sym.node.flags);
         gpi->sym.node.kind = SYM_PARAM_GENERIC_INST;
         gpi->sym.node.srange = gp->sym.node.srange;
-        symbol** c =
+        symbol* c =
             symbol_table_insert(sgi->st.sb.sc.body.symtab, (symbol*)gpi);
         if (c) {
             return report_redeclaration_error(
-                r, *c, (symbol*)&sgi->generic_args[i]);
+                r, c, (symbol*)&sgi->generic_args[i]);
         }
     }
     if (re) return re;
