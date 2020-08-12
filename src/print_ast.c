@@ -659,9 +659,9 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             break;
         }
         case STMT_PASTE_EVALUATION: {
-            for (ast_node** n = ((paste_evaluation*)n)->body.elements; *n;
-                 n++) {
-                print_ast_node(*n, cmdg, indent);
+            for (ast_node** e = ((paste_evaluation*)n)->body.elements; *e;
+                 e++) {
+                print_ast_node(*e, cmdg, indent);
             }
             break;
         }

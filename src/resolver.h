@@ -79,9 +79,6 @@ typedef struct resolver_s {
     // current context
     mdg_node** mdgs_begin;
     mdg_node** mdgs_end;
-    mdg_node* curr_mdg;
-    module_frame* curr_mf;
-    ast_node* curr_block_owner;
     // temporary memory space (used in overload resulution)
     sbuffer temp_stack;
     // dealing with type loops and type inference in expr blocks
@@ -117,7 +114,6 @@ typedef struct resolver_s {
     ptrlist import_module_data_nodes;
 
     pp_resolve_node* curr_pp_node;
-    pp_resolve_node* curr_block_pp_node;
     sc_func* module_group_constructor;
     sc_func* module_group_destructor;
 } resolver;
