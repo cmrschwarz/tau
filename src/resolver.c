@@ -568,9 +568,11 @@ static resolve_error add_ast_node_decls(
             symbol** conflict;
             symbol* sym = (symbol*)n;
             sym->declaring_body = body;
-            conflict = symbol_table_insert(tgt_body->symtab, sym);
-            if (!conflict) {
-                // symbol_table_inc_decl_count(tgtst);
+            conflict = symbol_table_lookup(tgt_body->symtab, sym->name);
+            if (!*conflict) {
+                symbol_table_inc_sym_count(tgt_body->symtab);
+                *conflict = sym;
+                sym->next = NULL;
             }
             else {
                 sym_func_overloaded* sfo;
@@ -2568,7 +2570,6 @@ resolve_error resolve_expr_body(
     ureg saved_decl_count = 0;
     pp_resolve_node* prev_block_pprn = r->curr_block_pp_node;
     pp_resolve_node* pprn = b->pprn;
-    bool resumed = (pprn != NULL);
     r->curr_block_pp_node = pprn;
 
     bool parent_allows_type_loops = r->allow_type_loops;

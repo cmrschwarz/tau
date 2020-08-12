@@ -124,8 +124,8 @@ void symbol_table_inc_sym_count(symbol_table* st)
 void symtab_it_init(symtab_it* stit, symbol_table* st)
 {
     stit->pos = ptradd(st, st->table_offset * sizeof(void*));
-    stit->end = ptradd(st, ((ureg)1 << st->bitcount) * sizeof(void*));
-    stit->subpos = NULL;
+    stit->last = ptradd(st, (((ureg)1 << st->bitcount) - 1) * sizeof(void*));
+    stit->subpos = *stit->pos;
 }
 symtab_it symtab_it_make(symbol_table* st)
 {
@@ -141,7 +141,7 @@ symbol* symtab_it_next(symtab_it* stit)
             stit->subpos = stit->subpos->next;
             return res;
         }
-        if (stit->pos == stit->end) {
+        if (stit->pos == stit->last) {
             return NULL;
         }
         stit->pos++;

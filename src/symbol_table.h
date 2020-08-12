@@ -70,7 +70,7 @@ ast_node** symbol_table_get_use_node(symbol_table* st, ast_body** using_st);
 typedef struct symtab_it {
     symbol** pos;
     symbol* subpos;
-    symbol** end;
+    symbol** last;
 } symtab_it;
 
 void symtab_it_init(symtab_it* stit, symbol_table* st);

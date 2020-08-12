@@ -11,8 +11,8 @@ typedef enum PACK_ENUM access_modifier_e {
     AM_PUBLIC, // everybody
     AM_PROTECTED, // current scope + scopes with use ...;
     AM_PRIVATE, // current scope (module / struct)
-    AM_ENUM_ELEMENT_COUNT,
-    AM_UNKNOWN = AM_ENUM_ELEMENT_COUNT,
+    AM_UNKNOWN,
+    AM_ENUM_ELEMENT_COUNT = AM_UNKNOWN,
 } access_modifier;
 
 typedef enum PACK_ENUM dtor_kind_e {

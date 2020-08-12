@@ -49,8 +49,8 @@ static inline resolve_error update_ams(
         }
     }
     if (*am_start == AM_UNKNOWN) {
-        *am_start =
-            resolver_get_am_start(lookup_body, looking_body, looking_mod_body);
+        *am_start = resolver_get_am_start(
+            lookup_body, looking_mf_body, looking_mod_body);
     }
 
     if (*am_end == AM_UNKNOWN || vis_within_check_required) {
