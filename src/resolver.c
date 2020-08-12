@@ -20,13 +20,14 @@ resolve_module_frame(resolver* r, module_frame* block_owner, ast_body* b);
 static inline resolve_error resolve_ast_node_raw(
     resolver* r, ast_node* n, ast_body* body, ast_elem** value,
     ast_elem** ctype);
-resolve_error
-resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block);
+resolve_error resolve_func(
+    resolver* r, ast_body* requesting_body, sc_func_base* fnb,
+    ast_node** continue_block);
 resolve_error resolve_struct(
-    resolver* r, ast_body* body, sc_struct* st, ast_elem** value,
+    resolver* r, ast_body* requesting_body, sc_struct* st, ast_elem** value,
     ast_elem** ctype);
 resolve_error resolve_expr_body(
-    resolver* r, ast_body* parent_body, ast_node* expr, ast_body* b,
+    resolver* r, ast_body* requesting_body, ast_node* expr, ast_body* b,
     bool* end_reachable);
 resolve_error resolve_expr_scope_access(
     resolver* r, expr_scope_access* esa, symbol_table* st,
@@ -92,16 +93,24 @@ report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev)
         "previous definition here");
     return RE_SYMBOL_REDECLARATION;
 }
-
+static ast_body*
+get_decl_target_body(ast_node* decl, ast_body* body, ast_body* shared_body)
+{
+    ast_body* tgt;
+    if (shared_body && ast_flags_get_access_mod(decl->flags) != AM_LOCAL) {
+        tgt = shared_body;
+    }
+    else {
+        tgt = body;
+    }
+    return ast_body_get_non_paste_parent(tgt);
+}
 static resolve_error
 add_symbol(resolver* r, ast_body* body, ast_body* shared_body, symbol* sym)
 {
     sym->declaring_body = body;
     ast_body* tgt_body =
-        (shared_body && ast_flags_get_access_mod(sym->node.flags) != AM_LOCAL)
-            ? shared_body
-            : body;
-    tgt_body = ast_body_get_non_paste_parent(tgt_body);
+        get_decl_target_body((ast_node*)sym, body, shared_body);
     symbol* conflict;
     conflict = symbol_table_insert(tgt_body->symtab, sym);
     // symbol_table_inc_decl_count(tgtst);
@@ -439,15 +448,6 @@ ureg claim_symbol_id(resolver* r, symbol* s, bool public_st)
         return ast_node_claim_id(r, (ast_node*)s, public_st);
     }
 }
-static ast_body*
-get_decl_target_body(ast_node* decl, ast_body* body, ast_body* shared_body)
-{
-    ast_body* tgt =
-        (shared_body && ast_flags_get_access_mod(decl->flags) != AM_LOCAL)
-            ? shared_body
-            : body;
-    return ast_body_get_non_paste_parent(tgt);
-}
 static resolve_error
 add_func_decl(resolver* r, ast_body* body, ast_body* shared_body, ast_node* n)
 {
@@ -581,6 +581,66 @@ add_func_decl(resolver* r, ast_body* body, ast_body* shared_body, ast_node* n)
     }
     return RE_OK;
 }
+static resolve_error get_import_parent(
+    resolver* r, ast_body* body, mdg_node* parent, mdg_node* relative_to,
+    sym_import_parent** tgt)
+{
+    resolve_error re;
+    sym_import_parent* parent_ip;
+    if (parent == relative_to || parent == r->tc->t->mdg.root_node) {
+        *tgt = NULL;
+        return RE_OK;
+    };
+    re = get_import_parent(r, body, parent->parent, relative_to, &parent_ip);
+    if (re) return re;
+    symbol_table* st = body->symtab;
+    symbol_table** stp = &body->symtab;
+    if (parent_ip) {
+        if (!ast_flags_get_resolved(parent_ip->osym.sym.node.flags)) {
+            *tgt = parent_ip;
+            return RE_OK;
+        }
+        st = parent_ip->symtab;
+        stp = &parent_ip->symtab;
+    }
+    symbol** conflict = symbol_table_lookup(st, parent->name);
+    if (*conflict) {
+        if ((**conflict).node.kind == SYM_IMPORT_PARENT) {
+            *tgt = (sym_import_parent*)*conflict;
+            if ((**tgt).module != parent) {
+                assert(false); // TODO: error message different module
+            }
+            return RE_OK;
+        }
+        assert(false); // TODO: error message for symbol redeclaration
+    }
+    sym_import_parent* ip =
+        pool_alloc(&r->tc->permmem, sizeof(sym_import_parent));
+    if (!ip) return RE_FATAL;
+    ip->children = NULL;
+    ip->module = parent;
+    ip->osym.visible_within_body = NULL;
+    ip->osym.sym.declaring_body = body;
+    ip->osym.sym.name = parent->name;
+    ip->osym.sym.node.srange = SRC_RANGE_INVALID;
+    ip->osym.sym.node.flags = AST_NODE_FLAGS_DEFAULT;
+    ip->osym.sym.node.kind = SYM_IMPORT_PARENT;
+    *conflict = (symbol*)ip;
+    ip->osym.sym.next = NULL;
+    if (symbol_table_amend(stp, 1, 0)) return RE_FATAL;
+    if (*stp != st) { // insert because the amend realloced
+        st = *stp;
+        symbol* res = symbol_table_insert(st, (symbol*)ip);
+        assert(!res); // we checked that before
+        UNUSED(res);
+    }
+    else {
+        *conflict = (symbol*)ip;
+        ip->osym.sym.next = NULL;
+    }
+    *tgt = ip;
+    return RE_OK;
+}
 static resolve_error add_ast_node_decls(
     resolver* r, ast_body* body, ast_body* shared_body, ast_node* n)
 {
@@ -678,9 +738,6 @@ static resolve_error add_ast_node_decls(
         case SC_FUNC_GENERIC: {
             return add_func_decl(r, body, shared_body, n);
         }
-        case SYM_IMPORT_MODULE: {
-            assert(false); // TODO
-        }
         case SYM_VAR_INITIALIZED:
         case SYM_VAR: {
             re = add_symbol(r, body, shared_body, (symbol*)n);
@@ -700,7 +757,54 @@ static resolve_error add_ast_node_decls(
         case SYM_NAMED_USE: {
             return add_symbol(r, body, shared_body, (symbol*)n);
         }
+        case SYM_IMPORT_MODULE: {
+            sym_import_module* im = (sym_import_module*)n;
+            im->osym.sym.declaring_body = body;
+            mdg_node* rel_to;
+            if (ast_flags_get_relative_import(n->flags)) {
+                rel_to = im->im_data.importing_module;
+            }
+            else {
+                rel_to = r->tc->t->mdg.root_node;
+            }
+            sym_import_parent* ip;
+            re = get_import_parent(
+                r, body, im->im_data.imported_module->parent, rel_to, &ip);
+            if (re) return re;
+            symbol_table* st;
+            if (ip) {
+                if (ast_flags_get_resolved(ip->osym.sym.node.flags)) {
+                    im->osym.sym.next = ip->children;
+                    ip->children = (symbol*)im;
+                    return RE_OK;
+                }
+                st = ip->symtab;
+            }
+            else {
+                st = get_decl_target_body((ast_node*)im, body, shared_body)
+                         ->symtab;
+                assert(st); // TODO: alloc table
+            }
+            symbol* conflict = symbol_table_insert(st, (symbol*)im);
+            if (conflict) {
+                return report_redeclaration_error(r, (symbol*)im, conflict);
+            }
+            return RE_OK;
+        }
         case SYM_NAMED_MOD_IMPORT_GROUP: {
+            symbol* sym = (symbol*)n;
+            sym->declaring_body = body;
+            ast_body* tgt_body = get_decl_target_body(n, body, shared_body);
+            symbol** conflict;
+            conflict = symbol_table_lookup(tgt_body->symtab, sym->name);
+            if (!*conflict) {
+                *conflict = sym;
+                sym->next = NULL;
+                symbol_table_inc_sym_count(tgt_body->symtab);
+                return RE_OK;
+            }
+            assert(false); // TODO: throw redeclaration error
+            return RE_ERROR;
         }
         default:
             assert(false); // unknown node_kind
@@ -1401,11 +1505,12 @@ resolve_error resolve_expr_member_accesss(
     return RE_OK;
 }
 static inline resolve_error resolve_var(
-    resolver* r, ast_body* body, sym_var* v, ast_elem** value, ast_elem** ctype)
+    resolver* r, ast_body* requesting_body, sym_var* v, ast_elem** value, ast_elem** ctype)
 {
     resolve_error re;
+    ast_body* declaring_body = v->osym.sym.declaring_body;
     bool comptime = ast_flags_get_comptime(v->osym.sym.node.flags);
-    ast_elem* owner = ast_body_get_non_paste_parent(body)->owning_node;
+    ast_elem* owner = ast_body_get_non_paste_parent(declaring_body)->owning_node;
     bool public_symbol = ast_elem_is_module_frame(owner);
     if (!public_symbol) {
         bool is_static = ast_flags_get_static(v->osym.sym.node.flags);
@@ -1413,7 +1518,7 @@ static inline resolve_error resolve_var(
     }
     if ((comptime || public_symbol) && !v->pprn) {
         v->pprn = pp_resolve_node_create(
-            r, (ast_node*)v, body, true, false, !comptime, true);
+            r, (ast_node*)v, declaring_body, true, false, !comptime, true);
         if (!v->pprn) return RE_FATAL;
         ast_node_set_used_in_pp(r, (ast_node*)v);
     }
@@ -1421,24 +1526,24 @@ static inline resolve_error resolve_var(
     r->curr_pp_node = v->pprn;
     if (v->osym.sym.node.kind == SYM_VAR) {
         ast_elem* type;
-        re = resolve_ast_node(r, v->type, body, &type, NULL);
+        re = resolve_ast_node(r, v->type, declaring_body, &type, NULL);
         if (!re) v->ctype = type;
     }
     else {
         sym_var_initialized* vi = (sym_var_initialized*)v;
         if (vi->var.type) {
-            re = resolve_ast_node(r, vi->var.type, body, &vi->var.ctype, NULL);
+            re = resolve_ast_node(r, vi->var.type, declaring_body, &vi->var.ctype, NULL);
             if (!re) {
                 ast_elem* val_type;
                 re = resolve_ast_node(
-                    r, vi->initial_value, body, NULL, &val_type);
+                    r, vi->initial_value, declaring_body, NULL, &val_type);
                 if (!re) {
                     if (!ctypes_unifiable(vi->var.ctype, val_type)) {
                         src_range_large vi_type_srl, vi_val_srl;
                         ast_node_get_src_range(
-                            vi->var.type, body, &vi_type_srl);
+                            vi->var.type, declaring_body, &vi_type_srl);
                         ast_node_get_src_range(
-                            vi->initial_value, body, &vi_val_srl);
+                            vi->initial_value, declaring_body, &vi_val_srl);
                         error_log_report_annotated_twice(
                             r->tc->err_log, ES_RESOLVER, false,
                             "type missmatch in variable declaration",
@@ -1453,7 +1558,7 @@ static inline resolve_error resolve_var(
         }
         else {
             re = resolve_ast_node(
-                r, vi->initial_value, body, NULL, &vi->var.ctype);
+                r, vi->initial_value, declaring_body, NULL, &vi->var.ctype);
             // this could become needed again once we support typeof,
             // it allows one retry in cases of a variable initially
             // assigned to a self referential expr block
@@ -1474,7 +1579,7 @@ static inline resolve_error resolve_var(
         }
     }
     r->curr_pp_node = prev_pp_node;
-    if (re) {
+    if (re && re != RE_UNREALIZED_COMPTIME) {
         // so we can free it... sigh
         if (v->pprn) add_pprn_to_waiting_list(r, v->pprn);
         return re;
@@ -1482,16 +1587,17 @@ static inline resolve_error resolve_var(
     if (v->pprn) {
         resolve_error re_prev = re;
         if (public_symbol) {
-            re = curr_pprn_depend_on(r, body, &v->pprn);
+            re = curr_pprn_depend_on(r, requesting_body, &v->pprn);
         }
         else {
-            re = curr_pp_block_add_child(r, body, &v->pprn);
+            re = curr_pp_block_add_child(r, requesting_body, &v->pprn);
         }
         if (re) return re;
-        re = pp_resolve_node_activate(r, body, &v->pprn, re == RE_OK);
+        re = pp_resolve_node_activate(r, requesting_body, &v->pprn, re == RE_OK);
         if (re) return re;
         re = re_prev;
     }
+    if (re) return re;
     ast_flags_set_resolved(&v->osym.sym.node.flags);
     RETURN_RESOLVED(value, ctype, v, v->ctype);
 }
@@ -1610,10 +1716,7 @@ static inline resolve_error resolve_identifier(
     if (amb) {
         assert(false); // TODO: report ambiguity
     }
-    ast_body* declaring_body =
-        ast_elem_get_body(sym->declaring_body->owning_node);
-    re = resolve_ast_node(
-        r, (ast_node*)sym, declaring_body, (ast_elem**)&sym, ctype);
+    re = resolve_ast_node(r, (ast_node*)sym, body, (ast_elem**)&sym, ctype);
     if (re == RE_DIFFERENT_PP_LEVEL) {
         sym = stack_pop(&r->error_stack);
         assert(ast_elem_is_symbol((ast_elem*)sym));
@@ -2158,7 +2261,7 @@ static inline resolve_error resolve_ast_node_raw(
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
             SET_THEN_RETURN_IF_RESOLVED(resolved, value, ctype, n, VOID_ELEM);
-            return resolve_func(r, (sc_func_base*)n, NULL);
+            return resolve_func(r, body, (sc_func_base*)n, NULL);
         }
         case SYM_IMPORT_PARENT: {
             SET_THEN_RETURN_IF_RESOLVED(resolved, value, ctype, n, NULL);
@@ -2547,12 +2650,12 @@ handle_resolve_error(resolver* r, ast_node* n, ast_body* body, resolve_error re)
         }
         else if (n != r->type_loop_start) {
             ast_flags_clear_resolving(&n->flags);
+            if (re != RE_UNREALIZED_COMPTIME && r->tc->t->trap_on_error) {
+                debugbreak();
+            }
         }
     }
     else {
-        if (re != RE_UNREALIZED_COMPTIME && r->tc->t->trap_on_error) {
-            debugbreak();
-        }
         ast_flags_clear_resolving(&n->flags);
     }
     return re;
@@ -2727,14 +2830,13 @@ resolve_error resolve_struct(
     RETURN_RESOLVED(value, ctype, st, TYPE_ELEM);
 }
 // TODO: make sure we return!
-resolve_error
-resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
+resolve_error resolve_func(
+    resolver* r, ast_body* parent_body, sc_func_base* fnb,
+    ast_node** continue_block)
 {
     bool generic = (fnb->sc.osym.sym.node.kind == SC_FUNC_GENERIC);
     bool generic_parent = r->generic_context;
     r->generic_context = generic || generic_parent;
-    ast_body* body = &fnb->sc.body;
-    // symbol_table* st = b->symtab;
     resolve_error re;
     if (!continue_block) {
         if (!ast_flags_get_static(fnb->sc.osym.sym.node.flags)) {
@@ -2763,7 +2865,8 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
         }
         if (fnb->return_type) {
             re = resolve_ast_node(
-                r, fnb->return_type, body, &fnb->return_ctype, NULL);
+                r, fnb->return_type, fnb->sc.osym.sym.declaring_body,
+                &fnb->return_ctype, NULL);
             if (re) {
                 r->generic_context = generic_parent;
                 return re;
@@ -2778,14 +2881,14 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
             r->generic_context = generic_parent;
             if (fnb->sc.body.pprn) {
                 return pp_resolve_node_activate(
-                    r, body, &fnb->sc.body.pprn, true);
+                    r, parent_body, &fnb->sc.body.pprn, true);
             }
             return RE_OK;
         }
     }
     ast_elem* stmt_ctype;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
-    ast_node** n = body->elements;
+    ast_node** n = fnb->sc.body.elements;
     if (continue_block) {
         n = continue_block;
         if (!fnb->sc.body.pprn->block_pos_reachable) stmt_ctype_ptr = NULL;
@@ -2798,7 +2901,7 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
         // TODO: move this kind of error into the prp
         if (stmt_ctype_ptr == NULL && n != continue_block) {
             src_range_large srl;
-            ast_node_get_src_range(*n, body, &srl);
+            ast_node_get_src_range(*n, &fnb->sc.body, &srl);
             error_log_report_annotated(
                 r->tc->err_log, ES_RESOLVER, false,
                 "unreachable statement in function", srl.smap, srl.start,
@@ -2806,9 +2909,9 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
             re = RE_TYPE_MISSMATCH;
             break;
         }
-        re = add_ast_node_decls(r, body, NULL, *n);
+        re = add_ast_node_decls(r, &fnb->sc.body, NULL, *n);
         if (re) break;
-        re = resolve_ast_node(r, *n, body, NULL, stmt_ctype_ptr);
+        re = resolve_ast_node(r, *n, &fnb->sc.body, NULL, stmt_ctype_ptr);
         if (re) break;
         assert(r->curr_pp_node == NULL);
         if (fnb->sc.body.pprn && (fnb->sc.body.pprn->pending_pastes ||
@@ -2825,11 +2928,11 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
     r->curr_pp_node = prev_pprn;
     // this must be reset before we call add dependency
     pp_resolve_node* bpprn = fnb->sc.body.pprn;
-    fnb->sc.body.pprn = bpprn;
     r->generic_context = generic_parent;
     if (re == RE_UNREALIZED_COMPTIME) {
         assert(bpprn);
-        re = pp_resolve_node_activate(r, body, &fnb->sc.body.pprn, re == RE_OK);
+        re = pp_resolve_node_activate(
+            r, parent_body, &fnb->sc.body.pprn, re == RE_OK);
         if (re) return re;
         bpprn->continue_block = n;
         bpprn->block_pos_reachable = (stmt_ctype_ptr != NULL);
@@ -2841,8 +2944,8 @@ resolve_func(resolver* r, sc_func_base* fnb, ast_node** continue_block)
             fnb != (sc_func_base*)r->module_group_constructor) {
             fnb->sc.body.pprn->dummy = true;
         }
-        resolve_error re2 =
-            pp_resolve_node_activate(r, body, &fnb->sc.body.pprn, re == RE_OK);
+        resolve_error re2 = pp_resolve_node_activate(
+            r, parent_body, &fnb->sc.body.pprn, re == RE_OK);
         if (re2) {
             assert(re2 == RE_FATAL);
             return re2;
@@ -3372,7 +3475,8 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 progress = true;
                 if (rn->node->kind == SC_FUNC) {
                     re = resolve_func(
-                        r, (sc_func_base*)rn->node, rn->continue_block);
+                        r, rn->declaring_body, (sc_func_base*)rn->node,
+                        rn->continue_block);
                 }
                 else if (rn->node->kind == EXPR_BLOCK) {
                     re = resolve_expr_block(

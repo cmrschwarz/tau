@@ -313,14 +313,9 @@ typedef struct sym_import_parent_s {
     open_symbol osym;
     // to prevent weird collisions like foo::bar, baz::{foo::bar}
     mdg_node* module;
-    sym_import_module* original_child; // necessary for ast printing
     union {
-        symbol* children; // populated during parsing
-        symbol* siblings; // populated during resolving (add decl)
-    };
-    union {
+        symbol* children; // used during add decl to add all associates
         symbol_table* symtab; // created after all siblings are combined
-        ureg sibling_count; // couting up the siblings
     };
 } sym_import_parent;
 
