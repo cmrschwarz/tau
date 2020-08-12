@@ -201,7 +201,8 @@ int symbol_table_amend(symbol_table** stp, ureg sym_count, ureg using_count)
     symbol_table* st = *stp;
     ureg new_using_count = symbol_table_get_using_count(st) + using_count;
     st->sym_count += sym_count;
-    ureg using_cap = symbol_table_get_using_capacity(st);
+    ureg using_cap =
+        symbol_table_has_usings(st) ? symbol_table_get_using_capacity(st) : 0;
     ureg sym_cap = symbol_table_get_symbol_capacity(st);
     if (st->sym_count <= sym_cap && new_using_count <= using_cap) return OK;
     symbol_table* st_new = symbol_table_create(st->sym_count, new_using_count);

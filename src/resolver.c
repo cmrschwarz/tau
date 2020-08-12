@@ -100,6 +100,7 @@ add_symbol(resolver* r, ast_body* body, ast_body* shared_body, symbol* sym)
         (shared_body && ast_flags_get_access_mod(sym->node.flags) != AM_LOCAL)
             ? shared_body
             : body;
+    tgt_body = ast_body_get_non_paste_parent(tgt_body);
     symbol* conflict;
     conflict = symbol_table_insert(tgt_body->symtab, sym);
     // symbol_table_inc_decl_count(tgtst);
@@ -1719,10 +1720,11 @@ static inline resolve_error resolve_expr_pp(
         else {
             pe = parser_parse_paste_stmt(&r->tc->p, ppe, body);
             if (pe) return RE_ERROR;
-            ast_body* body = ast_body_get_non_paste_parent(body);
+            ast_body* npp_body = ast_body_get_non_paste_parent(body);
             bool public_st = ast_elem_is_module_frame(body->owning_node);
             ast_body* shared_body =
-                public_st ? ast_body_get_non_paste_parent(body->parent) : NULL;
+                public_st ? ast_body_get_non_paste_parent(npp_body->parent)
+                          : NULL;
             re = add_ast_node_decls(
                 r, body, shared_body, (ast_node*)ppe, public_st);
             if (re) return re;
@@ -3159,6 +3161,7 @@ resolve_error resolver_add_mf_decls(resolver* r)
         aseglist_iterator_begin(&asi, &(**i).module_frames);
         for (module_frame* mf = aseglist_iterator_next(&asi); mf != NULL;
              mf = aseglist_iterator_next(&asi)) {
+            mf->body.parent = &(**i).body;
             resolve_error re =
                 add_body_decls(r, &(**i).body, &(**i).body, &mf->body, true);
             if (re) return re;

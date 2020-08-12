@@ -369,6 +369,7 @@ handle_paste_bpd(parser* p, body_parse_data* bpd, symbol_table** st)
             if (!npp->symtab) return ERR;
         }
     }
+    bpd->body->parent = p->paste_parent_body;
     return OK;
 }
 static inline void drop_bpd(parser* p)
@@ -382,8 +383,9 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
         &i, sizeof(body_parse_data));
     sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
     if (prec_pe) return OK;
+    bool mf = ast_elem_is_module_frame((ast_elem*)bpd.node);
     if (bpd.shared_decl_count > 0 || bpd.shared_uses_count > 0) {
-        assert(ast_elem_is_module_frame((ast_elem*)bpd.node));
+        assert(mf);
         // assert(*mf is member of current module*);
         atomic_ureg_add(&p->current_module->decl_count, bpd.shared_decl_count);
         atomic_ureg_add(&p->current_module->using_count, bpd.shared_uses_count);
@@ -391,20 +393,24 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
     ast_body* bd = bpd.body;
     bd->owning_node = (ast_elem*)bpd.node;
     if (bpd.body == p->paste_block) {
-        if (handle_paste_bpd(p, &bpd, &bd->symtab)) return ERR;
+        return handle_paste_bpd(p, &bpd, &bd->symtab);
+    }
+    if (bpd.decl_count || bpd.usings_count) {
+        bd->symtab = symbol_table_create(bpd.decl_count, bpd.usings_count);
+        if (!bd->symtab) return ERR;
     }
     else {
-        if (bpd.decl_count || bpd.usings_count) {
-            bd->symtab = symbol_table_create(bpd.decl_count, bpd.usings_count);
-            if (!bd->symtab) return ERR;
-        }
-        else {
-            bd->symtab = NULL;
-        }
+        bd->symtab = NULL;
     }
-    body_parse_data* parent = (body_parse_data*)sbuffer_iterator_previous(
-        &i, sizeof(body_parse_data));
-    bd->parent = parent ? parent->body : &p->current_module->body;
+    if (mf) {
+        bd->parent = &p->current_module->body;
+    }
+    else {
+        body_parse_data* parent = (body_parse_data*)sbuffer_iterator_previous(
+            &i, sizeof(body_parse_data));
+        assert(parent && parent->body);
+        bd->parent = parent->body;
+    }
     return OK;
 }
 

@@ -485,7 +485,7 @@ typedef struct expr_pp_s {
     union result_buffer_u {
         // this must be big enough that
         // sizeof(expr_paste_evaluation) <= sizeof(expr_pp)
-        ureg data[6];
+        ureg data[8];
         struct paste_result_s {
             pasted_str* first;
             pasted_str** last_next;
