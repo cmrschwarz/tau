@@ -347,8 +347,6 @@ static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
     body_parse_data* bpd =
         sbuffer_append(&p->body_stack, sizeof(body_parse_data));
     if (bpd == NULL) return ERR;
-    // make sure the symtab is NULL to prevent it from being freed
-    if (b) b->symtab = NULL;
     init_bpd(bpd, n, b);
     return OK;
 }
@@ -369,6 +367,7 @@ handle_paste_bpd(parser* p, body_parse_data* bpd, symbol_table** st)
             if (!npp->symtab) return ERR;
         }
     }
+    bpd->body->symtab = NULL;
     bpd->body->parent = p->paste_parent_body;
     return OK;
 }
@@ -2293,7 +2292,8 @@ parser_parse_paste_expr(parser* p, expr_pp* epp, ast_body* parent_body)
     pe = push_bpd(p, (ast_node*)parent_body->owning_node, parent_body);
     if (pe) return pe;
     pe = parse_expression(p, &eval->expr);
-    eval->body.elements = NULL;
+    eval->body.elements = (ast_node**)NULL_PTR_PTR;
+    eval->body.symtab = NULL;
     drop_bpd(p);
     if (pe) return pe;
     token* t = lx_peek(&p->lx);

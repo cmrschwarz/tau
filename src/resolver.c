@@ -1505,12 +1505,14 @@ resolve_error resolve_expr_member_accesss(
     return RE_OK;
 }
 static inline resolve_error resolve_var(
-    resolver* r, ast_body* requesting_body, sym_var* v, ast_elem** value, ast_elem** ctype)
+    resolver* r, ast_body* requesting_body, sym_var* v, ast_elem** value,
+    ast_elem** ctype)
 {
     resolve_error re;
     ast_body* declaring_body = v->osym.sym.declaring_body;
     bool comptime = ast_flags_get_comptime(v->osym.sym.node.flags);
-    ast_elem* owner = ast_body_get_non_paste_parent(declaring_body)->owning_node;
+    ast_elem* owner =
+        ast_body_get_non_paste_parent(declaring_body)->owning_node;
     bool public_symbol = ast_elem_is_module_frame(owner);
     if (!public_symbol) {
         bool is_static = ast_flags_get_static(v->osym.sym.node.flags);
@@ -1532,7 +1534,8 @@ static inline resolve_error resolve_var(
     else {
         sym_var_initialized* vi = (sym_var_initialized*)v;
         if (vi->var.type) {
-            re = resolve_ast_node(r, vi->var.type, declaring_body, &vi->var.ctype, NULL);
+            re = resolve_ast_node(
+                r, vi->var.type, declaring_body, &vi->var.ctype, NULL);
             if (!re) {
                 ast_elem* val_type;
                 re = resolve_ast_node(
@@ -1593,7 +1596,8 @@ static inline resolve_error resolve_var(
             re = curr_pp_block_add_child(r, requesting_body, &v->pprn);
         }
         if (re) return re;
-        re = pp_resolve_node_activate(r, requesting_body, &v->pprn, re == RE_OK);
+        re =
+            pp_resolve_node_activate(r, requesting_body, &v->pprn, re == RE_OK);
         if (re) return re;
         re = re_prev;
     }
@@ -3218,10 +3222,15 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
         if (re) return re;
         // TODO: init pp symtabs
         r->error_occured |= (**i).error_occured;
-        (**i).body.symtab = symbol_table_create(
-            atomic_ureg_load(&(**i).decl_count),
-            atomic_ureg_load(&(**i).using_count));
-        if (!(**i).body.symtab) return RE_FATAL;
+        ureg sym_count = atomic_ureg_load(&(**i).decl_count);
+        ureg using_count = atomic_ureg_load(&(**i).using_count);
+        if (sym_count || using_count) {
+            (**i).body.symtab = symbol_table_create(sym_count, using_count);
+            if (!(**i).body.symtab) return RE_FATAL;
+        }
+        else {
+            (**i).body.symtab = NULL;
+        }
         (**i).body.parent =
             &r->tc->t->global_scope.body; // assertion in set parent symtabs
     }

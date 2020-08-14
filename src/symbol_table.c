@@ -151,6 +151,7 @@ symbol* symtab_it_next(symtab_it* stit)
 
 symbol_table* symbol_table_create(ureg sym_count, ureg using_count)
 {
+    assert(sym_count || using_count);
     ureg size = sym_count * sizeof(symbol*);
     ureg size_ceiled;
     symbol_table* st;

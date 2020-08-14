@@ -336,7 +336,9 @@ void mdg_node_fin(mdg_node* n)
         }
     }
     if (n->stage >= MS_RESOLVING) {
-        symbol_table_destroy(n->body.symtab);
+        if (n->body.symtab) {
+            symbol_table_destroy(n->body.symtab);
+        }
     }
     mdg_node_partial_fin(n, -1);
 }

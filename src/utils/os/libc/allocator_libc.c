@@ -99,6 +99,7 @@ void* trealloc(void* old, ureg used_size, ureg new_size)
 
 void tfree(void* mem)
 {
+    assert(mem != NULL);
     count_free(mem);
     free(mem);
 }
