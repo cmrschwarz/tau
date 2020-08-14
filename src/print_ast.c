@@ -655,16 +655,17 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             }
         } break;
         case EXPR_PASTE_EVALUATION: {
+            p("<pasted>(");
             print_ast_node(((paste_evaluation*)n)->expr, cmdg, indent);
-            break;
-        }
+            p(")");
+        } break;
         case STMT_PASTE_EVALUATION: {
-            for (ast_node** e = ((paste_evaluation*)n)->body.elements; *e;
-                 e++) {
-                print_ast_node(*e, cmdg, indent);
-            }
-            break;
-        }
+            p("<pasted>");
+            print_body_braced(&((paste_evaluation*)n)->body, cmdg, indent);
+        } break;
+        case ELEM_DUMMY: {
+            p("<dummy>");
+        } break;
         default: {
             p("<unknown expression>");
         } break;

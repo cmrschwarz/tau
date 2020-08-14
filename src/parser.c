@@ -2255,7 +2255,9 @@ parse_error init_paste_evaluation_parse(
     pe->read_str = NULL;
     pe->body.parent = parent_body;
     pe->body.owning_node = (ast_elem*)pe;
-    // eval->read_pos = NULL; //unnecessary
+    pe->body.pprn = NULL;
+    pe->body.symtab = NULL;
+    pe->body.elements = (ast_node**)NULL_PTR_PTR; // in case we fail
     int r = lx_open_paste(&p->lx, pe, smap);
     smap = p->lx.smap;
     p->current_file = src_map_get_file(smap);
@@ -2292,8 +2294,6 @@ parser_parse_paste_expr(parser* p, expr_pp* epp, ast_body* parent_body)
     pe = push_bpd(p, (ast_node*)parent_body->owning_node, parent_body);
     if (pe) return pe;
     pe = parse_expression(p, &eval->expr);
-    eval->body.elements = (ast_node**)NULL_PTR_PTR;
-    eval->body.symtab = NULL;
     drop_bpd(p);
     if (pe) return pe;
     token* t = lx_peek(&p->lx);

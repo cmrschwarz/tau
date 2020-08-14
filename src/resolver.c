@@ -44,6 +44,7 @@ resolve_error resolve_importing_node(
     resolver* r, import_module_data* im_data, ast_node* node, ast_body* body,
     bool dep_prop, ast_elem** value, ast_elem** ctype);
 resolve_error resolver_suspend(resolver* r);
+void print_pprns(resolver* r, char* msg, bool verbose);
 void free_pprns(resolver* r, bool error_occured);
 void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident);
 // must be a macro so value and ctype become lazily evaluated
@@ -194,11 +195,14 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
         case STMT_PASTE_EVALUATION:
             ((paste_evaluation*)n)->body.pprn = NULL;
             break;
+            // used for freeing pp_exprs replaced by pastes
+        case ELEM_DUMMY: break;
         default: assert(false); panic("invalid pprn node type");
     }
     list_fin(&pprn->notified_by, true);
     list_fin(&pprn->notify, true);
     freelist_free(&r->pp_resolve_nodes, pprn);
+    // print_pprns(r, "", true);
 }
 static pp_resolve_node* pp_resolve_node_create(
     resolver* r, ast_node* n, ast_body* declaring_body, bool run_individually,
@@ -243,6 +247,7 @@ static pp_resolve_node* pp_resolve_node_create(
 static inline resolve_error
 get_curr_block_pprn(resolver* r, ast_body* body, pp_resolve_node** curr_pprn)
 {
+    body = ast_body_get_non_paste_parent(body);
     if (ast_elem_is_module_frame(body->owning_node)) {
         // when in public scope, nobody depends on this
         //(for now, this might change with is_defined and so on)
@@ -255,11 +260,11 @@ get_curr_block_pprn(resolver* r, ast_body* body, pp_resolve_node** curr_pprn)
     }
     // the only other non sequential blocks are module frames
     // for that case we already returned null earlier
-    bool sequential = !ast_elem_is_struct(body->owning_node);
+    bool is_struct = ast_elem_is_struct(body->owning_node);
     // TODO: body->parent might be wrong here
     body->pprn = pp_resolve_node_create(
-        r, (ast_node*)body->owning_node, body->parent, true, sequential, false,
-        false);
+        r, (ast_node*)body->owning_node, body->parent, !is_struct, !is_struct,
+        is_struct, false);
     if (!body->pprn) return RE_FATAL;
     *curr_pprn = body->pprn;
     return RE_OK;
@@ -371,6 +376,12 @@ curr_pp_block_add_child(resolver* r, ast_body* body, pp_resolve_node** child_p)
         block_parent->last_unresolved_child->next = child;
         block_parent->last_unresolved_child = child;
     }
+    if (child->dep_count) {
+        if (list_append(&child->notify, NULL, block_parent)) return RE_FATAL;
+        if (list_append(&block_parent->notified_by, NULL, child_p))
+            return RE_FATAL;
+        block_parent->dep_count++;
+    }
     return RE_OK;
 }
 resolve_error pp_resolve_node_activate(
@@ -399,17 +410,6 @@ resolve_error pp_resolve_node_activate(
                 }
             }
         }
-        return RE_OK;
-    }
-    pp_resolve_node* block_pprn;
-    resolve_error re = get_curr_block_pprn(r, body, &block_pprn);
-    if (re) return re;
-    if (block_pprn && block_pprn->sequential_block &&
-        !ast_elem_is_var((ast_elem*)pprn->node)) {
-        if (list_append(&pprn->notify, NULL, block_pprn)) return RE_FATAL;
-        if (list_append(&block_pprn->notified_by, NULL, pprn_p))
-            return RE_FATAL;
-        block_pprn->dep_count++;
         return RE_OK;
     }
     return add_pprn_to_waiting_list(r, pprn);
@@ -1818,29 +1818,40 @@ static inline resolve_error resolve_expr_pp(
     bool is_stmt = !ast_flags_get_pp_expr_res_used(ppe->node.flags);
     resolve_error re;
     if (ppe->ctype == PASTED_EXPR_ELEM) {
-        if (ppe->pprn) {
-            re = pp_resolve_node_done(r, ppe->pprn, NULL);
-            if (re) return re;
-        }
+        pp_resolve_node* ex_pprn = ppe->pprn;
         *ppe->result_buffer.paste_result.last_next = NULL;
         parse_error pe;
         if (!is_stmt) {
             pe = parser_parse_paste_expr(&r->tc->p, ppe, body);
-            if (pe) return RE_ERROR;
-            return resolve_ast_node_raw(r, (ast_node*)ppe, body, value, ctype);
+            if (!pe) {
+                re =
+                    resolve_ast_node_raw(r, (ast_node*)ppe, body, value, ctype);
+            }
         }
         else {
             pe = parser_parse_paste_stmt(&r->tc->p, ppe, body);
-            if (pe) return RE_ERROR;
-            ast_body* npp_body = ast_body_get_non_paste_parent(body);
-            bool public_st = ast_elem_is_module_frame(body->owning_node);
-            ast_body* shared_body =
-                public_st ? ast_body_get_non_paste_parent(npp_body->parent)
-                          : NULL;
-            re = add_ast_node_decls(r, body, shared_body, (ast_node*)ppe);
-            if (re) return re;
-            return resolve_ast_node_raw(r, (ast_node*)ppe, body, value, ctype);
+            if (!pe) {
+                ast_body* npp_body = ast_body_get_non_paste_parent(body);
+                bool public_st = ast_elem_is_module_frame(body->owning_node);
+                ast_body* shared_body =
+                    public_st ? ast_body_get_non_paste_parent(npp_body->parent)
+                              : NULL;
+                re = add_ast_node_decls(r, body, shared_body, (ast_node*)ppe);
+                if (!re) {
+                    re = resolve_ast_node_raw(
+                        r, (ast_node*)ppe, body, value, ctype);
+                }
+            }
         }
+        if (ex_pprn) {
+            ast_elem e;
+            e.kind = ELEM_DUMMY;
+            ex_pprn->node = (ast_node*)&e; // this is a lie but it works :/
+            resolve_error re2 = pp_resolve_node_done(r, ex_pprn, NULL);
+            if (re2) return re2;
+        }
+        if (pe) return (pe == PE_FATAL) ? RE_FATAL : RE_ERROR;
+        return re;
     }
     pp_resolve_node* pprn = NULL;
     if (ppe->pprn) {
@@ -2819,9 +2830,10 @@ resolve_error resolve_struct(
     }
     if (st->sb.sc.body.pprn) {
         resolve_error re2 = curr_pprn_depend_on(r, body, &st->sb.sc.body.pprn);
-        if (!re2)
+        if (!re2) {
             re2 = pp_resolve_node_activate(
                 r, body, &st->sb.sc.body.pprn, re == RE_OK);
+        }
         if (re2) {
             assert(re2 == RE_FATAL);
             return re2;
@@ -2935,8 +2947,8 @@ resolve_error resolve_func(
     r->generic_context = generic_parent;
     if (re == RE_UNREALIZED_COMPTIME) {
         assert(bpprn);
-        re = pp_resolve_node_activate(
-            r, parent_body, &fnb->sc.body.pprn, re == RE_OK);
+        re =
+            pp_resolve_node_activate(r, parent_body, &fnb->sc.body.pprn, false);
         if (re) return re;
         bpprn->continue_block = n;
         bpprn->block_pos_reachable = (stmt_ctype_ptr != NULL);
@@ -3482,32 +3494,31 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 pli_prev(&it);
                 ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
                 progress = true;
+                ast_node* node = rn->node;
+                ast_body* body = rn->declaring_body;
                 if (rn->node->kind == SC_FUNC) {
                     re = resolve_func(
-                        r, rn->declaring_body, (sc_func_base*)rn->node,
-                        rn->continue_block);
+                        r, body, (sc_func_base*)node, rn->continue_block);
                 }
                 else if (rn->node->kind == EXPR_BLOCK) {
                     re = resolve_expr_block(
-                        r, (expr_block*)rn->node, rn->declaring_body, NULL,
-                        NULL);
+                        r, (expr_block*)node, body, NULL, NULL);
                 }
                 else if (rn->node->kind == STMT_PASTE_EVALUATION) {
                     bool end_reachable;
                     re = resolve_expr_body(
-                        r, rn->declaring_body, rn->node,
-                        &((paste_evaluation*)rn->node)->body, &end_reachable);
+                        r, body, node, &((paste_evaluation*)node)->body,
+                        &end_reachable);
                 }
                 else if (rn->node->kind == EXPR_PP) {
                     rn->pending_pastes = false;
                     rn->continue_block = NULL;
-                    re = resolve_expr_pp(
-                        r, rn->declaring_body, (expr_pp*)rn->node, NULL, NULL);
+                    re = resolve_expr_pp(r, body, (expr_pp*)node, NULL, NULL);
                 }
                 else {
                     panic("compiler bug");
                 }
-                re = handle_resolve_error(r, rn->node, rn->declaring_body, re);
+                re = handle_resolve_error(r, node, body, re);
                 if (re) {
                     if (re == RE_UNREALIZED_COMPTIME) {
                         progress = true;
@@ -3591,16 +3602,22 @@ resolve_error resolver_handle_post_pp(resolver* r)
 
 void free_pprnlist(resolver* r, sbuffer* buff, bool error_occured)
 {
-    sbuffer_iterator sbi = sbuffer_iterator_begin(buff);
-    for (pp_resolve_node** rn =
-             sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
-         rn; rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*))) {
-        if (buff == &r->pp_resolve_nodes_waiting && (**rn).waiting_list_entry) {
-            (**rn).waiting_list_entry = NULL; // prevent iterator invalidation
+    bool is_waiting_list = (buff == &r->pp_resolve_nodes_waiting);
+    while (true) {
+        if (sbuffer_is_empty(buff)) break;
+        pp_resolve_node** rn = sbuffer_back(buff, sizeof(pp_resolve_node*));
+        if (is_waiting_list && (**rn).waiting_list_entry) {
+            (**rn).waiting_list_entry = NULL;
         }
+        sbuffer_remove_back(buff, sizeof(pp_resolve_node*));
         pprn_fin(r, *rn, error_occured);
     }
-    sbuffer_clear(buff);
+    if (buff != &r->pp_resolve_nodes_waiting) {
+        sbuffer_clear(buff);
+    }
+    else {
+        assert(sbuffer_is_empty(buff));
+    }
 }
 void free_pprns(resolver* r, bool error_occured)
 {

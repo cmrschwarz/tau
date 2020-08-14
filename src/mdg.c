@@ -268,10 +268,13 @@ void free_astn_symtabs(ast_node* n)
         case SYM_IMPORT_MODULE:
         case SYM_IMPORT_SYMBOL:
         case EXPR_LITERAL: break;
-        case EXPR_PASTE_EVALUATION:
-        case STMT_PASTE_EVALUATION: {
+        case EXPR_PASTE_EVALUATION: {
             paste_evaluation* pe = (paste_evaluation*)n;
             free_astn_symtabs(pe->expr);
+            free_astn_symtabs(pe->source_pp_expr);
+        } break;
+        case STMT_PASTE_EVALUATION: {
+            paste_evaluation* pe = (paste_evaluation*)n;
             free_astn_symtabs(pe->source_pp_expr);
             free_body_symtabs(&pe->body);
         } break;

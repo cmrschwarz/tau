@@ -27,6 +27,8 @@ typedef struct src_map_s src_map;
 
 typedef enum PACK_ENUM ast_node_kind_e {
     ELEM_INVALID, // make 0 invalid for debugging
+    // used for expr pps that still have pprns after being overwritten by pastes
+    ELEM_DUMMY,
     ELEM_MDG_NODE,
     ELEM_FIRST_ID = ELEM_MDG_NODE,
     ELEM_SRC_FILE,

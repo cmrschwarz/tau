@@ -65,7 +65,7 @@ void tprintf(const char* format, ...)
         va_start(args, format);
         len = vsnprintf(tgt, size, format, args);
         va_end(args);
-        assert(len > 0);
+        assert(len > 0 || strlen(format) == 0);
         if (len <= size) break;
         tgt = ptrsub(dbuffer_claim(&buff, len - size + 1), size);
         size = len + 1;

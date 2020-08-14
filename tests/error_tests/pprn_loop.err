@@ -4,6 +4,16 @@ resolver error: encountered cyclic dependency during preprocessor execution
   |^^^^^^^^^ loop contains this element
 
 resolver error: encountered cyclic dependency during preprocessor execution
+ ==> ./tests/error_tests/pprn_loop.tau:2:12
+2 |    return #main();
+  |           ^^^^^^^ loop contains this element
+
+resolver error: encountered cyclic dependency during preprocessor execution
  ==> ./tests/error_tests/pprn_loop.tau:4:1
 4 |public func main() -> int{
   |^^^^^^^^^^^^^^^^ loop contains this element
+
+resolver error: encountered cyclic dependency during preprocessor execution
+ ==> ./tests/error_tests/pprn_loop.tau:5:10
+5 |  return #test();
+  |         ^^^^^^^ loop contains this element
