@@ -13,3 +13,4 @@
 *.asm
 /core
 /env
+/leaks.txt
