@@ -3097,8 +3097,8 @@ parse_error parse_braced_imports(
     }
 }
 parse_error parse_symbol_imports(
-    parser* p, import_group_data* ig_data, ast_flags flags, ureg start,
-    ureg kw_end, ureg* end, ureg* decl_cnt)
+    parser* p, ast_node* import_group, import_group_data* ig_data,
+    ast_flags flags, ureg start, ureg kw_end, ureg* end, ureg* decl_cnt)
 {
     lx_void(&p->lx);
     token* t;
@@ -3150,6 +3150,7 @@ parse_error parse_symbol_imports(
             im->osym.sym.name = id1_str;
             im->osym.visible_within_body = NULL; // TODO
             im->target.name = symname;
+            im->import_group = import_group;
             if (list_append(
                     &ig_data->children_ordered, &p->lx.tc->permmem, im)) {
                 return PE_FATAL;
@@ -3277,7 +3278,7 @@ parse_error parse_import_with_parent(
         if (list_init(&ig_data->children_ordered)) return PE_FATAL;
         ast_flags_clear_relative_import(&flags);
         pe = parse_symbol_imports(
-            p, ig_data, flags, start, kw_end, &end, decl_cnt);
+            p, *tgt, ig_data, flags, start, kw_end, &end, decl_cnt);
         if (pe) return pe;
         im_data->imported_module = parent;
         im_data->importing_module = p->current_module;
@@ -3300,7 +3301,7 @@ parse_error parse_import_with_parent(
                 alloc_perm(p, sizeof(astn_anonymous_mod_import_group));
             if (!amig) return PE_FATAL;
             ast_node_init_with_flags(
-                (ast_node*)amig, SYM_NAMED_MOD_IMPORT_GROUP, flags);
+                (ast_node*)amig, ASTN_ANONYMOUS_MOD_IMPORT_GROUP, flags);
             *tgt = (ast_node*)amig;
             ig_data = &amig->ig_data;
         }

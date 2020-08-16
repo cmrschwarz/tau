@@ -47,6 +47,9 @@ resolve_error resolver_suspend(resolver* r);
 void print_pprns(resolver* r, char* msg, bool verbose);
 void free_pprns(resolver* r, bool error_occured);
 void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident);
+static resolve_error add_ast_node_decls(
+    resolver* r, ast_body* body, ast_body* shared_body, ast_node* n,
+    bool public_st);
 // must be a macro so value and ctype become lazily evaluated
 #define SET_THEN_RETURN_IF_RESOLVED(resolved, pvalue, pctype, value, ctype)    \
     do {                                                                       \
@@ -418,14 +421,15 @@ resolve_error pp_resolve_node_activate(
 // local nodes are only visible within the module and can be
 // freed once the module was emitted. shared nodes might be used from
 // other modules and therefore need to stay around for the whole compilation
-static bool is_local_node(ast_flags flags)
+static bool is_local_node(ast_elem* e)
 {
-    access_modifier m = ast_flags_get_access_mod(flags);
+    if (!ast_elem_is_node(e)) return false;
+    access_modifier m = ast_flags_get_access_mod(((ast_node*)e)->flags);
     return m != AM_PUBLIC && m != AM_PROTECTED;
 }
 ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st)
 {
-    if (public_st && !is_local_node(n->flags)) {
+    if (public_st && !is_local_node((ast_elem*)n)) {
         r->public_sym_count++;
     }
     else {
@@ -448,8 +452,9 @@ ureg claim_symbol_id(resolver* r, symbol* s, bool public_st)
         return ast_node_claim_id(r, (ast_node*)s, public_st);
     }
 }
-static resolve_error
-add_func_decl(resolver* r, ast_body* body, ast_body* shared_body, ast_node* n)
+static resolve_error add_func_decl(
+    resolver* r, ast_body* body, ast_body* shared_body, ast_node* n,
+    bool public_st)
 {
     ast_body* b = &((scope*)n)->body;
     ureg param_count;
@@ -457,7 +462,7 @@ add_func_decl(resolver* r, ast_body* body, ast_body* shared_body, ast_node* n)
     sym_param* params;
     if (n->kind == SC_FUNC) {
         sc_func* fn = (sc_func*)n;
-        fn->id = ast_node_claim_id(r, n, shared_body != NULL);
+        fn->id = ast_node_claim_id(r, n, public_st);
         param_count = fn->fnb.param_count;
         params = fn->fnb.params;
     }
@@ -641,8 +646,33 @@ static resolve_error get_import_parent(
     *tgt = ip;
     return RE_OK;
 }
+static inline resolve_error add_anonymous_import_group_decls(
+    resolver* r, ast_body* body, ast_body* shared_body, ast_node* n,
+    bool public_st)
+{
+    list* l;
+    if (n->kind == ASTN_ANONYMOUS_MOD_IMPORT_GROUP) {
+        l = &((astn_anonymous_mod_import_group*)n)->ig_data.children_ordered;
+    }
+    else {
+        assert(n->kind == ASTN_ANONYMOUS_SYM_IMPORT_GROUP);
+        l = &((astn_anonymous_sym_import_group*)n)->ig_data.children_ordered;
+    }
+    list_it it;
+    list_it_begin(&it, l);
+    ast_node* el;
+    resolve_error re;
+    while ((el = list_it_next(&it, l))) {
+        re = add_ast_node_decls(r, body, shared_body, el, public_st);
+        if (re) return re;
+    }
+    return RE_OK;
+}
+// public st needs to be a seperate parameter since even when there's no shared
+// st a public structs public members are public
 static resolve_error add_ast_node_decls(
-    resolver* r, ast_body* body, ast_body* shared_body, ast_node* n)
+    resolver* r, ast_body* body, ast_body* shared_body, ast_node* n,
+    bool public_st)
 {
     if (n == NULL) return RE_OK;
     if (ast_flags_get_declared(n->flags)) return RE_OK;
@@ -708,7 +738,8 @@ static resolve_error add_ast_node_decls(
                 if (re) return re;
                 r->curr_pp_node = pprn;
             }
-            re = add_ast_node_decls(r, body, shared_body, epp->pp_expr);
+            re = add_ast_node_decls(
+                r, body, shared_body, epp->pp_expr, public_st);
             if (shared_body) r->curr_pp_node = prevcurr;
             if (re) return re;
             return RE_OK;
@@ -726,30 +757,32 @@ static resolve_error add_ast_node_decls(
             // generic inst 'inherits' from struct
             sc_struct* s = (sc_struct*)n;
             re = add_symbol(r, body, shared_body, (symbol*)s);
-            bool members_public_st = shared_body && !is_local_node(n->flags);
+            bool members_public_st =
+                shared_body && !is_local_node((ast_elem*)n);
             re = add_body_decls(
                 r, body, NULL, &s->sb.sc.body, members_public_st);
             if (re) return re;
-            s->id = claim_symbol_id(r, (symbol*)s, shared_body != NULL);
+            s->id = claim_symbol_id(r, (symbol*)s, public_st);
             return RE_OK;
         }
         case SC_MACRO:
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
-            return add_func_decl(r, body, shared_body, n);
+            return add_func_decl(r, body, shared_body, n, public_st);
         }
         case SYM_VAR_INITIALIZED:
         case SYM_VAR: {
             re = add_symbol(r, body, shared_body, (symbol*)n);
             if (re) return re;
             sym_var* v = (sym_var*)n;
-            v->var_id = claim_symbol_id(r, (symbol*)v, shared_body != NULL);
+            v->var_id = claim_symbol_id(r, (symbol*)v, public_st);
             return RE_OK;
         }
         case STMT_PASTE_EVALUATION: {
             paste_evaluation* pe = (paste_evaluation*)n;
             for (ast_node** e = pe->body.elements; *e; e++) {
-                re = add_ast_node_decls(r, &pe->body, shared_body, *e);
+                re = add_ast_node_decls(
+                    r, &pe->body, shared_body, *e, public_st);
                 if (re) return re;
             }
             return RE_OK;
@@ -791,6 +824,11 @@ static resolve_error add_ast_node_decls(
             }
             return RE_OK;
         }
+        // this gets here because anonymous modules delegate their members
+        case SYM_IMPORT_SYMBOL: {
+            sym_import_symbol* s = (sym_import_symbol*)n;
+            return add_symbol(r, body, shared_body, (symbol*)s);
+        }
         case SYM_NAMED_MOD_IMPORT_GROUP: {
             symbol* sym = (symbol*)n;
             sym->declaring_body = body;
@@ -806,6 +844,11 @@ static resolve_error add_ast_node_decls(
             assert(false); // TODO: throw redeclaration error
             return RE_ERROR;
         }
+        case ASTN_ANONYMOUS_SYM_IMPORT_GROUP:
+        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP: // fallthrough
+            return add_anonymous_import_group_decls(
+                r, body, shared_body, n, public_st);
+
         default:
             assert(false); // unknown node_kind
             return RE_FATAL;
@@ -934,7 +977,8 @@ resolve_error add_body_decls(
 {
     assert(body->parent == parent_body); // TODO: remove parent body parameter
     for (ast_node** n = body->elements; *n; n++) {
-        resolve_error re = add_ast_node_decls(r, body, shared_body, *n);
+        resolve_error re =
+            add_ast_node_decls(r, body, shared_body, *n, public_st);
         assert(r->curr_pp_node == NULL);
         if (re) return re;
     }
@@ -1832,11 +1876,33 @@ static inline resolve_error resolve_expr_pp(
             pe = parser_parse_paste_stmt(&r->tc->p, ppe, body);
             if (!pe) {
                 ast_body* npp_body = ast_body_get_non_paste_parent(body);
-                bool public_st = ast_elem_is_module_frame(body->owning_node);
-                ast_body* shared_body =
-                    public_st ? ast_body_get_non_paste_parent(npp_body->parent)
-                              : NULL;
-                re = add_ast_node_decls(r, body, shared_body, (ast_node*)ppe);
+                ast_body* shared_body = NULL;
+                bool public_st = true;
+                if (ast_elem_is_module_frame(npp_body->owning_node)) {
+                    shared_body =
+                        ast_body_get_non_paste_parent(npp_body->parent);
+                }
+                else {
+                    while (true) {
+                        if (ast_elem_is_module_frame(npp_body->owning_node)) {
+                            break;
+                        }
+                        if (ast_elem_is_struct(npp_body->owning_node)) {
+                            if (is_local_node(npp_body->owning_node)) {
+                                public_st = false;
+                                break;
+                            }
+                        }
+                        else {
+                            public_st = false;
+                            break;
+                        }
+                        npp_body =
+                            ast_body_get_non_paste_parent(npp_body->parent);
+                    }
+                }
+                re = add_ast_node_decls(
+                    r, body, shared_body, (ast_node*)ppe, public_st);
                 if (!re) {
                     re = resolve_ast_node_raw(
                         r, (ast_node*)ppe, body, value, ctype);
@@ -2081,33 +2147,36 @@ static inline bool is_symbol_kind_overloadable(ast_node_kind k)
         default: return false;
     }
 }
-resolve_error resolve_import_symbol(resolver* r, sym_import_symbol* is)
+resolve_error
+resolve_import_symbol(resolver* r, sym_import_symbol* is, ast_body* body)
 {
+    resolve_error re;
     ast_flags* flags = &is->osym.sym.node.flags;
-    if (ast_flags_get_resolved(*flags)) return RE_OK;
+    ast_body* decl_body = is->osym.sym.declaring_body;
     if (ast_flags_get_resolving(*flags)) {
         // TOOD: report loop
         assert(false);
     }
     ast_flags_set_resolving(flags);
-    resolve_error re;
-    ast_body* decl_body = is->osym.sym.declaring_body;
-    ast_body* tgt_body = is->target_body;
-    if (ast_elem_is_import_group(is->osym.sym.declaring_body->owning_node)) {
-        re = resolve_ast_node_raw(
-            r, (ast_node*)is->osym.sym.declaring_body->owning_node,
-            ((symbol*)is->osym.sym.declaring_body->owning_node)->declaring_body,
-            NULL, NULL);
-        if (re) return re;
+    import_module_data* im_data;
+    import_group_get_data(is->import_group, NULL, &im_data, NULL, NULL);
+    assert(im_data);
+    re = resolve_ast_node_raw(r, is->import_group, body, NULL, NULL);
+    if (re) {
+        ast_flags_clear_resolving(flags);
+        return re;
     }
+    if (ast_flags_get_resolved(*flags)) return RE_OK;
     symbol* sym;
     symbol* amb;
     re = resolver_lookup_single(
-        r, tgt_body, NULL, decl_body, is->target.name, &sym, &amb);
+        r, &im_data->imported_module->body, NULL, decl_body, is->target.name,
+        &sym, &amb);
+    if (re || !sym) ast_flags_clear_resolving(flags);
     if (re) return re;
     if (!sym) return report_unknown_symbol(r, (ast_node*)is, decl_body);
     if (is_symbol_kind_overloadable(sym->node.kind)) {
-        is->target_body = tgt_body;
+        is->target_body = &im_data->imported_module->body;
     }
     else {
         if (amb) {
@@ -2115,7 +2184,7 @@ resolve_error resolve_import_symbol(resolver* r, sym_import_symbol* is)
         }
         if (sym->node.kind == SYM_IMPORT_SYMBOL) {
             sym_import_symbol* tgt_is = (sym_import_symbol*)is;
-            re = resolve_import_symbol(r, tgt_is);
+            re = resolve_import_symbol(r, tgt_is, body);
             if (re) return re;
             is->target = tgt_is->target;
             is->target_body = tgt_is->target_body;
@@ -2282,18 +2351,25 @@ static inline resolve_error resolve_ast_node_raw(
             SET_THEN_RETURN_IF_RESOLVED(resolved, value, ctype, n, NULL);
             assert(false);
         }
+        case ASTN_ANONYMOUS_SYM_IMPORT_GROUP:
         case SYM_IMPORT_MODULE: {
-            sym_import_module* im = (sym_import_module*)n;
+            import_module_data* im_data;
+            if (n->kind == SYM_IMPORT_MODULE) {
+                im_data = &((sym_import_module*)n)->im_data;
+            }
+            else {
+                im_data = &((astn_anonymous_sym_import_group*)n)->im_data;
+            }
             if (resolved) {
-                if (im->im_data.pprn) {
+                if (im_data->pprn) {
                     resolve_error re =
-                        curr_pprn_depend_on(r, body, &im->im_data.pprn);
+                        curr_pprn_depend_on(r, body, &im_data->pprn);
                     if (re) return re;
                 }
                 RETURN_RESOLVED(value, ctype, n, NULL);
             }
             return resolve_importing_node(
-                r, &im->im_data, n, body, false, value, ctype);
+                r, im_data, n, body, false, value, ctype);
         }
         case STMT_USE:
         case SYM_NAMED_USE:
@@ -2598,6 +2674,8 @@ static inline resolve_error resolve_ast_node_raw(
             ast_flags_set_resolved(&n->flags);
             RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
         }
+        // nothing to do here
+        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP: return RE_OK;
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
@@ -2707,7 +2785,7 @@ resolve_error resolve_expr_body(
     }
     ast_node** n = continue_at;
     for (; *n != NULL; n++) {
-        re = add_ast_node_decls(r, b, NULL, *n);
+        re = add_ast_node_decls(r, b, NULL, *n, false);
         if (re) break;
         re = resolve_ast_node(r, *n, b, NULL, stmt_ctype_ptr);
         if (b->pprn && b->pprn->pending_pastes) {
@@ -2925,7 +3003,7 @@ resolve_error resolve_func(
             re = RE_TYPE_MISSMATCH;
             break;
         }
-        re = add_ast_node_decls(r, &fnb->sc.body, NULL, *n);
+        re = add_ast_node_decls(r, &fnb->sc.body, NULL, *n, false);
         if (re) break;
         re = resolve_ast_node(r, *n, &fnb->sc.body, NULL, stmt_ctype_ptr);
         if (re) break;
@@ -3018,18 +3096,18 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
     // symbols can never be public
     switch (n->kind) {
         case SC_FUNC: {
-            if (is_local_node(n->flags)) return;
+            if (is_local_node((ast_elem*)n)) return;
             sc_func* fn = (sc_func*)n;
             update_id(r, &fn->id, id_space);
         } break;
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: {
-            if (is_local_node(n->flags)) return;
+            if (is_local_node((ast_elem*)n)) return;
             update_id(r, &((sym_var*)n)->var_id, id_space);
         } break;
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
-            if (is_local_node(n->flags)) return;
+            if (is_local_node((ast_elem*)n)) return;
             update_id(r, &((sc_struct*)n)->id, id_space);
             adjust_body_ids(r, id_space, &((sc_struct*)n)->sb.sc.body);
         } break;

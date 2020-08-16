@@ -161,7 +161,8 @@ resolve_error symbol_lookup_level_run(
         if (sym->node.kind == SYM_IMPORT_SYMBOL) {
             sym_import_symbol* is = (sym_import_symbol*)sym;
             if (!ast_flags_get_resolved(sym->node.flags)) {
-                re = resolve_import_symbol(sli->r, (sym_import_symbol*)sym);
+                re = resolve_import_symbol(
+                    sli->r, (sym_import_symbol*)sym, sli->looking_body);
                 if (re) return re;
             }
             if (is->target_body) {

@@ -128,7 +128,8 @@ ast_elem* get_resolved_ast_node_ctype(ast_node* n);
 resolve_error resolve_ast_node(
     resolver* r, ast_node* n, ast_body* body, ast_elem** value,
     ast_elem** ctype);
-resolve_error resolve_import_symbol(resolver* r, sym_import_symbol* is);
+resolve_error resolve_import_symbol(
+    resolver* r, sym_import_symbol* is, ast_body* requesting_body);
 resolve_error add_body_decls(
     resolver* r, ast_body* parent_body, ast_body* shared_body, ast_body* body,
     bool public_st);

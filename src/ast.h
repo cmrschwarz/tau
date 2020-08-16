@@ -36,8 +36,8 @@ typedef enum PACK_ENUM ast_node_kind_e {
     ELEM_SRC_DIR,
     ELEM_LAST_ID = ELEM_SRC_DIR,
 
-    ASTN_FIRST_ID,
-    ASTN_ANONYMOUS_SYM_IMPORT_GROUP = ASTN_FIRST_ID,
+    ASTN_ANONYMOUS_SYM_IMPORT_GROUP,
+    ASTN_FIRST_ID = ASTN_ANONYMOUS_SYM_IMPORT_GROUP,
     ASTN_ANONYMOUS_MOD_IMPORT_GROUP,
 
     MF_MODULE,
@@ -75,6 +75,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SYM_IMPORT_PARENT,
     SYM_FUNC_EXTERN, // TODO
     SYM_LAST_ID = SYM_FUNC_EXTERN,
+    SYM_LAST_OPEN_ID = SYM_LAST_ID,
 
     STMT_USE,
     STMT_FIRST_ID = STMT_USE,
@@ -355,6 +356,7 @@ typedef struct astn_anonymous_sym_import_group_s {
 struct mdg_node_s;
 typedef struct sym_import_symbol_s {
     open_symbol osym;
+    ast_node* import_group;
     // for overloaded symbols, we can't resolve this to a single target symbol
     // therefore we keep the name and store the st to start overload lookup
     // for non overlodable symbols (vars, etc.) this is NULL
