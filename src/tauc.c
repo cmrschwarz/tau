@@ -133,6 +133,13 @@ int check_multi_opt_strats(tauc* t, optimization_strategy opt_strat)
     t->opt_strat = opt_strat;
     return OK;
 }
+bool strstart(const char* present, const char* expected)
+{
+    ureg exp_len = strlen(expected);
+    if (strlen(present) < exp_len) return false;
+    if (memcmp(present, expected, exp_len)) return false;
+    return true;
+}
 int handle_cmd_args(
     tauc* t, error_log* el, int argc, char** argv, bool* files_found)
 {
@@ -161,23 +168,39 @@ int handle_cmd_args(
             continue;
         }
         if (*files_found) return complain_trailing_args(t, el, arg);
-        if (!strcmp(arg, "-T")) {
-            if (i == argc - 1) {
-                master_error_log_report(
-                    &t->mel, "-T requires a number to follow");
-                return ERR;
+        if (strstart(arg, "-T")) {
+            bool joined_arg = false;
+            char* num_start;
+            if (arg[2] != '\0') {
+                joined_arg = true;
+                num_start = arg + 2;
             }
-            char* end = argv[i + 1] + strlen(argv[i + 1]);
-            char* num_end;
-            long num = strtol(argv[i + 1], &num_end, 10);
-            if (num > U16_MAX || num < 0 || num == 0 || num_end != end) {
-                char* msg = error_log_cat_strings_3(
-                    el, "invalid argument pair \"-t ", argv[i + 1], "\"");
+            else {
+                if (i == argc - 1) {
+                    master_error_log_report(
+                        &t->mel, "-T requires a number to follow");
+                    return ERR;
+                }
+                num_start = argv[i + 1];
+                i++;
+            }
+            char* arg_end = num_start + strlen(num_start);
+            char* num_end = arg_end;
+            long num = strtol(num_start, &num_end, 10);
+            if (num > U16_MAX || num < 0 || num == 0 || num_end != arg_end) {
+                char* msg;
+                if (joined_arg) {
+                    msg = error_log_cat_strings_3(
+                        el, "invalid argument '", arg, "'");
+                }
+                else {
+                    msg = error_log_cat_strings_3(
+                        el, "invalid argument '-T ", num_start, "'");
+                }
                 master_error_log_report(&t->mel, msg);
                 return ERR;
             }
             platttform_override_virt_core_count(num);
-            i++;
         }
         else if (!strcmp(arg, "--arch")) {
             if (i == argc - 1) {
