@@ -123,6 +123,9 @@ typedef struct mdg_node_s {
     // the guy that notifies us when he's ready. used for reducing scc
     // notification overhead by piggybacking on others with the same notifier
     mdg_node* notifier;
+
+    module_frame* root;
+
     // whether some module (maybe itself) was found to use this in the pp
     // in that case all deps of this need to be recursively loaded in the pp
     // when we set this to true (initially false) we do this for all known ones
@@ -169,7 +172,7 @@ mdght* mdg_start_write(module_dependency_graph* m);
 void mdg_end_write(module_dependency_graph* m);
 
 mdg_node* mdg_found_node(
-    thread_context* tc, mdg_node* parent, string ident, bool extend,
+    thread_context* tc, mdg_node* parent, string ident, module_frame* mf,
     src_map* smap, src_range sr);
 mdg_node* mdg_get_node(
     module_dependency_graph* m, mdg_node* parent, string ident,

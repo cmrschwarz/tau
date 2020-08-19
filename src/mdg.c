@@ -53,6 +53,8 @@ int mdg_init(module_dependency_graph* m)
         m, string_from_cstr("_invalid_node_"), NULL, MS_PARSING);
     // prevent this from ever being resolved
     atomic_ureg_inc(&m->invalid_node->unparsed_files);
+    // don't require a root node for this
+    atomic_ureg_dec(&m->root_node->unparsed_files);
     if (!m->root_node) return mdg_fin_partial(m, 6, ERR);
     m->invalid_node->error_occured = true;
     m->change_count = 0;
@@ -133,7 +135,9 @@ mdg_node* mdg_node_create(
     if (r) return mdg_node_partial_fin(n, 2);
     r = list_init(&n->notify);
     if (r) return mdg_node_partial_fin(n, 3);
-    atomic_ureg_init(&n->unparsed_files, 0);
+    // as long as the root is unfound
+    // we couldn't have parsed all files
+    atomic_ureg_init(&n->unparsed_files, 1);
     atomic_ureg_init(&n->decl_count, 0);
     atomic_ureg_init(&n->using_count, 0);
     // we init this to 1 so we don't get notified while the mdg  is still
@@ -149,6 +153,7 @@ mdg_node* mdg_node_create(
     n->requested_for_pp = false;
     n->partial_res_data = NULL;
     n->error_occured = false;
+    n->root = NULL;
     return n;
 }
 void free_import_group(import_group_data* ig_data)
@@ -405,9 +410,10 @@ int report_unrequired_extend(
 }
 // the source range and smap are in case we need to report an error
 mdg_node* mdg_found_node(
-    thread_context* tc, mdg_node* parent, string ident, bool extend,
+    thread_context* tc, mdg_node* parent, string ident, module_frame* mf,
     src_map* smap, src_range sr)
 {
+    bool extend = (mf->node.kind == MF_EXTEND);
     mdg_node* n = mdg_get_node(&tc->t->mdg, parent, ident, MS_FOUND_UNNEEDED);
     if (!n) return NULL;
     rwlock_write(&n->lock);
@@ -424,17 +430,13 @@ mdg_node* mdg_found_node(
             report_unrequired_extend(tc, n, smap, sr);
         }
         else {
-            aseglist_iterator it;
-            aseglist_iterator_begin(&it, &n->module_frames);
-            module_frame* f;
-            while ((f = aseglist_iterator_next(&it))) {
-                if (f->node.kind != MF_MODULE) continue;
-                report_module_redeclaration(tc, f, smap, sr);
-                break;
-            }
-            assert(f && f->node.kind == MF_MODULE);
+            report_module_redeclaration(tc, n->root, smap, sr);
         }
         return tc->t->mdg.invalid_node;
+    }
+    if (!extend && !n->root) {
+        n->root = mf;
+        atomic_ureg_dec(&n->unparsed_files);
     }
     rwlock_end_write(&n->lock);
     return n;
@@ -458,110 +460,6 @@ int mdg_node_file_parsed(
     if (up == 1) return mdg_node_parsed(m, n, tc);
     return OK;
 }
-/*
-bool module_import_group_find_import(
-    sym_import_group* ig, mdg_node* import, sym_import_group** tgt_group,
-    symbol** tgt_sym)
-{
-    if (ig->parent_im.module == import) {
-        *tgt_sym = (symbol*)ig;
-        *tgt_group = ig;
-        return true;
-    }
-    for (symbol* c = ig->children.symbols; c != NULL; c = c->next) {
-        if (c->node.kind == SYM_IMPORT_SYMBOL) continue;
-        if (c->node.kind == SYM_IMPORT_GROUP) {
-            if (module_import_group_find_import(
-                    (sym_import_group*)c, import, tgt_group, tgt_sym)) {
-                return true;
-            }
-        }
-        else {
-            assert(c->node.kind == SYM_IMPORT_MODULE);
-            if (((sym_import_module*)c)->module == import) {
-                *tgt_sym = (symbol*)c;
-                *tgt_group = ig;
-                return true;
-            }
-        }
-    }
-    return false;
-}
-bool ast_body_find_import(
-    ast_body* b, mdg_node* import, sym_import_group** tgt_group,
-    symbol** tgt_sym)
-{
-    for (ast_node** n = b->elements; *n; n++) {
-        if (ast_elem_is_scope((ast_elem*)*n)) {
-            if (ast_body_find_import(
-                    &((scope*)*n)->body, import, tgt_group, tgt_sym)) {
-                return true;
-            }
-        }
-        else if (ast_elem_is_module_frame((ast_elem*)n)) {
-            if (ast_body_find_import(
-                    &((module_frame*)*n)->body, import, tgt_group, tgt_sym)) {
-                return true;
-            }
-        }
-        else if ((**n).kind == SYM_IMPORT_GROUP) {
-            sym_import_group* ig = (sym_import_group*)*n;
-            if (module_import_group_find_import(
-                    ig, import, tgt_group, tgt_sym)) {
-                return true;
-            }
-        }
-        else if ((**n).kind == SYM_IMPORT_MODULE) {
-            if (((sym_import_module*)*n)->module == import) {
-                *tgt_group = NULL;
-                *tgt_sym = (symbol*)*n;
-                return true;
-            }
-        }
-    }
-    return false;
-}
-void mdg_node_find_import(
-    mdg_node* m, mdg_node* import, sym_import_group** tgt_group,
-    symbol** tgt_sym, src_map** smap)
-{
-    aseglist_iterator it;
-    aseglist_iterator_begin(&it, &m->module_frames);
-    while (true) {
-        module_frame* mf = aseglist_iterator_next(&it);
-        if (!mf) break;
-        if (ast_body_find_import(&mf->body, import, tgt_group, tgt_sym)) {
-            *smap = module_frame_get_smap(mf);
-            return;
-        }
-    }
-    panic("failed to find the source location of a missing import!");
-}
-void mdg_node_report_missing_import(
-    thread_context* tc, mdg_node* m, mdg_node* import)
-{
-    symbol* tgt_sym;
-    sym_import_group* tgt_group = NULL;
-    src_map* smap;
-    mdg_node_find_import(m, import, &tgt_group, &tgt_sym, &smap);
-    src_range_large tgt_sym_srl;
-    src_range_unpack(tgt_sym->node.srange, &tgt_sym_srl);
-    if (!tgt_group) {
-        error_log_report_annotated(
-            tc->err_log, ES_RESOLVER, false,
-            "missing definition for imported module", smap, tgt_sym_srl.start,
-            tgt_sym_srl.end, "imported here");
-        return;
-    }
-    src_range_large tgt_group_srl;
-    src_range_unpack(tgt_group->parent_im.osym.sym.node.srange, &tgt_group_srl);
-    error_log_report_annotated_twice(
-        tc->err_log, ES_RESOLVER, false,
-        "missing definition for imported module", smap, tgt_sym_srl.start,
-        tgt_sym_srl.end, "imported here", smap, tgt_group_srl.start,
-        tgt_group_srl.end, NULL);
-}
-*/
 int mdg_nodes_resolved(
     mdg_node** start, mdg_node** end, thread_context* tc, bool error_occured)
 {
@@ -775,48 +673,50 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
         // we still need to lock the stages since some final resolving might
         // still be going on
         rwlock_read(&n->lock);
-        // we used to only do this for unneeded and awaiting deps but i don't
-        // see why that would suffice
-        module_frame* mod_frame = NULL;
-        aseglist_iterator it;
-        aseglist_iterator_begin(&it, &n->module_frames);
-        module_frame* first_target = NULL;
-        module_frame* i = aseglist_iterator_next(&it);
-        first_target = i;
-        while (i) {
-            if (i->node.kind == MF_MODULE ||
-                i->node.kind == MF_MODULE_GENERIC) {
-                if (mod_frame != NULL) {
-                    src_range_large srl;
-                    src_range_unpack(i->node.srange, &srl);
-                    src_range_large srl_mod;
-                    src_range_unpack(mod_frame->node.srange, &srl_mod);
-                    // these should always have a smap
-                    assert(srl.smap && srl_mod.smap);
-                    // since aseglist iterates backwards we reverse, so
-                    // if it's in the same file the redeclaration is always
-                    // below
-                    error_log_report_annotated_twice(
-                        tc->err_log, ES_RESOLVER, false, "module redeclared",
-                        srl_mod.smap, srl_mod.start, srl_mod.end,
-                        "redeclaration here", srl.smap, srl.start, srl.end,
-                        "already declared here");
-                    res = ERR;
-                    break;
+        if (n->stage < MS_RESOLVING_EXPLORATION) {
+            // we used to only do this for unneeded and awaiting deps but i
+            // don't see why that would suffice
+            module_frame* mod_frame = NULL;
+            aseglist_iterator it;
+            aseglist_iterator_begin(&it, &n->module_frames);
+            module_frame* first_target = NULL;
+            module_frame* i = aseglist_iterator_next(&it);
+            first_target = i;
+            while (i) {
+                if (i->node.kind == MF_MODULE ||
+                    i->node.kind == MF_MODULE_GENERIC) {
+                    if (mod_frame != NULL) {
+                        src_range_large srl;
+                        src_range_unpack(i->node.srange, &srl);
+                        src_range_large srl_mod;
+                        src_range_unpack(mod_frame->node.srange, &srl_mod);
+                        // these should always have a smap
+                        assert(srl.smap && srl_mod.smap);
+                        // since aseglist iterates backwards we reverse, so
+                        // if it's in the same file the redeclaration is always
+                        // below
+                        error_log_report_annotated_twice(
+                            tc->err_log, ES_RESOLVER, false,
+                            "module redeclared", srl_mod.smap, srl_mod.start,
+                            srl_mod.end, "redeclaration here", srl.smap,
+                            srl.start, srl.end, "already declared here");
+                        res = ERR;
+                        break;
+                    }
+                    mod_frame = i;
                 }
-                mod_frame = i;
+                i = aseglist_iterator_next(&it);
             }
-            i = aseglist_iterator_next(&it);
-        }
-        if (mod_frame == NULL && first_target != NULL) {
-            src_range_large srl;
-            src_range_unpack(first_target->node.srange, &srl);
-            // THINK: maybe report extend count here or report all
-            error_log_report_annotated(
-                tc->err_log, ES_RESOLVER, false,
-                "extend without module declaration", srl.smap, srl.start,
-                srl.end, "extend here");
-            res = ERR;
+            if (mod_frame == NULL && first_target != NULL) {
+                src_range_large srl;
+                src_range_unpack(first_target->node.srange, &srl);
+                // THINK: maybe report extend count here or report all
+                error_log_report_annotated(
+                    tc->err_log, ES_RESOLVER, false,
+                    "extend without module declaration", srl.smap, srl.start,
+                    srl.end, "extend here");
+                res = ERR;
+            }
         }
         rwlock_end_read(&n->lock);
     }

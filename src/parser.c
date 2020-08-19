@@ -2802,8 +2802,7 @@ parse_error parse_module_frame_decl(
     md->smap = p->lx.smap;
     if (md->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     mdg_node* mdgn = mdg_found_node(
-        p->lx.tc, p->current_module, t->str, extend, p->lx.smap,
-        md->node.srange);
+        p->lx.tc, p->current_module, t->str, md, p->lx.smap, md->node.srange);
     if (mdgn == NULL) return PE_FATAL;
     PEEK(p, t);
     mdg_node* parent = p->current_module;
