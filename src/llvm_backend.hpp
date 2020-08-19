@@ -120,6 +120,7 @@ struct ControlFlowContext {
     llvm::BasicBlock* first_block;
     llvm::BasicBlock* following_block;
     bool continues_afterwards;
+    bool end_reachable;
 };
 
 enum ValueState : char {

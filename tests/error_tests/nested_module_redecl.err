@@ -1,0 +1,7 @@
+resolver error: module redeclaration
+ ==> ./tests/error_tests/nested_module_redecl.tau:1:1
+1 |module m{
+  |^^^^^^^^ one declaration here
+...
+4 |module m{
+  |^^^^^^^^ another conflicting declaration here

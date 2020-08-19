@@ -817,6 +817,7 @@ llvm_error LLVMBackend::genExecutableAstBody(
     ast_body* b, bool continues_afterwards, bool* end_reachable)
 {
     ControlFlowContext& ctx = _control_flow_ctx.back();
+    ctx.end_reachable = true;
     ctx.continues_afterwards = true;
     if (end_reachable) *end_reachable = true;
     for (ast_node** n = b->elements; *n; n++) {
@@ -825,8 +826,7 @@ llvm_error LLVMBackend::genExecutableAstBody(
         llvm_error lle = genAstNode(*n, NULL, NULL);
         if (lle) return lle;
         if (last && end_reachable) {
-            ast_elem* ctype = get_resolved_ast_node_ctype(*n);
-            *end_reachable = (ctype != UNREACHABLE_ELEM);
+            *end_reachable = ctx.end_reachable;
         }
     }
     return LLE_OK;
@@ -1514,6 +1514,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case EXPR_RETURN: {
             ControlFlowContext* tgt_ctx;
             bool continues = _control_flow_ctx.back().continues_afterwards;
+            _control_flow_ctx.back().end_reachable = false;
             llvm::Value* v;
             ast_node* ast_val;
             if (n->kind == EXPR_BREAK) {
@@ -1567,7 +1568,6 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                 _control_flow_ctx.back().continues_afterwards = true;
                 // todo: where do we cast?
                 lle = genAstNode(ast_val, NULL, &v);
-                _control_flow_ctx.back().continues_afterwards = false;
                 if (lle) return lle;
                 if (!_builder.CreateAlignedStore(
                         v, tgt_ctx->value, tgt_ctx->value_align))
