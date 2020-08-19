@@ -12,18 +12,13 @@ typedef enum resolve_error_e {
     RE_FATAL = -1,
     RE_OK = 0,
     RE_ERROR,
-    RE_NOT_APPLICABLE,
     RE_TYPE_MISSMATCH,
-    RE_SYMBOL_REDECLARATION,
-    RE_DIFFERENT_PP_LEVEL,
     RE_UNKNOWN_SYMBOL,
     RE_TYPE_LOOP,
-    RE_PP_DEPS_LOOP,
     RE_OVERLOADED,
     // returned by the first # on the way up to let the parent know he can't
     // continue until the paste was evaluated
     RE_UNREALIZED_COMPTIME, // could be paste or a value needed for a type
-    RE_REQUIRES_BODY_TYPE,
     RE_SYMBOL_NOT_FOUND_YET,
     RE_SUSPENDED,
 } resolve_error;
@@ -134,7 +129,6 @@ resolve_error add_body_decls(
     resolver* r, ast_body* parent_body, ast_body* shared_body, ast_body* body,
     bool public_st);
 ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st);
-resolve_error
-report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev);
+void report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev);
 ureg claim_symbol_id(resolver* r, symbol* s, bool public_st);
 bool ctypes_unifiable(ast_elem* a, ast_elem* b);

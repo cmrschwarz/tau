@@ -9,6 +9,7 @@
 #include "utils/list.h"
 
 #define VOID_ELEM ((ast_elem*)&PRIMITIVES[PT_VOID])
+#define ERROR_ELEM ((ast_elem*)&PRIMITIVES[PT_ERROR])
 #define UNREACHABLE_ELEM ((ast_elem*)&PRIMITIVES[PT_UNREACHABLE])
 #define PASTED_EXPR_ELEM ((ast_elem*)&PRIMITIVES[PT_PASTED_EXPR])
 #define GENERIC_TYPE_ELEM ((ast_elem*)&PRIMITIVES[PT_GENERIC_TYPE])
@@ -199,6 +200,7 @@ typedef enum PACK_ENUM operator_kind_e {
 
 typedef enum PACK_ENUM primitive_kind_e {
     PT_VOID,
+    PT_ERROR,
     PT_UNREACHABLE,
     PT_UNDEFINED,
     PT_DEFINED,

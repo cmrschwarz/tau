@@ -227,6 +227,15 @@ bool ast_flags_get_used_in_pp(ast_flags f)
 {
     return bitmask_get_bit(f, ASTF_USED_IN_PP_OFFSET);
 }
+
+void ast_flags_set_poisoned(ast_flags* f)
+{
+    bitmask_set_bit(f, ASTF_POISONED_OFFSET);
+}
+bool ast_flags_get_poisoned(ast_flags f)
+{
+    return bitmask_get_bit(f, ASTF_POISONED_OFFSET);
+}
 void ast_flags_set_instance_member(ast_flags* f)
 {
     bitmask_set_bit(f, ASTF_INSTANCE_MEMBER_OFFSET);

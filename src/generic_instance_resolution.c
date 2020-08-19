@@ -168,8 +168,7 @@ resolve_error instantiate_generic_struct(
         symbol* c =
             symbol_table_insert(sgi->st.sb.sc.body.symtab, (symbol*)gpi);
         if (c) {
-            return report_redeclaration_error(
-                r, c, (symbol*)&sgi->generic_args[i]);
+            report_redeclaration_error(r, c, (symbol*)&sgi->generic_args[i]);
         }
     }
     if (re) return re;

@@ -51,18 +51,39 @@ static resolve_error add_ast_node_decls(
     resolver* r, ast_body* body, ast_body* shared_body, ast_node* n,
     bool public_st);
 // must be a macro so value and ctype become lazily evaluated
-#define SET_THEN_RETURN_IF_RESOLVED(resolved, pvalue, pctype, value, ctype)    \
+
+#define SET_VAL_CTYPE(pvalue, pctype, value, ctype)                            \
     do {                                                                       \
         if (pvalue) *pvalue = (ast_elem*)(value);                              \
         if (pctype) *pctype = (ast_elem*)(ctype);                              \
+    } while (false) /* fallthrough */
+
+#define SET_THEN_RETURN_IF_RESOLVED(resolved, pvalue, pctype, value, ctype)    \
+    do {                                                                       \
+        SET_VAL_CTYPE(pvalue, pctype, value, ctype);                           \
         if (resolved) return RE_OK; /* fallthrough */                          \
     } while (false) /* fallthrough */
 
 #define RETURN_RESOLVED(pvalue, pctype, value, ctype)                          \
     do {                                                                       \
-        if (pvalue) *pvalue = (ast_elem*)(value);                              \
-        if (pctype) *pctype = (ast_elem*)(ctype);                              \
+        SET_VAL_CTYPE(pvalue, pctype, value, ctype);                           \
         return RE_OK;                                                          \
+    } while (false)
+
+#define RETURN_POISONED(re, node)                                              \
+    do {                                                                       \
+        ast_flags* flags = &((ast_node*)(node))->flags;                        \
+        if (re != RE_FATAL) {                                                  \
+            ast_flags_set_poisoned(flags);                                     \
+            ast_flags_set_resolved(flags);                                     \
+        }                                                                      \
+        return re;                                                             \
+    } while (false)
+
+#define SET_THEN_RETURN_POISONED(re, node, pvalue, pctype, value, ctype)       \
+    do {                                                                       \
+        SET_VAL_CTYPE(pvalue, pctype, value, ctype);                           \
+        RETURN_POISONED(re, node);                                             \
     } while (false)
 
 static resolve_error
@@ -81,8 +102,7 @@ report_unknown_symbol(resolver* r, ast_node* n, ast_body* body)
         "use of an undefined symbol");
     return RE_UNKNOWN_SYMBOL;
 }
-resolve_error
-report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev)
+void report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev)
 {
     src_range_large prev_st, redecl_st;
     ast_node_get_src_range(
@@ -95,7 +115,7 @@ report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev)
         "scope",
         redecl_st.smap, redecl_st.start, redecl_st.end,
         "previous definition here");
-    return RE_SYMBOL_REDECLARATION;
+    r->error_occured = true;
 }
 static ast_body*
 get_decl_target_body(ast_node* decl, ast_body* body, ast_body* shared_body)
@@ -119,7 +139,13 @@ add_symbol(resolver* r, ast_body* body, ast_body* shared_body, symbol* sym)
     conflict = symbol_table_insert(tgt_body->symtab, sym);
     // symbol_table_inc_decl_count(tgtst);
     if (conflict) {
-        return report_redeclaration_error(r, sym, conflict);
+        report_redeclaration_error(r, sym, conflict);
+        assert(ast_elem_is_node(sym->declaring_body->owning_node));
+        ast_flags_set_poisoned(
+            &((ast_node*)sym->declaring_body->owning_node)->flags);
+        // TODO: poison the target body?
+        // what to do for modules
+        // symbol lookup should probably respect this
     }
     return RE_OK;
 }
@@ -515,7 +541,7 @@ static resolve_error add_func_decl(
             sfo->overloads = (scope*)n;
         }
         else {
-            return report_redeclaration_error(r, sym, *conflict);
+            report_redeclaration_error(r, sym, *conflict);
         }
     }
     // we only do the parameters here because the declaration and
@@ -820,7 +846,7 @@ static resolve_error add_ast_node_decls(
             }
             symbol* conflict = symbol_table_insert(st, (symbol*)im);
             if (conflict) {
-                return report_redeclaration_error(r, (symbol*)im, conflict);
+                report_redeclaration_error(r, (symbol*)im, conflict);
             }
             return RE_OK;
         }
@@ -1626,13 +1652,17 @@ static inline resolve_error resolve_var(
         }
     }
     r->curr_pp_node = prev_pp_node;
-    if (re && re != RE_UNREALIZED_COMPTIME) {
+    bool unrealized_comptime = false;
+    if (re == RE_UNREALIZED_COMPTIME) {
+        unrealized_comptime = true;
+        re = RE_OK;
+    }
+    if (re) {
         // so we can free it... sigh
         if (v->pprn) add_pprn_to_waiting_list(r, v->pprn);
-        return re;
+        SET_THEN_RETURN_POISONED(re, v, value, ctype, v, ERROR_ELEM);
     }
     if (v->pprn) {
-        resolve_error re_prev = re;
         if (public_symbol) {
             re = curr_pprn_depend_on(r, requesting_body, &v->pprn);
         }
@@ -1643,9 +1673,8 @@ static inline resolve_error resolve_var(
         re =
             pp_resolve_node_activate(r, requesting_body, &v->pprn, re == RE_OK);
         if (re) return re;
-        re = re_prev;
     }
-    if (re) return re;
+    if (unrealized_comptime) return RE_UNREALIZED_COMPTIME;
     ast_flags_set_resolved(&v->osym.sym.node.flags);
     RETURN_RESOLVED(value, ctype, v, v->ctype);
 }
@@ -1765,20 +1794,6 @@ static inline resolve_error resolve_identifier(
         assert(false); // TODO: report ambiguity
     }
     re = resolve_ast_node(r, (ast_node*)sym, body, (ast_elem**)&sym, ctype);
-    if (re == RE_DIFFERENT_PP_LEVEL) {
-        sym = stack_pop(&r->error_stack);
-        assert(ast_elem_is_symbol((ast_elem*)sym));
-        src_range_large id_sr, sym_sr;
-        ast_node_get_src_range((ast_node*)e, body, &id_sr);
-        ast_node_get_src_range((ast_node*)sym, sym->declaring_body, &sym_sr);
-        error_log_report_annotated_twice(
-            r->tc->err_log, ES_RESOLVER, false,
-            "cannot access variable of a different preprocessing "
-            "level",
-            id_sr.smap, id_sr.start, id_sr.end, "usage here", sym_sr.smap,
-            sym_sr.start, sym_sr.end, "variable defined here");
-        return RE_ERROR;
-    }
     if (re) return re;
     e->value.sym = (symbol*)sym;
     if (value) *value = (ast_elem*)sym;
@@ -2963,7 +2978,9 @@ resolve_error resolve_func(
                 &fnb->return_ctype, NULL);
             if (re) {
                 r->generic_context = generic_parent;
-                return re;
+                fnb->return_ctype = ERROR_ELEM;
+                if (re == RE_UNREALIZED_COMPTIME || re == RE_FATAL) return re;
+                ast_flags_set_poisoned(&fnb->sc.osym.sym.node.flags);
             }
         }
         else {
@@ -3045,7 +3062,10 @@ resolve_error resolve_func(
             return re2;
         }
     }
-    if (re) return re;
+
+    if (re) {
+        RETURN_POISONED(re, fnb);
+    }
     if (stmt_ctype_ptr && fnb->return_ctype != VOID_ELEM) {
         ureg brace_end = src_range_get_end(fnb->sc.body.srange);
         src_map* smap = ast_body_get_smap(fnb->sc.osym.sym.declaring_body);
@@ -3147,7 +3167,8 @@ resolve_error resolver_mark_required_module_fill_buffer(
          mf = aseglist_iterator_next(&it)) {
         if (mf->node.kind == MF_MODULE) {
             if (root) {
-                report_module_redeclaration(r->tc, root, mf->smap, mf->node.srange);
+                report_module_redeclaration(
+                    r->tc, root, mf->smap, mf->node.srange);
                 continue;
             }
             root = mf;
@@ -3532,7 +3553,7 @@ resolve_error report_cyclic_pp_deps(resolver* r)
                 "encountered cyclic dependency during preprocessor "
                 "execution",
                 srl.smap, srl.start, srl.end, "loop contains this element");
-            re = RE_PP_DEPS_LOOP;
+            re = RE_ERROR;
             if (r->tc->t->trap_on_error) debugbreak();
         }
     }
@@ -3835,15 +3856,11 @@ resolve_error lookup_priv_module_symbol(
 }
 int resolver_emit(resolver* r, llvm_module** module)
 {
-    llvm_error lle;
-    int res = llvm_backend_init_module(
-        r->backend, r->mdgs_begin, r->mdgs_end, module);
-    if (res) return res;
     // gen entrypoint in case if we are the root module
     mdg_node* root = r->tc->t->mdg.root_node;
+    symbol* mainfn = NULL;
+    symbol* startfn = NULL;
     if (*r->mdgs_begin == root) {
-        symbol* mainfn = NULL;
-        symbol* startfn = NULL;
         resolve_error re = lookup_priv_module_symbol(
             r, root, COND_KW_START, &startfn,
             "multiple candidates for _start function");
@@ -3863,6 +3880,16 @@ int resolver_emit(resolver* r, llvm_module** module)
         }
         assert(!mainfn || mainfn->node.kind == SC_FUNC);
         assert(!startfn || startfn->node.kind == SC_FUNC);
+    }
+    if (!tauc_success_so_far(r->tc->t) && r->tc->t->needs_emit_stage) {
+        *module = NULL;
+        return OK;
+    }
+    llvm_error lle;
+    int res = llvm_backend_init_module(
+        r->backend, r->mdgs_begin, r->mdgs_end, module);
+    if (res) return res;
+    if (*r->mdgs_begin == root) {
         lle = llvm_backend_generate_entrypoint(
             r->backend, (sc_func*)mainfn, (sc_func*)startfn,
             &r->tc->t->module_ctors, &r->tc->t->module_dtors, r->glob_id_start,
@@ -3870,18 +3897,11 @@ int resolver_emit(resolver* r, llvm_module** module)
             r->private_sym_count + r->public_sym_count);
         if (lle) return RE_ERROR;
     }
-
-    if (tauc_success_so_far(r->tc->t) && r->tc->t->needs_emit_stage) {
-        lle = llvm_backend_emit_module(
-            r->backend, r->glob_id_start,
-            r->glob_id_start + r->public_sym_count,
-            r->private_sym_count + r->public_sym_count);
-        if (lle == LLE_FATAL) return RE_FATAL;
-        if (lle) return RE_ERROR;
-    }
-    else {
-        *module = NULL;
-    }
+    lle = llvm_backend_emit_module(
+        r->backend, r->glob_id_start, r->glob_id_start + r->public_sym_count,
+        r->private_sym_count + r->public_sym_count);
+    if (lle == LLE_FATAL) return RE_FATAL;
+    if (lle) return RE_ERROR;
     return OK;
 }
 resolve_error

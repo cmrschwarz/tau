@@ -16,6 +16,7 @@
                 .next = NULL},                                                 \
     }
 primitive PRIMITIVES[] = {
+    mk_prim(PT_ERROR, "__error__"),
     mk_prim(PT_VOID, "void"),
     mk_prim(PT_GENERIC_TYPE, "generic type"),
     mk_prim(PT_UNREACHABLE, "unreachable"),

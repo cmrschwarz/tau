@@ -498,6 +498,7 @@ void LLVMBackend::setupPrimitives()
             case PT_PASTED_EXPR:
             case PT_GENERIC_TYPE:
             case PT_DEFINED:
+            case PT_ERROR:
             case PT_UNDEFINED:
             case PT_UNREACHABLE: t = NULL; break;
             default: assert(false); return;
