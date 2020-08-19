@@ -1,4 +1,4 @@
-require "support/libc.tau";
+require "../support/libc.tau";
 import libc::(printf, puts, malloc, free, debug_silence_stdout);
 
 public func foo() -> int{
