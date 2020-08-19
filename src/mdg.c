@@ -51,6 +51,8 @@ int mdg_init(module_dependency_graph* m)
 
     m->invalid_node = mdg_node_create(
         m, string_from_cstr("_invalid_node_"), NULL, MS_PARSING);
+    // prevent this from ever being resolved
+    atomic_ureg_inc(&m->invalid_node->unparsed_files);
     if (!m->root_node) return mdg_fin_partial(m, 6, ERR);
     m->invalid_node->error_occured = true;
     m->change_count = 0;

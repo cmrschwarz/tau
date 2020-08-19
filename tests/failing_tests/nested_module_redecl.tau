@@ -1,0 +1,9 @@
+module m{
+    module impl{}
+}
+module m{
+    module impl{}
+}
+func main(){
+    import m;
+}

@@ -5,6 +5,7 @@
 /temp
 /deps/llvm-project-prebuild*/**
 /tests/test.tau
+/tests/test2.tau
 /test.tau
 /tests/foo.tau
 *.obj

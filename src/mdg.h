@@ -69,7 +69,7 @@ static inline bool
 module_stage_requirements_needed(module_stage ms, bool* exploring)
 {
     // why would we be handling requires otherwise?
-    assert(ms < MS_PARSED_UNNEEDED);
+    // assert(ms < MS_PARSED_UNNEEDED);
     switch (ms) {
         case MS_UNFOUND:
         case MS_PARSING:
@@ -93,6 +93,7 @@ static inline bool module_stage_is_exploring(module_stage ms)
            ms == MS_RESOLVING_EXPLORATION;
 }
 typedef struct partial_resolution_data_s partial_resolution_data;
+
 typedef struct mdg_node_s {
     ast_elem elem;
     ast_body body;
@@ -122,7 +123,6 @@ typedef struct mdg_node_s {
     // the guy that notifies us when he's ready. used for reducing scc
     // notification overhead by piggybacking on others with the same notifier
     mdg_node* notifier;
-
     // whether some module (maybe itself) was found to use this in the pp
     // in that case all deps of this need to be recursively loaded in the pp
     // when we set this to true (initially false) we do this for all known ones
@@ -177,6 +177,9 @@ mdg_node* mdg_get_node(
 
 int report_unrequired_extend(
     thread_context* tc, mdg_node* mod, src_map* smap, src_range sr);
+void report_module_redeclaration(
+    thread_context* tc, module_frame* mod_1, src_map* mod2_smap,
+    src_range mod2_sr);
 
 int mdg_node_parsed(
     module_dependency_graph* m, mdg_node* n, thread_context* tc);

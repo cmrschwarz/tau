@@ -3147,7 +3147,8 @@ resolve_error resolver_mark_required_module_fill_buffer(
          mf = aseglist_iterator_next(&it)) {
         if (mf->node.kind == MF_MODULE) {
             if (root) {
-                assert(false); // TODO: report double root
+                report_module_redeclaration(r->tc, root, mf->smap, mf->node.srange);
+                continue;
             }
             root = mf;
             continue;
