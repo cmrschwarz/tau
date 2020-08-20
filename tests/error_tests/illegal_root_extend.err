@@ -1,0 +1,6 @@
+resolver error: extend in non required file
+ ==> ./tests/error_tests/illegal_root_extend.tau.second:1:1
+1 |func foo(){ //this should cause an error
+  |^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
+2 |
+3 |} <- the file containing this has not been required by module _

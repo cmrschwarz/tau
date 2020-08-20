@@ -1,0 +1,3 @@
+func foo(){ //this should cause an error
+
+}

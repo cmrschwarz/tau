@@ -1,0 +1,8 @@
+module m{
+    //we require this file, but not from root!
+    require "illegal_root_extend.tau.second"; 
+}
+
+func main(){
+    import m;
+}
