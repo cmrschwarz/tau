@@ -30,9 +30,9 @@ static inline void aseglist_iterator_begin(aseglist_iterator* it, aseglist* l)
     do {
         n = (aseglist_node*)atomic_ptr_load(l);
     } while (!n);
-    it->pos = (void**)ptradd(
-        n, ASEGLIST_ELEM_OFFSET + atomic_sreg_load(&n->space) * sizeof(void*));
+    ureg space = atomic_sreg_load(&n->space) * sizeof(void*);
     ureg size = *(ureg*)ptradd(n, ASEGLIST_ELEM_OFFSET);
+    it->pos = (void**)ptradd(n, ASEGLIST_ELEM_OFFSET + space);
     it->end = (void**)ptradd(n, size);
     it->node = n;
 }

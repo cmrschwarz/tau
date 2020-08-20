@@ -86,15 +86,10 @@ void mdght_iterator_begin(mdght_iterator* it, mdght* h)
 mdg_node* mdght_iterator_next(mdght_iterator* it)
 {
     while (true) {
-        if (it->head == it->end) {
-            return NULL;
-        }
-        if (*it->head == NULL) {
-            it->head++;
-            continue;
-        }
+        if (it->head == it->end) return NULL;
         mdg_node* res = *it->head;
         it->head++;
+        if (res == NULL) continue;
         return res;
     }
 }

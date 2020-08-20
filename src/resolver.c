@@ -3157,21 +3157,25 @@ typedef struct unverified_module_frame_s {
 #include "sort.h"
 resolve_error resolver_mark_required_module_fill_buffer(
     resolver* r, mdg_node* n, unverified_module_frame** frames_buffer,
-    unverified_module_frame** buffer_end, module_frame** root_frame)
+    unverified_module_frame** buffer_end)
 {
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &n->module_frames);
-    module_frame* root = NULL;
+    assert(n->root || n == r->tc->t->mdg.root_node);
     ureg count = 0;
     for (module_frame* mf = aseglist_iterator_next(&it); mf != NULL;
          mf = aseglist_iterator_next(&it)) {
         if (mf->node.kind == MF_MODULE) {
-            if (root) {
+            assert(n != r->tc->t->mdg.root_node);
+            if (mf != n->root) {
                 report_module_redeclaration(
-                    r->tc, root, mf->smap, mf->node.srange);
+                    r->tc, n->root, mf->smap, mf->node.srange);
+                if (aseglist_add(
+                        &r->tc->t->mdg.invalid_node->module_frames, mf)) {
+                    return RE_FATAL;
+                }
                 continue;
             }
-            root = mf;
             continue;
         }
         ast_elem* src = mf->smap->source;
@@ -3195,11 +3199,6 @@ resolve_error resolver_mark_required_module_fill_buffer(
         f->next_verified = NULL;
         count++;
     }
-    if (n != r->tc->t->mdg.root_node) {
-        if (!root) {
-            assert("false"); // TODO: report missing root
-        }
-    }
     ureg alloc_size = count * sizeof(unverified_module_frame);
     unverified_module_frame* frames = pool_alloc(&r->tc->tempmem, alloc_size);
     if (!frames) {
@@ -3211,7 +3210,6 @@ resolve_error resolver_mark_required_module_fill_buffer(
     unverified_module_frame_quick_sort(frames, count);
     *frames_buffer = frames;
     *buffer_end = frames + count;
-    *root_frame = root;
     // assert(count > 0 || root);
     return RE_OK;
 }
@@ -3259,13 +3257,12 @@ resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
     unverified_module_frame* frames;
     unverified_module_frame* end;
     unverified_module_frame* verified = (unverified_module_frame*)NULL_PTR_PTR;
-    module_frame* root;
     resolve_error re =
-        resolver_mark_required_module_fill_buffer(r, n, &frames, &end, &root);
+        resolver_mark_required_module_fill_buffer(r, n, &frames, &end);
     if (re) return re;
     ureg unverified_count = end - frames;
 
-    module_frame* curr = root;
+    module_frame* curr = n->root;
     if (!curr) {
         assert(n == r->tc->t->mdg.root_node);
         list_it it;
@@ -3297,8 +3294,8 @@ resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
         r->error_occured = true;
         aseglist old_list = n->module_frames;
         aseglist_init(&n->module_frames);
-        if (root) {
-            if (aseglist_add(&n->module_frames, root)) {
+        if (n->root) {
+            if (aseglist_add(&n->module_frames, n->root)) {
                 aseglist_fin(&n->module_frames);
                 n->module_frames = old_list;
                 return RE_FATAL;

@@ -107,6 +107,7 @@ void pool_steal_all(pool* p, pool* donor)
 }
 void pool_steal_used(pool* p, pool* donor)
 {
+    if (!donor->head_segment) return;
     pool_segment* donor_unused = donor->head_segment->next;
     donor->head_segment->next = NULL;
     pool_steal_all(p, donor);

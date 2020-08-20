@@ -196,7 +196,8 @@ void free_astn_symtabs(ast_node* n)
         case SYM_IMPORT_PARENT: {
             // TODO: think about handling this properly
             sym_import_parent* ip = (sym_import_parent*)n;
-            symbol_table_destroy(ip->symtab);
+            if (ip->symtab) symbol_table_destroy(ip->symtab);
+            ip->symtab = NULL;
         } break;
         case ASTN_ANONYMOUS_MOD_IMPORT_GROUP:
         case ASTN_ANONYMOUS_SYM_IMPORT_GROUP:
@@ -332,23 +333,21 @@ void free_body_symtabs(ast_body* b)
             }
         }
         symbol_table_destroy(b->symtab);
+        b->symtab = NULL;
     }
 }
 void mdg_node_fin(mdg_node* n)
 {
-    if (n->stage >= MS_PARSING) {
-        aseglist_iterator it;
-        aseglist_iterator_begin(&it, &n->module_frames);
-        while (true) {
-            module_frame* mf = aseglist_iterator_next(&it);
-            if (!mf) break;
-            free_body_symtabs(&mf->body);
-        }
+    aseglist_iterator it;
+    aseglist_iterator_begin(&it, &n->module_frames);
+    while (true) {
+        module_frame* mf = aseglist_iterator_next(&it);
+        if (!mf) break;
+        free_body_symtabs(&mf->body);
     }
-    if (n->stage >= MS_RESOLVING) {
-        if (n->body.symtab) {
-            symbol_table_destroy(n->body.symtab);
-        }
+    if (n->body.symtab) {
+        symbol_table_destroy(n->body.symtab);
+        n->body.symtab = NULL;
     }
     mdg_node_partial_fin(n, -1);
 }
