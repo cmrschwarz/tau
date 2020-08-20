@@ -56,13 +56,13 @@ static resolve_error add_ast_node_decls(
     do {                                                                       \
         if (pvalue) *pvalue = (ast_elem*)(value);                              \
         if (pctype) *pctype = (ast_elem*)(ctype);                              \
-    } while (false) /* fallthrough */
+    } while (false)
 
 #define SET_THEN_RETURN_IF_RESOLVED(resolved, pvalue, pctype, value, ctype)    \
     do {                                                                       \
         SET_VAL_CTYPE(pvalue, pctype, value, ctype);                           \
-        if (resolved) return RE_OK; /* fallthrough */                          \
-    } while (false) /* fallthrough */
+        if (resolved) return RE_OK;                                            \
+    } while (false)
 
 #define RETURN_RESOLVED(pvalue, pctype, value, ctype)                          \
     do {                                                                       \
@@ -2365,6 +2365,7 @@ static inline resolve_error resolve_ast_node_raw(
         case SYM_IMPORT_PARENT: {
             SET_THEN_RETURN_IF_RESOLVED(resolved, value, ctype, n, NULL);
             assert(false);
+            return RE_ERROR;
         }
         case ASTN_ANONYMOUS_SYM_IMPORT_GROUP:
         case SYM_IMPORT_MODULE: {
