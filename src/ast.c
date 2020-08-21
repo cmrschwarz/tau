@@ -130,7 +130,7 @@ bool ast_elem_is_paste_evaluation(ast_elem* s)
 }
 bool assignment_is_meta_assignment(expr_op_binary* ob, bool* defined)
 {
-    assert(ast_flags_get_resolved(ob->node.flags));
+    assert(ast_node_get_resolved(&ob->node));
     if (ob->rhs->kind == EXPR_IDENTIFIER) {
         expr_identifier* id = (expr_identifier*)ob->rhs;
         if (id->value.sym == (symbol*)&PRIMITIVES[PT_UNDEFINED]) {

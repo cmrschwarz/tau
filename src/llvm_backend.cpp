@@ -703,7 +703,7 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
     llvm_error lle;
     if (n->node->kind == EXPR_PP) {
         auto expr = (expr_pp*)n->node;
-        if (ast_flags_get_pp_expr_res_used(expr->node.flags) &&
+        if (ast_node_get_pp_expr_res_used(&expr->node) &&
             expr->ctype != PASTED_EXPR_ELEM) {
             llvm::Type* ret_type;
             ureg size;
@@ -851,8 +851,7 @@ llvm::Type** LLVMBackend::lookupTypeRaw(ureg id)
 llvm_error
 LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
 {
-    assert(
-        !ast_elem_is_node(e) || ast_flags_get_resolved(((ast_node*)e)->flags));
+    assert(!ast_elem_is_node(e) || ast_node_get_resolved(((ast_node*)e)));
     llvm_error lle;
     switch (e->kind) {
         case SYM_PRIMITIVE: {
@@ -892,13 +891,12 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
                         // etc.
                         if (s->kind == SYM_VAR ||
                             s->kind == SYM_VAR_INITIALIZED) {
-                            if (ast_flags_get_static(s->flags)) {
-                                llvm_error lle =
-                                    genAstNode((ast_node*)s, NULL, NULL);
+                            if (ast_node_get_static(s)) {
+                                llvm_error lle = genAstNode(s, NULL, NULL);
                                 if (lle) return lle;
                             }
                             else {
-                                assert(ast_flags_get_instance_member(s->flags));
+                                assert(ast_node_get_instance_member(s));
                                 ((sym_var*)s)->var_id = memcnt;
                                 lle = lookupCType(
                                     ((sym_var*)s)->ctype, &members[memcnt],
@@ -1002,7 +1000,7 @@ bool LLVMBackend::isGlobalID(ureg id)
 bool LLVMBackend::isPPSymbolGlobal(symbol* sym)
 {
     if (sym->declaring_body->owning_node->kind != MF_EXTEND) return false;
-    auto am = ast_flags_get_access_mod(sym->node.flags);
+    auto am = ast_node_get_access_mod((ast_node*)sym);
     return (am == AM_PUBLIC || am == AM_PROTECTED);
 }
 llvm_error LLVMBackend::getFollowingBlock(llvm::BasicBlock** following_block)
@@ -1162,16 +1160,16 @@ LLVMBackend::buildConstant(ast_elem* ctype, void* data, llvm::Constant** res)
 llvm_error
 LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
-    bool instance_member = ast_flags_get_instance_member(n->flags);
+    bool instance_member = ast_node_get_instance_member(n);
     if (instance_member && !_curr_this) {
         assert(!vl && !vl_loaded);
         return LLE_OK;
     }
-    if (!_pp_mode && ast_flags_get_comptime(n->flags)) {
+    if (!_pp_mode && ast_node_get_comptime(n)) {
         assert(!vl && !vl_loaded);
         return LLE_OK;
     }
-    if (ast_flags_get_const(n->flags)) assert(false); // TODO (ctfe)
+    if (ast_node_get_const(n)) assert(false); // TODO (ctfe)
     sym_var* var = (sym_var*)n;
     llvm::Type* t;
     ureg align;
@@ -1254,7 +1252,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case NOT_GENERATED: {
             generate = true;
             if (_pp_mode) {
-                if (ast_flags_get_emitted_for_pp(n->flags)) {
+                if (ast_node_get_emitted_for_pp(n)) {
                     *state = PP_STUB_ADDED;
                     gen_stub = true;
                 }
@@ -1367,7 +1365,7 @@ llvm_error LLVMBackend::genFuncCall(
     expr_call* c, llvm::Value** vl, llvm::Value** vl_loaded)
 {
     llvm_error lle;
-    bool mem_func = ast_flags_get_instance_member(c->node.flags);
+    bool mem_func = ast_node_get_instance_member(&c->node);
     llvm::Value** args = (llvm::Value**)pool_alloc(
         &_tc->permmem, sizeof(llvm::Value*) * (c->arg_count + mem_func));
     if (!args) return LLE_FATAL;
@@ -1411,8 +1409,7 @@ llvm_error
 LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
     assert(
-        ast_flags_get_resolved(n->flags) ||
-        ast_elem_is_module_frame((ast_elem*)n) ||
+        ast_node_get_resolved(n) || ast_elem_is_module_frame((ast_elem*)n) ||
         ast_elem_is_any_import((ast_elem*)n));
     // TODO: proper error handling
     llvm_error lle;
@@ -2099,8 +2096,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     else {
         if (_pp_mode) {
             assert(*state == NOT_GENERATED);
-            gen_stub =
-                ast_flags_get_emitted_for_pp(fn->fnb.sc.osym.sym.node.flags);
+            gen_stub = ast_node_get_emitted_for_pp((ast_node*)fn);
         }
         else {
             assert(*state == NOT_GENERATED || *state == IMPL_DESTROYED);
@@ -2113,8 +2109,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     llvm::Type* ret_type;
     llvm_error lle = lookupCType(fn->fnb.return_ctype, &ret_type, NULL, NULL);
     if (lle) return lle;
-    bool mem_func =
-        ast_flags_get_instance_member(fn->fnb.sc.osym.sym.node.flags);
+    bool mem_func = ast_node_get_instance_member((ast_node*)fn);
     if (fn->fnb.param_count != 0 || mem_func) {
         llvm::Type** params = (llvm::Type**)pool_alloc(
             &_tc->permmem,
@@ -2159,8 +2154,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     // TODO: ugly hack,  use a proper extern function
     // ast node
     bool fwd_decl = (fn->fnb.sc.body.srange == SRC_RANGE_INVALID);
-    bool extern_flag =
-        ast_flags_get_extern_func(fn->fnb.sc.osym.sym.node.flags);
+    bool extern_flag = ast_node_get_extern_func((ast_node*)fn);
     auto func_name_mangled = extern_flag ? std::string(fn->fnb.sc.osym.sym.name)
                                          : nameMangle(&fn->fnb);
     if (fwd_decl || !isIDInModule(fn->id) || gen_stub) {
@@ -2193,7 +2187,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     if (_pp_mode) {
         assert(isLocalID(fn->id));
         *state = PP_IMPL_ADDED;
-        ast_flags_set_emitted_for_pp(&fn->fnb.sc.osym.sym.node.flags);
+        ast_node_set_emitted_for_pp((ast_node*)fn);
         _reset_after_emit.push_back(fn->id);
     }
     else {

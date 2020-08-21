@@ -162,7 +162,7 @@ resolve_error instantiate_generic_struct(
         // gpi->sym.declaring_st = sgi->st.sb.sc.body.symtab;
         gpi->sym.name = gp->sym.name;
         gpi->sym.node.flags = gp->sym.node.flags;
-        ast_flags_set_resolved(&gpi->sym.node.flags);
+        ast_node_set_resolved(&gpi->sym.node.flags);
         gpi->sym.node.kind = SYM_PARAM_GENERIC_INST;
         gpi->sym.node.srange = gp->sym.node.srange;
         symbol* c =

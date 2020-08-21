@@ -230,8 +230,9 @@ typedef struct ast_node_s {
     union {
         primitive_kind pt_kind;
         operator_kind op_kind;
+        u8 symbol_flags;
     };
-    ast_flags flags;
+    u16 flags;
     src_range srange;
 } ast_node;
 

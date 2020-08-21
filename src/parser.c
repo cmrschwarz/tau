@@ -24,6 +24,34 @@
     } while (false)
 
 bool body_supports_exprs(ast_node_kind pt);
+typedef struct modifier_data_s {
+    bool comptime_mod;
+    access_modifier access_mod;
+    bool extern_mod;
+    bool static_mod;
+    bool explicit_mod;
+    bool implicit_mod;
+    bool const_mod;
+    bool relative_import_mod;
+    bool func_is_op_mod;
+} modifier_data;
+
+static const modifier_data MODIFIERS_NONE = {.comptime_mod = false,
+                                             .access_mod = AM_NONE,
+                                             .extern_mod = false,
+                                             .static_mod = false,
+                                             .explicit_mod = false,
+                                             .implicit_mod = false,
+                                             .const_mod = false,
+                                             .relative_import_mod = false,
+                                             .func_is_op_mod = false};
+
+typedef struct modifier_status_s {
+    modifier_data data;
+    ureg start;
+    ureg end;
+} modifier_status;
+
 parse_error parse_statement(parser* p, ast_node** tgt);
 parse_error parse_scope_body(parser* p, scope* s, ureg param_count);
 parse_error parse_module_frame_body(
@@ -462,7 +490,7 @@ static inline void
 curr_scope_add_uses(parser* p, access_modifier am, ureg count)
 {
     body_parse_data* bpd = get_bpd(p);
-    if (am == AM_LOCAL) {
+    if (am == AM_LOCAL || am == AM_NONE) {
         bpd->usings_count += count;
     }
     else {
@@ -478,7 +506,7 @@ static inline void
 curr_scope_add_decls(parser* p, access_modifier am, ureg count)
 {
     body_parse_data* bpd = get_bpd(p);
-    if (am == AM_LOCAL) {
+    if (am == AM_LOCAL || am == AM_NONE) {
         bpd->decl_count += count;
     }
     else {
@@ -525,27 +553,37 @@ static inline void parser_error_2a_pc(
     }
     parser_error_2a(p, msg, start, end, annot, start2, end2, annot2);
 }
-static inline void
-ast_node_init_with_flags(ast_node* n, ast_node_kind kind, ast_flags flags)
+static inline void ast_node_init(ast_node* n, ast_node_kind kind)
 {
     n->kind = kind;
-    n->flags = flags;
+    ast_node_set_default_flags(n);
 }
-static inline void
-ast_node_init_with_op(ast_node* n, ast_node_kind kind, operator_kind opk)
+static inline void ast_node_init_with_mods(
+    ast_node* n, ast_node_kind kind, const modifier_data* md)
 {
-    ast_node_init_with_flags(n, kind, AST_NODE_FLAGS_DEFAULT);
+    ast_node_init(n, kind);
+    if (md->comptime_mod) ast_node_set_comptime(n);
+    ast_node_set_access_mod(
+        n, md->access_mod == AM_NONE ? AM_LOCAL : md->access_mod);
+    if (md->extern_mod) ast_node_set_extern_func(n);
+    if (md->static_mod) ast_node_set_static(n);
+    if (md->explicit_mod) ast_node_set_explicit(n);
+    if (md->implicit_mod) ast_node_set_implicit(n);
+    if (md->const_mod) ast_node_set_const(n);
+    if (md->relative_import_mod) ast_node_set_relative_import(n);
+    if (md->func_is_op_mod) ast_node_set_func_is_op(n);
+}
+static inline void ast_node_init_with_op(
+    ast_node* n, ast_node_kind kind, operator_kind opk, const modifier_data* md)
+{
+    ast_node_init_with_mods(n, kind, md);
     n->op_kind = opk;
 }
 static inline void
 ast_node_init_with_pk(ast_node* n, ast_node_kind kind, primitive_kind pk)
 {
-    ast_node_init_with_flags(n, kind, AST_NODE_FLAGS_DEFAULT);
+    ast_node_init(n, kind);
     n->pt_kind = pk;
-}
-static inline void ast_node_init(ast_node* n, ast_node_kind kind)
-{
-    ast_node_init_with_flags(n, kind, AST_NODE_FLAGS_DEFAULT);
 }
 int parser_init(parser* p, thread_context* tc)
 {
@@ -586,7 +624,7 @@ sym_fill_srange(parser* p, symbol* s, ureg start, ureg end)
     srl.start = start;
     srl.end = end;
     srl.smap = NULL;
-    if (ast_flags_get_access_mod(s->node.flags) != AM_LOCAL) {
+    if (ast_node_get_access_mod(&s->node) != AM_LOCAL) {
         if (ast_elem_is_module_frame((ast_elem*)get_bpd(p)->node)) {
             srl.smap = p->lx.smap;
         }
@@ -825,7 +863,7 @@ parse_array_or_slice(parser* p, ast_node** ex, ureg prec)
         ast_node_init((ast_node*)arr, EXPR_ARRAY_TYPE);
         arr->length_spec = ((void**)arr_len == NULL_PTR_PTR) ? NULL : arr_len;
     }
-    if (const_arr) ast_flags_set_const(&ste->node.flags);
+    if (const_arr) ast_node_set_const(&ste->node);
     ste->base_type = base_expr;
     if (ast_node_fill_srange(p, &ste->node, t_start, t->end)) {
         return PE_FATAL;
@@ -944,17 +982,19 @@ build_empty_tuple(parser* p, ureg t_start, ureg t_end, ast_node** ex)
     *ex = (ast_node*)tp;
     return PE_OK;
 }
-static inline parse_error require_default_flags(
-    parser* p, token* t, ast_flags flags, ureg start, ureg end)
+static inline parse_error
+reject_modifiers(parser* p, token* t, modifier_status* mods)
 {
-    if (flags == AST_NODE_FLAGS_DEFAULT) return PE_OK;
+    if (memcmp(&mods->data, &MODIFIERS_NONE, sizeof(modifier_data)) == 0) {
+        return PE_OK;
+    }
     char* loc_msg = error_log_cat_strings_2(
         p->lx.tc->err_log, token_strings[t->kind],
         " does not accept any modifiers");
     if (!loc_msg) return PE_FATAL;
     parser_error_2a(
-        p, loc_msg, start, end, "invalid modifier(s)", t->start, t->end,
-        "before this statement");
+        p, loc_msg, mods->start, mods->end, "invalid modifier(s)", t->start,
+        t->end, "before this statement");
     return PE_ERROR;
 }
 static inline parse_error
@@ -1009,7 +1049,7 @@ parse_uninitialized_var_in_tuple(parser* p, token* t, ast_node** ex)
     if (!v) return PE_FATAL;
     ast_node_init((ast_node*)v, SYM_VAR);
     v->osym.visible_within_body = NULL;
-    ast_flags_set_compound_decl(&v->osym.sym.node.flags);
+    ast_node_set_compound_decl(&v->osym.sym.node);
     v->osym.sym.name = alloc_string_perm(p, t->str);
     if (!v->osym.sym.name) return PE_FATAL;
     if (ast_node_fill_srange(p, (ast_node*)v, t->start, t->end))
@@ -1058,13 +1098,13 @@ static inline void turn_ident_nodes_to_exprs(ast_node** elems, ureg elem_count)
 {
     for (ureg i = 0; i < elem_count; i++) {
         if ((**elems).kind == SYM_VAR) {
-            tuple_ident_node* tin = (tuple_ident_node*)*elems;
-            if (tin->var.type == NULL &&
-                !ast_flags_get_compound_decl(tin->var.osym.sym.node.flags)) {
+            ast_node* n = *elems;
+            tuple_ident_node* tin = (tuple_ident_node*)n;
+            if (tin->var.type == NULL && !ast_node_get_compound_decl(*elems)) {
                 ureg srange = tin->var.osym.sym.node.srange;
                 tin->ident.value.str = tin->var.osym.sym.name;
-                tin->ident.node.srange = srange;
-                ast_node_init((ast_node*)tin, EXPR_IDENTIFIER);
+                n->srange = srange;
+                ast_node_init(n, EXPR_IDENTIFIER);
             }
         }
         else if ((**elems).kind == EXPR_TUPLE) {
@@ -1246,11 +1286,11 @@ parse_prefix_unary_op(parser* p, operator_kind op, ast_node** ex)
     if (op == OP_DEREF) {
         PEEK(p, t);
         if (t->kind == TK_KW_CONST) {
-            ast_flags_set_const(&ou->node.flags);
+            ast_node_set_const(&ou->node);
             lx_void(&p->lx);
         }
     }
-    ast_node_init_with_op((ast_node*)ou, EXPR_OP_UNARY, op);
+    ast_node_init_with_op((ast_node*)ou, EXPR_OP_UNARY, op, &MODIFIERS_NONE);
     parse_error pe = parse_expression_of_prec(
         p, &ou->child, op_precedence[op] + is_left_associative(op));
     if (pe) {
@@ -1706,7 +1746,7 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     sp->result = NULL;
     sp->ctype = NULL;
     ast_node_init(&sp->node, EXPR_PP);
-    ast_flags_set_pp_expr_res_used(&sp->node.flags);
+    ast_node_set_pp_expr_res_used(&sp->node);
     sp->pprn = NULL;
     sp->result_buffer.paste_result.last_next =
         &sp->result_buffer.paste_result.first;
@@ -1845,7 +1885,8 @@ static inline parse_error parse_call(parser* p, ast_node** ex, ast_node* lhs)
         if (ast_node_fill_srange(p, &call->node, t_start, paren_end))
             return PE_FATAL;
         // TODO: do we really need the OP_CALL here?
-        ast_node_init_with_op((ast_node*)call, EXPR_CALL, OP_CALL);
+        ast_node_init_with_op(
+            (ast_node*)call, EXPR_CALL, OP_CALL, &MODIFIERS_NONE);
         call->lhs = lhs;
         *ex = (ast_node*)call;
         return PE_OK;
@@ -1874,7 +1915,8 @@ static inline parse_error parse_access(parser* p, ast_node** ex, ast_node* lhs)
     PEEK(p, t);
     if (ast_node_fill_srange(p, &acc->node, t_start, t->end)) return PE_FATAL;
     lx_void(&p->lx);
-    ast_node_init_with_op((ast_node*)acc, EXPR_ACCESS, OP_ACCESS);
+    ast_node_init_with_op(
+        (ast_node*)acc, EXPR_ACCESS, OP_ACCESS, &MODIFIERS_NONE);
     acc->lhs = lhs;
     *ex = (ast_node*)acc;
     return PE_OK;
@@ -1930,7 +1972,7 @@ static inline parse_error parse_postfix_unary_op(
     lx_void(&p->lx);
     expr_op_unary* ou = (expr_op_unary*)alloc_perm(p, sizeof(expr_op_unary));
     if (!ou) return PE_FATAL;
-    ast_node_init_with_op((ast_node*)ou, EXPR_OP_UNARY, op);
+    ast_node_init_with_op((ast_node*)ou, EXPR_OP_UNARY, op, &MODIFIERS_NONE);
     ou->child = lhs;
     if (ast_node_fill_srange(p, &ou->node, t->start, t->end)) return PE_FATAL;
     *ex = (ast_node*)ou;
@@ -1947,7 +1989,7 @@ parse_scope_access(parser* p, ast_node** ex, ast_node* lhs, bool member)
     if (ast_node_fill_srange(p, &esa->node, t->start, t->end)) return PE_FATAL;
     ast_node_init_with_op(
         (ast_node*)esa, member ? EXPR_MEMBER_ACCESS : EXPR_SCOPE_ACCESS,
-        member ? OP_MEMBER_ACCESS : OP_SCOPE_ACCESS);
+        member ? OP_MEMBER_ACCESS : OP_SCOPE_ACCESS, &MODIFIERS_NONE);
     esa->lhs = lhs;
     PEEK(p, t);
     if (t->kind != TK_IDENTIFIER) {
@@ -1978,7 +2020,7 @@ parse_binary_op(parser* p, operator_kind op, ast_node** ex, ast_node* lhs)
     expr_op_binary* ob = (expr_op_binary*)alloc_perm(p, sizeof(expr_op_binary));
     if (!ob) return PE_FATAL;
     if (ast_node_fill_srange(p, &ob->node, t->start, t->end)) return PE_FATAL;
-    ast_node_init_with_op((ast_node*)ob, EXPR_OP_BINARY, op);
+    ast_node_init_with_op((ast_node*)ob, EXPR_OP_BINARY, op, &MODIFIERS_NONE);
     parse_error pe = parse_expression_of_prec(
         p, &ob->rhs, op_precedence[op] + is_left_associative(op));
     if (pe) {
@@ -2345,13 +2387,13 @@ report_redundant_specifier(parser* p, const char* spec, ureg start, ureg end)
     return OK;
 }
 static inline parse_error ast_flags_from_kw_set_access_mod(
-    parser* p, ast_flags* f, access_modifier am, ureg start, ureg end)
+    parser* p, modifier_status* mods, access_modifier am)
 {
-    access_modifier old_am = ast_flags_get_access_mod(*f);
-    if (old_am != AM_LOCAL) {
+    access_modifier old_am = mods->data.access_mod;
+    if (old_am != AM_NONE) {
         if (old_am == am) {
             report_redundant_specifier(
-                p, access_modifier_string(am), start, end);
+                p, access_modifier_string(am), mods->start, mods->end);
         }
         else {
             const char* msgstrs[5];
@@ -2364,16 +2406,15 @@ static inline parse_error ast_flags_from_kw_set_access_mod(
             if (!msg) return PE_FATAL;
             error_log_report_annotated(
                 p->lx.tc->err_log, ES_PARSER, false,
-                "conflicting access modifiers specified", p->lx.smap, start,
-                end, msg);
+                "conflicting access modifiers specified", p->lx.smap,
+                mods->start, mods->end, msg);
         }
         return PE_ERROR;
     }
-    ast_flags_set_access_mod(f, am);
+    mods->data.access_mod = am;
     return PE_OK;
 }
-parse_error parse_var_decl(
-    parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** n)
+parse_error parse_var_decl(parser* p, modifier_status* mods, ast_node** n)
 {
     token* t = lx_aquire(&p->lx);
     ureg end = t->end;
@@ -2396,7 +2437,7 @@ parse_error parse_var_decl(
             PEEK(p, t);
             parser_error_2a(
                 p, "invalid declaration syntax", t->start, t->end,
-                "expected expression after '='", start, eq_end,
+                "expected expression after '='", mods->start, eq_end,
                 "begin of declaration");
             return PE_ERROR;
         }
@@ -2408,7 +2449,8 @@ parse_error parse_var_decl(
             PEEK(p, t);
             parser_error_2a(
                 p, "invalid declaration syntax", t->start, t->end,
-                "expected type or '='", start, col_end, "begin of declaration");
+                "expected type or '='", mods->start, col_end,
+                "begin of declaration");
             return PE_ERROR;
         }
         if (pe) return pe;
@@ -2420,7 +2462,7 @@ parse_error parse_var_decl(
             if (pe == PE_EOEX) {
                 parser_error_2a(
                     p, "unexpeted token in declaration", t->start, t->end,
-                    "expected expression", start, eq_end,
+                    "expected expression", mods->start, eq_end,
                     "in this declaration");
                 return PE_ERROR;
             }
@@ -2437,22 +2479,21 @@ parse_error parse_var_decl(
         if (!vi) return PE_FATAL;
         vi->initial_value = value;
         v = (sym_var*)vi;
-        ast_node_init((ast_node*)v, SYM_VAR_INITIALIZED);
+        ast_node_init_with_mods((ast_node*)v, SYM_VAR_INITIALIZED, &mods->data);
     }
     else {
         v = alloc_perm(p, sizeof(sym_var));
         if (!v) return PE_FATAL;
-        ast_node_init((ast_node*)v, SYM_VAR);
+        ast_node_init_with_mods((ast_node*)v, SYM_VAR, &mods->data);
     }
     v->pprn = NULL;
     v->type = type;
     v->osym.sym.name = ident;
     v->osym.visible_within_body = NULL; // TODO: parse this
     if (!v->osym.sym.name) return PE_FATAL;
-    v->osym.sym.node.flags = flags;
     *n = (ast_node*)v;
-    if (sym_fill_srange(p, (symbol*)v, start, end)) return PE_FATAL;
-    curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
+    if (sym_fill_srange(p, (symbol*)v, mods->start, end)) return PE_FATAL;
+    curr_scope_add_decls(p, ast_node_get_access_mod(*n), 1);
     return PE_OK;
 }
 void free_failed_param_block_list_symtabs(list_builder* lb, void** list_start)
@@ -2521,8 +2562,7 @@ parse_error parse_param_list(
     *param_count = *param_count / sizeof(sym_param);
     return PE_OK;
 }
-parse_error parse_func_decl(
-    parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** n)
+parse_error parse_func_decl(parser* p, modifier_status* mods, ast_node** n)
 {
     lx_void(&p->lx);
     token* t;
@@ -2531,7 +2571,7 @@ parse_error parse_func_decl(
     if (t->kind != TK_IDENTIFIER) {
         parser_error_2a(
             p, "invalid function declaration syntax", t->start, t->end,
-            "expected function identifier", start, t->end,
+            "expected function identifier", mods->start, t->end,
             "in this function declaration");
         return PE_ERROR;
     }
@@ -2550,7 +2590,7 @@ parse_error parse_func_decl(
         lx_void(&p->lx);
         pe = parse_param_list(
             p, (symbol*)fng, &fng->generic_params, &fng->generic_param_count,
-            true, start, decl_end, "in this function declaration");
+            true, mods->start, decl_end, "in this function declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -2561,24 +2601,24 @@ parse_error parse_func_decl(
     }
     fnb->sc.osym.sym.name = name;
     fnb->sc.osym.visible_within_body = NULL; // TODO
-    ast_node_init_with_flags(
-        (ast_node*)fnb, fng ? SC_FUNC_GENERIC : SC_FUNC, flags);
-    pe = sym_fill_srange(p, (symbol*)fnb, start, decl_end);
+    ast_node_init_with_mods(
+        (ast_node*)fnb, fng ? SC_FUNC_GENERIC : SC_FUNC, &mods->data);
+    pe = sym_fill_srange(p, (symbol*)fnb, mods->start, decl_end);
     if (pe) return pe;
     if (t->kind != TK_PAREN_OPEN) {
         parser_error_2a(
             p, "invalid function declaration syntax", t->start, t->end,
-            "expected '(' to start parameter list", start, decl_end,
+            "expected '(' to start parameter list", mods->start, decl_end,
             "in this function declaration");
         return PE_ERROR;
     }
     lx_void(&p->lx);
     pe = parse_param_list(
-        p, (symbol*)fnb, &fnb->params, &fnb->param_count, false, start,
+        p, (symbol*)fnb, &fnb->params, &fnb->param_count, false, mods->start,
         decl_end, "in this function declaration");
     if (pe) return pe;
     *n = (ast_node*)fnb;
-    curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, ast_node_get_access_mod(*n), 1);
     PEEK(p, t);
     if (t->kind == TK_ARROW) {
         lx_void(&p->lx);
@@ -2589,7 +2629,7 @@ parse_error parse_func_decl(
         if (pe == PE_EOEX) {
             parser_error_2a(
                 p, "unexpected end of expression", t->start, t->end,
-                "expected function return type", start, decl_end,
+                "expected function return type", mods->start, decl_end,
                 "in this function declaration");
             return PE_ERROR;
         }
@@ -2615,8 +2655,7 @@ parse_error parse_func_decl(
         p, (scope*)fnb,
         (fng ? fng->generic_param_count : 0) + fnb->param_count);
 }
-parse_error parse_macro_decl(
-    parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** n)
+parse_error parse_macro_decl(parser* p, modifier_status* mods, ast_node** n)
 {
     lx_void(&p->lx);
     token* t;
@@ -2625,7 +2664,7 @@ parse_error parse_macro_decl(
     if (t->kind != TK_IDENTIFIER) {
         parser_error_2a(
             p, "invalid macro declaration syntax", t->start, t->end,
-            "expected macro identifier", start, t->end,
+            "expected macro identifier", mods->start, t->end,
             "in this macro declaration");
         return PE_ERROR;
     }
@@ -2637,24 +2676,24 @@ parse_error parse_macro_decl(
     if (!m) return PE_FATAL;
     m->sc.osym.sym.name = name;
     m->sc.osym.visible_within_body = NULL; // TODO
-    ast_node_init_with_flags((ast_node*)m, SC_MACRO, flags);
-    pe = sym_fill_srange(p, (symbol*)m, start, decl_end);
+    ast_node_init_with_mods((ast_node*)m, SC_MACRO, &mods->data);
+    pe = sym_fill_srange(p, (symbol*)m, mods->start, decl_end);
     if (pe) return pe;
     PEEK(p, t);
     if (t->kind != TK_PAREN_OPEN) {
         parser_error_2a(
             p, "invalid macro declaration syntax", t->start, t->end,
-            "expected '(' to start parameter list", start, decl_end,
+            "expected '(' to start parameter list", mods->start, decl_end,
             "in this macro declaration");
         return PE_ERROR;
     }
     lx_void(&p->lx);
     pe = parse_param_list(
-        p, (symbol*)m, &m->params, &m->param_count, false, start, decl_end,
-        "in this macro declaration");
+        p, (symbol*)m, &m->params, &m->param_count, false, mods->start,
+        decl_end, "in this macro declaration");
     if (pe) return pe;
     *n = (ast_node*)m;
-    curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, ast_node_get_access_mod(*n), 1);
     PEEK(p, t);
     if (t->kind == TK_SEMICOLON) {
         m->sc.body.elements = (ast_node**)NULL_PTR_PTR;
@@ -2669,8 +2708,7 @@ parse_error parse_macro_decl(
     m->next = NULL;
     return parse_scope_body(p, (scope*)m, m->param_count);
 }
-parse_error parse_struct_decl(
-    parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** n)
+parse_error parse_struct_decl(parser* p, modifier_status* mods, ast_node** n)
 {
     lx_void(&p->lx);
     token* t;
@@ -2679,7 +2717,7 @@ parse_error parse_struct_decl(
     if (t->kind != TK_IDENTIFIER) {
         parser_error_2a(
             p, "invalid struct declaration syntax", t->start, t->end,
-            "expected struct identifier", start, t->end,
+            "expected struct identifier", mods->start, t->end,
             "in this struct declaration");
         return PE_ERROR;
     }
@@ -2700,7 +2738,7 @@ parse_error parse_struct_decl(
         lx_void(&p->lx);
         pe = parse_param_list(
             p, &s->sym, &sg->generic_params, &sg->generic_param_count, true,
-            start, decl_end, "in this struct declaration");
+            mods->start, decl_end, "in this struct declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -2710,15 +2748,15 @@ parse_error parse_struct_decl(
         sp->sb.sc.body.pprn = NULL;
         s = (open_symbol*)sp;
     }
-    ast_node_init_with_flags(
-        (ast_node*)s, sg ? SC_STRUCT_GENERIC : SC_STRUCT, flags);
+    ast_node_init_with_mods(
+        (ast_node*)s, sg ? SC_STRUCT_GENERIC : SC_STRUCT, &mods->data);
     s->sym.name = name;
     s->visible_within_body = NULL; // TODO: parse this
-    pe = sym_fill_srange(p, &s->sym, start, decl_end);
+    pe = sym_fill_srange(p, &s->sym, mods->start, decl_end);
     if (pe) return pe;
 
     *n = (ast_node*)s;
-    curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, ast_node_get_access_mod(*n), 1);
     return parse_scope_body(p, (scope*)s, sg ? sg->generic_param_count : 0);
 }
 parse_error check_if_first_stmt(
@@ -2753,8 +2791,7 @@ parse_error check_if_first_stmt(
     return PE_OK;
 }
 parse_error parse_module_frame_decl(
-    parser* p, ast_flags flags, ureg start, ureg flags_end, bool extend,
-    ast_node** n)
+    parser* p, modifier_status* mods, bool extend, ast_node** n)
 {
     lx_void(&p->lx);
     token *t, *t2;
@@ -2763,7 +2800,7 @@ parse_error parse_module_frame_decl(
     if (t->kind != TK_IDENTIFIER) {
         parser_error_2a(
             p, "invalid module declaration syntax", t->start, t->end,
-            "expected module identifier", start, t->end,
+            "expected module identifier", mods->start, t->end,
             "in this module declaration");
         return PE_ERROR;
     }
@@ -2780,7 +2817,7 @@ parse_error parse_module_frame_decl(
         lx_void_n(&p->lx, 2);
         pe = parse_param_list(
             p, (symbol*)md, &mod_gen->generic_params,
-            &mod_gen->generic_param_count, true, start, decl_end,
+            &mod_gen->generic_param_count, true, mods->start, decl_end,
             "in this module frame declaration");
         if (pe) return pe;
         PEEK(p, t);
@@ -2797,8 +2834,9 @@ parse_error parse_module_frame_decl(
     else {
         kind = mod_gen ? MF_MODULE_GENERIC : MF_MODULE;
     }
-    ast_node_init_with_flags((ast_node*)md, kind, flags);
-    md->node.srange = src_range_pack(p->lx.tc, start, decl_end, p->lx.smap);
+    ast_node_init_with_mods((ast_node*)md, kind, &mods->data);
+    md->node.srange =
+        src_range_pack(p->lx.tc, mods->start, decl_end, p->lx.smap);
     md->smap = p->lx.smap;
     if (md->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
     mdg_node* mdgn = mdg_found_node(
@@ -2809,7 +2847,7 @@ parse_error parse_module_frame_decl(
     p->current_module = mdgn;
     bool single_file_module = false;
     if (t->kind == TK_SEMICOLON) {
-        pe = check_if_first_stmt(p, n, start, t->end, false);
+        pe = check_if_first_stmt(p, n, mods->start, t->end, false);
         if (!pe) {
             lx_consume(&p->lx);
             single_file_module = true;
@@ -2826,7 +2864,7 @@ parse_error parse_module_frame_decl(
 
     *n = (ast_node*)md;
     // TODO: add a dummy symbol with the module name to avoid redeclaration
-    // curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
+    // curr_scope_add_decls(p, ast_node_get_access_mod(flags), 1);
     if (single_file_module) {
         int r = thread_context_preorder_job(p->lx.tc);
         if (r) return RE_FATAL;
@@ -2840,8 +2878,7 @@ parse_error parse_module_frame_decl(
     if (r) return RE_FATAL;
     return PE_NO_STMT; // consider PE_NO_STMT
 }
-parse_error parse_trait_decl(
-    parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** n)
+parse_error parse_trait_decl(parser* p, modifier_status* mods, ast_node** n)
 {
     lx_void(&p->lx);
     token* t;
@@ -2850,7 +2887,7 @@ parse_error parse_trait_decl(
     if (t->kind != TK_IDENTIFIER) {
         parser_error_2a(
             p, "invalid trait declaration syntax", t->start, t->end,
-            "expected trait identifier", start, t->end,
+            "expected trait identifier", mods->start, t->end,
             "in this trait declaration");
         return PE_ERROR;
     }
@@ -2868,7 +2905,7 @@ parse_error parse_trait_decl(
         lx_void(&p->lx);
         pe = parse_param_list(
             p, (symbol*)tr, &tg->generic_params, &tg->generic_param_count, true,
-            start, decl_end, "in this trait declaration");
+            mods->start, decl_end, "in this trait declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -2878,12 +2915,12 @@ parse_error parse_trait_decl(
     }
     tr->osym.sym.name = name;
     tr->osym.visible_within_body = NULL; // TODO
-    pe = sym_fill_srange(p, (symbol*)tr, start, decl_end);
+    pe = sym_fill_srange(p, (symbol*)tr, mods->start, decl_end);
     if (pe) return pe;
-    ast_node_init_with_flags(
-        (ast_node*)tr, tg ? SC_TRAIT_GENERIC : SC_TRAIT, flags);
+    ast_node_init_with_mods(
+        (ast_node*)tr, tg ? SC_TRAIT_GENERIC : SC_TRAIT, &mods->data);
     *n = (ast_node*)tr;
-    curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
+    curr_scope_add_decls(p, ast_node_get_access_mod(*n), 1);
     return parse_scope_body(p, tr, tg ? tg->generic_param_count : 0);
 }
 bool ast_elem_supports_exprs(ast_elem* n)
@@ -2908,7 +2945,7 @@ static inline parse_error parse_compound_assignment_after_equals(
     ca->elements = elements;
     ca->elem_count = elem_count;
     ast_node_init((ast_node*)ca, STMT_COMPOUND_ASSIGN);
-    if (had_colon) ast_flags_set_compound_decl(&ca->node.flags);
+    if (had_colon) ast_node_set_compound_decl(&ca->node);
     parse_error pe = parse_expression(p, &ca->value);
     token* t;
     if (pe == PE_EOEX) {
@@ -3010,10 +3047,9 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
     return pe;
 }
 parse_error parse_import_with_parent(
-    parser* p, ast_flags flags, ureg start, ureg kw_end, mdg_node* parent,
+    parser* p, modifier_status* mods, ureg kw_end, mdg_node* parent,
     ureg* decl_cnt, ast_node** tgt, bool child);
-parse_error parse_use(
-    parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** tgt)
+parse_error parse_use(parser* p, modifier_status* mods, ast_node** tgt)
 {
     token* t = lx_aquire(&p->lx);
     ureg end = t->end;
@@ -3025,7 +3061,7 @@ parse_error parse_use(
         if (t2->kind == TK_EQUALS) {
             sym_named_use* nu = alloc_perm(p, sizeof(sym_named_use));
             if (!nu) return PE_FATAL;
-            ast_node_init_with_flags((ast_node*)nu, SYM_NAMED_USE, flags);
+            ast_node_init_with_mods((ast_node*)nu, SYM_NAMED_USE, &mods->data);
             nu->osym.sym.name = alloc_string_perm(p, t->str);
             nu->osym.visible_within_body = NULL; // TODO
             if (!nu->osym.sym.name) return PE_FATAL;
@@ -3034,46 +3070,46 @@ parse_error parse_use(
             if (pe == PE_EOEX) {
                 parser_error_2a(
                     p, "unexpected token", t->start, t->end,
-                    "expected expression", start, end,
+                    "expected expression", mods->start, end,
                     "in this named using statement");
                 return PE_ERROR;
             }
             if (pe) return pe;
             if (ast_node_fill_srange(
-                    p, (ast_node*)nu, start,
+                    p, (ast_node*)nu, mods->start,
                     src_range_get_end(nu->target->srange)))
                 return PE_FATAL;
             *tgt = (ast_node*)nu;
-            curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
+            curr_scope_add_decls(p, mods->data.access_mod, 1);
             return PE_OK;
         }
     }
     stmt_use* u = alloc_perm(p, sizeof(stmt_use));
     if (!u) return PE_FATAL;
-    ast_node_init_with_flags((ast_node*)u, STMT_USE, flags);
+    ast_node_init_with_mods((ast_node*)u, STMT_USE, &mods->data);
     parse_error pe = parse_expression(p, &u->target);
     if (pe == PE_EOEX) {
         parser_error_2a(
             p, "unexpected token", t->start, t->end, "expected expression",
-            start, end, "in this using statement");
+            mods->start, end, "in this using statement");
         return PE_ERROR;
     }
     if (ast_node_fill_srange(
-            p, (ast_node*)u, start, src_range_get_end(u->target->srange)))
+            p, (ast_node*)u, mods->start, src_range_get_end(u->target->srange)))
         return PE_FATAL;
     *tgt = (ast_node*)u;
-    curr_scope_add_uses(p, ast_flags_get_access_mod(flags), 1);
+    curr_scope_add_uses(p, mods->data.access_mod, 1);
     return pe;
 }
 parse_error parse_braced_imports(
-    parser* p, ast_flags flags, import_group_data* ig_data, ureg start,
-    ureg kw_end, mdg_node* parent, ureg* end, ureg* decl_cnt)
+    parser* p, modifier_status* mods, import_group_data* ig_data, ureg kw_end,
+    mdg_node* parent, ureg* end, ureg* decl_cnt)
 {
     lx_void(&p->lx);
     while (true) {
         ast_node* tgt;
         parse_error pe = parse_import_with_parent(
-            p, flags, start, kw_end, parent, decl_cnt, &tgt, true);
+            p, mods, kw_end, parent, decl_cnt, &tgt, true);
         if (pe) return pe;
         list_append(&ig_data->children_ordered, &p->lx.tc->permmem, tgt);
         token* t;
@@ -3091,13 +3127,13 @@ parse_error parse_braced_imports(
         else {
             return parser_error_2a(
                 p, "invalid import syntax", t->start, t->end, "expected , or }",
-                start, kw_end, "in this import statement");
+                mods->start, kw_end, "in this import statement");
         }
     }
 }
 parse_error parse_symbol_imports(
     parser* p, ast_node* import_group, import_group_data* ig_data,
-    ast_flags flags, ureg start, ureg kw_end, ureg* end, ureg* decl_cnt)
+    modifier_status* mods, ureg kw_end, ureg* end, ureg* decl_cnt)
 {
     lx_void(&p->lx);
     token* t;
@@ -3111,7 +3147,7 @@ parse_error parse_symbol_imports(
             return parser_error_2a(
                 p, "invalid import syntax", t->start, t->end,
                 symstart ? "expected identifier or )" : "expected identifier",
-                start, kw_end, "in this import statement");
+                mods->start, kw_end, "in this import statement");
         }
         symstart = t->start;
         symend = t->end;
@@ -3125,7 +3161,7 @@ parse_error parse_symbol_imports(
             if (t->kind != TK_IDENTIFIER) {
                 return parser_error_2a(
                     p, "invalid import syntax", t->start, t->end,
-                    "expected symbol identifier", start, kw_end,
+                    "expected symbol identifier", mods->start, kw_end,
                     "in this import statement");
             }
             symname = alloc_string_perm(p, t->str);
@@ -3144,7 +3180,8 @@ parse_error parse_symbol_imports(
             }
             sym_import_symbol* im = alloc_perm(p, sizeof(sym_import_symbol));
             if (!im) return PE_FATAL;
-            ast_node_init_with_flags((ast_node*)im, SYM_IMPORT_SYMBOL, flags);
+            ast_node_init_with_mods(
+                (ast_node*)im, SYM_IMPORT_SYMBOL, &mods->data);
             ast_node_fill_srange(p, (ast_node*)im, symstart, symend);
             im->osym.sym.name = id1_str;
             im->osym.visible_within_body = NULL; // TODO
@@ -3165,19 +3202,19 @@ parse_error parse_symbol_imports(
         else {
             return parser_error_2a(
                 p, "invalid import syntax", t->start, t->end, "expected , or )",
-                start, kw_end, "in this import statement");
+                mods->start, kw_end, "in this import statement");
         }
     }
 }
 parse_error parse_import_with_parent(
-    parser* p, ast_flags flags, ureg start, ureg kw_end, mdg_node* parent,
+    parser* p, modifier_status* mods, ureg kw_end, mdg_node* parent,
     ureg* decl_cnt, ast_node** tgt, bool child)
 {
     mdg_node* relative_to = parent;
     parse_error pe;
     token *t, *t2;
     PEEK(p, t);
-    ureg istart = child ? t->start : start;
+    ureg istart = child ? t->start : mods->start;
     ureg end;
     PEEK_SND(p, t2);
     char* name = NULL;
@@ -3190,7 +3227,7 @@ parse_error parse_import_with_parent(
     // TODO: maybe provide a special message in case child is true
     if (t->kind == TK_KW_SELF && !child) {
         parent = p->current_module;
-        ast_flags_set_relative_import(&flags);
+        mods->data.relative_import_mod = true;
         if (t2->kind == TK_DOUBLE_COLON) {
             lx_void_n(&p->lx, 2);
             PEEK(p, t);
@@ -3198,7 +3235,7 @@ parse_error parse_import_with_parent(
         else {
             return parser_error_2a(
                 p, "invalid import syntax", t->start, t->end,
-                "expected ::", start, kw_end, "in this import statement");
+                "expected ::", mods->start, kw_end, "in this import statement");
         }
     }
     bool has_ident = false;
@@ -3221,14 +3258,15 @@ parse_error parse_import_with_parent(
             sym_import_module* im = alloc_perm(p, sizeof(sym_import_module));
             if (!im) return PE_FATAL;
             im->im_data.pprn = NULL;
-            ast_node_init_with_flags((ast_node*)im, SYM_IMPORT_MODULE, flags);
+            ast_node_init_with_mods(
+                (ast_node*)im, SYM_IMPORT_MODULE, &mods->data);
             ast_node_fill_srange(p, (ast_node*)im, istart, end);
             im->im_data.imported_module = parent;
             im->im_data.importing_module = p->current_module;
             im->osym.visible_within_body = NULL; // TODO
             if (name) {
                 im->osym.sym.name = name;
-                curr_scope_add_decls(p, ast_flags_get_access_mod(flags), 1);
+                curr_scope_add_decls(p, mods->data.access_mod, 1);
             }
             else {
                 im->osym.sym.name = parent->name;
@@ -3255,8 +3293,8 @@ parse_error parse_import_with_parent(
             if (!nsig) return PE_FATAL;
             nsig->osym.sym.name = name;
             nsig->osym.visible_within_body = NULL; // TODO
-            ast_node_init_with_flags(
-                (ast_node*)nsig, SYM_NAMED_SYM_IMPORT_GROUP, flags);
+            ast_node_init_with_mods(
+                (ast_node*)nsig, SYM_NAMED_SYM_IMPORT_GROUP, &mods->data);
             *tgt = (ast_node*)nsig;
             ig_data = &nsig->ig_data;
             im_data = &nsig->im_data;
@@ -3265,8 +3303,8 @@ parse_error parse_import_with_parent(
             astn_anonymous_sym_import_group* asig =
                 alloc_perm(p, sizeof(astn_anonymous_sym_import_group));
             if (!asig) return PE_FATAL;
-            ast_node_init_with_flags(
-                (ast_node*)asig, ASTN_ANONYMOUS_SYM_IMPORT_GROUP, flags);
+            ast_node_init_with_mods(
+                (ast_node*)asig, ASTN_ANONYMOUS_SYM_IMPORT_GROUP, &mods->data);
             *tgt = (ast_node*)asig;
             ig_data = &asig->ig_data;
             im_data = &asig->im_data;
@@ -3275,9 +3313,9 @@ parse_error parse_import_with_parent(
             return PE_FATAL;
         }
         if (list_init(&ig_data->children_ordered)) return PE_FATAL;
-        ast_flags_clear_relative_import(&flags);
+        mods->data.relative_import_mod = false;
         pe = parse_symbol_imports(
-            p, *tgt, ig_data, flags, start, kw_end, &end, decl_cnt);
+            p, *tgt, ig_data, mods, kw_end, &end, decl_cnt);
         if (pe) return pe;
         im_data->imported_module = parent;
         im_data->importing_module = p->current_module;
@@ -3288,8 +3326,8 @@ parse_error parse_import_with_parent(
             sym_named_mod_import_group* nmig =
                 alloc_perm(p, sizeof(sym_named_mod_import_group));
             if (!nmig) return PE_FATAL;
-            ast_node_init_with_flags(
-                (ast_node*)nmig, SYM_NAMED_MOD_IMPORT_GROUP, flags);
+            ast_node_init_with_mods(
+                (ast_node*)nmig, SYM_NAMED_MOD_IMPORT_GROUP, &mods->data);
             nmig->osym.sym.name = name;
             nmig->osym.visible_within_body = NULL; // TODO
             *tgt = (ast_node*)nmig;
@@ -3299,15 +3337,15 @@ parse_error parse_import_with_parent(
             astn_anonymous_mod_import_group* amig =
                 alloc_perm(p, sizeof(astn_anonymous_mod_import_group));
             if (!amig) return PE_FATAL;
-            ast_node_init_with_flags(
-                (ast_node*)amig, ASTN_ANONYMOUS_MOD_IMPORT_GROUP, flags);
+            ast_node_init_with_mods(
+                (ast_node*)amig, ASTN_ANONYMOUS_MOD_IMPORT_GROUP, &mods->data);
             *tgt = (ast_node*)amig;
             ig_data = &amig->ig_data;
         }
         if (list_init(&ig_data->children_ordered)) return PE_FATAL;
-        ast_flags_clear_relative_import(&flags);
+        mods->data.relative_import_mod = false;
         pe = parse_braced_imports(
-            p, flags, ig_data, start, kw_end, parent, &end, decl_cnt);
+            p, mods, ig_data, kw_end, parent, &end, decl_cnt);
         if (pe) return pe;
     }
     else {
@@ -3317,32 +3355,29 @@ parse_error parse_import_with_parent(
         else
             expected = "expected identifier or {";
         return parser_error_2a(
-            p, "invalid import syntax", t->start, t->end, expected, start,
+            p, "invalid import syntax", t->start, t->end, expected, mods->start,
             kw_end, "in this import statement");
     }
     ig_data->relative_to = relative_to;
     ast_node_fill_srange(p, *tgt, istart, end);
     return PE_OK;
 }
-parse_error parse_import(
-    parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** tgt)
+parse_error parse_import(parser* p, modifier_status* mods, ast_node** tgt)
 {
     token* t = lx_aquire(&p->lx);
     ureg kw_end = t->end;
     lx_void(&p->lx);
     ureg decl_cnt = 0;
     parse_error pe = parse_import_with_parent(
-        p, flags, start, kw_end, p->lx.tc->t->mdg.root_node, &decl_cnt, tgt,
-        false);
+        p, mods, kw_end, p->lx.tc->t->mdg.root_node, &decl_cnt, tgt, false);
     if (pe) return pe;
-    curr_scope_add_decls(p, ast_flags_get_access_mod(flags), decl_cnt);
+    curr_scope_add_decls(p, mods->data.access_mod, decl_cnt);
     return PE_OK;
 }
-parse_error
-parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
+parse_error parse_require(parser* p, modifier_status* mods)
 {
     token* t = lx_aquire(&p->lx);
-    parse_error pe = require_default_flags(p, t, flags, start, flags_end);
+    parse_error pe = reject_modifiers(p, t, mods);
     if (pe) return pe;
     ureg end = t->end;
     lx_void(&p->lx);
@@ -3370,13 +3405,13 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     else if (is_runtime) {
         parser_error_2a(
             p, "unexpected token", t->start, t->end,
-            "runtime require must be static or dynamic", start, end,
+            "runtime require must be static or dynamic", mods->start, end,
             "in this require statement");
     }
     if (t->kind != TK_STRING) {
         parser_error_2a(
             p, "unexpected token", t->start, t->end,
-            "expected path pattern as string literal", start, end,
+            "expected path pattern as string literal", mods->start, end,
             "in this require statement");
         return PE_ERROR;
     }
@@ -3385,7 +3420,7 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     rq.is_pp = false; // FIXME: set this to true in parse pp statement
     rq.runtime = is_runtime;
     rq.handled = false;
-    rq.srange = src_range_pack_lines(p->lx.tc, start, t->end);
+    rq.srange = src_range_pack_lines(p->lx.tc, mods->start, t->end);
     if (rq.srange == SRC_RANGE_INVALID) return PE_FATAL;
     rwlock_read(&p->current_module->lock);
     bool exploring;
@@ -3420,50 +3455,55 @@ parse_require(parser* p, ast_flags flags, ureg start, ureg flags_end)
     return PE_NO_STMT;
 }
 static inline parse_error
-ast_flags_from_kw(parser* p, ast_flags* f, token_kind kw, ureg start, ureg end)
+prefix_modifiers_from_token(parser* p, modifier_status* mods, token* t)
 {
+    token_kind kw = t->kind;
     // TODO: enforce order
     switch (kw) {
         case TK_KW_PRIVATE:
-            return ast_flags_from_kw_set_access_mod(
-                p, f, AM_PRIVATE, start, end);
+            mods->end = t->end;
+            return ast_flags_from_kw_set_access_mod(p, mods, AM_PRIVATE);
         case TK_KW_PROTECTED:
-            return ast_flags_from_kw_set_access_mod(
-                p, f, AM_PROTECTED, start, end);
+            mods->end = t->end;
+            return ast_flags_from_kw_set_access_mod(p, mods, AM_PROTECTED);
         case TK_KW_PUBLIC:
-            return ast_flags_from_kw_set_access_mod(
-                p, f, AM_PUBLIC, start, end);
+            mods->end = t->end;
+            return ast_flags_from_kw_set_access_mod(p, mods, AM_PUBLIC);
         case TK_KW_CONST: {
-            if (ast_flags_get_const(*f) != false) {
+            mods->end = t->end;
+            if (mods->data.const_mod) {
                 report_redundant_specifier(
-                    p, token_strings[TK_KW_CONST], start, end);
+                    p, token_strings[TK_KW_CONST], mods->start, t->end);
                 return PE_ERROR;
             }
-            ast_flags_set_const(f);
+            mods->data.const_mod = true;
         } break;
         case TK_KW_STATIC: {
-            if (ast_flags_get_static(*f) != false) {
+            mods->end = t->end;
+            if (mods->data.static_mod) {
                 report_redundant_specifier(
-                    p, token_strings[TK_KW_STATIC], start, end);
+                    p, token_strings[TK_KW_STATIC], mods->start, mods->end);
                 return PE_ERROR;
             }
-            ast_flags_set_static(f);
+            mods->data.static_mod = true;
         } break;
         case TK_KW_EXTERN: {
-            if (ast_flags_get_extern_func(*f) != false) {
+            mods->end = t->end;
+            if (mods->data.extern_mod) {
                 report_redundant_specifier(
-                    p, token_strings[TK_KW_EXTERN], start, end);
+                    p, token_strings[TK_KW_EXTERN], mods->start, mods->end);
                 return PE_ERROR;
             }
-            ast_flags_set_extern_func(f);
+            mods->data.extern_mod = true;
         } break;
         case TK_KW_IMPLICIT: {
-            if (ast_flags_get_extern_func(*f) != false) {
+            mods->end = t->end;
+            if (mods->data.implicit_mod) {
                 report_redundant_specifier(
-                    p, token_strings[TK_KW_EXTERN], start, end);
+                    p, token_strings[TK_KW_EXTERN], mods->start, mods->end);
                 return PE_ERROR;
             }
-            ast_flags_set_extern_func(f);
+            mods->data.implicit_mod = true;
         } break;
         default: {
             return PE_EOEX;
@@ -3471,11 +3511,11 @@ ast_flags_from_kw(parser* p, ast_flags* f, token_kind kw, ureg start, ureg end)
     }
     return PE_OK;
 }
-static inline parse_error parse_pp_stmt(
-    parser* p, ast_flags flags, ureg start, ureg flags_end, ast_node** tgt)
+static inline parse_error
+parse_pp_stmt(parser* p, modifier_status* mods, ast_node** tgt)
 {
     token* t = lx_aquire(&p->lx);
-    parse_error pe = require_default_flags(p, t, flags, start, flags_end);
+    parse_error pe = reject_modifiers(p, t, mods);
     lx_void(&p->lx);
     if (pe) return pe;
     ast_node* pp_stmt;
@@ -3486,7 +3526,7 @@ static inline parse_error parse_pp_stmt(
     // TODO: handle pp modules, pp requires etc.
     if (ast_elem_is_var(ppe) || ast_elem_is_struct_base(ppe) ||
         ast_elem_is_func_base(ppe)) {
-        ast_flags_set_comptime(&pp_stmt->flags);
+        ast_node_set_comptime(pp_stmt);
         *tgt = pp_stmt;
         return PE_OK;
     }
@@ -3499,23 +3539,24 @@ static inline parse_error parse_pp_stmt(
         &sp->result_buffer.paste_result.first;
     sp->pp_expr = pp_stmt;
     pe = ast_node_fill_srange(
-        p, (ast_node*)sp, start, src_range_get_end(sp->pp_expr->srange));
+        p, (ast_node*)sp, mods->start, src_range_get_end(sp->pp_expr->srange));
     *tgt = (ast_node*)sp;
     return pe;
 }
 parse_error parse_statement(parser* p, ast_node** tgt)
 {
     parse_error pe;
-    ast_flags flags = AST_NODE_FLAGS_DEFAULT;
+    modifier_status mods;
+    mods.data = MODIFIERS_NONE;
     token* t;
     PEEK(p, t);
-    ureg start = t->start;
-    ureg flags_end = t->start;
+    mods.start = t->start;
+    mods.end = t->start;
 
     while (true) {
-        pe = ast_flags_from_kw(p, &flags, t->kind, start, t->end);
+        pe = prefix_modifiers_from_token(p, &mods, t);
         if (pe == PE_OK) {
-            flags_end = t->end;
+            mods.end = t->end;
             lx_void(&p->lx);
             PEEK(p, t);
             continue;
@@ -3523,36 +3564,28 @@ parse_error parse_statement(parser* p, ast_node** tgt)
         if (pe != PE_EOEX) return pe;
         switch (t->kind) {
             case TK_KW_OP: {
-                ast_flags_set_func_is_op(&flags);
+                mods.data.func_is_op_mod = true;
             } // fallthrough
-            case TK_KW_FUNC:
-                return parse_func_decl(p, flags, start, flags_end, tgt);
-            case TK_KW_MACRO:
-                return parse_macro_decl(p, flags, start, flags_end, tgt);
-            case TK_KW_STRUCT:
-                return parse_struct_decl(p, flags, start, flags_end, tgt);
-            case TK_KW_TRAIT:
-                return parse_trait_decl(p, flags, start, flags_end, tgt);
+            case TK_KW_FUNC: return parse_func_decl(p, &mods, tgt);
+            case TK_KW_MACRO: return parse_macro_decl(p, &mods, tgt);
+            case TK_KW_STRUCT: return parse_struct_decl(p, &mods, tgt);
+            case TK_KW_TRAIT: return parse_trait_decl(p, &mods, tgt);
             case TK_KW_MODULE:
-                return parse_module_frame_decl(
-                    p, flags, start, flags_end, false, tgt);
+                return parse_module_frame_decl(p, &mods, false, tgt);
             case TK_KW_EXTEND:
-                return parse_module_frame_decl(
-                    p, flags, start, flags_end, true, tgt);
-            case TK_KW_USE: return parse_use(p, flags, start, flags_end, tgt);
-            case TK_KW_REQUIRE:
-                return parse_require(p, flags, start, flags_end);
-            case TK_KW_IMPORT:
-                return parse_import(p, flags, start, flags_end, tgt);
-            case TK_HASH: return parse_pp_stmt(p, flags, start, flags_end, tgt);
+                return parse_module_frame_decl(p, &mods, true, tgt);
+            case TK_KW_USE: return parse_use(p, &mods, tgt);
+            case TK_KW_REQUIRE: return parse_require(p, &mods);
+            case TK_KW_IMPORT: return parse_import(p, &mods, tgt);
+            case TK_HASH: return parse_pp_stmt(p, &mods, tgt);
             case TK_IDENTIFIER: {
                 token* t2 = lx_peek_2nd(&p->lx);
                 if (!t2) return PE_LX_ERROR;
                 if (t2->kind == TK_COLON) {
-                    return parse_var_decl(p, flags, start, flags_end, tgt);
+                    return parse_var_decl(p, &mods, tgt);
                 }
                 if (curr_parent_supports_exprs(p)) {
-                    pe = require_default_flags(p, t, flags, start, flags_end);
+                    pe = reject_modifiers(p, t, &mods);
                     if (pe) return pe;
                     return parse_expr_stmt(p, tgt);
                 }
@@ -3563,7 +3596,7 @@ parse_error parse_statement(parser* p, ast_node** tgt)
                 return PE_ERROR;
             }
             default: {
-                pe = require_default_flags(p, t, flags, start, flags_end);
+                pe = reject_modifiers(p, t, &mods);
                 if (pe) return pe;
                 pe = parse_expr_stmt(p, tgt);
                 if (pe == PE_EOEX) {

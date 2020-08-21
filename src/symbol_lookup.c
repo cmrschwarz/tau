@@ -48,12 +48,12 @@ static inline resolve_error update_ams(
             *visible_within = true;
         }
     }
-    if (*am_start == AM_UNKNOWN) {
+    if (*am_start == AM_NONE) {
         *am_start = resolver_get_am_start(
             lookup_body, looking_mf_body, looking_mod_body);
     }
 
-    if (*am_end == AM_UNKNOWN || vis_within_check_required) {
+    if (*am_end == AM_NONE || vis_within_check_required) {
         for (ast_body* t = looking_body; t != NULL; t = t->parent) {
             if (t == lookup_body) {
                 *am_end = AM_PRIVATE;
@@ -62,11 +62,11 @@ static inline resolve_error update_ams(
             if (vis_within_check_required && visible_within_body == t) {
                 *visible_within = true;
                 vis_within_check_required = false;
-                if (*am_end != AM_UNKNOWN) break;
+                if (*am_end != AM_NONE) break;
             }
         }
     }
-    if (*am_end == AM_UNKNOWN) {
+    if (*am_end == AM_NONE) {
         *am_end = AM_PUBLIC;
         if (lookup_body->owning_node &&
             ast_elem_is_struct(lookup_body->owning_node)) {
@@ -127,12 +127,12 @@ resolve_error symbol_lookup_level_run(
     symbol_lookup_iterator* sli, ast_body* lookup_body, symbol** res)
 {
     // access modifiers that would be visible to
-    access_modifier am_start = AM_UNKNOWN;
-    access_modifier am_end = AM_UNKNOWN;
+    access_modifier am_start = AM_NONE;
+    access_modifier am_end = AM_NONE;
     resolve_error re;
     symbol* sym = ast_body_lookup(lookup_body, sli->hash, sli->tgt_name);
     if (sym != NULL) {
-        access_modifier am = ast_flags_get_access_mod(sym->node.flags);
+        access_modifier am = ast_node_get_access_mod(&sym->node);
         bool vis_within = false;
         if (symbol_is_open_symbol(sym)) {
             open_symbol* osym = (open_symbol*)sym;
@@ -160,7 +160,7 @@ resolve_error symbol_lookup_level_run(
     if (sym && sli->deref_aliases) {
         if (sym->node.kind == SYM_IMPORT_SYMBOL) {
             sym_import_symbol* is = (sym_import_symbol*)sym;
-            if (!ast_flags_get_resolved(sym->node.flags)) {
+            if (!ast_node_get_resolved(&sym->node)) {
                 re = resolve_import_symbol(
                     sli->r, (sym_import_symbol*)sym, sli->looking_body);
                 if (re) return re;
@@ -185,7 +185,7 @@ resolve_error symbol_lookup_level_run(
         while (ols) {
             open_symbol* s = ols;
             ols = (open_symbol*)s->sym.next;
-            access_modifier am = ast_flags_get_access_mod(s->sym.node.flags);
+            access_modifier am = ast_node_get_access_mod(&s->sym.node);
             if (am < am_start || am > am_end) continue;
             if (!check_visible_within(
                     sli->looking_body, s->visible_within_body)) {
@@ -322,7 +322,7 @@ static inline resolve_error symbol_lookup_level_continue(
     while (sll->overloaded_sym_head) {
         open_symbol* s = sll->overloaded_sym_head;
         sll->overloaded_sym_head = (open_symbol*)s->sym.next;
-        access_modifier am = ast_flags_get_access_mod(s->sym.node.flags);
+        access_modifier am = ast_node_get_access_mod(&s->sym.node);
         if (am < sll->am_start || am > sll->am_end) continue;
         if (check_visible_within(sli->looking_body, s->visible_within_body)) {
             *res = (symbol*)s;

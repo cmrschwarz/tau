@@ -126,7 +126,7 @@ void print_compound_decl_list(
     for (ureg i = 0; i < elem_count; i++) {
         if ((**el).kind == SYM_VAR) {
             sym_var* v = (sym_var*)*el;
-            if (ast_flags_get_const(v->osym.sym.node.flags)) p("const ");
+            if (ast_node_get_const(*el)) p("const ");
             pu(v->osym.sym.name);
             if (v->type != NULL) {
                 p(": ");
@@ -217,7 +217,7 @@ void print_import_module(ast_node* n, mdg_node* group_parent)
         p(im->osym.sym.name);
         p(" = ");
     }
-    if (ast_flags_get_relative_import(n->flags)) {
+    if (ast_node_get_relative_import(n)) {
         assert(!group_parent || group_parent == im->im_data.importing_module);
         p("self::");
         print_mdg_node_until(
@@ -241,7 +241,7 @@ void print_import_group(ast_node* node, bool child, ureg indent)
         p(name);
         p(" = ");
     }
-    if (ast_flags_get_relative_import(node->flags)) {
+    if (ast_node_get_relative_import(node)) {
         assert(!child);
         p("self::");
     }
@@ -270,9 +270,9 @@ void print_import_group(ast_node* node, bool child, ureg indent)
     p(im_data ? ")" : "}");
     if (!child) p(";");
 }
-void print_ast_node_modifiers(ast_flags flags)
+void print_ast_node_modifiers(ast_node* n)
 {
-    access_modifier am = ast_flags_get_access_mod(flags);
+    access_modifier am = ast_node_get_access_mod(n);
     switch (am) {
         // TODO: properly check for the default in this context
         case AM_LOCAL: break;
@@ -283,7 +283,7 @@ void print_ast_node_modifiers(ast_flags flags)
         default: break;
     };
     if (am) pc(' ');
-    if (ast_flags_get_const(flags)) {
+    if (ast_node_get_const(n)) {
         p(token_strings[TK_KW_CONST]);
         pc(' ');
     }
@@ -306,7 +306,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case STMT_COMPOUND_ASSIGN: {
             stmt_compound_assignment* ca = (stmt_compound_assignment*)n;
             pc('(');
-            bool colon = ast_flags_get_compound_decl(ca->node.flags);
+            bool colon = ast_node_get_compound_decl(&ca->node);
             if (colon) {
                 print_compound_decl_list(
                     ca->elements, ca->elem_count, cmdg, indent);
@@ -328,7 +328,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             sc_func_generic* fng =
                 (n->kind == SC_FUNC) ? NULL : (sc_func_generic*)n;
 
-            print_ast_node_modifiers(n->flags);
+            print_ast_node_modifiers(n);
             p("func ");
             pu(fnb->sc.osym.sym.name);
             if (fng) {
@@ -412,7 +412,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_NAMED_USE: {
             sym_named_use* nu = (sym_named_use*)n;
-            print_ast_node_modifiers(nu->osym.sym.node.flags);
+            print_ast_node_modifiers(n);
             p("using ");
             p(nu->osym.sym.name);
             p(" = ");
@@ -420,13 +420,13 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case STMT_USE: {
             stmt_use* u = (stmt_use*)n;
-            print_ast_node_modifiers(u->node.flags);
+            print_ast_node_modifiers(n);
             p("using ");
             print_ast_node(u->target, cmdg, indent);
         } break;
         case EXPR_IDENTIFIER: {
             expr_identifier* i = (expr_identifier*)n;
-            if (ast_flags_get_resolved(n->flags)) {
+            if (ast_node_get_resolved(n)) {
                 print_ast_elem_name((ast_elem*)i->value.sym);
             }
             else {
@@ -456,7 +456,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_VAR: {
             sym_var* v = (sym_var*)n;
-            print_ast_node_modifiers(v->osym.sym.node.flags);
+            print_ast_node_modifiers(n);
             pu(v->osym.sym.name);
             if (v->type != NULL) {
                 p(": ");
@@ -465,7 +465,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case SYM_VAR_INITIALIZED: {
             sym_var_initialized* v = (sym_var_initialized*)n;
-            print_ast_node_modifiers(v->var.osym.sym.node.flags);
+            print_ast_node_modifiers(n);
             pu(v->var.osym.sym.name);
             if (v->var.type != NULL) {
                 p(": ");
@@ -553,17 +553,17 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case EXPR_BREAK: {
             expr_break* b = (expr_break*)n;
             p("break");
-            const char* n = NULL;
-            if (ast_flags_get_resolved(b->node.flags)) {
-                n = b->target.ebb->name;
+            const char* name = NULL;
+            if (ast_node_get_resolved(n)) {
+                name = b->target.ebb->name;
             }
             else {
-                n = b->target.label;
+                name = b->target.label;
             }
-            if (n) {
+            if (name) {
                 pc(' ');
                 pc('@');
-                p(n);
+                p(name);
             }
             if (b->value) {
                 pc(' ');
@@ -573,17 +573,17 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         case EXPR_CONTINUE: {
             expr_continue* c = (expr_continue*)n;
             p("continue");
-            const char* n = NULL;
-            if (ast_flags_get_resolved(c->node.flags)) {
-                n = c->target.ebb->name;
+            const char* name = NULL;
+            if (ast_node_get_resolved(n)) {
+                name = c->target.ebb->name;
             }
             else {
-                n = c->target.label;
+                name = c->target.label;
             }
-            if (n) {
+            if (name) {
                 pc(' ');
                 pc('@');
-                p(n);
+                p(name);
             }
         } break;
         case EXPR_RETURN: {
@@ -647,7 +647,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             expr_scope_access* esa = (expr_scope_access*)n;
             print_ast_node(esa->lhs, cmdg, indent);
             p(n->kind == EXPR_MEMBER_ACCESS ? "." : "::");
-            if (!ast_flags_get_resolved(n->flags)) {
+            if (!ast_node_get_resolved(n)) {
                 pu(esa->target.name);
             }
             else {
