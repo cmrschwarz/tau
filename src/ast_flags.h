@@ -114,18 +114,18 @@ bool ast_node_get_compound_decl(ast_node* n);
 
 void ast_node_set_relative_import(ast_node* n);
 bool ast_node_get_relative_import(ast_node* n);
-void ast_flags_clear_relative_import(ast_node* n);
+void ast_node_clear_relative_import(ast_node* n);
 
 void ast_node_set_declared(ast_node* n);
 bool ast_node_get_declared(ast_node* n);
-void ast_flags_clear_declared(ast_node* n);
+void ast_node_clear_declared(ast_node* n);
 
 void ast_node_set_resolved(ast_node* n);
 bool ast_node_get_resolved(ast_node* n);
-void ast_flags_clear_resolved(ast_node* n);
+void ast_node_clear_resolved(ast_node* n);
 
 void ast_node_set_resolving(ast_node* n);
-void ast_flags_clear_resolving(ast_node* n);
+void ast_node_clear_resolving(ast_node* n);
 bool ast_node_get_resolving(ast_node* n);
 
 void ast_node_set_overloaded_in_pp(ast_node* n);

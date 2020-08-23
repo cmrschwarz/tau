@@ -17,7 +17,7 @@ static inline void* alloc_perm(resolver* r, ureg size)
     do {                                                                       \
         *(TGT_PTR_PTR) = alloc_perm((r), sizeof(NODE_TYPE));                   \
         if (*(TGT_PTR_PTR) == NULL) return RE_FATAL;                           \
-        ast_flags_clear_declared(&(**TGT_PTR_PTR).flags);                      \
+        ast_node_clear_declared((ast_node*)*(TGT_PTR_PTR));                    \
         **(NODE_TYPE**)(TGT_PTR_PTR) = *(NODE_TYPE*)(NODE);                    \
     } while (false)
 
@@ -26,7 +26,7 @@ static inline void* alloc_perm(resolver* r, ureg size)
         (COPY_PTR) = alloc_perm((r), sizeof(NODE_TYPE));                       \
         if ((COPY_PTR) == NULL) return RE_FATAL;                               \
         *(NODE_TYPE*)(COPY_PTR) = *(NODE_TYPE*)(NODE);                         \
-        ast_flags_clear_declared(&((ast_node*)(COPY_PTR))->flags);             \
+        ast_node_clear_declared((ast_node*)(COPY_PTR));                        \
         *(TGT_PTR_PTR) = (ast_node*)(COPY_PTR);                                \
     } while (false)
 // inst indicates whether we are in a generic instance, or if we are currently
@@ -162,7 +162,7 @@ resolve_error instantiate_generic_struct(
         // gpi->sym.declaring_st = sgi->st.sb.sc.body.symtab;
         gpi->sym.name = gp->sym.name;
         gpi->sym.node.flags = gp->sym.node.flags;
-        ast_node_set_resolved(&gpi->sym.node.flags);
+        ast_node_set_resolved(&gpi->sym.node);
         gpi->sym.node.kind = SYM_PARAM_GENERIC_INST;
         gpi->sym.node.srange = gp->sym.node.srange;
         symbol* c =
@@ -174,8 +174,8 @@ resolve_error instantiate_generic_struct(
     if (re) return re;
     sgi->st.sb.sc.osym.sym.next = (symbol*)sg->instances;
     sg->instances = sgi;
-    ast_flags_clear_resolving(&sgi->st.sb.sc.osym.sym.node.flags);
-    ast_flags_clear_resolved(&sgi->st.sb.sc.osym.sym.node.flags);
+    ast_node_clear_resolving((ast_node*)sgi);
+    ast_node_clear_resolved((ast_node*)sgi);
     *tgt = sgi;
     return RE_OK;
 }

@@ -170,7 +170,7 @@ bool ast_node_get_declared(ast_node* n)
 {
     return u16_get_bit(n->flags, ASTF_DECLARED_OFFSET);
 }
-void ast_flags_clear_declared(ast_node* n)
+void ast_node_clear_declared(ast_node* n)
 {
     u16_clear_bit(&n->flags, ASTF_DECLARED_OFFSET);
 }
@@ -183,7 +183,7 @@ bool ast_node_get_relative_import(ast_node* n)
 {
     return u16_get_bit(n->flags, ASTF_RELATIVE_IMPORT_OFFSET);
 }
-void ast_flags_clear_relative_import(ast_node* n)
+void ast_node_clear_relative_import(ast_node* n)
 {
     u16_clear_bit(&n->flags, ASTF_RELATIVE_IMPORT_OFFSET);
 }
@@ -205,7 +205,7 @@ bool ast_node_get_resolved(ast_node* n)
 {
     return u16_get_bit(n->flags, ASTF_RESOLVED_OFFSET);
 }
-void ast_flags_clear_resolved(ast_node* n)
+void ast_node_clear_resolved(ast_node* n)
 {
     u16_clear_bit(&n->flags, ASTF_RESOLVED_OFFSET);
 }
@@ -214,7 +214,7 @@ void ast_node_set_resolving(ast_node* n)
 {
     u16_set_bit(&n->flags, ASTF_RESOLVING_OFFSET);
 }
-void ast_flags_clear_resolving(ast_node* n)
+void ast_node_clear_resolving(ast_node* n)
 {
     u16_clear_bit(&n->flags, ASTF_RESOLVING_OFFSET);
 }

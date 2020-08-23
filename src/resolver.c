@@ -2044,7 +2044,7 @@ resolve_error resolve_importing_node(
         if (re) return re;
         used_in_pp = ast_node_get_used_in_pp(node);
         if (!used_in_pp) {
-            ast_flags_clear_resolving(node);
+            ast_node_clear_resolving(node);
             RETURN_RESOLVED(value, ctype, node, NULL);
         }
     }
@@ -2121,7 +2121,7 @@ resolve_error resolve_importing_node(
         ast_node_set_resolved(node);
     }
     else {
-        ast_flags_clear_resolving(node);
+        ast_node_clear_resolving(node);
     }
     RETURN_RESOLVED(value, ctype, node, NULL);
 }
@@ -2175,7 +2175,7 @@ resolve_import_symbol(resolver* r, sym_import_symbol* is, ast_body* body)
     assert(im_data);
     re = resolve_ast_node_raw(r, is->import_group, body, NULL, NULL);
     if (re) {
-        ast_flags_clear_resolving(node);
+        ast_node_clear_resolving(node);
         return re;
     }
     if (ast_node_get_resolved(node)) return RE_OK;
@@ -2184,7 +2184,7 @@ resolve_import_symbol(resolver* r, sym_import_symbol* is, ast_body* body)
     re = resolver_lookup_single(
         r, &im_data->imported_module->body, NULL, decl_body, is->target.name,
         &sym, &amb);
-    if (re || !sym) ast_flags_clear_resolving(node);
+    if (re || !sym) ast_node_clear_resolving(node);
     if (re) return re;
     if (!sym) return report_unknown_symbol(r, (ast_node*)is, decl_body);
     if (is_symbol_kind_overloadable(sym->node.kind)) {
@@ -2700,7 +2700,7 @@ static inline void report_type_loop(resolver* r, ast_node* n, ast_body* body)
     if (stack_peek_nth(&r->error_stack, stack_ec - 2) != n) {
         r->retracing_type_loop = true;
         stack_clear(&r->error_stack);
-        ast_flags_clear_resolving(n);
+        ast_node_clear_resolving(n);
         resolve_ast_node(r, n, body, NULL, NULL);
         stack_ec = stack_element_count(&r->error_stack);
         assert(stack_peek_nth(&r->error_stack, stack_ec - 2) == n);
@@ -2751,17 +2751,17 @@ handle_resolve_error(resolver* r, ast_node* n, ast_body* body, resolve_error re)
                 stack_push(&r->error_stack, body->symtab);
                 stack_push(&r->error_stack, n);
             }
-            ast_flags_clear_resolving(n);
+            ast_node_clear_resolving(n);
         }
         else if (n != r->type_loop_start) {
-            ast_flags_clear_resolving(n);
+            ast_node_clear_resolving(n);
             if (re != RE_UNREALIZED_COMPTIME && r->tc->t->trap_on_error) {
                 debugbreak();
             }
         }
     }
     else {
-        ast_flags_clear_resolving(n);
+        ast_node_clear_resolving(n);
     }
     return re;
 }
