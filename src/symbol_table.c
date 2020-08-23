@@ -18,8 +18,8 @@ ureg symbol_table_has_usings(symbol_table* st)
 }
 ureg symbol_table_get_symbol_capacity(symbol_table* st)
 {
-    assert(st->bitcount);
-    return (1 << st->bitcount) - st->table_offset;
+    assert(st->table_bitcount);
+    return (1 << st->table_bitcount) - st->table_offset;
 }
 ureg symbol_table_get_using_capacity(symbol_table* st)
 {
@@ -80,11 +80,13 @@ ast_node** symbol_table_get_use_node(symbol_table* st, ast_body** using_st)
 
 symbol** symbol_table_calculate_position(symbol_table* st, ureg hash)
 {
-    ureg mask = (1 << st->bitcount) - 1;
-    ureg idx = hash;
-    idx = fnv_fold(idx, st->bitcount, mask);
-    // HACK: this is trash, but i just want things to work for now.
-    if (idx < st->table_offset) idx = st->table_offset;
+    ureg sym_mask = (1 << st->sym_bitcount) - 1;
+    ureg table_mask = (1 << st->table_bitcount) - 1;
+    ureg hash_folded = fnv_fold(hash, st->sym_bitcount, sym_mask);
+    ureg idx = (hash_folded + st->table_offset) & table_mask;
+    if (idx < st->table_offset) {
+        idx = st->table_offset + sym_mask - hash_folded;
+    }
     return (symbol**)ptradd(st, idx * sizeof(void*));
 }
 
@@ -124,7 +126,8 @@ void symbol_table_inc_sym_count(symbol_table* st)
 void symtab_it_init(symtab_it* stit, symbol_table* st)
 {
     stit->pos = ptradd(st, st->table_offset * sizeof(void*));
-    stit->last = ptradd(st, (((ureg)1 << st->bitcount) - 1) * sizeof(void*));
+    stit->last =
+        ptradd(st, (((ureg)1 << st->table_bitcount) - 1) * sizeof(void*));
     stit->subpos = *stit->pos;
 }
 symtab_it symtab_it_make(symbol_table* st)
@@ -190,7 +193,9 @@ symbol_table* symbol_table_create(ureg sym_count, ureg using_count)
     symbol** start = ptradd(st, st->table_offset * sizeof(void*));
     memset(start, 0, size_ceiled - ptrdiff(start, st));
     st->sym_count = 0;
-    st->bitcount = ulog2(size_ceiled / sizeof(void*));
+    ureg size_in_ptrs = size_ceiled / sizeof(void*);
+    st->table_bitcount = ulog2(size_in_ptrs);
+    st->sym_bitcount = ulog2(ceil_to_pow2(size_in_ptrs - st->table_offset));
     return st;
 }
 void symbol_table_destroy(symbol_table* st)

@@ -14,12 +14,14 @@ typedef struct src_map_s src_map;
  *   SYMTAB HEADER   *
  *   USING HEADER    *  <- the using sections are optional,
  *    USING_BODYS    *     not present if using capacity = 0
- *    USING_BODYS    *
+ *    USING_NODES    *
  *      SYMBOLS      *  <- table offset is the offset of this section
  *********************/
 
 typedef struct symbol_table_s {
-    ureg bitcount; // table size including headers == 2**bitcount
+    // table size including headers == 2**table_bitcount * sizeof(void*)
+    uregh table_bitcount;
+    uregh sym_bitcount;
     ureg sym_count;
     // how much to offset the start of the actual table
     // when there are no usings this is sizeof(symbol_table)
