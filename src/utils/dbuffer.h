@@ -2,6 +2,8 @@
 
 #include "allocator.h"
 #include "types.h"
+#include "math_utils.h"
+#include <memory.h>
 
 typedef struct dbuffer_s {
     u8* start;
@@ -19,13 +21,10 @@ ureg dbuffer_get_capacity(dbuffer* db);
 ureg dbuffer_get_size(dbuffer* db);
 ureg dbuffer_get_free_space(dbuffer* db);
 
-void dbuffer_get(dbuffer* db, void* target, void* pos, ureg size);
-
 bool dbuffer_is_emtpy(dbuffer* db);
 
 // 0: success, -1: allocation failiure
 int dbuffer_set_capacity(dbuffer* db, ureg new_size);
-int dbuffer_set_bigger_capacity(dbuffer* db, ureg new_size);
 
 bool dbuffer_can_fit(dbuffer* db, ureg required_space);
 
@@ -48,8 +47,27 @@ void dbuffer_clear(dbuffer* db);
 // 0: success, -1: allocation failiure
 int dbuffer_append(dbuffer* db, const void* data, ureg size);
 
+static inline void
+dbuffer_get_raw(dbuffer* db, void* target, void* pos, ureg size)
+{
+    memcpy(target, pos, size);
+}
+static inline void
+dbuffer_get(dbuffer* db, void* target, ureg offset, ureg size)
+{
+    dbuffer_get_raw(db, target, ptradd(db->start, offset), size);
+}
+static inline void
+dbuffer_get_element(dbuffer* db, void* target, ureg idx, ureg size)
+{
+    dbuffer_get(db, target, idx * size, size);
+}
+static inline void* dbuffer_get_element_ptr(dbuffer* db, ureg idx, ureg size)
+{
+    return ptradd(db->start, idx * size);
+}
+
 #define dbuffer_append_val(db, val)                                            \
     do {                                                                       \
         (*(typeof(val)*)dbuffer_claim(db, sizeof(val))) = (val);               \
     } while (0)
-

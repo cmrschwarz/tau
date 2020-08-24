@@ -2,7 +2,7 @@
 
 #include "stdio.h"
 #include "types.h"
-#include "utils/allocator.h"
+#include "allocator.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -154,4 +154,3 @@ static inline int get_utf8_seq_len_from_head(char c)
     }
     return r;
 }
-

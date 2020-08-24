@@ -323,6 +323,20 @@ mdg_node* resolver_resolving_root(resolver* r)
     mdg_node* rn = *r->mdgs_begin;
     return (rn == r->tc->t->mdg.root_node) ? rn : NULL;
 }
+bool is_lvalue(ast_elem* expr)
+{
+    if (expr->kind == EXPR_PARENTHESES) {
+        return is_lvalue((ast_elem*)((expr_parentheses*)expr)->child);
+    }
+    if (expr->kind == EXPR_IDENTIFIER) return true;
+    if (expr->kind == EXPR_OP_UNARY) {
+        expr_op_unary* ou = (expr_op_unary*)expr;
+        return (ou->node.op_kind == OP_DEREF);
+    }
+    if (expr->kind == EXPR_MEMBER_ACCESS) return true;
+    if (expr->kind == EXPR_ACCESS) return true;
+    return false;
+}
 resolve_error pprn_set_used_in_pp(resolver* r, pp_resolve_node* pprn)
 {
     if (ast_node_get_used_in_pp(pprn->node)) return RE_OK;
@@ -1263,7 +1277,6 @@ resolve_error create_pointer_to(
     if (!tp) return RE_FATAL;
     tp->base = child_type;
     tp->kind = TYPE_POINTER;
-    tp->rvalue = rvalue;
     *tgt = (ast_elem*)tp;
     return RE_OK;
 }
@@ -1293,8 +1306,7 @@ resolve_error choose_unary_operator_overload(
     else {
         if (ou->node.op_kind == OP_ADDRESS_OF) {
             if (child_type->kind == TYPE_POINTER) {
-                // TODO: error
-                assert(((type_pointer*)child_type)->rvalue == false);
+                assert(is_lvalue(child_value));
             }
             re = create_pointer_to(r, child_type, true, &child_type);
             if (re) return re;
@@ -1318,20 +1330,6 @@ resolve_error choose_unary_operator_overload(
         }
     }
 }
-bool is_lvalue(ast_node* expr)
-{
-    if (expr->kind == EXPR_PARENTHESES) {
-        return is_lvalue(((expr_parentheses*)expr)->child);
-    }
-    if (expr->kind == EXPR_IDENTIFIER) return true;
-    if (expr->kind == EXPR_OP_UNARY) {
-        expr_op_unary* ou = (expr_op_unary*)expr;
-        return (ou->node.op_kind == OP_DEREF);
-    }
-    if (expr->kind == EXPR_MEMBER_ACCESS) return true;
-    if (expr->kind == EXPR_ACCESS) return true;
-    return false;
-}
 resolve_error choose_binary_operator_overload(
     resolver* r, expr_op_binary* ob, ast_body* body, ast_elem** value,
     ast_elem** ctype)
@@ -1352,7 +1350,7 @@ resolve_error choose_binary_operator_overload(
     if (unrealized_comptime) return RE_UNREALIZED_COMPTIME;
 
     if (ob->node.op_kind == OP_ASSIGN) {
-        assert(is_lvalue(ob->lhs)); // TODO: error
+        assert(is_lvalue((ast_elem*)ob->lhs)); // TODO: error
         assert(ctypes_unifiable(lhs_ctype, rhs_ctype)); // TODO: error
         if (ctype) *ctype = VOID_ELEM;
         ob->op = lhs_ctype;

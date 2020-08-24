@@ -785,8 +785,10 @@ typedef struct type_pointer_s {
         ast_node_kind kind;
         ast_elem elem;
     };
+    bool is_const;
     ast_elem* base;
-    bool rvalue;
+    ureg ptr_to_id;
+    ureg flipped_const_id;
 } type_pointer;
 
 typedef struct type_slice_s {

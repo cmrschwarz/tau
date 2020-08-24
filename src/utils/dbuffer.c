@@ -1,7 +1,5 @@
 #include "dbuffer.h"
 #include "allocator.h"
-#include "math_utils.h"
-#include <memory.h>
 
 int dbuffer_init_with_capacity(dbuffer* db, ureg capacity)
 {
@@ -73,7 +71,7 @@ int dbuffer_reserve(dbuffer* db, ureg space)
             capacity = capacity * 2;
         }
         else {
-            capacity = dbuffer_get_size(db) + space;
+            capacity = ceil_to_pow2(dbuffer_get_size(db) + space);
         }
         return dbuffer_set_capacity(db, capacity);
     }
@@ -157,9 +155,4 @@ int dbuffer_append(dbuffer* db, const void* data, ureg size)
     memcpy(db->head, data, size);
     db->head += size;
     return 0;
-}
-
-void dbuffer_get(dbuffer* db, void* target, void* pos, ureg size)
-{
-    memcpy(target, pos, size);
 }

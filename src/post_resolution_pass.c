@@ -510,7 +510,7 @@ void prp_free_owned_vars(post_resolution_pass* prp)
                 panic("compiler bug");
                 return;
         }
-        ast_node_set_dtor_kind(&vd->var_node->var->osym.sym.node.flags, dk);
+        ast_node_set_dtor_kind((ast_node*)vd->var_node->var, dk);
         vd->var_node->var->prpvn = NULL;
     }
 }

@@ -7,6 +7,7 @@
 #define PACK_STRUCT __attribute__((__packed__))
 #else
 #define PACK_ENUM
+#define PACK_STRUCT
 #endif
 
 // prevents emtpy transation unit warnings from ISO compliant compilers
@@ -17,4 +18,3 @@
 #define CONCAT(a, b) CONCAT_RAW(a, b)
 #define STR_CAT(a, b) a b
 #define STR_CAT_3(a, b, c) a b c
-
