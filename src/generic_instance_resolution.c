@@ -17,7 +17,7 @@ static inline void* alloc_perm(resolver* r, ureg size)
     do {                                                                       \
         *(TGT_PTR_PTR) = alloc_perm((r), sizeof(NODE_TYPE));                   \
         if (*(TGT_PTR_PTR) == NULL) return RE_FATAL;                           \
-        ast_node_clear_declared((ast_node*)*(TGT_PTR_PTR));                    \
+        ast_node_set_status((ast_node*)*(TGT_PTR_PTR), NODE_STATUS_PARSED);    \
         **(NODE_TYPE**)(TGT_PTR_PTR) = *(NODE_TYPE*)(NODE);                    \
     } while (false)
 
@@ -26,7 +26,7 @@ static inline void* alloc_perm(resolver* r, ureg size)
         (COPY_PTR) = alloc_perm((r), sizeof(NODE_TYPE));                       \
         if ((COPY_PTR) == NULL) return RE_FATAL;                               \
         *(NODE_TYPE*)(COPY_PTR) = *(NODE_TYPE*)(NODE);                         \
-        ast_node_clear_declared((ast_node*)(COPY_PTR));                        \
+        ast_node_set_status((ast_node*)(COPY_PTR), NODE_STATUS_PARSED);        \
         *(TGT_PTR_PTR) = (ast_node*)(COPY_PTR);                                \
     } while (false)
 // inst indicates whether we are in a generic instance, or if we are currently
@@ -174,8 +174,7 @@ resolve_error instantiate_generic_struct(
     if (re) return re;
     sgi->st.sb.sc.osym.sym.next = (symbol*)sg->instances;
     sg->instances = sgi;
-    ast_node_clear_resolving((ast_node*)sgi);
-    ast_node_clear_resolved((ast_node*)sgi);
+    ast_node_set_status((ast_node*)sgi, NODE_STATUS_PARSED);
     *tgt = sgi;
     return RE_OK;
 }

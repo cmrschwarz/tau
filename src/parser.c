@@ -29,7 +29,6 @@ typedef struct modifier_data_s {
     access_modifier access_mod;
     bool extern_mod;
     bool static_mod;
-    bool explicit_mod;
     bool implicit_mod;
     bool const_mod;
     bool relative_import_mod;
@@ -40,7 +39,6 @@ static const modifier_data MODIFIERS_NONE = {.comptime_mod = false,
                                              .access_mod = AM_NONE,
                                              .extern_mod = false,
                                              .static_mod = false,
-                                             .explicit_mod = false,
                                              .implicit_mod = false,
                                              .const_mod = false,
                                              .relative_import_mod = false,
@@ -567,7 +565,6 @@ static inline void ast_node_init_with_mods(
         n, md->access_mod == AM_NONE ? AM_LOCAL : md->access_mod);
     if (md->extern_mod) ast_node_set_extern_func(n);
     if (md->static_mod) ast_node_set_static(n);
-    if (md->explicit_mod) ast_node_set_explicit(n);
     if (md->implicit_mod) ast_node_set_implicit(n);
     if (md->const_mod) ast_node_set_const(n);
     if (md->relative_import_mod) ast_node_set_relative_import(n);

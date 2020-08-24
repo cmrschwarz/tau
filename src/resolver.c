@@ -515,8 +515,10 @@ static resolve_error add_func_decl(
         params = fng->fnb.params;
         assert(fng->generic_param_count == 0 || b->owning_node == (ast_elem*)n);
         for (ureg i = 0; i < fng->generic_param_count; i++) {
-            re = add_symbol(r, b, NULL, (symbol*)&fng->generic_params[i]);
+            symbol* p = (symbol*)&fng->generic_params[i];
+            re = add_symbol(r, b, NULL, p);
             if (re) return re;
+            ast_node_set_declared((ast_node*)p);
         }
     }
     ast_body* tgt_body = get_decl_target_body(n, body, shared_body);
@@ -562,6 +564,7 @@ static resolve_error add_func_decl(
     for (ureg i = 0; i < param_count; i++) {
         re = add_symbol(r, b, NULL, (symbol*)&params[i]);
         if (re) return re;
+        ast_node_set_declared((ast_node*)&params[i]);
     }
     if (n->kind == SC_FUNC) {
         sc_func* fn = (sc_func*)n;
@@ -2115,11 +2118,13 @@ resolve_error resolve_importing_node(
     if (im_mdg && available) { // we set im_mdg iff we inc'ed the dep count
         atomic_ureg_dec(&im_mdg->ungenerated_pp_deps);
     }
-    if (used_in_pp || available) {
-        ast_node_set_resolved(node);
-    }
-    else {
-        ast_node_clear_resolving(node);
+    if (!used_in_pp) {
+        if (available) {
+            ast_node_set_resolved(node);
+        }
+        else {
+            ast_node_clear_resolving(node);
+        }
     }
     RETURN_RESOLVED(value, ctype, node, NULL);
 }
@@ -2759,7 +2764,7 @@ handle_resolve_error(resolver* r, ast_node* n, ast_body* body, resolve_error re)
         }
     }
     else {
-        ast_node_clear_resolving(n);
+        if (!ast_node_get_resolved(n)) ast_node_clear_resolving(n);
     }
     return re;
 }
@@ -2941,7 +2946,7 @@ resolve_error resolve_func(
     bool generic = (fnb->sc.osym.sym.node.kind == SC_FUNC_GENERIC);
     bool generic_parent = r->generic_context;
     r->generic_context = generic || generic_parent;
-    resolve_error re;
+    resolve_error re = RE_OK;
     if (!continue_block) {
         if (!ast_node_get_static((ast_node*)fnb)) {
             if (ast_elem_is_struct(ast_body_get_non_paste_parent(
