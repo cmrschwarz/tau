@@ -1272,8 +1272,8 @@ resolve_error resolve_call(
     assert(false); // TODO
     return RE_OK;
 }
-resolve_error create_pointer_to(
-    resolver* r, ast_elem* child_type, bool rvalue, ast_elem** tgt)
+resolve_error
+create_pointer_to(resolver* r, ast_elem* child_type, ast_elem** tgt)
 {
     type_pointer* tp =
         (type_pointer*)pool_alloc(&r->tc->permmem, sizeof(type_pointer));
@@ -1295,7 +1295,7 @@ resolve_error choose_unary_operator_overload(
     if (child_type == TYPE_ELEM || child_type == GENERIC_TYPE_ELEM) {
         ast_node_set_type_operator(&ou->node);
         if (ou->node.op_kind == OP_DEREF) {
-            re = create_pointer_to(r, child_value, false, &child_type);
+            re = create_pointer_to(r, child_value, &child_type);
             if (re) return re;
             ou->op = child_type;
             RETURN_RESOLVED(value, ctype, child_type, TYPE_ELEM);
@@ -1309,9 +1309,22 @@ resolve_error choose_unary_operator_overload(
     else {
         if (ou->node.op_kind == OP_ADDRESS_OF) {
             if (child_type->kind == TYPE_POINTER) {
-                assert(is_lvalue(child_value));
+                if (!is_lvalue(child_value)) {
+                    src_range_large child_srl, op_srl;
+                    ast_node_get_src_range((ast_node*)ou, body, &op_srl);
+                    ast_node_get_full_src_range(ou->child, body, &child_srl);
+                    error_log_report_annotated_twice(
+                        r->tc->err_log, ES_RESOLVER, false,
+                        "cannot take the address of an rvalue", child_srl.smap,
+                        child_srl.start, child_srl.end,
+                        "the expression that doesn't have a storage location",
+                        op_srl.smap, op_srl.start, op_srl.end,
+                        "cannot take the address of this expression");
+                    r->error_occured = true;
+                    ast_node_set_poisoned(&ou->node);
+                }
             }
-            re = create_pointer_to(r, child_type, true, &child_type);
+            re = create_pointer_to(r, child_type, &child_type);
             if (re) return re;
             ou->op = child_type;
             RETURN_RESOLVED(value, ctype, ou, child_type);
@@ -1353,8 +1366,35 @@ resolve_error choose_binary_operator_overload(
     if (unrealized_comptime) return RE_UNREALIZED_COMPTIME;
 
     if (ob->node.op_kind == OP_ASSIGN) {
-        assert(is_lvalue((ast_elem*)ob->lhs)); // TODO: error
-        assert(ctypes_unifiable(lhs_ctype, rhs_ctype)); // TODO: error
+        if (!ctypes_unifiable(lhs_ctype, rhs_ctype)) {
+            src_range_large rhs_srl;
+            src_range_large op_srl;
+            ast_node_get_full_src_range(ob->rhs, body, &rhs_srl);
+            ast_node_get_src_range((ast_node*)ob, body, &op_srl);
+            error_log_report_annotated_twice(
+                r->tc->err_log, ES_RESOLVER, false, "assignment type missmatch",
+                rhs_srl.smap, rhs_srl.start, rhs_srl.end,
+                "the right hand sides expression's type is not implicitly "
+                "convertible to "
+                "the left hand sides",
+                op_srl.smap, op_srl.start, op_srl.end, "in this assignment");
+            r->error_occured = true;
+            ast_node_set_poisoned(&ob->node);
+        }
+        if (!is_lvalue((ast_elem*)ob->lhs)) {
+            src_range_large lhs_srl;
+            src_range_large op_srl;
+            ast_node_get_full_src_range(ob->lhs, body, &lhs_srl);
+            ast_node_get_src_range((ast_node*)ob, body, &op_srl);
+            error_log_report_annotated_twice(
+                r->tc->err_log, ES_RESOLVER, false,
+                "cannot assign to an rvalue", lhs_srl.smap, lhs_srl.start,
+                lhs_srl.end, "this expression doesn't have a storage location",
+                op_srl.smap, op_srl.start, op_srl.end,
+                "therefore it is not assignable");
+            r->error_occured = true;
+            ast_node_set_poisoned(&ob->node);
+        }
         if (ctype) *ctype = VOID_ELEM;
         ob->op = lhs_ctype;
         return RE_OK;

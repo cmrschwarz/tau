@@ -99,7 +99,7 @@ type_pointer* type_map_get_pointer(
                 type_map_segment** segs_new =
                     trealloc(tm->gtm->segments, size_old, size_new);
                 if (!segs_new) {
-                    rwlock_write(&tm->gtm->lock);
+                    rwlock_end_write(&tm->gtm->lock);
                     return NULL;
                 }
                 memset(ptradd(segs_new, size_old), 0, size_new - size_old);

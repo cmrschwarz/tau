@@ -189,6 +189,7 @@ prp_error prp_handle_assign(post_resolution_pass* prp, expr_op_binary* assign)
         prp_var_data* vd = v->prpvn->curr_data;
         assert(
             vd->var_node->var->ctype->kind == SYM_PRIMITIVE ||
+            vd->var_node->var->ctype->kind == TYPE_POINTER ||
             vd->curr_state == VAR_STATE_INVALID);
         UNUSED(vd);
         new_state = VAR_STATE_INVALID;
