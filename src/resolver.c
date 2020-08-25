@@ -797,6 +797,7 @@ static resolve_error add_ast_node_decls(
         case SC_STRUCT_GENERIC_INST: {
             // generic inst 'inherits' from struct
             sc_struct* s = (sc_struct*)n;
+            s->ptr_id = type_map_claim_id(&r->tm);
             re = add_symbol(r, body, shared_body, (symbol*)s);
             bool members_public_st =
                 shared_body && !is_local_node((ast_elem*)n);
@@ -1272,15 +1273,35 @@ resolve_error resolve_call(
     assert(false); // TODO
     return RE_OK;
 }
-resolve_error
-create_pointer_to(resolver* r, ast_elem* child_type, ast_elem** tgt)
+resolve_error create_pointer_to(
+    resolver* r, ast_elem* base_type, bool is_const, ast_elem** tgt)
 {
-    type_pointer* tp =
-        (type_pointer*)pool_alloc(&r->tc->permmem, sizeof(type_pointer));
-    if (!tp) return RE_FATAL;
-    tp->base = child_type;
-    tp->kind = TYPE_POINTER;
-    *tgt = (ast_elem*)tp;
+    ureg id;
+    bool already_const = false;
+    switch (base_type->kind) {
+        case SC_STRUCT: {
+            id = ((sc_struct*)base_type)->ptr_id;
+        } break;
+        case SYM_PRIMITIVE: {
+            id = ((primitive*)base_type)->ptr_id;
+        } break;
+        case TYPE_POINTER: {
+            id = ((type_pointer*)base_type)->ptr_id;
+        } break;
+        default: assert(false); break;
+    }
+
+    type_pointer* t = type_map_get_pointer(
+        &r->tm, base_type, id, already_const, &r->tc->permmem);
+    if (!t) return RE_FATAL;
+    if (is_const && !already_const) {
+        t = type_map_get_pointer(
+            &r->tm, base_type, t->flipped_const_id, true, &r->tc->permmem);
+        if (!t) return RE_FATAL;
+    }
+    *tgt = (ast_elem*)t;
+    // sanity check for type_map
+    assert(t->base == base_type && t->is_const == is_const);
     return RE_OK;
 }
 resolve_error choose_unary_operator_overload(
@@ -1295,7 +1316,7 @@ resolve_error choose_unary_operator_overload(
     if (child_type == TYPE_ELEM || child_type == GENERIC_TYPE_ELEM) {
         ast_node_set_type_operator(&ou->node);
         if (ou->node.op_kind == OP_DEREF) {
-            re = create_pointer_to(r, child_value, &child_type);
+            re = create_pointer_to(r, child_value, false, &child_type);
             if (re) return re;
             ou->op = child_type;
             RETURN_RESOLVED(value, ctype, child_type, TYPE_ELEM);
@@ -1324,7 +1345,7 @@ resolve_error choose_unary_operator_overload(
                     ast_node_set_poisoned(&ou->node);
                 }
             }
-            re = create_pointer_to(r, child_type, &child_type);
+            re = create_pointer_to(r, child_type, false, &child_type);
             if (re) return re;
             ou->op = child_type;
             RETURN_RESOLVED(value, ctype, ou, child_type);
@@ -4114,7 +4135,8 @@ int resolver_partial_fin(resolver* r, int i, int res)
 {
     switch (i) {
         case -1:
-        case 10: llvm_backend_delete(r->backend); // fallthrough
+        case 11: llvm_backend_delete(r->backend); // fallthrough
+        case 10: type_map_fin(&r->tm); // fallthrough
         case 9: prp_fin(&r->prp); // fallthrough
         case 8: ptrlist_fin(&r->import_module_data_nodes); // fallthrough
         case 7: ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
@@ -4154,8 +4176,10 @@ int resolver_init(resolver* r, thread_context* tc)
     if (e) return resolver_partial_fin(r, 7, e);
     e = prp_init(&r->prp, r->tc);
     if (e) return resolver_partial_fin(r, 8, e);
+    e = type_map_init(&r->tm, &r->tc->t->gtm);
+    if (e) return resolver_partial_fin(r, 9, e);
     r->backend = llvm_backend_new(r->tc);
-    if (!r->backend) return resolver_partial_fin(r, 9, ERR);
+    if (!r->backend) return resolver_partial_fin(r, 10, ERR);
     r->allow_type_loops = false;
     r->type_loop_start = NULL;
     return OK;

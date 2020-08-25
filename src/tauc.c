@@ -12,7 +12,7 @@
 #endif
 #include <stdlib.h>
 
-static inline int global_scope_init(scope* gs)
+static inline int global_scope_init(scope* gs, global_type_map* gtm)
 {
     gs->osym.sym.name = "__global_scope__";
     gs->osym.sym.node.kind = MF_MODULE; // this is a lie, but it works :)
@@ -26,12 +26,14 @@ static inline int global_scope_init(scope* gs)
     gs->body.owning_node = (ast_elem*)gs;
     gs->body.symtab = symbol_table_create(PRIMITIVE_COUNT + 1, 0);
     if (!gs->body.symtab) return ERR;
+    ureg ptr_ids = atomic_ureg_add(&gtm->type_ids, PRIMITIVE_COUNT);
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {
         if (symbol_table_insert(gs->body.symtab, (symbol*)&PRIMITIVES[i])) {
             symbol_table_destroy(gs->body.symtab);
             return ERR;
         }
         PRIMITIVES[i].sym.declaring_body = &gs->body;
+        PRIMITIVES[i].ptr_id = ptr_ids++;
     }
     return OK;
 }
@@ -44,14 +46,15 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
 {
     switch (i) {
         case -1:
-        case 9: mdg_fin(&t->mdg); // fallthrough
+        case 10: mdg_fin(&t->mdg); // fallthrough
         case -2: // skip mdg because we freed that earlier when we still had all
                  // threads and their permmem
+        case 9: global_scope_fin(&t->global_scope); // fallthrough
         case 8: list_fin(&t->required_files, false); // fallthrough
         case 7: aseglist_fin(&t->module_dtors); // fallthrough
         case 6: aseglist_fin(&t->module_ctors); // fallthrough
         case 5: thread_context_fin(&t->main_thread_context); // fallthrough
-        case 4: global_scope_fin(&t->global_scope); // fallthrough
+        case 4: global_type_map_fin(&t->gtm); // fallthrough
         case 3: aseglist_fin(&t->worker_threads); // fallthrough
         case 2: job_queue_fin(&t->jobqueue); // fallthrough
         case 1: llvm_backend_fin_globals(); // fallthrough
@@ -70,7 +73,7 @@ int tauc_core_init(tauc* t)
     if (r) return tauc_core_partial_fin(t, r, 1);
     r = aseglist_init(&t->worker_threads);
     if (r) return tauc_core_partial_fin(t, r, 2);
-    r = global_scope_init(&t->global_scope); // needs node_ids
+    r = global_type_map_init(&t->gtm);
     if (r) return tauc_core_partial_fin(t, r, 3);
     r = thread_context_init(&t->main_thread_context, t);
     if (r) return tauc_core_partial_fin(t, r, 4);
@@ -80,8 +83,11 @@ int tauc_core_init(tauc* t)
     if (r) return tauc_core_partial_fin(t, r, 6);
     r = list_init(&t->required_files);
     if (r) return tauc_core_partial_fin(t, r, 7);
-    r = mdg_init(&t->mdg);
+    r = global_scope_init(&t->global_scope, &t->gtm);
     if (r) return tauc_core_partial_fin(t, r, 8);
+
+    r = mdg_init(&t->mdg);
+    if (r) return tauc_core_partial_fin(t, r, 9);
 
     atomic_ureg_init(&t->active_thread_count, 1);
     atomic_ureg_init(&t->node_ids, 0);

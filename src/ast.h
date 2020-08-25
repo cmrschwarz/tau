@@ -577,6 +577,7 @@ typedef struct sc_struct_s {
     sc_struct_base sb;
     ureg id;
     sc_func* dtor;
+    ureg ptr_id;
 } sc_struct;
 
 typedef struct sc_struct_generic_inst_s sc_struct_generic_inst;
@@ -787,7 +788,7 @@ typedef struct type_pointer_s {
     };
     bool is_const;
     ast_elem* base;
-    ureg ptr_to_id;
+    ureg ptr_id;
     ureg flipped_const_id;
 } type_pointer;
 
@@ -815,6 +816,7 @@ typedef struct type_tuple_s {
 
 typedef struct primitive_s {
     symbol sym;
+    ureg ptr_id;
     ureg size; // size is different from alignment e.g. for void, string, etc.
     ureg alignment;
 } primitive;
