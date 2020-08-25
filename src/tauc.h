@@ -3,7 +3,7 @@
 #include "job_queue.h"
 #include "thread_context.h"
 #include "utils/threading.h"
-#include "type_map.h"
+#include "ptr_map.h"
 #include "target_platform.h"
 #include "utils/debug_utils.h"
 
@@ -31,7 +31,7 @@ typedef struct tauc_s {
     // the compiler has run
     master_error_log mel;
     file_map filemap;
-    global_type_map gtm;
+    global_ptr_map gpm;
 
     thread_context main_thread_context;
     aseglist worker_threads;

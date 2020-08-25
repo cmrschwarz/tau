@@ -8,7 +8,7 @@
 #include "utils/ptrlist.h"
 #include "llvm_backend_api.h"
 #include "post_resolution_pass.h"
-#include "type_map.h"
+#include "ptr_map.h"
 typedef enum resolve_error_e {
     RE_FATAL = -1,
     RE_OK = 0,
@@ -69,7 +69,7 @@ typedef struct partial_resolution_data_s {
 typedef struct resolver_s {
     // general stuff
     thread_context* tc;
-    type_map tm;
+    ptr_map pm;
     post_resolution_pass prp;
     llvm_backend* backend;
     bool deps_required_for_pp;

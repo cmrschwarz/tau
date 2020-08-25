@@ -797,7 +797,7 @@ static resolve_error add_ast_node_decls(
         case SC_STRUCT_GENERIC_INST: {
             // generic inst 'inherits' from struct
             sc_struct* s = (sc_struct*)n;
-            s->ptr_id = type_map_claim_id(&r->tm);
+            s->ptr_id = ptr_map_claim_id(&r->pm);
             re = add_symbol(r, body, shared_body, (symbol*)s);
             bool members_public_st =
                 shared_body && !is_local_node((ast_elem*)n);
@@ -1291,16 +1291,16 @@ resolve_error create_pointer_to(
         default: assert(false); break;
     }
 
-    type_pointer* t = type_map_get_pointer(
-        &r->tm, base_type, id, already_const, &r->tc->permmem);
+    type_pointer* t = ptr_map_get_pointer(
+        &r->pm, base_type, id, already_const, &r->tc->permmem);
     if (!t) return RE_FATAL;
     if (is_const && !already_const) {
-        t = type_map_get_pointer(
-            &r->tm, base_type, t->flipped_const_id, true, &r->tc->permmem);
+        t = ptr_map_get_pointer(
+            &r->pm, base_type, t->flipped_const_id, true, &r->tc->permmem);
         if (!t) return RE_FATAL;
     }
     *tgt = (ast_elem*)t;
-    // sanity check for type_map
+    // sanity check for ptr_map
     assert(t->base == base_type && t->is_const == is_const);
     return RE_OK;
 }
@@ -4136,7 +4136,7 @@ int resolver_partial_fin(resolver* r, int i, int res)
     switch (i) {
         case -1:
         case 11: llvm_backend_delete(r->backend); // fallthrough
-        case 10: type_map_fin(&r->tm); // fallthrough
+        case 10: ptr_map_fin(&r->pm); // fallthrough
         case 9: prp_fin(&r->prp); // fallthrough
         case 8: ptrlist_fin(&r->import_module_data_nodes); // fallthrough
         case 7: ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
@@ -4176,7 +4176,7 @@ int resolver_init(resolver* r, thread_context* tc)
     if (e) return resolver_partial_fin(r, 7, e);
     e = prp_init(&r->prp, r->tc);
     if (e) return resolver_partial_fin(r, 8, e);
-    e = type_map_init(&r->tm, &r->tc->t->gtm);
+    e = ptr_map_init(&r->pm, &r->tc->t->gpm);
     if (e) return resolver_partial_fin(r, 9, e);
     r->backend = llvm_backend_new(r->tc);
     if (!r->backend) return resolver_partial_fin(r, 10, ERR);
