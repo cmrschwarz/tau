@@ -192,6 +192,12 @@ type_pointer* ptr_map_get_pointer(
         return NULL;
     }
     res->tb.kind = TYPE_POINTER;
+    int r = type_map_init(&res->tb.type_derivs.tm);
+    if (r) {
+        pool_undo_last_alloc(type_mem, sizeof(type_pointer));
+        rwlock_end_write(&seg_ref->segment->lock);
+        return NULL;
+    }
     res->tb.type_derivs.ptr_id = ptr_map_claim_id(pm);
     res->tb.is_const = is_const;
     res->base_type = base_type;

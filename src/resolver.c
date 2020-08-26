@@ -798,6 +798,8 @@ static resolve_error add_ast_node_decls(
             // generic inst 'inherits' from struct
             sc_struct* s = (sc_struct*)n;
             s->type_derivs.ptr_id = ptr_map_claim_id(&r->pm);
+            int err = type_map_init(&s->type_derivs.tm);
+            if (err) return RE_FATAL;
             re = add_symbol(r, body, shared_body, (symbol*)s);
             bool members_public_st =
                 shared_body && !is_local_node((ast_elem*)n);
@@ -2607,13 +2609,17 @@ static inline resolve_error resolve_ast_node_raw(
                 est->ctype = ts;
             }
             else {
-                type_array* ta = (type_array*)pool_alloc(
-                    &r->tc->permmem, sizeof(type_array));
+                ureg len;
+                re = evaluate_array_bounds(r, eat, body, &len);
+                if (re) {
+                    SET_THEN_RETURN_POISONED(
+                        re, est, value, ctype, est, ERROR_ELEM);
+                }
+                type_array* ta = type_map_get_array(
+                    &ast_elem_get_type_derivs(base_type)->tm, &r->pm, base_type,
+                    len, false, &r->tc->permmem);
                 if (!ta) return RE_FATAL;
-                ta->slice_type.ctype_members = base_type;
-                ta->slice_type.tb.kind = TYPE_ARRAY;
-                re = evaluate_array_bounds(r, eat, body, &ta->length);
-                if (re) return re;
+                assert(ta->length == len);
                 est->ctype = (type_slice*)ta;
             }
             ast_node_set_resolved(&est->node);
@@ -3311,7 +3317,7 @@ resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
     ureg unverified_count = end - frames;
 
     module_frame* curr = n->root;
-    if (!curr) {
+    if (!curr && unverified_count != 0) {
         assert(n == r->tc->t->mdg.root_node);
         list_it it;
         list_it_begin(&it, &r->tc->t->required_files);
@@ -3327,7 +3333,7 @@ resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
         }
     }
 
-    while (curr) {
+    while (curr && unverified_count != 0) {
         for (file_require* req = curr->requires; req->fmh != NULL; req++) {
             if (req->is_extern) continue;
             resolver_mark_required_frame(
@@ -3720,8 +3726,8 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             }
             if (!progress && awaiting && r->committed_waiters) {
                 // hack: busy wait for now until we have proper suspend resume
-                progress = true;
-                // return resolver_suspend(r);
+                // progress = true;
+                return resolver_suspend(r);
             }
         }
     } while (progress);

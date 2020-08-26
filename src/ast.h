@@ -804,7 +804,6 @@ typedef struct type_pointer_s {
 typedef struct type_slice_s {
     type_base tb;
     ast_elem* ctype_members;
-    type_derivatives type_derivs;
 } type_slice;
 
 typedef struct type_array_s {

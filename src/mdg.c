@@ -174,15 +174,19 @@ void free_astn_symtabs(ast_node* n)
         return;
     }
     if (ast_elem_is_scope((ast_elem*)n)) {
-        free_body_symtabs(&((scope*)n)->body);
         if (n->kind == SC_STRUCT_GENERIC) {
             for (sc_struct_generic_inst* sgi =
                      ((sc_struct_generic*)n)->instances;
-                 sgi;
+                 sgi != NULL;
                  sgi = (sc_struct_generic_inst*)sgi->st.sb.sc.osym.sym.next) {
                 free_astn_symtabs((ast_node*)sgi);
             }
         }
+        if (ast_elem_is_struct((ast_elem*)n)) {
+            sc_struct* st = (sc_struct*)n;
+            type_map_fin(&st->type_derivs.tm);
+        }
+        free_body_symtabs(&((scope*)n)->body);
         return;
     }
     switch (n->kind) {

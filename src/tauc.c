@@ -27,18 +27,33 @@ static inline int global_scope_init(scope* gs, global_ptr_map* gpm)
     gs->body.symtab = symbol_table_create(PRIMITIVE_COUNT + 1, 0);
     if (!gs->body.symtab) return ERR;
     ureg ptr_ids = atomic_ureg_add(&gpm->type_ids, PRIMITIVE_COUNT);
+    int error_on = -1;
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {
         if (symbol_table_insert(gs->body.symtab, (symbol*)&PRIMITIVES[i])) {
-            symbol_table_destroy(gs->body.symtab);
-            return ERR;
+            error_on = i;
+            break;
+        }
+        if (type_map_init(&PRIMITIVES[i].type_derivs.tm)) {
+            error_on = i;
+            break;
         }
         PRIMITIVES[i].sym.declaring_body = &gs->body;
         PRIMITIVES[i].type_derivs.ptr_id = ptr_ids++;
+    }
+    if (error_on >= 0) {
+        for (int i = 0; i < error_on; i++) {
+            type_map_fin(&PRIMITIVES[i].type_derivs.tm);
+        }
+        symbol_table_destroy(gs->body.symtab);
+        return ERR;
     }
     return OK;
 }
 static inline void global_scope_fin(scope* gs)
 {
+    for (int i = 0; i < PRIMITIVE_COUNT; i++) {
+        type_map_fin(&PRIMITIVES[i].type_derivs.tm);
+    }
     symbol_table_destroy(gs->body.symtab);
 }
 
@@ -47,8 +62,8 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
     switch (i) {
         case -1:
         case 10: mdg_fin(&t->mdg); // fallthrough
-        case -2: // skip mdg because we freed that earlier when we still had all
-                 // threads and their permmem
+        case -2: // skip mdg because we freed that earlier when we still had
+                 // all threads and their permmem
         case 9: global_scope_fin(&t->global_scope); // fallthrough
         case 8: list_fin(&t->required_files, false); // fallthrough
         case 7: aseglist_fin(&t->module_dtors); // fallthrough
@@ -250,8 +265,8 @@ int handle_cmd_args(
         else if (!strcmp(arg, "--object-format")) {
             if (i == argc - 1) {
                 master_error_log_report(
-                    &t->mel,
-                    "--object-format requires an object-format name to follow");
+                    &t->mel, "--object-format requires an object-format "
+                             "name to follow");
                 return ERR;
             }
             if (t->target.object_format != OBJECT_FORMAT_UNKNOWN) {
