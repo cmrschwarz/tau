@@ -61,6 +61,7 @@ typedef struct partial_resolution_data_s {
     ptrlist import_module_data_nodes;
     bool deps_required_for_pp;
     bool error_occured;
+    ureg committed_waiters;
 #if DEBUG
     ureg pprn_count;
 #endif

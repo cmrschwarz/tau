@@ -50,6 +50,8 @@ void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident);
 static resolve_error add_ast_node_decls(
     resolver* r, ast_body* body, ast_body* shared_body, ast_node* n,
     bool public_st);
+resolve_error handle_resolve_error(
+    resolver* r, ast_node* n, ast_body* body, resolve_error re);
 // must be a macro so value and ctype become lazily evaluated
 
 #define SET_VAL_CTYPE(pvalue, pctype, value, ctype)                            \
@@ -174,6 +176,7 @@ void remove_pprn_from_waiting_list(resolver* r, pp_resolve_node* pprn)
     last->waiting_list_entry = pprn->waiting_list_entry;
     pprn->waiting_list_entry = NULL;
     if (pprn->considered_committed) {
+        assert(r->committed_waiters);
         r->committed_waiters--;
     }
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
@@ -259,6 +262,7 @@ static pp_resolve_node* pp_resolve_node_create(
     pprn->ready = false;
     // pprn->parent = NULL;
     pprn->run_individually = run_individually;
+    pprn->considered_committed = false;
     pprn->block_pos_reachable = true;
     pprn->sequential_block = sequential_block;
     pprn->first_unresolved_child = NULL;
@@ -341,7 +345,10 @@ resolve_error pprn_set_used_in_pp(resolver* r, pp_resolve_node* pprn)
 {
     if (ast_node_get_used_in_pp(pprn->node)) return RE_OK;
     resolver_set_ast_node_used_in_pp(r, pprn->node);
-    if (ast_elem_is_any_import((ast_elem*)pprn->node)) {
+    resolve_error re;
+    if (ast_elem_is_any_import((ast_elem*)pprn->node) &&
+        !ast_node_get_resolved(pprn->node) &&
+        !ast_node_get_resolving(pprn->node)) {
         import_module_data* im_data = NULL;
         if (pprn->node->kind == SYM_IMPORT_MODULE) {
             sym_import_module* im = (sym_import_module*)pprn->node;
@@ -351,9 +358,13 @@ resolve_error pprn_set_used_in_pp(resolver* r, pp_resolve_node* pprn)
             import_group_get_data(pprn->node, NULL, &im_data, NULL, NULL);
         }
         if (im_data) {
+            ast_node_set_resolving(pprn->node);
             resolve_error re = resolve_importing_node(
                 r, im_data, pprn->node, pprn->declaring_body, true, NULL, NULL);
-            if (re) return re;
+            if (re) {
+                return handle_resolve_error(
+                    r, pprn->node, pprn->declaring_body, re);
+            }
         }
     }
     if (pprn->waiting_list_entry && !pprn->considered_committed) {
@@ -365,7 +376,7 @@ resolve_error pprn_set_used_in_pp(resolver* r, pp_resolve_node* pprn)
     pp_resolve_node** pprnp;
     while ((pprnp = list_it_next(&it, &pprn->notified_by))) {
         if (!*pprnp) continue;
-        resolve_error re = pprn_set_used_in_pp(r, *pprnp);
+        re = pprn_set_used_in_pp(r, *pprnp);
         if (re) return re;
     }
     return RE_OK;
@@ -379,7 +390,8 @@ curr_pprn_depend_on(resolver* r, ast_body* body, pp_resolve_node** dependency_p)
     if (re) return re;
     if (!depending) return RE_OK;
     if (ast_node_get_used_in_pp(depending->node)) {
-        pprn_set_used_in_pp(r, dependency);
+        re = pprn_set_used_in_pp(r, dependency);
+        if (re) return re;
     }
     if (dependency->notify_when_ready && dependency->ready) return RE_OK;
     if (list_append(&dependency->notify, NULL, depending)) return RE_FATAL;
@@ -2084,11 +2096,13 @@ resolve_error resolve_importing_node(
     bool dep_prop, ast_elem** value, ast_elem** ctype)
 {
     resolve_error re;
-    bool used_in_pp;
+    bool used_in_pp, previously_used_in_pp;
     if (dep_prop) {
+        previously_used_in_pp = false;
         used_in_pp = true;
     }
     else if (im_data->pprn) {
+        previously_used_in_pp = ast_node_get_used_in_pp(node);
         re = curr_pprn_depend_on(r, body, &im_data->pprn);
         if (re) return re;
         used_in_pp = ast_node_get_used_in_pp(node);
@@ -2098,22 +2112,23 @@ resolve_error resolve_importing_node(
         }
     }
     else {
+        previously_used_in_pp = false;
         pp_resolve_node* depending;
         re = get_curr_pprn(r, body, &depending);
         if (re) return re;
         used_in_pp = depending && ast_node_get_used_in_pp(depending->node);
+        if (used_in_pp && !ast_node_get_used_in_pp(node)) {
+            ast_node_set_used_in_pp(node);
+        }
     }
     bool available = false;
     bool request_pp = false;
     mdg_node* mdg = im_data->imported_module;
     mdg_node* im_mdg = NULL; // only set this when incrementing dep count!
-    if (used_in_pp) {
-        if (!ast_node_get_emitted_for_pp(node)) {
-            ast_node_set_emitted_for_pp(node);
-            atomic_boolean_init(&im_data->done, false);
-            im_mdg = im_data->importing_module;
-            atomic_ureg_inc(&im_mdg->ungenerated_pp_deps);
-        }
+    if (used_in_pp && !previously_used_in_pp) {
+        atomic_boolean_init(&im_data->done, false);
+        im_mdg = im_data->importing_module;
+        atomic_ureg_inc(&im_mdg->ungenerated_pp_deps);
     }
     rwlock_write(&mdg->lock);
     // we can check this since we are sure it is resolved since we
@@ -2166,13 +2181,11 @@ resolve_error resolve_importing_node(
     if (im_mdg && available) { // we set im_mdg iff we inc'ed the dep count
         atomic_ureg_dec(&im_mdg->ungenerated_pp_deps);
     }
-    if (!used_in_pp) {
-        if (available) {
-            ast_node_set_resolved(node);
-        }
-        else {
-            ast_node_clear_resolving(node);
-        }
+    if (used_in_pp && available) {
+        ast_node_set_emitted_for_pp(node);
+    }
+    else {
+        ast_node_clear_resolving(node);
     }
     RETURN_RESOLVED(value, ctype, node, NULL);
 }
@@ -2742,7 +2755,10 @@ static inline resolve_error resolve_ast_node_raw(
             RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
         }
         // nothing to do here
-        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP: return RE_OK;
+        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP: {
+            ast_node_set_resolved(n);
+            return RE_OK;
+        }
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
@@ -2805,8 +2821,8 @@ handle_resolve_error(resolver* r, ast_node* n, ast_body* body, resolve_error re)
             else {
                 stack_push(&r->error_stack, body->symtab);
                 stack_push(&r->error_stack, n);
+                ast_node_clear_resolving(n);
             }
-            ast_node_clear_resolving(n);
         }
         else if (n != r->type_loop_start) {
             ast_node_clear_resolving(n);
@@ -2816,7 +2832,8 @@ handle_resolve_error(resolver* r, ast_node* n, ast_body* body, resolve_error re)
         }
     }
     else {
-        if (!ast_node_get_resolved(n)) ast_node_clear_resolving(n);
+        if (!ast_node_get_resolved(n) && ast_node_get_resolving(n))
+            ast_node_clear_resolving(n);
     }
     return re;
 }
@@ -3140,10 +3157,12 @@ resolve_error resolve_module_frame(resolver* r, module_frame* mf, ast_body* b)
     resolve_error re = RE_OK;
     for (ast_node** n = b->elements; *n != NULL; n++) {
         re = resolve_ast_node(r, *n, b, NULL, NULL);
+        // that must have been caught already
+        assert(re != RE_TYPE_LOOP);
         if (re == RE_UNREALIZED_COMPTIME) re = RE_OK;
         if (re) break;
     }
-    assert(re != RE_TYPE_LOOP); // that must have been caught already
+
     return re;
 }
 static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n);
@@ -3287,7 +3306,7 @@ static inline void resolver_mark_required_frame(
         }
         if (left > right) return;
     }
-    while (center != frames_end) {
+    while (center < frames_end - 1) {
         if ((center + 1)->file == file)
             center = center + 1;
         else
@@ -4010,6 +4029,7 @@ void resolver_unpack_partial_resolution_data(
     r->id_space = prd->id_space;
     r->error_occured = prd->error_occured;
     r->deps_required_for_pp = prd->deps_required_for_pp;
+    r->committed_waiters = prd->committed_waiters;
     sbuffer_take_and_invalidate(
         &r->pp_resolve_nodes_pending, &prd->pprns_pending);
     sbuffer_take_and_invalidate(
@@ -4070,10 +4090,7 @@ resolve_error resolver_suspend(resolver* r)
     p->deps_required_for_pp = r->deps_required_for_pp;
     p->error_occured = r->error_occured;
     p->id_space = r->id_space;
-    // TODO: we could very much avoid the allocs here using some
-    // steal strategy but eh
-
-    // since we currently resolve that module nobody may race us
+    p->committed_waiters = r->committed_waiters;
     (**r->mdgs_begin).partial_res_data = p;
 #if DEBUG
     p->pprn_count = r->pp_resolve_nodes.alloc_count;
