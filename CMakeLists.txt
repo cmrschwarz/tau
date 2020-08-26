@@ -34,6 +34,7 @@ set(TAUC_C_SRCS
     ./src/utils/evmap2.c
     ./src/mdg.c
     ./src/ptr_map.c
+    ./src/type_map.c
     ./src/scc_detector.c
     ./src/generic_instance_resolution.c
     ./src/mdght.c
