@@ -2744,6 +2744,8 @@ parse_error parse_struct_decl(parser* p, modifier_status* mods, ast_node** n)
         if (!sp) return PE_FATAL;
         sp->sb.sc.body.pprn = NULL;
         s = (open_symbol*)sp;
+        int err = type_map_init(&sp->type_derivs.tm);
+        if (err) return PE_FATAL;
     }
     ast_node_init_with_mods(
         (ast_node*)s, sg ? SC_STRUCT_GENERIC : SC_STRUCT, &mods->data);

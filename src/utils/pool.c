@@ -23,6 +23,10 @@ int pool_init(pool* p)
     seg->prev = NULL;
     return 0;
 }
+void pool_init_dummy(pool* p)
+{
+    p->head_segment = NULL;
+}
 void pool_fin(pool* p)
 {
     if (!p->head_segment) return;

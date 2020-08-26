@@ -798,8 +798,6 @@ static resolve_error add_ast_node_decls(
             // generic inst 'inherits' from struct
             sc_struct* s = (sc_struct*)n;
             s->type_derivs.ptr_id = ptr_map_claim_id(&r->pm);
-            int err = type_map_init(&s->type_derivs.tm);
-            if (err) return RE_FATAL;
             re = add_symbol(r, body, shared_body, (symbol*)s);
             bool members_public_st =
                 shared_body && !is_local_node((ast_elem*)n);
@@ -4067,7 +4065,7 @@ resolve_error resolver_suspend(resolver* r)
         pool_undo_last_alloc(&r->pprn_mem, sizeof(partial_resolution_data));
         return RE_FATAL;
     }
-
+    pool_init_dummy(&p->pprn_mem);
     pool_steal_used(&p->pprn_mem, &r->pprn_mem);
     p->deps_required_for_pp = r->deps_required_for_pp;
     p->error_occured = r->error_occured;
