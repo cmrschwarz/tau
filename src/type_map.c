@@ -12,6 +12,8 @@ int type_map_init(type_map* tm)
 }
 void type_map_fin(type_map* tm)
 {
+    if (tm->map) tfree(tm->map);
+    rwlock_fin(&tm->lock);
 }
 
 type_array* type_map_get_array(type_map* tm, ureg elem_count)

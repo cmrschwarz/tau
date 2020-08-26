@@ -935,7 +935,7 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             if (size) *size = PRIMITIVES[PT_VOID_PTR].size;
             if (!t) return LLE_OK;
             llvm_error lle =
-                lookupCType(((type_pointer*)e)->base, t, NULL, NULL);
+                lookupCType(((type_pointer*)e)->base_type, t, NULL, NULL);
             if (lle) return lle;
             *t = (**t).getPointerTo();
         } break;
@@ -1770,12 +1770,12 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             llvm::ArrayRef<llvm::Constant*> elems_array_ref{
                 elements, elements + arr->elem_count};
             auto llarr = llvm::ConstantArray::get(arr_type, elems_array_ref);
-            if (arr->ctype->kind == TYPE_ARRAY) {
+            if (arr->ctype->tb.kind == TYPE_ARRAY) {
                 if (vl) *vl = llarr;
                 if (vl_loaded) *vl_loaded = llarr;
                 return LLE_OK;
             }
-            assert(arr->ctype->kind == TYPE_SLICE);
+            assert(arr->ctype->tb.kind == TYPE_SLICE);
             auto sl = arrayToSlice(llarr, arr->elem_count);
             if (!sl) return LLE_FATAL;
             if (vl) *vl = sl;

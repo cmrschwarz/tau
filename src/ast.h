@@ -7,6 +7,7 @@
 #include "utils/threading.h"
 #include "utils/c_extensions.h"
 #include "utils/list.h"
+#include "type_map.h"
 
 #define VOID_ELEM ((ast_elem*)&PRIMITIVES[PT_VOID])
 #define ERROR_ELEM ((ast_elem*)&PRIMITIVES[PT_ERROR])
@@ -288,6 +289,11 @@ typedef struct scope_s {
     open_symbol osym;
     ast_body body;
 } scope;
+
+typedef struct type_derivatives_s {
+    ureg ptr_id;
+    type_map tm;
+} type_derivatives;
 
 typedef struct sym_named_use_s {
     open_symbol osym;
@@ -577,7 +583,7 @@ typedef struct sc_struct_s {
     sc_struct_base sb;
     ureg id;
     sc_func* dtor;
-    ureg ptr_id;
+    type_derivatives type_derivs;
 } sc_struct;
 
 typedef struct sc_struct_generic_inst_s sc_struct_generic_inst;
@@ -781,23 +787,24 @@ typedef enum ast_type_mod_s {
 #define ATM_BYTES (sizeof(ast_elem*) - sizeof(ast_node_kind))
 #define ATM_MAX_COUNT (ATM_BYTES * ATM_PER_BYTE)
 
-typedef struct type_pointer_s {
+typedef struct type_base_s {
     union {
         ast_node_kind kind;
         ast_elem elem;
     };
-    bool is_const;
-    ast_elem* base;
-    ureg ptr_id;
+    bool is_const; // for ptr, slice and array
+    type_derivatives type_derivs;
+} type_base;
+typedef struct type_pointer_s {
+    type_base tb;
+    ast_elem* base_type;
     ureg flipped_const_id;
 } type_pointer;
 
 typedef struct type_slice_s {
-    union {
-        ast_node_kind kind;
-        ast_elem elem;
-    };
+    type_base tb;
     ast_elem* ctype_members;
+    type_derivatives type_derivs;
 } type_slice;
 
 typedef struct type_array_s {
@@ -806,19 +813,16 @@ typedef struct type_array_s {
 } type_array;
 
 typedef struct type_tuple_s {
-    union {
-        ast_node_kind kind;
-        ast_elem elem;
-    };
+    type_base tb;
     ast_elem** ctypes_of_members;
     ureg size;
 } type_tuple;
 
 typedef struct primitive_s {
     symbol sym;
-    ureg ptr_id;
     ureg size; // size is different from alignment e.g. for void, string, etc.
     ureg alignment;
+    type_derivatives type_derivs;
 } primitive;
 
 extern primitive PRIMITIVES[];
@@ -840,6 +844,7 @@ bool ast_elem_is_expr_block_base(ast_elem* n);
 bool ast_elem_is_paste_evaluation(ast_elem* s);
 bool assignment_is_meta_assignment(expr_op_binary* ob, bool* defined);
 ast_body* ast_elem_get_body(ast_elem* s);
+type_derivatives* ast_elem_get_type_derivs(ast_elem* e);
 ast_body* ast_body_get_non_paste_parent(ast_body* b);
 char* ast_elem_get_label(ast_elem* n, bool* lbl);
 src_map* scope_get_smap(scope* s);

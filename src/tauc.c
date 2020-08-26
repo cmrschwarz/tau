@@ -33,7 +33,7 @@ static inline int global_scope_init(scope* gs, global_ptr_map* gpm)
             return ERR;
         }
         PRIMITIVES[i].sym.declaring_body = &gs->body;
-        PRIMITIVES[i].ptr_id = ptr_ids++;
+        PRIMITIVES[i].type_derivs.ptr_id = ptr_ids++;
     }
     return OK;
 }

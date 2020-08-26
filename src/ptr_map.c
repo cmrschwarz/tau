@@ -191,11 +191,11 @@ type_pointer* ptr_map_get_pointer(
         rwlock_end_write(&seg_ref->segment->lock);
         return NULL;
     }
-    res->kind = TYPE_POINTER;
-    res->base = base_type;
-    res->ptr_id = ptr_map_claim_id(pm);
+    res->tb.kind = TYPE_POINTER;
+    res->tb.type_derivs.ptr_id = ptr_map_claim_id(pm);
+    res->tb.is_const = is_const;
+    res->base_type = base_type;
     res->flipped_const_id = ptr_map_claim_id(pm);
-    res->is_const = is_const;
     *pos = res;
     seg_ref->segment->filled_bits |= 1 << seg_entry_idx;
     seg_ref->filled_bits = seg_ref->segment->filled_bits;

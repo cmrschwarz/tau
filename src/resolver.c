@@ -797,7 +797,7 @@ static resolve_error add_ast_node_decls(
         case SC_STRUCT_GENERIC_INST: {
             // generic inst 'inherits' from struct
             sc_struct* s = (sc_struct*)n;
-            s->ptr_id = ptr_map_claim_id(&r->pm);
+            s->type_derivs.ptr_id = ptr_map_claim_id(&r->pm);
             re = add_symbol(r, body, shared_body, (symbol*)s);
             bool members_public_st =
                 shared_body && !is_local_node((ast_elem*)n);
@@ -1042,7 +1042,7 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b)
     if (a == b) return true;
     if (a->kind == TYPE_POINTER && b->kind == TYPE_POINTER) {
         return ctypes_unifiable(
-            ((type_pointer*)a)->base, ((type_pointer*)b)->base);
+            ((type_pointer*)a)->base_type, ((type_pointer*)b)->base_type);
     }
     if (a->kind == TYPE_ARRAY && b->kind == TYPE_ARRAY) {
         type_array* aa = (type_array*)a;
@@ -1276,21 +1276,8 @@ resolve_error resolve_call(
 resolve_error create_pointer_to(
     resolver* r, ast_elem* base_type, bool is_const, ast_elem** tgt)
 {
-    ureg id;
+    ureg id = ast_elem_get_type_derivs(base_type)->ptr_id;
     bool already_const = false;
-    switch (base_type->kind) {
-        case SC_STRUCT: {
-            id = ((sc_struct*)base_type)->ptr_id;
-        } break;
-        case SYM_PRIMITIVE: {
-            id = ((primitive*)base_type)->ptr_id;
-        } break;
-        case TYPE_POINTER: {
-            id = ((type_pointer*)base_type)->ptr_id;
-        } break;
-        default: assert(false); break;
-    }
-
     type_pointer* t = ptr_map_get_pointer(
         &r->pm, base_type, id, already_const, &r->tc->permmem);
     if (!t) return RE_FATAL;
@@ -1301,7 +1288,7 @@ resolve_error create_pointer_to(
     }
     *tgt = (ast_elem*)t;
     // sanity check for ptr_map
-    assert(t->base == base_type && t->is_const == is_const);
+    assert(t->base_type == base_type && t->tb.is_const == is_const);
     return RE_OK;
 }
 resolve_error choose_unary_operator_overload(
@@ -1353,8 +1340,8 @@ resolve_error choose_unary_operator_overload(
         else if (ou->node.op_kind == OP_DEREF) {
             assert(child_type->kind == TYPE_POINTER); // TODO: error
             type_pointer* tp = (type_pointer*)child_type;
-            ou->op = tp->base;
-            RETURN_RESOLVED(value, ctype, ou, tp->base);
+            ou->op = tp->base_type;
+            RETURN_RESOLVED(value, ctype, ou, tp->base_type);
             return RE_FATAL;
         }
         else if (child_type->kind != SYM_PRIMITIVE) {
@@ -2616,7 +2603,7 @@ static inline resolve_error resolve_ast_node_raw(
                 if (!ts) return RE_FATAL;
                 est->ctype = ts;
                 ts->ctype_members = base_type;
-                ts->kind = TYPE_SLICE;
+                ts->tb.kind = TYPE_SLICE;
                 est->ctype = ts;
             }
             else {
@@ -2624,7 +2611,7 @@ static inline resolve_error resolve_ast_node_raw(
                     &r->tc->permmem, sizeof(type_array));
                 if (!ta) return RE_FATAL;
                 ta->slice_type.ctype_members = base_type;
-                ta->slice_type.kind = TYPE_ARRAY;
+                ta->slice_type.tb.kind = TYPE_ARRAY;
                 re = evaluate_array_bounds(r, eat, body, &ta->length);
                 if (re) return re;
                 est->ctype = (type_slice*)ta;
@@ -2640,13 +2627,13 @@ static inline resolve_error resolve_ast_node_raw(
                     r, (ast_node*)ea->explicit_decl, body,
                     (ast_elem**)&ea->ctype, NULL);
                 if (re) return re;
-                if (ea->ctype->kind == TYPE_ARRAY) {
+                if (ea->ctype->tb.kind == TYPE_ARRAY) {
                     if (((type_array*)ea->ctype)->length != ea->elem_count) {
                         assert(false); // TODO: error msg
                     }
                 }
                 else {
-                    assert(ea->ctype->kind == TYPE_SLICE);
+                    assert(ea->ctype->tb.kind == TYPE_SLICE);
                 }
             }
             ast_node** e = ea->elements;
@@ -2659,7 +2646,7 @@ static inline resolve_error resolve_ast_node_raw(
                         &r->tc->permmem, sizeof(type_array));
                     if (!ta) return RE_FATAL;
                     ta->slice_type.ctype_members = elem_ctype;
-                    ta->slice_type.kind = TYPE_ARRAY;
+                    ta->slice_type.tb.kind = TYPE_ARRAY;
                     ta->length = ea->elem_count;
                     ea->ctype = (type_slice*)ta;
                 }

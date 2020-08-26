@@ -268,6 +268,24 @@ ast_body* ast_elem_get_body(ast_elem* s)
     }
     return NULL;
 }
+type_derivatives* ast_elem_get_type_derivs(ast_elem* e)
+{
+    switch (e->kind) {
+        case SC_STRUCT: {
+            return &((sc_struct*)e)->type_derivs;
+        } break;
+        case SYM_PRIMITIVE: {
+            return &((primitive*)e)->type_derivs;
+        } break;
+        case TYPE_ARRAY:
+        case TYPE_SLICE:
+        case TYPE_POINTER: {
+            return &((type_base*)e)->type_derivs;
+        } break;
+        default: assert(false); break;
+    }
+    return NULL;
+}
 bool ast_elem_is_struct(ast_elem* s)
 {
     return s->kind == SC_STRUCT || s->kind == SC_STRUCT_GENERIC_INST;
