@@ -374,6 +374,25 @@ static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
         sbuffer_append(&p->body_stack, sizeof(body_parse_data));
     if (bpd == NULL) return ERR;
     init_bpd(bpd, n, b);
+    if (bpd->body) {
+        // this gets reset in pop_bpd,
+        // but we need it early for get_non_paste_parent
+        // to check for shared decls
+        bpd->body->owning_node = (ast_elem*)n;
+    }
+    return OK;
+}
+static inline int amend_potential_symtab(ast_body* b, ureg syms, ureg usings)
+{
+    if (b->symtab) {
+        if (symbol_table_amend(&b->symtab, syms, usings)) {
+            return ERR;
+        }
+    }
+    else {
+        b->symtab = symbol_table_create(syms, usings);
+        if (!b->symtab) return ERR;
+    }
     return OK;
 }
 static inline int
@@ -381,17 +400,14 @@ handle_paste_bpd(parser* p, body_parse_data* bpd, symbol_table** st)
 {
     if (bpd->decl_count || bpd->usings_count) {
         ast_body* npp = ast_body_get_non_paste_parent(p->paste_parent_body);
-        if (npp->symtab) {
-            if (symbol_table_amend(
-                    &npp->symtab, bpd->decl_count, bpd->usings_count)) {
-                return ERR;
-            }
-        }
-        else {
-            npp->symtab =
-                symbol_table_create(bpd->decl_count, bpd->usings_count);
-            if (!npp->symtab) return ERR;
-        }
+        if (amend_potential_symtab(npp, bpd->decl_count, bpd->usings_count))
+            return ERR;
+    }
+    if (bpd->shared_decl_count || bpd->shared_uses_count) {
+        if (amend_potential_symtab(
+                p->paste_parent_shared_body, bpd->shared_decl_count,
+                bpd->shared_uses_count))
+            return ERR;
     }
     bpd->body->symtab = NULL;
     bpd->body->parent = p->paste_parent_body;
@@ -408,17 +424,17 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
         &i, sizeof(body_parse_data));
     sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
     if (prec_pe) return OK;
+    ast_body* bd = bpd.body;
+    bd->owning_node = (ast_elem*)bpd.node;
+    if (bpd.body == p->paste_block) {
+        return handle_paste_bpd(p, &bpd, &bd->symtab);
+    }
     bool mf = ast_elem_is_module_frame((ast_elem*)bpd.node);
     if (bpd.shared_decl_count > 0 || bpd.shared_uses_count > 0) {
         assert(mf);
         // assert(*mf is member of current module*);
         atomic_ureg_add(&p->current_module->decl_count, bpd.shared_decl_count);
         atomic_ureg_add(&p->current_module->using_count, bpd.shared_uses_count);
-    }
-    ast_body* bd = bpd.body;
-    bd->owning_node = (ast_elem*)bpd.node;
-    if (bpd.body == p->paste_block) {
-        return handle_paste_bpd(p, &bpd, &bd->symtab);
     }
     if (bpd.decl_count || bpd.usings_count) {
         bd->symtab = symbol_table_create(bpd.decl_count, bpd.usings_count);
@@ -508,7 +524,14 @@ curr_scope_add_decls(parser* p, access_modifier am, ureg count)
         bpd->decl_count += count;
     }
     else {
-        if (ast_elem_is_module_frame((ast_elem*)bpd->node)) {
+        bool shared = false;
+        if (bpd->body && bpd->body->owning_node) {
+            ast_body* npp = ast_body_get_non_paste_parent(bpd->body);
+            if (ast_elem_is_module_frame(npp->owning_node)) {
+                shared = true;
+            }
+        }
+        if (shared) {
             bpd->shared_decl_count += count;
         }
         else {
@@ -2276,7 +2299,7 @@ parse_error parser_parse_file(parser* p, job_parse* j)
 }
 parse_error init_paste_evaluation_parse(
     parser* p, expr_pp* epp, ast_node_kind kind, ast_body* parent_body,
-    paste_evaluation** eval)
+    ast_body* parent_shared_body, paste_evaluation** eval)
 {
     assert(sizeof(expr_pp) >= sizeof(paste_evaluation));
     paste_evaluation* pe = (paste_evaluation*)epp;
@@ -2321,14 +2344,17 @@ parse_error init_paste_evaluation_parse(
     *eval = pe;
     p->file_root = NULL;
     p->paste_parent_body = parent_body;
+    p->paste_parent_shared_body = parent_shared_body;
     return PE_OK;
 }
-parse_error
-parser_parse_paste_expr(parser* p, expr_pp* epp, ast_body* parent_body)
+parse_error parser_parse_paste_expr(
+    parser* p, expr_pp* epp, ast_body* parent_body,
+    ast_body* parent_shared_body)
 {
     paste_evaluation* eval;
     parse_error pe = init_paste_evaluation_parse(
-        p, epp, EXPR_PASTE_EVALUATION, parent_body, (paste_evaluation**)&eval);
+        p, epp, EXPR_PASTE_EVALUATION, parent_body, parent_shared_body,
+        (paste_evaluation**)&eval);
     if (pe) return pe;
     pe = push_bpd(p, (ast_node*)parent_body->owning_node, parent_body);
     if (pe) return pe;
@@ -2351,12 +2377,14 @@ parser_parse_paste_expr(parser* p, expr_pp* epp, ast_body* parent_body)
     lx_close_paste(&p->lx);
     return PE_OK;
 }
-parse_error
-parser_parse_paste_stmt(parser* p, expr_pp* epp, ast_body* parent_body)
+parse_error parser_parse_paste_stmt(
+    parser* p, expr_pp* epp, ast_body* parent_body,
+    ast_body* parent_shared_body)
 {
     paste_evaluation* eval;
     parse_error pe = init_paste_evaluation_parse(
-        p, epp, STMT_PASTE_EVALUATION, parent_body, (paste_evaluation**)&eval);
+        p, epp, STMT_PASTE_EVALUATION, parent_body, parent_shared_body,
+        (paste_evaluation**)&eval);
     if (pe) return pe;
     p->paste_block = &eval->body;
     eval->expr = NULL;

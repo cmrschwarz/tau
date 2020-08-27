@@ -24,7 +24,8 @@ typedef struct parser_s {
     module_frame* file_root;
     ast_body* paste_block;
     ast_body* paste_parent_body;
-    sbuffer body_stack; // sounds kinda morbid :)
+    ast_body* paste_parent_shared_body;
+    sbuffer body_stack;
 } parser;
 
 // pp scopes sit below the rt scope, the node ist the pp node, the body is
@@ -41,9 +42,11 @@ typedef struct body_parse_data_s {
 int parser_init(parser* p, thread_context* tc);
 void parser_fin(parser* p);
 parse_error parser_parse_file(parser* p, job_parse* j);
-parse_error
-parser_parse_paste_expr(parser* p, expr_pp* epp, ast_body* parent_body);
-parse_error
-parser_parse_paste_stmt(parser* p, expr_pp* epp, ast_body* parent_body);
+parse_error parser_parse_paste_expr(
+    parser* p, expr_pp* epp, ast_body* parent_body,
+    ast_body* parent_shared_body);
+parse_error parser_parse_paste_stmt(
+    parser* p, expr_pp* epp, ast_body* parent_body,
+    ast_body* parent_shared_body);
 
 bool ast_node_may_drop_semicolon(ast_node* n);

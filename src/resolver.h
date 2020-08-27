@@ -62,6 +62,8 @@ typedef struct partial_resolution_data_s {
     bool deps_required_for_pp;
     bool error_occured;
     ureg committed_waiters;
+    ureg public_sym_count;
+    ureg private_sym_count;
 #if DEBUG
     ureg pprn_count;
 #endif

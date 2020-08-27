@@ -1,0 +1,11 @@
+module g{
+    #paste(\\"#paste("public x: int = 7;");\\");
+}
+import g;
+func collect() -> int{
+    return g::x;
+}
+public func main() -> int{
+    if(collect() != 7) return 1;
+    return #if(#collect() != 7) 1 else 0;
+}

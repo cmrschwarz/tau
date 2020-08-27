@@ -1,8 +1,14 @@
 #!/bin/bash
 cd "$(dirname "$(readlink -f "$0")")/ci_tests" #change to directory of ci_tests
-TAUC="../../build/tauc"
 errors=0
 success=0
+quiet=false
+if [ $# -gt 0 ] && [ $1 = '-q' ]; then
+    quiet=true
+    shift
+fi
+TAUC="../../build/tauc $@"
+
 for taufile in *.tau ; do
     [ -e "$taufile" ] || continue
     ok=true
@@ -47,7 +53,7 @@ for output in *.out *.ll *.asm *.obj; do
 done
 
 if [[ $errors -eq 0 ]]; then
-    if [ $# != 1 ] || [ "$1" != "-q" ]; then
+    if [ $quiet == "false" ]; then
         printf "\033[0;32mall $success test(s) passed\033[0m\n"
     fi
     exit 0

@@ -519,10 +519,8 @@ typedef struct paste_evaluation_s {
         pasted_str* read_str;
         ast_elem* ctype;
     };
-    union {
-        char* read_pos;
-        ast_node* expr;
-    };
+    char* read_pos;
+    ast_node* expr;
     ast_node* source_pp_expr; // the original expr contained in expr_pp
     src_range source_pp_srange; // the src range OF the original expr_pp
 } paste_evaluation;

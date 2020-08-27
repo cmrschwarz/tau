@@ -92,7 +92,7 @@ type_array* type_map_get_array(
     ureg mask = capacity - 1;
 
     ureg hash = fnv_hash_ureg(FNV_START_HASH, length);
-    ureg idx = fnv_fold(idx, tm->capacity_bitcount, mask);
+    ureg idx = fnv_fold(hash, tm->capacity_bitcount, mask);
     ast_elem** e;
     type_array* res = NULL;
     while (true) {

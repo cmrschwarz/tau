@@ -119,7 +119,7 @@ void report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev)
         "previous definition here");
     r->error_occured = true;
 }
-static ast_body*
+static inline ast_body*
 get_decl_target_body(ast_node* decl, ast_body* body, ast_body* shared_body)
 {
     ast_body* tgt;
@@ -781,6 +781,7 @@ static resolve_error add_ast_node_decls(
                 // we need to add these during add decls already
                 // because we want to handle these before resolving
                 // any non pp stuff in the scope
+                assert(epp->pprn == NULL);
                 bool is_expr = ast_elem_is_expr((ast_elem*)epp->pp_expr);
                 pp_resolve_node* pprn = pp_resolve_node_create(
                     r, is_expr ? n : epp->pp_expr, body, is_expr, false, false,
@@ -1939,41 +1940,37 @@ static inline resolve_error resolve_expr_pp(
         pp_resolve_node* ex_pprn = ppe->pprn;
         *ppe->result_buffer.paste_result.last_next = NULL;
         parse_error pe;
+        ast_body* npp_body = ast_body_get_non_paste_parent(body);
+        ast_body* shared_body = NULL;
+        bool public_st = true;
+        if (ast_elem_is_module_frame(npp_body->owning_node)) {
+            shared_body = ast_body_get_non_paste_parent(npp_body->parent);
+        }
         if (!is_stmt) {
-            pe = parser_parse_paste_expr(&r->tc->p, ppe, body);
+            pe = parser_parse_paste_expr(&r->tc->p, ppe, body, shared_body);
             if (!pe) {
                 re =
                     resolve_ast_node_raw(r, (ast_node*)ppe, body, value, ctype);
             }
         }
         else {
-            pe = parser_parse_paste_stmt(&r->tc->p, ppe, body);
+            pe = parser_parse_paste_stmt(&r->tc->p, ppe, body, shared_body);
             if (!pe) {
-                ast_body* npp_body = ast_body_get_non_paste_parent(body);
-                ast_body* shared_body = NULL;
-                bool public_st = true;
-                if (ast_elem_is_module_frame(npp_body->owning_node)) {
-                    shared_body =
-                        ast_body_get_non_paste_parent(npp_body->parent);
-                }
-                else {
-                    while (true) {
-                        if (ast_elem_is_module_frame(npp_body->owning_node)) {
-                            break;
-                        }
-                        if (ast_elem_is_struct(npp_body->owning_node)) {
-                            if (is_local_node(npp_body->owning_node)) {
-                                public_st = false;
-                                break;
-                            }
-                        }
-                        else {
+                while (true) {
+                    if (ast_elem_is_module_frame(npp_body->owning_node)) {
+                        break;
+                    }
+                    if (ast_elem_is_struct(npp_body->owning_node)) {
+                        if (is_local_node(npp_body->owning_node)) {
                             public_st = false;
                             break;
                         }
-                        npp_body =
-                            ast_body_get_non_paste_parent(npp_body->parent);
                     }
+                    else {
+                        public_st = false;
+                        break;
+                    }
+                    npp_body = ast_body_get_non_paste_parent(npp_body->parent);
                 }
                 re = add_ast_node_decls(
                     r, body, shared_body, (ast_node*)ppe, public_st);
@@ -3211,7 +3208,10 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
         } break;
         case EXPR_PP: {
             adjust_node_ids(r, id_space, ((expr_pp*)n)->pp_expr);
-        }
+        } break;
+        case STMT_PASTE_EVALUATION: {
+            adjust_body_ids(r, id_space, &((paste_evaluation*)n)->body);
+        } break;
         default: return;
     }
 }
@@ -3564,6 +3564,7 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
                 return RE_FATAL;
         }
         pprn->activated = false;
+        pprn->ready = false;
         return RE_OK;
     }
     list_it it;
@@ -3658,6 +3659,12 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
         // we try to resolve pending nodes again
         it = pli_begin(&r->pp_resolve_nodes_pending);
         for (pp_resolve_node* rn = pli_next(&it); rn; rn = pli_next(&it)) {
+            if (rn->ready) {
+                progress = true;
+                pli_prev(&it);
+                ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+                continue;
+            }
             if (rn->continue_block) {
                 pli_prev(&it);
                 ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
@@ -4026,10 +4033,6 @@ void resolver_unpack_partial_resolution_data(
     pool_undo_last_alloc(&prd->pprn_mem, sizeof(partial_resolution_data));
     pool_steal_all(&r->pprn_mem, &prd->pprn_mem);
     pool_fin(&prd->pprn_mem);
-    r->id_space = prd->id_space;
-    r->error_occured = prd->error_occured;
-    r->deps_required_for_pp = prd->deps_required_for_pp;
-    r->committed_waiters = prd->committed_waiters;
     sbuffer_take_and_invalidate(
         &r->pp_resolve_nodes_pending, &prd->pprns_pending);
     sbuffer_take_and_invalidate(
@@ -4040,6 +4043,12 @@ void resolver_unpack_partial_resolution_data(
     assert(r->pp_resolve_nodes.alloc_count == 0);
     r->pp_resolve_nodes.alloc_count = prd->pprn_count;
 #endif
+    r->id_space = prd->id_space;
+    r->error_occured = prd->error_occured;
+    r->deps_required_for_pp = prd->deps_required_for_pp;
+    r->committed_waiters = prd->committed_waiters;
+    r->public_sym_count = prd->public_sym_count;
+    r->private_sym_count = prd->private_sym_count;
 }
 resolve_error resolver_resolve_and_emit(
     resolver* r, mdg_node** start, mdg_node** end, partial_resolution_data* prd,
@@ -4087,18 +4096,12 @@ resolve_error resolver_suspend(resolver* r)
     }
     pool_init_dummy(&p->pprn_mem);
     pool_steal_used(&p->pprn_mem, &r->pprn_mem);
-    p->deps_required_for_pp = r->deps_required_for_pp;
-    p->error_occured = r->error_occured;
-    p->id_space = r->id_space;
-    p->committed_waiters = r->committed_waiters;
-    (**r->mdgs_begin).partial_res_data = p;
-#if DEBUG
-    p->pprn_count = r->pp_resolve_nodes.alloc_count;
-    r->pp_resolve_nodes.alloc_count = 0;
-#endif
     assert(sbuffer_get_used_size(&r->pp_resolve_nodes_ready) == 0);
     ptrlist_clear(&r->pp_resolve_nodes_pending);
     ptrlist_clear(&r->pp_resolve_nodes_waiting);
+#if DEBUG
+    p->pprn_count = r->pp_resolve_nodes.alloc_count;
+#endif
     freelist_clear(&r->pp_resolve_nodes);
     // put partial res data in scc. no need for a lock since nobody accesses
     // this while we are in the resolving stage
@@ -4137,6 +4140,12 @@ resolve_error resolver_suspend(resolver* r)
         }
         return RE_FATAL;
     }
+    p->deps_required_for_pp = r->deps_required_for_pp;
+    p->error_occured = r->error_occured;
+    p->id_space = r->id_space;
+    p->committed_waiters = r->committed_waiters;
+    p->private_sym_count = r->private_sym_count;
+    p->public_sym_count = r->public_sym_count;
     return RE_SUSPENDED;
 }
 int resolver_partial_fin(resolver* r, int i, int res)

@@ -107,7 +107,10 @@ void llvm_backend_run_paste(LLVMBackend* llvmb, expr_pp* tgt, char* str)
     pstr->str = paste_str;
     *tgt->result_buffer.paste_result.last_next = pstr;
     tgt->result_buffer.paste_result.last_next = &pstr->next;
-    // printf("pasted '%s'\n", str);
+    if (llvmb->_tc->t->verbosity_flags & VERBOSITY_FLAG_PASTES) {
+        tprintf("pasted '%s'\n", str);
+        tflush();
+    }
 }
 
 void llvm_backend_delete(llvm_backend* llvmb)
@@ -387,6 +390,8 @@ LLVMBackend::LLVMBackend(thread_context* tc)
     LLVMDisposeMessage(features);
     _mod_dylib = NULL;
     _curr_this = NULL;
+    _module = NULL;
+    _mod_handle = NULL;
 }
 LLVMBackend::~LLVMBackend()
 {
@@ -602,6 +607,7 @@ void LLVMBackend::resetAfterEmit()
 llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
 {
     // init id space
+    LLVMModule pp_mod_handle;
     _mod_startid = 0;
     _mod_endid = 0;
     _private_sym_count = private_sym_count;
@@ -609,11 +615,14 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     std::string num = std::to_string(
         PP_RUNNER->pp_count.fetch_add(1, std::memory_order_relaxed));
     std::string pp_func_name = "__pp_func_" + num;
-    std::string pp_mod_name = "__pp_mod_" + num;
+    pp_mod_handle.module_str = "__pp_mod_" + num;
+    pp_mod_handle.module_obj = pp_mod_handle.module_str + ".obj";
     // swap out for pp moudle
-    assert(_module == NULL);
-    _module = new (std::nothrow) llvm::Module(pp_mod_name, _context);
+    assert(_module == NULL && _mod_handle == NULL);
+    _module =
+        new (std::nothrow) llvm::Module(pp_mod_handle.module_str, _context);
     if (!_module) return LLE_OK;
+    _mod_handle = &pp_mod_handle;
     _module->setTargetTriple(_target_machine->getTargetTriple().str());
     _pp_mode = true;
     llvm_error lle = genPPFunc(pp_func_name.c_str(), resolve_nodes);
@@ -639,6 +648,7 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
     resetAfterEmit();
     delete _module;
     _module = NULL;
+    _mod_handle = NULL;
     return lle;
 }
 llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
@@ -669,6 +679,7 @@ llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
     resetAfterEmit();
     delete _module;
     _module = NULL;
+    _mod_handle = NULL;
     _local_value_store.assign(_private_sym_count, NULL);
     _local_value_state.assign(_private_sym_count, NOT_GENERATED);
     return lle;

@@ -3,7 +3,12 @@ TESTS_DIR="$(dirname "$(readlink -f "$0")")/error_tests"
 TESTS_REL="./tests/error_tests"
 ROOT_DIR="$(dirname "$(readlink -f "$0")")/../"
 ROOT_DIR="$(cd $ROOT_DIR && pwd -P)"
-TAUC="./build/tauc --ok-on-error"
+quiet=false
+if [ $# -gt 0 ] && [ $1 = '-q' ]; then
+    quiet=true
+    shift
+fi
+TAUC="./build/tauc --ok-on-error $@"
 cd "$TESTS_DIR" #change to directory of ci_tests
 
 errors=0
@@ -62,7 +67,7 @@ rm "$tmp_file"
 
 
 if [[ $errors -eq 0 ]]; then
-    if [ $# != 1 ] || [ "$1" != "-q" ]; then
+    if [ "$quiet" == "false" ]; then
         printf "\033[0;32mall $success error test(s) passed\033[0m\n"
     fi
     exit 0
