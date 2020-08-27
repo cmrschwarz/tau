@@ -2179,6 +2179,7 @@ resolve_error resolve_importing_node(
         atomic_ureg_dec(&im_mdg->ungenerated_pp_deps);
     }
     if (used_in_pp && available) {
+        ast_node_set_resolved(node);
         ast_node_set_emitted_for_pp(node);
     }
     else {

@@ -202,12 +202,14 @@ bool ast_node_get_resolved(ast_node* n)
 
 void ast_node_set_emitted_for_pp(ast_node* n)
 {
-    assert(ast_node_get_status(n) <= NODE_STATUS_RESOLVED);
-    ast_node_set_status(n, NODE_STATUS_EMITTED);
+    assert(ast_elem_is_symbol((ast_elem*)n));
+    assert(ast_node_get_status(n) == NODE_STATUS_RESOLVED);
+    n->emitted_for_pp = true;
 }
 bool ast_node_get_emitted_for_pp(ast_node* n)
 {
-    return ast_node_get_status(n) >= NODE_STATUS_EMITTED;
+    assert(ast_elem_is_symbol((ast_elem*)n));
+    return n->emitted_for_pp;
 }
 
 void ast_node_set_used_in_pp(ast_node* n)

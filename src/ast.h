@@ -50,6 +50,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     MF_LAST_ID = MF_EXTEND_GENERIC,
 
     SC_STRUCT,
+    SYM_FIRST_ID = SC_STRUCT, // scopes are symbols
     SC_FIRST_ID = SC_STRUCT,
     SC_STRUCT_GENERIC,
     SC_STRUCT_GENERIC_INST,
@@ -61,7 +62,6 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SC_LAST_ID = SC_FUNC_GENERIC,
 
     SYM_PRIMITIVE,
-    SYM_FIRST_ID = SYM_PRIMITIVE,
     SYM_PARAM,
     SYM_GENERIC_PARAM,
     SYM_PARAM_GENERIC_INST,
@@ -231,7 +231,10 @@ typedef struct ast_node_s {
     union {
         primitive_kind pt_kind;
         operator_kind op_kind;
-        u8 symbol_flags;
+        // separate byte for this since it races
+        // with flag access from other modules
+        // used on symbols
+        bool emitted_for_pp;
     };
     u16 flags;
     src_range srange;
