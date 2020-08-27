@@ -57,7 +57,6 @@ int thread_context_init(thread_context* tc, tauc* t)
 }
 int thread_context_do_job(thread_context* tc, job* j)
 {
-
     if (j->kind == JOB_PARSE) {
         parse_error pe;
         TAU_TIME_STAGE_CTX(

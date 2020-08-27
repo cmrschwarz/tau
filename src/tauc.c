@@ -478,7 +478,6 @@ int tauc_run(int argc, char** argv)
 void worker_thread_fn(void* ctx)
 {
     worker_thread* wt = (worker_thread*)ctx;
-    wt->spawned = true;
     int r = thread_context_init(&wt->tc, wt->tc.t);
     if (r) return;
     wt->initialized = true;
@@ -522,8 +521,10 @@ int tauc_add_worker_thread(tauc* t)
     }
     wt->tc.has_preordered = false;
     thread_context_preorder_job(&wt->tc);
+    wt->spawned = true;
     r = thread_launch(&wt->thr, worker_thread_fn, wt);
     if (r) {
+        wt->spawned = false;
         master_error_log_report(&t->mel, "failed to spawn worker thread");
         return OK; // our thread might live on? debatable.
     }

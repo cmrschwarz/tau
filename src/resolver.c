@@ -2095,6 +2095,8 @@ resolve_error resolve_importing_node(
     resolve_error re;
     bool used_in_pp, previously_used_in_pp;
     if (dep_prop) {
+        // this gets set before calling this, but JUST before
+        assert(ast_node_get_used_in_pp(node));
         previously_used_in_pp = false;
         used_in_pp = true;
     }
@@ -2146,7 +2148,7 @@ resolve_error resolve_importing_node(
             request_pp = true;
             break;
     }
-    if (!available && used_in_pp) {
+    if (!available && used_in_pp && !previously_used_in_pp) {
         if (list_append(&mdg->notify, NULL, im_data)) {
             rwlock_end_write(&mdg->lock);
             return RE_FATAL;
@@ -2175,7 +2177,8 @@ resolve_error resolve_importing_node(
         re = pp_resolve_node_activate(r, body, &im_data->pprn, false);
         if (re) return re;
     }
-    if (im_mdg && available) { // we set im_mdg iff we inc'ed the dep count
+    if (available && used_in_pp) {
+        assert(im_mdg);
         atomic_ureg_dec(&im_mdg->ungenerated_pp_deps);
     }
     if (used_in_pp && available) {
@@ -3455,6 +3458,12 @@ void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident)
         list_it it;
         print_indent(ident);
         tprintf("dependencies: %zu\n", pprn->dep_count);
+        list_it_begin(&it, &pprn->notified_by);
+        for (pp_resolve_node** p =
+                 (pp_resolve_node**)list_it_next(&it, &pprn->notified_by);
+             p; p = (pp_resolve_node**)list_it_next(&it, &pprn->notified_by)) {
+            if (*p) print_pprn(r, *p, false, ident + 1);
+        }
         list_it_begin(&it, &pprn->notify);
         ureg nots = list_length(&pprn->notify);
         print_indent(ident);
@@ -3606,7 +3615,6 @@ resolve_error report_cyclic_pp_deps(resolver* r)
     }
 
     if (ptrlist_is_empty(&r->pp_resolve_nodes_waiting)) return RE_OK;
-
     // TODO: create a nice cycle display instead of dumping out everything
     resolve_error re = RE_OK;
     it = pli_begin(&r->pp_resolve_nodes_waiting);
@@ -3729,10 +3737,10 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             pli_prev(&it);
             ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
         }
-        if (!progress && r->committed_waiters) {
-            it = pli_begin(&r->import_module_data_nodes);
+        if (!progress && r->committed_waiters != 0) {
+            it = pli_rbegin(&r->import_module_data_nodes);
             bool awaiting = false;
-            for (ast_node* n = pli_next(&it); n; n = pli_next(&it)) {
+            for (ast_node* n = pli_prev(&it); n; n = pli_prev(&it)) {
                 import_module_data* im_data = (import_module_data*)n;
                 if (im_data->pprn) {
                     if (ast_node_get_used_in_pp(im_data->pprn->node)) {
@@ -3745,11 +3753,11 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                     }
                 }
                 if (!im_data->pprn) {
-                    pli_prev(&it);
+                    progress = true;
                     ptrlist_remove(&r->import_module_data_nodes, &it);
                 }
             }
-            if (!progress && awaiting && r->committed_waiters) {
+            if (!progress && awaiting) {
                 // hack: busy wait for now until we have proper suspend resume
                 // progress = true;
                 return resolver_suspend(r);
@@ -3797,8 +3805,8 @@ void free_pprnlist(resolver* r, sbuffer* buff, bool error_occured)
 }
 void free_pprns(resolver* r, bool error_occured)
 {
-    pli it = pli_begin(&r->import_module_data_nodes);
-    for (ast_node* n = pli_next(&it); n; n = pli_next(&it)) {
+    pli it = pli_rbegin(&r->import_module_data_nodes);
+    for (ast_node* n = pli_prev(&it); n; n = pli_prev(&it)) {
         import_module_data* im_data = (import_module_data*)n;
         if (im_data->pprn) {
             pprn_fin(r, im_data->pprn, error_occured);

@@ -38,7 +38,7 @@ for taufile in *.tau ; do
             printf "\033[0;32mPASSED $taufile [$time] (\033[0;33mskipped run because of main format\033)\033[0m\n"
         fi
     else
-        printf "\033[0;31mFAILED $taufile: compilation error\033[0m\n"
+        printf "\033[0;31mFAILED $taufile: compilation error\033[0m\n" >&2
     fi
     if $ok; then
         success=$(($success + 1))
@@ -58,6 +58,6 @@ if [[ $errors -eq 0 ]]; then
     fi
     exit 0
 else
-    printf "\033[0;32m$success test(s) passed\033[0;31m but $errors test(s) failed\033[0m\n"
+    printf "\033[0;32m$success test(s) passed\033[0;31m but $errors test(s) failed\033[0m\n" >&2
     exit 1
 fi

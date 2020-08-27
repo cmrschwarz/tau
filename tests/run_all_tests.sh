@@ -30,7 +30,7 @@ pfail() {
 (./tests/run_error_tests.sh -q $@ && pok) || pfail
 
 if $errors; then
-    printf "\033[0;31msome tests failed\033[0m\n"
+    printf "\033[0;31msome tests failed\033[0m\n" >&2
     exit 1
 else
     if [ $quiet == "false" ]; then

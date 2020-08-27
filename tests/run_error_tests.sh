@@ -27,7 +27,7 @@ for taufile in *.tau ; do
     time_after="$(date +%s.%3N)"
     cd "$TESTS_DIR"
     if $crash; then
-        printf "\033[0;31mFAILED $taufile: compilation crashed\033[0m\n"
+        printf "\033[0;31mFAILED $taufile: compilation crashed\033[0m\n" >&2
     else
         if $err_file_exists; then
             cmp --silent "$errfile" "$tmp_file" && ok=true
@@ -48,7 +48,7 @@ for taufile in *.tau ; do
                 printf "PASSED $taufile [$time] \033[0;33m(no .err)\033\033[0m\n"
             fi
         else
-            printf "\033[0;31mFAILED $taufile: wrong output:\033[0m\n"
+            printf "\033[0;31mFAILED $taufile: wrong output:\033[0m\n" >&2
             cat "$tmp_file"
         fi
     fi
@@ -72,6 +72,6 @@ if [[ $errors -eq 0 ]]; then
     fi
     exit 0
 else
-    printf "\033[0;32m$success error test(s) passed\033[0;31m but $errors test(s) failed\033[0m\n"
+    printf "\033[0;32m$success error test(s) passed\033[0;31m but $errors test(s) failed\033[0m\n" >&2
     exit 1
 fi

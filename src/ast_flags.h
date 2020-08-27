@@ -21,7 +21,6 @@ typedef enum PACK_ENUM ast_node_status_e {
     NODE_STATUS_RESOLVING,
     NODE_STATUS_RESOLVED,
     NODE_STATUS_PUBLISHED,
-    NODE_STATUS_EMITTED,
 } ast_node_status;
 
 typedef enum PACK_ENUM dtor_kind_e {
