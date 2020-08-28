@@ -35,7 +35,7 @@ bool sbuffer_is_empty(sbuffer* sb);
 
 // the following methods invalidate all iterators to elements after the
 // removed / inserted one
-void sbuffer_remove(sbuffer* sb, sbuffer_iterator* sbi, ureg size);
+void sbuffer_remove_next(sbuffer* sb, sbuffer_iterator* sbi, ureg size);
 void sbuffer_remove_prev(sbuffer* sb, sbuffer_iterator* sbi, ureg size);
 void* sbuffer_insert(sbuffer* sb, sbuffer_iterator* sbi, ureg size);
 

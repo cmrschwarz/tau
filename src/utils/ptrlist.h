@@ -40,11 +40,14 @@ static inline bool ptrlist_is_empty(ptrlist* p)
 }
 
 // invalidates pli->res, but revalidated after pli_next/prev
-// !! always call pli_prev before this, when iterating forward this
-// prevents segfaults and actually deletes the element previously returned
-static inline void ptrlist_remove(ptrlist* p, pli* pli)
+static inline void ptrlist_remove_next(ptrlist* p, pli* pli)
 {
-    sbuffer_remove(p, pli, sizeof(void*));
+    sbuffer_remove_next(p, pli, sizeof(void*));
+}
+
+static inline void ptrlist_remove_prev(ptrlist* p, pli* pli)
+{
+    sbuffer_remove_prev(p, pli, sizeof(void*));
 }
 
 static inline void* ptrlist_pop_back(ptrlist* p)

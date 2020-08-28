@@ -3662,7 +3662,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             it = pli_rbegin(&r->pp_resolve_nodes_ready);
             for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
                 pp_resolve_node_done(r, rn, &progress);
-                ptrlist_remove(&r->pp_resolve_nodes_ready, &it);
+                ptrlist_remove_next(&r->pp_resolve_nodes_ready, &it);
             }
         }
         // we try to resolve pending nodes again
@@ -3670,13 +3670,11 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
         for (pp_resolve_node* rn = pli_next(&it); rn; rn = pli_next(&it)) {
             if (rn->ready) {
                 progress = true;
-                pli_prev(&it);
-                ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+                ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
                 continue;
             }
             if (rn->continue_block) {
-                pli_prev(&it);
-                ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+                ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
                 progress = true;
                 ast_node* node = rn->node;
                 ast_body* body = rn->declaring_body;
@@ -3720,8 +3718,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             ast_node* astn = rn->node;
             re = resolve_ast_node(r, astn, rn->declaring_body, NULL, NULL);
             if (re == RE_UNREALIZED_COMPTIME) {
-                pli_prev(&it);
-                ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+                ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
                 progress = true;
                 continue;
             }
@@ -3734,8 +3731,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
             // otherwise we would have gotten an error?
             assert(ast_node_get_resolved(astn));
             progress = true;
-            pli_prev(&it);
-            ptrlist_remove(&r->pp_resolve_nodes_pending, &it);
+            ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
         }
         if (!progress && r->committed_waiters != 0) {
             it = pli_rbegin(&r->import_module_data_nodes);
@@ -3754,7 +3750,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 }
                 if (!im_data->pprn) {
                     progress = true;
-                    ptrlist_remove(&r->import_module_data_nodes, &it);
+                    ptrlist_remove_next(&r->import_module_data_nodes, &it);
                 }
             }
             if (!progress && awaiting) {

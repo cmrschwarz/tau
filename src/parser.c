@@ -422,7 +422,7 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
     sbuffer_iterator i = sbuffer_iterator_begin_at_end(&p->body_stack);
     body_parse_data bpd = *(body_parse_data*)sbuffer_iterator_previous(
         &i, sizeof(body_parse_data));
-    sbuffer_remove(&p->body_stack, &i, sizeof(body_parse_data));
+    sbuffer_remove_next(&p->body_stack, &i, sizeof(body_parse_data));
     if (prec_pe) return OK;
     ast_body* bd = bpd.body;
     bd->owning_node = (ast_elem*)bpd.node;

@@ -93,7 +93,7 @@ void* sbuffer_append(sbuffer* sb, ureg size)
         if (!sbuffer_segment_append_after_tail(sb)) return NULL;
     }
 }
-void sbuffer_remove(sbuffer* sb, sbuffer_iterator* sbi, ureg size)
+void sbuffer_remove_next(sbuffer* sb, sbuffer_iterator* sbi, ureg size)
 {
     assert(ptrdiff(sbi->seg->tail, sbi->seg) >= sizeof(sbuffer_segment) + size);
     sbi->seg->tail = ptrsub(sbi->seg->tail, size);
@@ -125,17 +125,22 @@ void sbuffer_remove(sbuffer* sb, sbuffer_iterator* sbi, ureg size)
         if (s->next) s->next->prev = s;
     }
 }
+void sbuffer_remove_prev(sbuffer* sb, sbuffer_iterator* sbi, ureg size)
+{
+    sbuffer_iterator_previous(sbi, size);
+    sbuffer_remove_next(sb, sbi, size);
+}
 // PERF: maybe hand roll these two
 void sbuffer_remove_front(sbuffer* sb, ureg size)
 {
     sbuffer_iterator sbi = sbuffer_iterator_begin(sb);
-    sbuffer_remove(sb, &sbi, size);
+    sbuffer_remove_next(sb, &sbi, size);
 }
 void sbuffer_remove_back(sbuffer* sb, ureg size)
 {
     sbuffer_iterator sbi = sbuffer_iterator_begin_at_end(sb);
     sbuffer_iterator_previous(&sbi, size);
-    sbuffer_remove(sb, &sbi, size);
+    sbuffer_remove_next(sb, &sbi, size);
 }
 
 void* sbuffer_insert(sbuffer* sb, sbuffer_iterator* sbi, ureg size)

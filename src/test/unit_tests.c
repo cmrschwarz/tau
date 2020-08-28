@@ -346,8 +346,7 @@ int ptrlist_remove_test()
     for (void* v = pli_next(&it); v; v = pli_next(&it)) {
         sum += (ureg)v;
         if ((ureg)v % 2 == 0) {
-            pli_prev(&it);
-            ptrlist_remove(&l, &it);
+            ptrlist_remove_prev(&l, &it);
         }
     }
 
@@ -357,8 +356,7 @@ int ptrlist_remove_test()
     for (void* v = pli_next(&it); v; v = pli_next(&it)) {
         sum += (ureg)v;
         if ((ureg)v % 3 == 0) {
-            pli_prev(&it);
-            ptrlist_remove(&l, &it);
+            ptrlist_remove_prev(&l, &it);
         }
     }
     if (sum != 2500) goto err;
@@ -366,8 +364,7 @@ int ptrlist_remove_test()
     it = pli_begin(&l);
     for (void* v = pli_next(&it); v; v = pli_next(&it)) {
         sum += (ureg)v;
-        pli_prev(&it);
-        ptrlist_remove(&l, &it);
+        ptrlist_remove_prev(&l, &it);
     }
     if (sum != 1633) goto err;
     if (!ptrlist_is_empty(&l)) goto err;
