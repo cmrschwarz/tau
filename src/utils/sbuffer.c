@@ -195,6 +195,14 @@ void sbuffer_clear(sbuffer* sb)
     } while (s);
     sb->tail_seg = sb->first_seg;
 }
+void sbuffer_normalize_tail_seg(sbuffer* sb)
+{
+    while (sb->tail_seg->prev &&
+           sb->tail_seg->tail ==
+               ptradd(sb->tail_seg, sizeof(sbuffer_segment))) {
+        sb->tail_seg = sb->tail_seg->prev;
+    }
+}
 void sbuffer_take_and_invalidate(sbuffer* sb, sbuffer* donor)
 {
     sbuffer_segment* donor_rem = donor->tail_seg->next;
@@ -207,10 +215,11 @@ void sbuffer_take_and_invalidate(sbuffer* sb, sbuffer* donor)
             sbuffer_segment* donor_end = donor_rem;
             while (donor_end->next) donor_end = donor_end->next;
             donor_end->next = sb->tail_seg->next;
-            donor_end->next->prev = donor_end;
+            donor_end->next->prev = donor_rem;
         }
         sb->tail_seg->next = donor_rem;
     }
+    sbuffer_normalize_tail_seg(sb);
 }
 int sbuffer_steal_used(sbuffer* sb, sbuffer* donor, bool sb_initialized)
 {
@@ -221,12 +230,12 @@ int sbuffer_steal_used(sbuffer* sb, sbuffer* donor, bool sb_initialized)
         // we alloc this first so we don't have to undo on failiure
         donor->biggest_seg_size *= 2;
         donor_new = sbuffer_segment_create(donor->biggest_seg_size);
+        if (!donor_new) return ERR;
         donor_new->prev = NULL;
         donor_new->next = NULL;
-        if (!donor_new) return ERR;
     }
     if (sb_initialized) {
-        sb->first_seg->prev = donor->first_seg;
+        sb->first_seg->prev = donor->tail_seg;
     }
     else {
         sb->biggest_seg_size = ptrdiff(donor->tail_seg->end, donor->tail_seg);
@@ -235,9 +244,11 @@ int sbuffer_steal_used(sbuffer* sb, sbuffer* donor, bool sb_initialized)
     }
     donor->tail_seg->next = sb->first_seg;
     sb->first_seg = donor->first_seg;
+    sbuffer_normalize_tail_seg(sb);
     if (donor_rem) {
         donor_rem->prev = NULL;
         donor->first_seg = donor_rem;
+        donor->tail_seg = donor_rem;
         return OK;
     }
     donor->first_seg = donor_new;

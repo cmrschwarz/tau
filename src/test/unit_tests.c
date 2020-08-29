@@ -166,10 +166,7 @@ int stack_test()
     stack st;
     pool p;
     if (pool_init(&p)) return ERR;
-    if (stack_init(&st, &p)) {
-        pool_fin(&p);
-        return ERR;
-    }
+    if (stack_init(&st, &p)) return ERR;
     for (ureg i = 0; i < stack_test_size; i++) {
         if (stack_push(&st, (void*)i)) goto err;
     }
@@ -231,7 +228,7 @@ int list_test()
 {
     int res = ERR;
     list l;
-    list_init(&l);
+    if (list_init(&l)) return ERR;
     pool mem;
     if (pool_init(&mem)) return ERR;
     for (int j = 0; j < 100; j++) {
@@ -266,7 +263,7 @@ int list_remove_test()
 {
     int res = ERR;
     list l;
-    list_init(&l);
+    if (list_init(&l)) return ERR;
     pool mem;
     if (pool_init(&mem)) return ERR;
     for (ureg i = 1; i <= 100; i++) {
@@ -336,36 +333,58 @@ err:
 int ptrlist_remove_test()
 {
     int res = ERR;
-    ptrlist l;
+    ptrlist l, l2;
     if (ptrlist_init(&l, 1)) return ERR;
+    if (ptrlist_init(&l2, 3)) goto err;
     for (ureg i = 1; i <= 100; i++) {
         if (ptrlist_append(&l, (void*)i)) goto err;
     }
     ureg sum = 0;
     pli it = pli_begin(&l);
     for (void* v = pli_next(&it); v; v = pli_next(&it)) {
-        sum += (ureg)v;
-        if ((ureg)v % 2 == 0) {
+        ureg val = (ureg)v;
+        sum += val;
+        if (val % 2 == 0) {
             ptrlist_remove_prev(&l, &it);
         }
+        if (val % 17 == 0) {
+            sbuffer_steal_used(&l2, &l, true);
+            ptrlist tmp = l;
+            l = l2;
+            l2 = tmp;
+        }
     }
-
+    ptrlist_fin(&l2);
     if (sum != 5050) goto err;
     sum = 0;
-    it = pli_begin(&l);
-    for (void* v = pli_next(&it); v; v = pli_next(&it)) {
-        sum += (ureg)v;
-        if ((ureg)v % 3 == 0) {
-            ptrlist_remove_prev(&l, &it);
+    it = pli_rbegin(&l);
+    for (void* v = pli_prev(&it); v; v = pli_prev(&it)) {
+        ureg val = (ureg)v;
+        sum += val;
+        if (val % 3 == 0) {
+            ptrlist_remove_next(&l, &it);
+        }
+        if (val % 17 == 0) {
+            sbuffer_steal_used(&l2, &l, false);
+            ptrlist_fin(&l);
+            l = l2;
         }
     }
     if (sum != 2500) goto err;
     sum = 0;
     it = pli_begin(&l);
+    if (ptrlist_init(&l2, 17)) goto err;
     for (void* v = pli_next(&it); v; v = pli_next(&it)) {
-        sum += (ureg)v;
+        ureg val = (ureg)v;
+        sum += val;
         ptrlist_remove_prev(&l, &it);
+        if (val % 17 == 0) {
+            sbuffer_take_and_invalidate(&l2, &l);
+            l = l2;
+            if (ptrlist_init(&l2, val / 7)) goto err;
+        }
     }
+    ptrlist_fin(&l2);
     if (sum != 1633) goto err;
     if (!ptrlist_is_empty(&l)) goto err;
     res = OK;
