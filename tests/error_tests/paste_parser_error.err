@@ -1,0 +1,4 @@
+parser error: missing semicolon 
+ ==> <pasted: ./tests/error_tests/paste_parser_error.tau:15:6>:1:10
+1 |x: int; y <- expected ';' to terminate the statement
+  |        ^ statement here
