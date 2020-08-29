@@ -24,6 +24,7 @@ static inline u16 u16_get_range(u16 data, ureg offs, u16 mask)
 void ast_node_set_default_flags(ast_node* n)
 {
     n->flags = AST_NODE_FLAGS_DEFAULT;
+    n->emitted_for_pp = false;
 }
 
 void ast_node_set_poisoned(ast_node* n)
@@ -202,13 +203,12 @@ bool ast_node_get_resolved(ast_node* n)
 
 void ast_node_set_emitted_for_pp(ast_node* n)
 {
-    assert(ast_elem_is_symbol((ast_elem*)n));
-    assert(ast_node_get_status(n) == NODE_STATUS_RESOLVED);
+    assert(ast_elem_is_symbol((ast_elem*)n) || n->kind == EXPR_PP);
     n->emitted_for_pp = true;
 }
 bool ast_node_get_emitted_for_pp(ast_node* n)
 {
-    assert(ast_elem_is_symbol((ast_elem*)n));
+    assert(ast_elem_is_symbol((ast_elem*)n) || n->kind == EXPR_PP);
     return n->emitted_for_pp;
 }
 

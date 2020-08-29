@@ -982,7 +982,9 @@ static resolve_error evaluate_array_bounds(
     }
     else if (ad->length_spec->kind == EXPR_PP) {
         expr_pp* epp = (expr_pp*)ad->length_spec;
-        if (!epp->result) return RE_UNREALIZED_COMPTIME;
+        if (!ast_node_get_emitted_for_pp((ast_node*)epp)) {
+            return RE_UNREALIZED_COMPTIME;
+        }
         // HACK
         if (ctypes_unifiable(epp->ctype, (ast_elem*)&PRIMITIVES[PT_UINT])) {
             *res = *(ureg*)epp->result;
@@ -1938,7 +1940,6 @@ static inline resolve_error resolve_expr_pp(
     resolve_error re;
     if (ppe->ctype == PASTED_EXPR_ELEM) {
         pp_resolve_node* ex_pprn = ppe->pprn;
-        *ppe->result_buffer.paste_result.last_next = NULL;
         parse_error pe;
         ast_body* npp_body = ast_body_get_non_paste_parent(body);
         ast_body* shared_body = NULL;
@@ -2072,7 +2073,16 @@ static inline resolve_error resolve_expr_paste_str(
     resolve_error re = resolve_ast_node(r, eps->value, body, NULL, &val_type);
     if (re) return re;
     ast_node_set_resolved(&eps->node);
-    eps->target = (expr_pp*)r->curr_pp_node->node;
+    expr_pp* tgt_ppe = (expr_pp*)r->curr_pp_node->node;
+
+    assert(((ast_elem*)tgt_ppe)->kind == EXPR_PP);
+    if (!tgt_ppe->result_buffer.pasted_src) {
+        tgt_ppe->result_buffer.pasted_src = file_map_create_pasted_source(
+            &r->tc->t->filemap, r->tc, tgt_ppe,
+            ast_body_get_smap(r->curr_pp_node->declaring_body));
+        if (!tgt_ppe->result_buffer.pasted_src) return RE_FATAL;
+    }
+    eps->target = tgt_ppe->result_buffer.pasted_src;
     if (!ctypes_unifiable(val_type, (ast_elem*)&PRIMITIVES[PT_STRING])) {
         src_range_large paste_srl, val_srl;
         ast_node_get_src_range((ast_node*)eps, body, &paste_srl);
@@ -3255,9 +3265,9 @@ resolve_error resolver_mark_required_module_fill_buffer(
         }
         ast_elem* src = mf->smap->source;
         while (src->kind != ELEM_SRC_FILE) {
-            if (src->kind == STMT_PASTE_EVALUATION) {
-                paste_evaluation* pe = (paste_evaluation*)src;
-                src = src_range_get_smap(pe->source_pp_srange)->source;
+            if (src->kind == ELEM_PASTED_SRC) {
+                pasted_source* ps = (pasted_source*)src;
+                src = src_range_get_smap(ps->source_pp_srange)->source;
             }
             else {
                 assert(false);

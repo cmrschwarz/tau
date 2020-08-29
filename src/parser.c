@@ -1763,13 +1763,12 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     lx_void(&p->lx);
     expr_pp* sp = alloc_perm(p, sizeof(expr_pp));
     if (!sp) return PE_FATAL;
-    sp->result = NULL;
     sp->ctype = NULL;
     ast_node_init(&sp->node, EXPR_PP);
     ast_node_set_pp_expr_res_used(&sp->node);
     sp->pprn = NULL;
-    sp->result_buffer.paste_result.last_next =
-        &sp->result_buffer.paste_result.first;
+    sp->result = NULL;
+    sp->result_buffer.pasted_src = NULL;
     parse_error pe =
         parse_expression_of_prec(p, &sp->pp_expr, op_precedence[OP_PP]);
     if (pe) return pe;
@@ -2302,27 +2301,29 @@ parse_error init_paste_evaluation_parse(
     ast_body* parent_shared_body, paste_evaluation** eval)
 {
     assert(sizeof(expr_pp) >= sizeof(paste_evaluation));
+    pasted_source* ps = epp->result_buffer.pasted_src;
+    *ps->paste_data.last_next = NULL;
+    pasted_str* str = ps->paste_data.first;
+    ps->read_data.paste_str = str;
+    ps->read_data.read_str = NULL;
+    ps->read_data.read_pos = NULL;
     paste_evaluation* pe = (paste_evaluation*)epp;
-    src_range sr = epp->node.srange;
     ast_node* expr = epp->pp_expr;
-    pasted_str* ps = epp->result_buffer.paste_result.first;
-    src_map* smap = ast_body_get_smap(parent_body);
+    ps->source_pp_smap = ast_body_get_smap(parent_body);
+    ps->source_pp_srange = epp->pp_expr->srange;
     pe->node.kind = kind;
     pe->node.flags = AST_NODE_FLAGS_DEFAULT;
     // we only care about the file here
-    src_range_set_smap(p->lx.tc, &sr, smap);
-    pe->source_pp_srange = sr;
     pe->source_pp_expr = expr;
-    pe->paste_str = ps;
-    pe->read_str = NULL;
     pe->body.parent = parent_body;
     pe->body.owning_node = (ast_elem*)pe;
     pe->body.pprn = NULL;
     pe->body.symtab = NULL;
     pe->body.elements = (ast_node**)NULL_PTR_PTR; // in case we fail
-    int r = lx_open_paste(&p->lx, pe, smap);
-    smap = p->lx.smap;
-    p->current_file = src_map_get_file(smap);
+    int r = lx_open_paste(&p->lx, ps);
+    if (r) return PE_FATAL;
+    src_map* paste_smap = p->lx.smap;
+    p->current_file = src_map_get_file(paste_smap);
     if (r) return PE_LX_ERROR;
     if (p->lx.tc->t->verbosity_flags & VERBOSITY_FLAG_PASTES) {
         ureg lx_pos = ptrdiff(p->lx.file_buffer_head, p->lx.file_buffer_start);
@@ -2330,17 +2331,17 @@ parse_error init_paste_evaluation_parse(
         char buffer[1025];
         ureg read_size;
         tput("parsing paste: '");
-        src_map_seek_set(smap, 0);
+        src_map_seek_set(paste_smap, 0);
         do {
-            src_map_read(smap, sizeof(buffer) - 1, &read_size, buffer);
+            src_map_read(paste_smap, sizeof(buffer) - 1, &read_size, buffer);
             buffer[read_size] = '\0';
             tput(buffer);
         } while (read_size == sizeof(buffer) - 1);
         tputs("'");
         tflush();
-        src_map_seek_set(smap, lx_pos);
+        src_map_seek_set(paste_smap, lx_pos);
     }
-    pe->node.srange = src_range_pack(p->lx.tc, 0, 0, smap);
+    pe->node.srange = src_range_pack(p->lx.tc, 0, 0, paste_smap);
     *eval = pe;
     p->file_root = NULL;
     p->paste_parent_body = parent_body;
@@ -2364,7 +2365,7 @@ parse_error parser_parse_paste_expr(
     token* t = lx_peek(&p->lx);
     if (t->kind != TK_EOF) {
         src_range_large srl;
-        src_range_unpack(eval->source_pp_srange, &srl);
+        src_range_unpack(eval->pasted_src->source_pp_srange, &srl);
         error_log_report_annotated_thrice(
             p->lx.tc->err_log, ES_PARSER, false, "invalid paste expression",
             p->lx.smap, t->start, t->end,
@@ -3562,9 +3563,8 @@ parse_pp_stmt(parser* p, modifier_status* mods, ast_node** tgt)
     sp->ctype = NULL;
     ast_node_init(&sp->node, EXPR_PP);
     sp->pprn = NULL;
-    sp->result_buffer.paste_result.last_next =
-        &sp->result_buffer.paste_result.first;
     sp->pp_expr = pp_stmt;
+    sp->result_buffer.pasted_src = NULL;
     pe = ast_node_fill_srange(
         p, (ast_node*)sp, mods->start, src_range_get_end(sp->pp_expr->srange));
     *tgt = (ast_node*)sp;

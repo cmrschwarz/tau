@@ -16,7 +16,8 @@ typedef struct src_dir_s src_dir;
 typedef struct thread_context_s thread_context;
 typedef struct file_require_s file_require;
 typedef struct mdg_node_s mdg_node;
-
+typedef struct pasted_source_s pasted_source;
+typedef struct expr_pp_s expr_pp;
 typedef struct file_map_head_s {
     ast_elem elem;
     src_dir* parent;
@@ -100,6 +101,8 @@ void file_map_fin(file_map* fm);
 
 src_file*
 file_map_get_file_from_path(file_map* fm, src_dir* parent, string path);
+pasted_source* file_map_create_pasted_source(
+    file_map* fm, thread_context* tc, expr_pp* origin, src_map* parent);
 src_dir* file_map_get_dir_from_path(file_map* fm, src_dir* parent, string path);
 src_lib* file_map_get_lib_from_path(
     file_map* fm, src_dir* parent, string path, bool is_dynamic);

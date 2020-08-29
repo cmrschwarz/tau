@@ -25,7 +25,7 @@ typedef struct file_map_head_s file_map_head;
 typedef struct type_slice_s type_slice;
 typedef struct sc_func_s sc_func;
 typedef struct expr_block_s expr_block;
-typedef struct src_map_s src_map;
+typedef struct pasted_source_s pasted_source;
 
 typedef enum PACK_ENUM ast_node_kind_e {
     ELEM_INVALID, // make 0 invalid for debugging
@@ -34,6 +34,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     ELEM_MDG_NODE,
     ELEM_FIRST_ID = ELEM_MDG_NODE,
     ELEM_SRC_FILE,
+    ELEM_PASTED_SRC,
     ELEM_SRC_LIB,
     ELEM_SRC_DIR,
     ELEM_LAST_ID = ELEM_SRC_DIR,
@@ -494,13 +495,10 @@ typedef struct expr_pp_s {
     struct pp_resolve_node_s* pprn;
     void* result;
     union result_buffer_u {
+        pasted_source* pasted_src;
         // this must be big enough that
         // sizeof(expr_paste_evaluation) <= sizeof(expr_pp)
         ureg data[8];
-        struct paste_result_s {
-            pasted_str* first;
-            pasted_str** last_next;
-        } paste_result;
     } result_buffer;
 } expr_pp;
 
@@ -508,7 +506,7 @@ typedef struct expr_pp_s {
 // we can depend on this always being after a expr_pp of sorts
 typedef struct expr_paste_str_s {
     ast_node node;
-    expr_pp* target;
+    pasted_source* target;
     ast_node* value; // ctype shall always be string
 } expr_paste_str;
 
@@ -517,18 +515,32 @@ typedef struct expr_paste_str_s {
 typedef struct paste_evaluation_s {
     ast_node node;
     ast_body body;
-    pasted_str* paste_str;
-    union {
-        pasted_str* read_str;
-        ast_elem* ctype;
-    };
-    char* read_pos;
     ast_node* expr;
+    ast_elem* ctype;
+    pasted_source* pasted_src;
     ast_node* source_pp_expr; // the original expr contained in expr_pp
-    src_range source_pp_srange; // the src range OF the original expr_pp
 } paste_evaluation;
 
-// ASSERT: sizeof(stmt_paste_evaluation) < sizeof(expr_pp)
+typedef struct pasted_source_s {
+    ast_elem elem;
+    union {
+        struct {
+            pasted_str* paste_str;
+            pasted_str* read_str;
+            char* read_pos;
+        } read_data;
+        struct {
+            pasted_str* first;
+            pasted_str** last_next;
+        } paste_data;
+    };
+    paste_evaluation* origin;
+    src_range source_pp_srange;
+    src_map* source_pp_smap;
+    src_map smap;
+} pasted_source;
+
+// ASSERT: sizeof(stmt_paste_evaluation) <= sizeof(expr_pp)
 
 typedef struct match_arm_s {
     ast_node* condition;

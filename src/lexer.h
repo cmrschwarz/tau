@@ -12,6 +12,7 @@
 typedef struct thread_context_s thread_context;
 typedef struct src_file_s src_file;
 typedef struct pasted_str_s pasted_str;
+typedef struct pasted_source_s pasted_source;
 typedef struct paste_evaluation_s paste_evaluation;
 
 typedef enum PACK_ENUM lx_status {
@@ -44,7 +45,7 @@ typedef struct lexer_s {
 int lx_init(lexer* lx, thread_context* tc);
 void lx_fin(lexer* lx);
 
-int lx_open_paste(lexer* lx, paste_evaluation* pe, src_map* parent_smap);
+int lx_open_paste(lexer* lx, pasted_source* ps);
 void lx_close_paste(lexer* lx);
 
 lx_status lx_open_file(lexer* lx, src_file* f);

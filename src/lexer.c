@@ -281,11 +281,9 @@ void lx_close_smap(lexer* lx)
     src_map_close(lx->smap);
     lx->smap = NULL;
 }
-int lx_open_paste(lexer* lx, paste_evaluation* pe, src_map* parent_smap)
+int lx_open_paste(lexer* lx, pasted_source* ps)
 {
-    src_map* smap = src_map_create_child(parent_smap, (ast_elem*)pe, lx->tc);
-    if (!smap) return ERR;
-    return lx_open_smap(lx, smap);
+    return lx_open_smap(lx, &ps->smap);
 }
 void lx_close_paste(lexer* lx)
 {

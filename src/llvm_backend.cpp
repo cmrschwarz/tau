@@ -95,7 +95,7 @@ llvm_backend* llvm_backend_new(thread_context* tc)
     return b;
 }
 
-void llvm_backend_run_paste(LLVMBackend* llvmb, expr_pp* tgt, char* str)
+void llvm_backend_run_paste(LLVMBackend* llvmb, pasted_source* ps, char* str)
 {
     // TODO: proper allocation
     auto pstr = (pasted_str*)pool_alloc(
@@ -105,8 +105,8 @@ void llvm_backend_run_paste(LLVMBackend* llvmb, expr_pp* tgt, char* str)
         &llvmb->_tc->t->filemap.string_mem_pool, pastelen + 1);
     strcpy(paste_str, str);
     pstr->str = paste_str;
-    *tgt->result_buffer.paste_result.last_next = pstr;
-    tgt->result_buffer.paste_result.last_next = &pstr->next;
+    *ps->paste_data.last_next = pstr;
+    ps->paste_data.last_next = &pstr->next;
     if (llvmb->_tc->t->verbosity_flags & VERBOSITY_FLAG_PASTES) {
         tprintf("pasted '%s'\n", str);
         tflush();
@@ -729,6 +729,7 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
                 // TODO: use tempmem for this
                 expr->result = malloc(size);
             }
+            ast_node_set_emitted_for_pp(n->node);
             llvm::Value* val;
             lle = genAstNode(expr->pp_expr, NULL, &val);
             if (lle) return lle;
@@ -740,7 +741,7 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
         }
         else {
             // so we don't ever regenerate it in genAstNode
-            expr->result = (void*)1;
+            ast_node_set_emitted_for_pp(n->node);
             lle = genAstNode(expr->pp_expr, NULL, NULL);
             if (lle) return lle;
         }
@@ -1428,7 +1429,9 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case EXPR_PP: {
             if (!vl && !vl_loaded) return LLE_OK;
             auto epp = (expr_pp*)n;
-            if (!epp->result) return genAstNode(epp->pp_expr, vl, vl_loaded);
+            if (!ast_node_get_emitted_for_pp(n)) {
+                return genAstNode(epp->pp_expr, vl, vl_loaded);
+            }
             assert(!vl);
             if (vl_loaded) {
                 assert(epp->ctype != VOID_ELEM);

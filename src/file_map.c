@@ -499,7 +499,28 @@ file_map_head** file_map_get_head_from_path_unlocked(
         curr_start = curr_end;
     }
 }
-
+pasted_source* file_map_create_pasted_source(
+    file_map* fm, thread_context* tc, expr_pp* origin, src_map* parent)
+{
+    bool failiure = true;
+    mutex_lock(&fm->lock);
+    pasted_source* ps = pool_alloc(&fm->file_mem_pool, sizeof(pasted_source));
+    if (ps) {
+        if (!src_map_init(&ps->smap, (ast_elem*)ps, tc)) {
+            ps->smap.next = parent->next;
+            parent->next = &ps->smap;
+            failiure = false;
+        }
+    }
+    mutex_unlock(&fm->lock);
+    if (failiure) return NULL;
+    ps->elem.kind = ELEM_PASTED_SRC;
+    // since we punt this type later we have to cast here
+    ps->origin = (paste_evaluation*)origin;
+    ps->source_pp_srange = origin->node.srange;
+    ps->paste_data.last_next = &ps->paste_data.first;
+    return ps;
+}
 src_file*
 file_map_get_file_from_path(file_map* fm, src_dir* parent, string path)
 {
