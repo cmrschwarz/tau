@@ -251,7 +251,7 @@ char* op_to_str(operator_kind t)
     }
     return 0;
 }
-ast_body* ast_elem_get_body(ast_elem* s)
+ast_body* ast_elem_try_get_body(ast_elem* s)
 {
     if (ast_elem_is_scope(s)) {
         return &((scope*)s)->body;
@@ -264,9 +264,18 @@ ast_body* ast_elem_get_body(ast_elem* s)
         case STMT_PASTE_EVALUATION: return &((paste_evaluation*)s)->body;
         case MF_EXTEND:
         case MF_MODULE: return &((module_frame*)s)->body;
-        default: panic("tried to get body from ast node without body");
+        default: break;
     }
     return NULL;
+}
+ast_body* ast_elem_get_body(ast_elem* s)
+{
+    ast_body* res = ast_elem_try_get_body(s);
+    if (!res) {
+        panic("tried to get body from ast node without body");
+        assert(false);
+    }
+    return res;
 }
 type_derivatives* ast_elem_get_type_derivs(ast_elem* e)
 {

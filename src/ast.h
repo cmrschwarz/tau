@@ -856,6 +856,7 @@ bool ast_elem_is_expr_block_base(ast_elem* n);
 bool ast_elem_is_paste_evaluation(ast_elem* s);
 bool assignment_is_meta_assignment(expr_op_binary* ob, bool* defined);
 ast_body* ast_elem_get_body(ast_elem* s);
+ast_body* ast_elem_try_get_body(ast_elem* s);
 type_derivatives* ast_elem_get_type_derivs(ast_elem* e);
 ast_body* ast_body_get_non_paste_parent(ast_body* b);
 char* ast_elem_get_label(ast_elem* n, bool* lbl);

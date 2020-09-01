@@ -5,7 +5,7 @@ typedef struct ast_node_s ast_node;
 #define AST_NODE_FLAGS_DEFAULT (u16)0
 
 // !symbol_table's data layout depends on this enums order
-typedef enum PACK_ENUM access_modifier_e {
+typedef enum access_modifier_e {
     AM_LOCAL, // module frame (default inside structs and mf's)
     AM_INTERNAL, // module
     AM_PUBLIC, // everybody
@@ -15,7 +15,7 @@ typedef enum PACK_ENUM access_modifier_e {
     AM_ENUM_ELEMENT_COUNT = AM_NONE,
 } access_modifier;
 
-typedef enum PACK_ENUM ast_node_status_e {
+typedef enum ast_node_status_e {
     NODE_STATUS_PARSED,
     NODE_STATUS_DECLARED,
     NODE_STATUS_RESOLVING,
@@ -23,7 +23,7 @@ typedef enum PACK_ENUM ast_node_status_e {
     NODE_STATUS_PUBLISHED,
 } ast_node_status;
 
-typedef enum PACK_ENUM dtor_kind_e {
+typedef enum dtor_kind_e {
     DTOR_KIND_POD,
     DTOR_KIND_KNOWN_DEAD,
     DTOR_KIND_STATIC,
@@ -45,7 +45,7 @@ typedef enum PACK_ENUM dtor_kind_e {
 
 #define ASTF_USED_IN_PP_OFFSET 5
 
-// bit 6 currently free
+#define ASTF_CONTAINS_ERRORS 6 // on any node
 
 #define ASTF_COMPUND_DECL_OFFSET 7 // on sym_var
 #define ASTF_TYPE_OPERATOR_OFFSET 7 // on op_binary / op_unary
@@ -60,7 +60,7 @@ typedef enum PACK_ENUM dtor_kind_e {
 #define ASTF_FUNC_IS_OP_OFFSET 9 // on funcs --> ops
 
 // needs 3 bits (10 - 12)
-#define ASTF_STATUS_OFFSET 10 // on sym var (when in func), set during prp
+#define ASTF_STATUS_OFFSET 10 // on any node
 #define ASTF_STATUS_MASK (0x7 << ASTF_STATUS_OFFSET)
 
 // needs 3 bits (13 - 15)
@@ -131,6 +131,9 @@ bool ast_node_get_resolved(ast_node* n);
 
 bool ast_node_get_emitted_for_pp(ast_node* n);
 void ast_node_set_emitted_for_pp(ast_node* n);
+
+bool ast_node_get_contains_error(ast_node* n);
+void ast_node_set_contains_error(ast_node* n);
 
 void ast_node_set_overloaded_in_pp(ast_node* n);
 bool ast_node_get_overloaded_in_pp(ast_node* n);

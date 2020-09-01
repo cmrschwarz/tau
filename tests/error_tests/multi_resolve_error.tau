@@ -1,0 +1,8 @@
+func main() -> int{
+    arr := [_]int{1,2,3};
+    x: Type = []int;
+    y := int;
+    return 0;
+}
+
+#x := main();

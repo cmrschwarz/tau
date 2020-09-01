@@ -12,6 +12,12 @@
 #include <assert.h>
 #include "symbol_lookup.h"
 
+typedef enum type_cast_result_e {
+    TYPE_CAST_SUCCESS = 0,
+    TYPE_CAST_INCOMPATIBLE,
+    TYPE_CAST_POISONED,
+} type_cast_result;
+
 resolve_error resolver_run_pp_resolve_nodes(resolver* r);
 resolve_error
 resolve_param(resolver* r, sym_param* p, bool generic, ast_elem** ctype);
@@ -52,12 +58,15 @@ static resolve_error add_ast_node_decls(
     bool public_st);
 resolve_error handle_resolve_error(
     resolver* r, ast_node* n, ast_body* body, resolve_error re);
+type_cast_result type_cast(
+    ast_elem* source_type, ast_elem* target_type, ast_node** src_node_ptr);
+resolve_error ast_body_propagate_error(resolver* r, ast_body* body);
 // must be a macro so value and ctype become lazily evaluated
 
 #define SET_VAL_CTYPE(pvalue, pctype, value, ctype)                            \
     do {                                                                       \
-        if (pvalue) *pvalue = (ast_elem*)(value);                              \
-        if (pctype) *pctype = (ast_elem*)(ctype);                              \
+        if (pvalue) *(ast_elem**)(pvalue) = (ast_elem*)(value);                \
+        if (pctype) *(ast_elem**)(pctype) = (ast_elem*)(ctype);                \
     } while (false)
 
 #define SET_THEN_RETURN_IF_RESOLVED(resolved, pvalue, pctype, value, ctype)    \
@@ -72,24 +81,25 @@ resolve_error handle_resolve_error(
         return RE_OK;                                                          \
     } while (false)
 
-#define RETURN_POISONED(re, node)                                              \
+#define RETURN_POISONED(r, re, node, body)                                     \
     do {                                                                       \
         ast_node* n = (ast_node*)(node);                                       \
         if (re != RE_FATAL) {                                                  \
+            if (curr_body_propagate_error(r, body)) return RE_FATAL;           \
             ast_node_set_poisoned(n);                                          \
             ast_node_set_resolved(n);                                          \
         }                                                                      \
         return re;                                                             \
     } while (false)
 
-#define SET_THEN_RETURN_POISONED(re, node, pvalue, pctype, value, ctype)       \
+#define SET_THEN_RETURN_POISONED(                                              \
+    r, re, node, body, pvalue, pctype, value, ctype)                           \
     do {                                                                       \
         SET_VAL_CTYPE(pvalue, pctype, value, ctype);                           \
-        RETURN_POISONED(re, node);                                             \
+        RETURN_POISONED(r, re, node, body);                                    \
     } while (false)
 
-static resolve_error
-report_unknown_symbol(resolver* r, ast_node* n, ast_body* body)
+static void report_unknown_symbol(resolver* r, ast_node* n, ast_body* body)
 {
     src_range_large srl;
     if (n->kind == EXPR_SCOPE_ACCESS || n->kind == EXPR_MEMBER_ACCESS) {
@@ -102,7 +112,7 @@ report_unknown_symbol(resolver* r, ast_node* n, ast_body* body)
         r->tc->err_log, ES_RESOLVER, false, "unknown symbol",
         ast_body_get_smap(body), srl.start, srl.end,
         "use of an undefined symbol");
-    return RE_UNKNOWN_SYMBOL;
+    r->error_occured = true;
 }
 void report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev)
 {
@@ -130,6 +140,50 @@ get_decl_target_body(ast_node* decl, ast_body* body, ast_body* shared_body)
         tgt = body;
     }
     return ast_body_get_non_paste_parent(tgt);
+}
+resolve_error ast_node_propagate_error(resolver* r, ast_node* n)
+{
+    if (ast_node_get_contains_error(n)) return RE_OK;
+    ast_node_set_contains_error(n);
+    ast_body* b = ast_elem_try_get_body((ast_elem*)n);
+    if (!b) return RE_OK;
+    return ast_body_propagate_error(r, b);
+}
+resolve_error pprn_propagate_error(resolver* r, pp_resolve_node* pprn)
+{
+    assert(pprn->node);
+    if (ast_node_get_contains_error(pprn->node)) return RE_OK;
+    resolve_error re = ast_node_propagate_error(r, pprn->node);
+    if (re) return re;
+    list_it it;
+    list_it_begin(&it, &pprn->notified_by);
+    pp_resolve_node** pprnp;
+    while ((pprnp = list_it_next(&it, &pprn->notified_by))) {
+        if (!*pprnp) continue;
+        re = pprn_propagate_error(r, *pprnp);
+        if (re) return re;
+    }
+    return RE_OK;
+}
+resolve_error ast_body_propagate_error(resolver* r, ast_body* body)
+{
+    ast_node* on = (ast_node*)body->owning_node;
+    if (ast_node_get_contains_error(on)) return RE_OK;
+    ast_node_set_contains_error(on);
+    resolve_error re;
+    if (body->pprn) {
+        re = pprn_propagate_error(r, body->pprn);
+        if (re) return re;
+    }
+    if (!body->parent) return RE_OK;
+    return ast_body_propagate_error(r, body->parent);
+}
+resolve_error curr_body_propagate_error(resolver* r, ast_body* body)
+{
+    resolve_error re = ast_body_propagate_error(r, body);
+    if (re) return re;
+    if (!r->curr_pp_node) return RE_OK;
+    return pprn_propagate_error(r, r->curr_pp_node);
 }
 static resolve_error
 add_symbol(resolver* r, ast_body* body, ast_body* shared_body, symbol* sym)
@@ -448,7 +502,7 @@ resolve_error pp_resolve_node_activate(
         resolve_func_from_call(r, body, r->module_group_constructor, NULL);
     }
     if (pprn->dep_count == 0) {
-        if (resolved) {
+        if (resolved || ast_node_get_contains_error(pprn->node)) {
             return pp_resolve_node_ready(r, pprn);
         }
         if (pprn->run_individually) {
@@ -963,9 +1017,18 @@ static inline resolve_error parse_int_literal(
     return RE_ERROR;
 }
 static resolve_error evaluate_array_bounds(
-    resolver* r, expr_array_type* ad, ast_body* body, ureg* res)
+    resolver* r, expr_array_type* ad, ast_body* body, ureg arr_expr_len,
+    ureg* res)
 {
     ast_elem* t;
+    if (!ad->length_spec && arr_expr_len == UREG_MAX) {
+        assert(false); // TODO: error we need either explcit or implicit bounds
+        return RE_ERROR;
+    }
+    if (!ad->length_spec) {
+        *res = arr_expr_len;
+        return RE_OK;
+    }
     resolve_error re = resolve_ast_node(r, ad->length_spec, body, NULL, &t);
     if (re) return re;
     bool negative = false;
@@ -986,10 +1049,10 @@ static resolve_error evaluate_array_bounds(
             return RE_UNREALIZED_COMPTIME;
         }
         // HACK
-        if (ctypes_unifiable(epp->ctype, (ast_elem*)&PRIMITIVES[PT_UINT])) {
+        if (!type_cast(epp->ctype, (ast_elem*)&PRIMITIVES[PT_UINT], NULL)) {
             *res = *(ureg*)epp->result;
         }
-        else if (ctypes_unifiable(epp->ctype, (ast_elem*)&PRIMITIVES[PT_INT])) {
+        else if (!type_cast(epp->ctype, (ast_elem*)&PRIMITIVES[PT_INT], NULL)) {
             sreg i = *(sreg*)epp->result; // HACK
             if (i < 0) negative = true;
             *res = (ureg)i;
@@ -1012,6 +1075,8 @@ static resolve_error evaluate_array_bounds(
             bounds_srl.smap, bounds_srl.start, bounds_srl.end, "expected uint",
             array_srl.smap, array_srl.start, array_srl.end,
             "in the array bounds for this array");
+        r->error_occured = true;
+        return RE_ERROR;
     }
     if (negative) {
         src_range_large bounds_srl;
@@ -1024,6 +1089,7 @@ static resolve_error evaluate_array_bounds(
             bounds_srl.end, "expected positive integer", array_srl.smap,
             array_srl.start, array_srl.end,
             "in the array bounds for this array");
+        r->error_occured = true;
         return RE_ERROR;
     }
     return RE_OK;
@@ -1050,24 +1116,34 @@ static inline void print_debug_info(resolver* r, const char* flavortext)
     }
     tprintf("%s} ", (**i).name);
 }
-
-bool ctypes_unifiable(ast_elem* a, ast_elem* b)
+type_cast_result
+type_cast(ast_elem* target_type, ast_elem* source_type, ast_node** src_node_ptr)
 {
+    if (source_type == ERROR_ELEM || target_type == ERROR_ELEM) {
+        return TYPE_CAST_POISONED;
+    }
     // immediately return true e.g. for primitives
-    if (a == b) return true;
-    if (a->kind == TYPE_POINTER && b->kind == TYPE_POINTER) {
-        return ctypes_unifiable(
-            ((type_pointer*)a)->base_type, ((type_pointer*)b)->base_type);
+    if (source_type == target_type) return TYPE_CAST_SUCCESS;
+    if (source_type->kind == TYPE_POINTER &&
+        target_type->kind == TYPE_POINTER) {
+        // TODO: insert cast
+        return type_cast(
+            ((type_pointer*)target_type)->base_type,
+            ((type_pointer*)source_type)->base_type, NULL);
     }
-    if (a->kind == TYPE_ARRAY && b->kind == TYPE_ARRAY) {
-        type_array* aa = (type_array*)a;
-        type_array* ab = (type_array*)b;
-        return (aa->length == ab->length) &&
-               ctypes_unifiable(
-                   aa->slice_type.ctype_members, ab->slice_type.ctype_members);
+    if (source_type->kind == TYPE_ARRAY && target_type->kind == TYPE_ARRAY) {
+        type_array* src_arr = (type_array*)source_type;
+        type_array* tgt_arr = (type_array*)target_type;
+        if (src_arr->length != tgt_arr->length) return TYPE_CAST_INCOMPATIBLE;
+        ast_node* res_node = NULL;
+        type_cast_result r = type_cast(
+            tgt_arr->slice_type.ctype_members,
+            src_arr->slice_type.ctype_members, &res_node);
+        // TODO: insert cast
+        return r;
     }
-    if (b == (ast_elem*)&PRIMITIVES[PT_UNDEFINED] ||
-        b == (ast_elem*)&PRIMITIVES[PT_DEFINED]) {
+    if (target_type == (ast_elem*)&PRIMITIVES[PT_UNDEFINED] ||
+        target_type == (ast_elem*)&PRIMITIVES[PT_DEFINED]) {
         return true;
     }
     return false; // TODO
@@ -1090,13 +1166,13 @@ resolve_error operator_func_applicable(
     ast_elem* param_ctype;
     resolve_error re = resolve_param(r, &f->fnb.params[0], false, &param_ctype);
     if (re) return re;
-    if (!ctypes_unifiable(lhs, param_ctype)) {
+    if (type_cast(lhs, param_ctype, NULL)) {
         *applicable = false;
         return RE_OK;
     }
     re = resolve_param(r, &f->fnb.params[0], false, &param_ctype);
     if (re) return re;
-    if (!ctypes_unifiable(rhs, param_ctype)) {
+    if (type_cast(rhs, param_ctype, NULL)) {
         *applicable = false;
         return RE_OK;
     }
@@ -1122,7 +1198,7 @@ resolve_error overload_applicable(
         ast_elem* ctype;
         resolve_error re = resolve_param(r, &params[i], false, &ctype);
         if (re) return re;
-        if (!ctypes_unifiable(ctype, call_arg_types[i])) {
+        if (type_cast(ctype, call_arg_types[i], NULL)) {
             *applicable = false;
             return RE_OK;
         }
@@ -1200,11 +1276,14 @@ resolve_error resolve_func_call(
         }
         if (sym == NULL) {
             if (overload_existant) break;
-            // we use st instead of func_st here because thats the scope that
-            // the call is in
+            // we use st instead of func_st here because thats the scope
+            // that the call is in
             sbuffer_remove_back(
                 &r->temp_stack, c->arg_count * sizeof(ast_elem*));
-            return report_unknown_symbol(r, c->lhs, body);
+            if (!r->post_pp) return RE_UNKNOWN_SYMBOL;
+            report_unknown_symbol(r, c->lhs, body);
+            SET_THEN_RETURN_POISONED(
+                r, RE_OK, c, body, NULL, ctype, c, ERROR_ELEM);
         }
         overload_existant = true;
         if (sym->node.kind == SC_FUNC) {
@@ -1340,10 +1419,13 @@ resolve_error choose_unary_operator_overload(
                         r->tc->err_log, ES_RESOLVER, false,
                         "cannot take the address of an rvalue", child_srl.smap,
                         child_srl.start, child_srl.end,
-                        "the expression that doesn't have a storage location",
+                        "the expression that doesn't have a storage "
+                        "location",
                         op_srl.smap, op_srl.start, op_srl.end,
                         "cannot take the address of this expression");
                     r->error_occured = true;
+                    re = curr_body_propagate_error(r, body);
+                    if (re) return re;
                     ast_node_set_poisoned(&ou->node);
                 }
             }
@@ -1387,24 +1469,27 @@ resolve_error choose_binary_operator_overload(
     re = resolve_ast_node(r, ob->rhs, body, NULL, &rhs_ctype);
     if (re) return re;
     if (unrealized_comptime) return RE_UNREALIZED_COMPTIME;
-
     if (ob->node.op_kind == OP_ASSIGN) {
-        if (!ctypes_unifiable(lhs_ctype, rhs_ctype)) {
-            src_range_large rhs_srl;
-            src_range_large op_srl;
-            ast_node_get_full_src_range(ob->rhs, body, &rhs_srl);
-            ast_node_get_src_range((ast_node*)ob, body, &op_srl);
-            error_log_report_annotated_twice(
-                r->tc->err_log, ES_RESOLVER, false, "assignment type missmatch",
-                rhs_srl.smap, rhs_srl.start, rhs_srl.end,
-                "the right hand sides expression's type is not implicitly "
-                "convertible to "
-                "the left hand sides",
-                op_srl.smap, op_srl.start, op_srl.end, "in this assignment");
-            r->error_occured = true;
-            ast_node_set_poisoned(&ob->node);
+        type_cast_result tcr = type_cast(lhs_ctype, rhs_ctype, NULL);
+        if (tcr) {
+            if (tcr == TYPE_CAST_INCOMPATIBLE) {
+                src_range_large rhs_srl;
+                src_range_large op_srl;
+                ast_node_get_full_src_range(ob->rhs, body, &rhs_srl);
+                ast_node_get_src_range((ast_node*)ob, body, &op_srl);
+                error_log_report_annotated_twice(
+                    r->tc->err_log, ES_RESOLVER, false,
+                    "assignment type missmatch", rhs_srl.smap, rhs_srl.start,
+                    rhs_srl.end,
+                    "the right hand sides expression's type is not implicitly "
+                    "convertible to "
+                    "the left hand sides",
+                    op_srl.smap, op_srl.start, op_srl.end,
+                    "in this assignment");
+                r->error_occured = true;
+            }
         }
-        if (!is_lvalue((ast_elem*)ob->lhs)) {
+        else if (!is_lvalue((ast_elem*)ob->lhs)) {
             src_range_large lhs_srl;
             src_range_large op_srl;
             ast_node_get_full_src_range(ob->lhs, body, &lhs_srl);
@@ -1418,9 +1503,13 @@ resolve_error choose_binary_operator_overload(
             r->error_occured = true;
             ast_node_set_poisoned(&ob->node);
         }
-        if (ctype) *ctype = VOID_ELEM;
-        ob->op = lhs_ctype;
-        return RE_OK;
+        else {
+            if (ctype) *ctype = VOID_ELEM;
+            ob->op = lhs_ctype;
+            return RE_OK;
+        }
+        SET_THEN_RETURN_POISONED(
+            r, RE_OK, ob, body, value, ctype, ob, ERROR_ELEM);
     }
     if (lhs_ctype->kind == SYM_PRIMITIVE && rhs_ctype->kind == SYM_PRIMITIVE) {
         // TODO: proper inbuild operator resolution
@@ -1449,7 +1538,14 @@ resolve_error choose_binary_operator_overload(
             assert(false); // TODO: error
         }
     }
-    return report_unknown_symbol(r, (ast_node*)ob, body);
+    if (!r->post_pp) return RE_UNKNOWN_SYMBOL;
+    src_range_large srl;
+    src_range_unpack(ob->node.srange, &srl);
+    error_log_report_annotated(
+        r->tc->err_log, ES_RESOLVER, false, "invalid arguments for operator",
+        ast_body_get_smap(body), srl.start, srl.end,
+        "found no valid overload for this operator");
+    SET_THEN_RETURN_POISONED(r, RE_OK, ob, body, value, ctype, ob, ERROR_ELEM);
 }
 ast_elem* get_resolved_symbol_ctype(symbol* s)
 {
@@ -1534,7 +1630,7 @@ resolve_param(resolver* r, sym_param* p, bool generic, ast_elem** ctype)
             re = resolve_ast_node(
                 r, (ast_node*)p->default_value, declaring_body, NULL, &val);
             if (re) return re;
-            if (!ctypes_unifiable(p->ctype, val)) {
+            if (type_cast(p->ctype, val, NULL)) {
                 assert(false); // TODO: error
             }
         }
@@ -1588,7 +1684,10 @@ resolve_error resolve_scoped_identifier(
         r, lhs_body, NULL, body, esa->target.name, &idf, &amb);
     if (re) return re;
     if (!idf) {
-        return report_unknown_symbol(r, (ast_node*)esa, body);
+        if (!r->post_pp) return RE_UNKNOWN_SYMBOL;
+        report_unknown_symbol(r, (ast_node*)esa, body);
+        SET_THEN_RETURN_POISONED(
+            r, RE_OK, esa, body, value, ctype, esa, ERROR_ELEM);
     }
     if (amb) {
         assert(false); // TODO report ambiguity error
@@ -1624,7 +1723,12 @@ resolve_error resolve_expr_member_accesss(
         r, struct_body, (sc_struct*)lhs_type, body, ema->target.name, &mem,
         &amb);
     if (re) return re;
-    if (!mem) return report_unknown_symbol(r, (ast_node*)ema, struct_body);
+    if (!mem) {
+        if (!r->post_pp) return RE_UNKNOWN_SYMBOL;
+        report_unknown_symbol(r, (ast_node*)ema, struct_body);
+        SET_THEN_RETURN_POISONED(
+            r, RE_OK, ema, body, value, ctype, ema, ERROR_ELEM);
+    }
     if (amb) {
         assert(false); // TODO: report ambiguity
     }
@@ -1673,7 +1777,14 @@ static inline resolve_error resolve_var(
                 re = resolve_ast_node(
                     r, vi->initial_value, declaring_body, NULL, &val_type);
                 if (!re) {
-                    if (!ctypes_unifiable(vi->var.ctype, val_type)) {
+                    type_cast_result tcr =
+                        type_cast(vi->var.ctype, val_type, &vi->initial_value);
+                    if (tcr) {
+                        if (tcr == TYPE_CAST_POISONED) {
+                            SET_THEN_RETURN_POISONED(
+                                r, RE_OK, vi, requesting_body, value, ctype, vi,
+                                ERROR_ELEM);
+                        }
                         src_range_large vi_type_srl, vi_val_srl;
                         ast_node_get_src_range(
                             vi->var.type, declaring_body, &vi_type_srl);
@@ -1694,6 +1805,23 @@ static inline resolve_error resolve_var(
         else {
             re = resolve_ast_node(
                 r, vi->initial_value, declaring_body, NULL, &vi->var.ctype);
+            if (vi->var.ctype == TYPE_ELEM) {
+                src_range_large var_srl, val_srl;
+                ast_node_get_src_range((ast_node*)vi, declaring_body, &var_srl);
+                ast_node_get_src_range(
+                    vi->initial_value, declaring_body, &val_srl);
+                error_log_report_annotated_twice(
+                    r->tc->err_log, ES_RESOLVER, false,
+                    "variable of type 'Type' is not allowed", var_srl.smap,
+                    var_srl.start, var_srl.end, "for this variable",
+                    val_srl.smap, val_srl.start, val_srl.end,
+                    "the initializer expression is a type, not a value");
+                r->error_occured = true;
+                vi->var.ctype = ERROR_ELEM;
+                SET_THEN_RETURN_POISONED(
+                    r, RE_OK, vi, requesting_body, value, ctype, vi,
+                    ERROR_ELEM);
+            }
             // this could become needed again once we support typeof,
             // it allows one retry in cases of a variable initially
             // assigned to a self referential expr block
@@ -1722,7 +1850,8 @@ static inline resolve_error resolve_var(
     if (re) {
         // so we can free it... sigh
         if (v->pprn) add_pprn_to_waiting_list(r, v->pprn);
-        SET_THEN_RETURN_POISONED(re, v, value, ctype, v, ERROR_ELEM);
+        SET_THEN_RETURN_POISONED(
+            r, re, v, requesting_body, value, ctype, v, ERROR_ELEM);
     }
     if (v->pprn) {
         if (public_symbol) {
@@ -1788,7 +1917,7 @@ resolve_return(resolver* r, ast_body* body, expr_return* er)
         assert(false); // TODO: error
         return RE_ERROR;
     }
-    if (!ctypes_unifiable(er->value_ctype, tgt_type)) {
+    if (type_cast(tgt_type, er->value_ctype, &er->value)) {
         ureg vstart, vend;
         ast_node_get_bounds(er->value, &vstart, &vend);
         error_log_report_annotated_twice(
@@ -1820,7 +1949,11 @@ resolve_break(resolver* r, ast_body* body, expr_break* b)
         r, b->target.label, body, &b->target.ebb, &tgt_ctype);
     if (re) return re;
     if (*tgt_ctype) {
-        if (!ctypes_unifiable(b->value_ctype, *tgt_ctype)) {
+        type_cast_result tcr = type_cast(*tgt_ctype, b->value_ctype, &b->value);
+        if (tcr) {
+            if (tcr == TYPE_CAST_POISONED) {
+                RETURN_POISONED(r, RE_OK, b, body);
+            }
             ureg vstart, vend;
             ast_node_get_bounds(b->value, &vstart, &vend);
             error_log_report_annotated_twice(
@@ -1833,7 +1966,7 @@ resolve_break(resolver* r, ast_body* body, expr_break* b)
                 src_range_get_start(b->target.ebb->node.srange),
                 src_range_get_end(b->target.ebb->node.srange),
                 "target scope here");
-            return RE_TYPE_MISSMATCH;
+            RETURN_POISONED(r, RE_OK, b, body);
         }
     }
     else {
@@ -1851,7 +1984,12 @@ static inline resolve_error resolve_identifier(
     resolve_error re =
         resolver_lookup_single(r, body, NULL, body, e->value.str, &sym, &amb);
     if (re) return re;
-    if (!sym) return report_unknown_symbol(r, (ast_node*)e, body);
+    if (!sym) {
+        if (!r->post_pp) return RE_UNKNOWN_SYMBOL;
+        report_unknown_symbol(r, (ast_node*)e, body);
+        SET_THEN_RETURN_POISONED(
+            r, RE_OK, e, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
+    }
     if (amb) {
         assert(false); // TODO: report ambiguity
     }
@@ -1902,7 +2040,8 @@ static inline resolve_error resolve_if(
         else if (else_branch_type_loop || ctype_else == UNREACHABLE_ELEM) {
             ei->ctype = ctype_if;
         }
-        else if (!ctypes_unifiable(ctype_if, ctype_else)) {
+        else if (ctype_if != ctype_else) {
+            // TODO: get type hint from parent and try to cast
             src_range_large srl, srl_if, srl_else;
             ast_node_get_src_range((ast_node*)ei, body, &srl);
             ast_node_get_src_range(ei->if_body, body, &srl_if);
@@ -2035,7 +2174,7 @@ static inline resolve_error resolve_expr_pp(
             return RE_FATAL;
         }
         // we just need to mark it for reexec, no specific value required
-        if (pprn->pending_pastes && pprn->run_individually) {
+        if (ppe->pprn && pprn->pending_pastes && pprn->run_individually) {
             pprn->continue_block = (ast_node**)NULL_PTR_PTR;
         }
     }
@@ -2083,16 +2222,21 @@ static inline resolve_error resolve_expr_paste_str(
         if (!tgt_ppe->result_buffer.pasted_src) return RE_FATAL;
     }
     eps->target = tgt_ppe->result_buffer.pasted_src;
-    if (!ctypes_unifiable(val_type, (ast_elem*)&PRIMITIVES[PT_STRING])) {
-        src_range_large paste_srl, val_srl;
-        ast_node_get_src_range((ast_node*)eps, body, &paste_srl);
-        ast_node_get_src_range(eps->value, body, &val_srl);
-        error_log_report_annotated_twice(
-            r->tc->err_log, ES_RESOLVER, false,
-            "incompatible type in paste argument", val_srl.smap, val_srl.start,
-            val_srl.end, "paste expects a string as an argument",
-            paste_srl.smap, paste_srl.start, paste_srl.end, NULL);
-        return RE_TYPE_MISSMATCH;
+    type_cast_result tcr =
+        type_cast((ast_elem*)&PRIMITIVES[PT_STRING], val_type, &eps->value);
+    if (tcr) {
+        if (tcr == TYPE_CAST_INCOMPATIBLE) {
+            src_range_large paste_srl, val_srl;
+            ast_node_get_src_range((ast_node*)eps, body, &paste_srl);
+            ast_node_get_src_range(eps->value, body, &val_srl);
+            error_log_report_annotated_twice(
+                r->tc->err_log, ES_RESOLVER, false,
+                "incompatible type in paste argument", val_srl.smap,
+                val_srl.start, val_srl.end,
+                "paste expects a string as an argument", paste_srl.smap,
+                paste_srl.start, paste_srl.end, NULL);
+        }
+        SET_THEN_RETURN_IF_RESOLVED(RE_OK, value, ctype, VOID_ELEM, ERROR_ELEM);
     }
     r->curr_pp_node->pending_pastes = true;
     RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
@@ -2234,6 +2378,42 @@ static inline bool is_symbol_kind_overloadable(ast_node_kind k)
         default: return false;
     }
 }
+resolve_error resolve_array_or_slice_type(
+    resolver* r, ast_node* n, ast_body* body, ureg arr_expr_len,
+    ast_elem** value, ast_elem** ctype)
+{
+    expr_slice_type* est = (expr_slice_type*)n;
+    expr_array_type* eat =
+        (expr_array_type*)(n->kind == EXPR_ARRAY_TYPE ? n : NULL);
+    ast_elem* base_type;
+    resolve_error re =
+        resolve_ast_node(r, est->base_type, body, &base_type, NULL);
+    if (re) return re;
+    if (!eat) {
+        type_slice* ts =
+            (type_slice*)pool_alloc(&r->tc->permmem, sizeof(type_slice));
+        if (!ts) return RE_FATAL;
+        est->ctype = ts;
+        ts->ctype_members = base_type;
+        ts->tb.kind = TYPE_SLICE;
+    }
+    else {
+        ureg len;
+        re = evaluate_array_bounds(r, eat, body, arr_expr_len, &len);
+        if (re) {
+            SET_THEN_RETURN_POISONED(
+                r, re, est, body, value, ctype, est, ERROR_ELEM);
+        }
+        type_array* ta = type_map_get_array(
+            &ast_elem_get_type_derivs(base_type)->tm, &r->pm, base_type, len,
+            false, &r->tc->permmem);
+        if (!ta) return RE_FATAL;
+        assert(ta->length == len);
+        est->ctype = (type_slice*)ta;
+    }
+    ast_node_set_resolved(&est->node);
+    RETURN_RESOLVED(value, ctype, est->ctype, TYPE_ELEM);
+}
 resolve_error
 resolve_import_symbol(resolver* r, sym_import_symbol* is, ast_body* body)
 {
@@ -2261,7 +2441,12 @@ resolve_import_symbol(resolver* r, sym_import_symbol* is, ast_body* body)
         &sym, &amb);
     if (re || !sym) ast_node_clear_resolving(node);
     if (re) return re;
-    if (!sym) return report_unknown_symbol(r, (ast_node*)is, decl_body);
+    if (!sym) {
+        if (!r->post_pp) return RE_UNKNOWN_SYMBOL;
+        report_unknown_symbol(r, (ast_node*)is, decl_body);
+        is->target.sym = (symbol*)ERROR_ELEM;
+        RETURN_POISONED(r, RE_OK, is, body);
+    }
     if (is_symbol_kind_overloadable(sym->node.kind)) {
         is->target_body = &im_data->imported_module->body;
     }
@@ -2333,6 +2518,11 @@ static inline resolve_error resolve_ast_node_raw(
         case EXPR_IDENTIFIER: {
             expr_identifier* e = (expr_identifier*)n;
             if (resolved) {
+                if (ast_node_get_poisoned(n)) {
+                    re = curr_body_propagate_error(r, body);
+                    if (re) return re;
+                    RETURN_RESOLVED(value, ctype, e->value.sym, ERROR_ELEM);
+                }
                 RETURN_RESOLVED(
                     value, ctype, e->value.sym,
                     get_resolved_symbol_ctype(e->value.sym));
@@ -2614,45 +2804,19 @@ static inline resolve_error resolve_ast_node_raw(
         }
         case EXPR_ARRAY_TYPE:
         case EXPR_SLICE_TYPE: {
-            expr_slice_type* est = (expr_slice_type*)n;
-            expr_array_type* eat =
-                (expr_array_type*)(n->kind == EXPR_ARRAY_TYPE ? n : NULL);
-            if (resolved) RETURN_RESOLVED(value, ctype, est->ctype, TYPE_ELEM);
-            ast_elem* base_type;
-            re = resolve_ast_node(r, est->base_type, body, &base_type, NULL);
-            if (re) return re;
-            if (!eat) {
-                type_slice* ts = (type_slice*)pool_alloc(
-                    &r->tc->permmem, sizeof(type_slice));
-                if (!ts) return RE_FATAL;
-                est->ctype = ts;
-                ts->ctype_members = base_type;
-                ts->tb.kind = TYPE_SLICE;
-                est->ctype = ts;
+            if (resolved) {
+                RETURN_RESOLVED(
+                    value, ctype, ((expr_slice_type*)n)->ctype, TYPE_ELEM);
             }
-            else {
-                ureg len;
-                re = evaluate_array_bounds(r, eat, body, &len);
-                if (re) {
-                    SET_THEN_RETURN_POISONED(
-                        re, est, value, ctype, est, ERROR_ELEM);
-                }
-                type_array* ta = type_map_get_array(
-                    &ast_elem_get_type_derivs(base_type)->tm, &r->pm, base_type,
-                    len, false, &r->tc->permmem);
-                if (!ta) return RE_FATAL;
-                assert(ta->length == len);
-                est->ctype = (type_slice*)ta;
-            }
-            ast_node_set_resolved(&est->node);
-            RETURN_RESOLVED(value, ctype, est->ctype, TYPE_ELEM);
+            return resolve_array_or_slice_type(
+                r, n, body, UREG_MAX, value, ctype);
         }
         case EXPR_ARRAY: {
             expr_array* ea = (expr_array*)n;
             if (resolved) RETURN_RESOLVED(value, ctype, ea, ea->ctype);
             if (ea->explicit_decl && !ea->ctype) {
-                re = resolve_ast_node(
-                    r, (ast_node*)ea->explicit_decl, body,
+                re = resolve_array_or_slice_type(
+                    r, (ast_node*)ea->explicit_decl, body, ea->elem_count,
                     (ast_elem**)&ea->ctype, NULL);
                 if (re) return re;
                 if (ea->ctype->tb.kind == TYPE_ARRAY) {
@@ -2679,8 +2843,10 @@ static inline resolve_error resolve_ast_node_raw(
                     ea->ctype = (type_slice*)ta;
                 }
                 else {
-                    if (!ctypes_unifiable(
-                            (ast_elem*)ea->ctype->ctype_members, elem_ctype)) {
+                    type_cast_result tcr;
+                    tcr = type_cast(
+                        (ast_elem*)ea->ctype->ctype_members, elem_ctype, e);
+                    if (tcr == TYPE_CAST_INCOMPATIBLE) {
                         src_range_large elem_srl;
                         src_range_large array_srl;
                         ast_node_get_src_range(*e, body, &elem_srl);
@@ -2693,6 +2859,10 @@ static inline resolve_error resolve_ast_node_raw(
                             "element type not convertible to array type",
                             array_srl.smap, array_srl.start, array_srl.end,
                             NULL);
+                        r->error_occured = true;
+                    }
+                    if (tcr) {
+                        ast_node_set_poisoned((ast_node*)ea);
                     }
                 }
                 e++;
@@ -2727,21 +2897,26 @@ static inline resolve_error resolve_ast_node_raw(
             if (ea->arg_count == 1 && ast_elem_is_type_slice(lhs_ctype)) {
                 ast_elem* rhs_ctype;
                 re = resolve_ast_node(r, ea->args[0], body, NULL, &rhs_ctype);
-                if (!ctypes_unifiable(
-                        (ast_elem*)&PRIMITIVES[PT_INT], rhs_ctype)) {
-                    src_range_large array_srl;
-                    src_range_large index_srl;
-                    ast_node_get_src_range(ea->lhs, body, &array_srl);
-                    ast_node_get_src_range(ea->args[0], body, &index_srl);
-                    // TODO: different error for negative values
-                    error_log_report_annotated_twice(
-                        r->tc->err_log, ES_RESOLVER, false,
-                        "invalid array index type", index_srl.smap,
-                        index_srl.start, index_srl.end,
-                        "index type is not convertible to integer",
-                        array_srl.smap, array_srl.start, array_srl.end,
-                        "in the element access of this array");
-                    return RE_ERROR;
+                type_cast_result tcr = type_cast(
+                    (ast_elem*)&PRIMITIVES[PT_INT], rhs_ctype, &ea->args[0]);
+                if (tcr) {
+                    if (tcr == TYPE_CAST_INCOMPATIBLE) {
+                        src_range_large array_srl;
+                        src_range_large index_srl;
+                        ast_node_get_src_range(ea->lhs, body, &array_srl);
+                        ast_node_get_src_range(ea->args[0], body, &index_srl);
+                        // TODO: different error for negative values
+                        error_log_report_annotated_twice(
+                            r->tc->err_log, ES_RESOLVER, false,
+                            "invalid array index type", index_srl.smap,
+                            index_srl.start, index_srl.end,
+                            "index type is not convertible to integer",
+                            array_srl.smap, array_srl.start, array_srl.end,
+                            "in the element access of this array");
+                        r->error_occured = true;
+                    }
+                    SET_THEN_RETURN_POISONED(
+                        r, RE_OK, ea, body, value, ctype, ea, ERROR_ELEM);
                 }
                 ea->node.op_kind = OP_ARRAY_ACCESS;
                 ast_node_set_resolved(&ea->node);
@@ -2954,7 +3129,13 @@ resolve_error resolve_func_from_call(
     resolve_error re;
     if (ast_node_get_resolved((ast_node*)fn)) {
         if (ctype) *ctype = fn->fnb.return_ctype;
-        if (fn->fnb.sc.body.pprn == NULL) return RE_OK; // fn already emitted
+        // fn already fully ready
+        if (fn->fnb.sc.body.pprn == NULL) {
+            if (ast_node_get_contains_error((ast_node*)fn)) {
+                return curr_body_propagate_error(r, body);
+            }
+            return RE_OK;
+        }
     }
     else {
         ast_body* decl_body =
@@ -2977,6 +3158,9 @@ resolve_error resolve_func_from_call(
     }
     re = curr_pprn_depend_on(r, body, &fn->fnb.sc.body.pprn);
     if (re) return re;
+    if (ast_node_get_contains_error((ast_node*)fn)) {
+        return curr_body_propagate_error(r, body);
+    }
     return RE_OK;
 }
 resolve_error resolve_struct(
@@ -3144,7 +3328,8 @@ resolve_error resolve_func(
     }
 
     if (re) {
-        RETURN_POISONED(re, fnb);
+        ast_node_set_contains_error((ast_node*)fnb);
+        RETURN_POISONED(r, re, fnb, parent_body);
     }
     if (stmt_ctype_ptr && fnb->return_ctype != VOID_ELEM) {
         ureg brace_end = src_range_get_end(fnb->sc.body.srange);
@@ -3528,6 +3713,7 @@ resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn)
 {
     if (!pprn->activated) return RE_OK;
     resolve_error re;
+    assert(!pprn->ready);
     pprn->ready = true;
     if (pprn->waiting_list_entry) {
         remove_pprn_from_waiting_list(r, pprn);
@@ -3542,7 +3728,8 @@ resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn)
         }
         list_clear(&pprn->notify);
     }
-    if (pprn->dummy) {
+    if (pprn->dummy ||
+        (pprn->run_individually && ast_node_get_contains_error(pprn->node))) {
         re = pp_resolve_node_done(r, pprn, NULL);
         if (re) return re;
     }
@@ -3764,8 +3951,8 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
                 }
             }
             if (!progress && awaiting) {
-                // hack: busy wait for now until we have proper suspend resume
-                // progress = true;
+                // hack: busy wait for now until we have proper suspend
+                // resume progress = true;
                 return resolver_suspend(r);
             }
         }
@@ -3774,6 +3961,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
 }
 resolve_error resolver_handle_post_pp(resolver* r)
 {
+    r->post_pp = true;
     resolve_error re;
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         aseglist_iterator asi;
@@ -4033,6 +4221,7 @@ void resolver_setup_blank_resolve(resolver* r)
     // global ids of other modules it might use
     r->public_sym_count = 0;
     r->private_sym_count = 0;
+    r->post_pp = false;
     r->id_space = PRIV_SYMBOL_OFFSET;
     r->deps_required_for_pp = false;
     r->committed_waiters = 0;
@@ -4064,6 +4253,7 @@ void resolver_unpack_partial_resolution_data(
     r->committed_waiters = prd->committed_waiters;
     r->public_sym_count = prd->public_sym_count;
     r->private_sym_count = prd->private_sym_count;
+    r->post_pp = false;
 }
 resolve_error resolver_resolve_and_emit(
     resolver* r, mdg_node** start, mdg_node** end, partial_resolution_data* prd,
@@ -4139,8 +4329,8 @@ resolve_error resolver_suspend(resolver* r)
         resolver_unpack_partial_resolution_data(r, p);
         return RE_FATAL;
     }
-    // we might already be ready by this time but since the stages are updated
-    // one after the other we need to do one final check
+    // we might already be ready by this time but since the stages are
+    // updated one after the other we need to do one final check
     if (sccd_run(&r->tc->sccd, *r->mdgs_begin, SCCD_CHECK_PP_DEPS_GENERATED)) {
         // this might be ready but unnoticed otherwise
         bool undo_required = false;

@@ -426,7 +426,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case EXPR_IDENTIFIER: {
             expr_identifier* i = (expr_identifier*)n;
-            if (ast_node_get_resolved(n)) {
+            if (ast_node_get_resolved(n) && !ast_node_get_poisoned(n)) {
                 print_ast_elem_name((ast_elem*)i->value.sym);
             }
             else {

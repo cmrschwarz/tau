@@ -204,6 +204,7 @@ bool ast_node_get_resolved(ast_node* n)
 void ast_node_set_emitted_for_pp(ast_node* n)
 {
     assert(ast_elem_is_symbol((ast_elem*)n) || n->kind == EXPR_PP);
+    assert(!n->emitted_for_pp);
     n->emitted_for_pp = true;
 }
 bool ast_node_get_emitted_for_pp(ast_node* n)
@@ -212,6 +213,14 @@ bool ast_node_get_emitted_for_pp(ast_node* n)
     return n->emitted_for_pp;
 }
 
+bool ast_node_get_contains_error(ast_node* n)
+{
+    return u16_get_bit(n->flags, ASTF_CONTAINS_ERRORS);
+}
+void ast_node_set_contains_error(ast_node* n)
+{
+    u16_set_bit(&n->flags, ASTF_CONTAINS_ERRORS);
+}
 void ast_node_set_used_in_pp(ast_node* n)
 {
     u16_set_bit(&n->flags, ASTF_USED_IN_PP_OFFSET);

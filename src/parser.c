@@ -830,7 +830,7 @@ parse_array_or_slice(parser* p, ast_node** ex, ureg prec)
     if (t->kind == TK_BRACKET_CLOSE) {
         arr_len = NULL;
     }
-    else if (t->kind == TK_STRING && string_eq_cstr(t->str, "_")) {
+    else if (t->kind == TK_IDENTIFIER && string_eq_cstr(t->str, "_")) {
         arr_len = (ast_node*)NULL_PTR_PTR;
         lx_void(&p->lx);
         PEEK(p, t);

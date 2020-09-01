@@ -203,7 +203,7 @@ resolve_error resolve_generic_struct(
          sgi = (sc_struct_generic_inst*)sgi->st.sb.sc.osym.sym.next) {
         bool success = true;
         for (ureg i = 0; i < ea->arg_count; i++) {
-            if (!ctypes_unifiable(args[i], sgi->generic_args[i].value)) {
+            if (args[i] == sgi->generic_args[i].value) {
                 success = false;
                 break;
             }
