@@ -1850,8 +1850,7 @@ static inline resolve_error resolve_var(
     if (re) {
         // so we can free it... sigh
         if (v->pprn) add_pprn_to_waiting_list(r, v->pprn);
-        SET_THEN_RETURN_POISONED(
-            r, re, v, requesting_body, value, ctype, v, ERROR_ELEM);
+        return re;
     }
     if (v->pprn) {
         if (public_symbol) {
@@ -2241,7 +2240,8 @@ static inline resolve_error resolve_expr_paste_str(
     r->curr_pp_node->pending_pastes = true;
     RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
 }
-static inline void report_type_loop(resolver* r, ast_node* n, ast_body* body);
+static inline resolve_error
+report_type_loop(resolver* r, ast_node* n, ast_body* body);
 resolve_error resolve_importing_node(
     resolver* r, import_module_data* im_data, ast_node* node, ast_body* body,
     bool dep_prop, ast_elem** value, ast_elem** ctype)
@@ -2477,7 +2477,6 @@ static inline resolve_error resolve_ast_node_raw(
     bool resolved = ast_node_get_resolved(n);
     if (!resolved) {
         if (ast_node_get_resolving(n)) {
-            r->type_loop_start = n;
             return RE_TYPE_LOOP;
         }
         ast_node_set_resolving(n);
@@ -2948,35 +2947,32 @@ static inline resolve_error resolve_ast_node_raw(
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
-static inline void report_type_loop(resolver* r, ast_node* n, ast_body* body)
+static inline resolve_error
+report_type_loop(resolver* r, ast_node* n, ast_body* body)
 {
     if (r->tc->t->trap_on_error) debugbreak();
+    r->error_occured = true;
+    r->retracing_type_loop = true;
+    r->type_loop_start = NULL;
+    assert(!ast_node_get_resolving(n));
+    resolve_error re = resolve_ast_node_raw(r, n, body, NULL, NULL);
+    r->retracing_type_loop = false;
+    if (re != RE_TYPE_LOOP) {
+        assert(re == RE_FATAL);
+        return re;
+    }
     ureg stack_ec = stack_element_count(&r->error_stack);
     // we are at the peek of the type loop. unwind and report again.
-    if (stack_ec == 0) return;
-    if (stack_peek_nth(&r->error_stack, stack_ec - 2) != n) {
-        r->retracing_type_loop = true;
-        stack_clear(&r->error_stack);
-        ast_node_clear_resolving(n);
-        resolve_ast_node(r, n, body, NULL, NULL);
-        stack_ec = stack_element_count(&r->error_stack);
-        assert(stack_peek_nth(&r->error_stack, stack_ec - 2) == n);
-    }
-    ast_node* n_s = (ast_node*)stack_pop(&r->error_stack);
-    assert(n == n_s);
-    UNUSED(n_s);
-    stack_pop(&r->error_stack);
-    stack_ec -= 2;
     src_range_large srl;
     ast_node_get_src_range(n, body, &srl);
     ureg annot_count = stack_ec / 2;
-    annot_count--; // the starting type is at the bottom of the stack
     error* e = error_log_create_error(
         r->tc->err_log, ES_RESOLVER, false, "type inference cycle", srl.smap,
         srl.start, srl.end, "type definition depends on itself", annot_count);
+
     for (ureg i = 0; i < annot_count; i++) {
         n = (ast_node*)stack_pop(&r->error_stack);
-        if (!n) break;
+        assert(n);
         ast_body* err_body = (ast_body*)stack_pop(&r->error_stack);
         if (n->kind == EXPR_OP_BINARY || n->kind == EXPR_OP_UNARY ||
             n->kind == EXPR_MEMBER_ACCESS || n->kind == EXPR_BREAK ||
@@ -2989,11 +2985,20 @@ static inline void report_type_loop(resolver* r, ast_node* n, ast_body* body)
         ast_node_get_src_range(n, err_body, &srl);
         char* annot = (i + 1 == annot_count) ? "loop detected" : "";
         error_add_annotation(e, srl.smap, srl.start, srl.end, annot);
+        ast_node_set_resolved(n);
+        ast_node_set_poisoned(n);
+        re = ast_node_propagate_error(r, n);
+        if (re) return re;
     }
-    stack_pop(&r->error_stack);
-    stack_pop(&r->error_stack);
     assert(stack_element_count(&r->error_stack) == 0);
     error_log_report(r->tc->err_log, e);
+    return RE_OK;
+}
+resolve_error add_error_entry(resolver* r, ast_node* n, ast_body* body)
+{
+    if (stack_push(&r->error_stack, body)) return RE_FATAL;
+    if (stack_push(&r->error_stack, n)) return RE_FATAL;
+    return RE_OK;
 }
 resolve_error
 handle_resolve_error(resolver* r, ast_node* n, ast_body* body, resolve_error re)
@@ -3001,25 +3006,31 @@ handle_resolve_error(resolver* r, ast_node* n, ast_body* body, resolve_error re)
     if (!re) return RE_OK;
     if (re == RE_TYPE_LOOP) {
         if (!r->allow_type_loops) {
-            if (n == r->type_loop_start && !r->retracing_type_loop) {
-                report_type_loop(r, n, body);
+            if (!r->type_loop_start) {
+                r->type_loop_start = n;
             }
-            else {
-                stack_push(&r->error_stack, body->symtab);
-                stack_push(&r->error_stack, n);
-                ast_node_clear_resolving(n);
+            else if (n == r->type_loop_start) {
+                if (r->retracing_type_loop) {
+                    add_error_entry(r, n, body);
+                    return re;
+                }
+                return report_type_loop(r, n, body);
+            }
+            if (r->retracing_type_loop) {
+                add_error_entry(r, n, body);
             }
         }
         else if (n != r->type_loop_start) {
-            ast_node_clear_resolving(n);
             if (re != RE_UNREALIZED_COMPTIME && r->tc->t->trap_on_error) {
                 debugbreak();
             }
         }
+        ast_node_clear_resolving(n);
     }
     else {
-        if (!ast_node_get_resolved(n) && ast_node_get_resolving(n))
+        if (!ast_node_get_resolved(n) && ast_node_get_resolving(n)) {
             ast_node_clear_resolving(n);
+        }
     }
     return re;
 }

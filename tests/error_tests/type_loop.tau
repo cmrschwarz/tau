@@ -1,0 +1,4 @@
+func main() -> int{
+    y: int = y;
+    return y;
+}
