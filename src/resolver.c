@@ -871,7 +871,8 @@ static resolve_error add_ast_node_decls(
             re = add_body_decls(
                 r, body, NULL, &s->sb.sc.body, members_public_st);
             if (re) return re;
-            s->id = claim_symbol_id(r, (symbol*)s, public_st);
+            s->type_derivs.backend_id =
+                claim_symbol_id(r, (symbol*)s, public_st);
             return RE_OK;
         }
         case SC_MACRO:
@@ -1371,13 +1372,12 @@ resolve_error create_pointer_to(
     resolver* r, ast_elem* base_type, bool is_const, ast_elem** tgt)
 {
     ureg id = ast_elem_get_type_derivs(base_type)->ptr_id;
-    bool already_const = false;
-    type_pointer* t = ptr_map_get_pointer(
-        &r->pm, base_type, id, already_const, &r->tc->permmem);
+    type_pointer* t =
+        ptr_map_get_pointer(&r->pm, base_type, id, false, 0, &r->tc->permmem);
     if (!t) return RE_FATAL;
-    if (is_const && !already_const) {
+    if (is_const) {
         t = ptr_map_get_pointer(
-            &r->pm, base_type, t->flipped_const_id, true, &r->tc->permmem);
+            &r->pm, base_type, t->flipped_const_id, true, id, &r->tc->permmem);
         if (!t) return RE_FATAL;
     }
     *tgt = (ast_elem*)t;
@@ -2390,12 +2390,12 @@ resolve_error resolve_array_or_slice_type(
         resolve_ast_node(r, est->base_type, body, &base_type, NULL);
     if (re) return re;
     if (!eat) {
+        ureg id = ast_elem_get_type_derivs(base_type)->slice_id;
         type_slice* ts =
-            (type_slice*)pool_alloc(&r->tc->permmem, sizeof(type_slice));
+            ptr_map_get_slice(&r->pm, base_type, id, false, 0, &r->tc->permmem);
         if (!ts) return RE_FATAL;
         est->ctype = ts;
-        ts->ctype_members = base_type;
-        ts->tb.kind = TYPE_SLICE;
+        assert(ts->tb.kind == TYPE_SLICE && ts->ctype_members == base_type);
     }
     else {
         ureg len;
@@ -2406,7 +2406,7 @@ resolve_error resolve_array_or_slice_type(
         }
         type_array* ta = type_map_get_array(
             &ast_elem_get_type_derivs(base_type)->tm, &r->pm, base_type, len,
-            false, &r->tc->permmem);
+            false, 0, &r->tc->permmem);
         if (!ta) return RE_FATAL;
         assert(ta->length == len);
         est->ctype = (type_slice*)ta;
@@ -3406,7 +3406,7 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
             if (is_local_node((ast_elem*)n)) return;
-            update_id(r, &((sc_struct*)n)->id, id_space);
+            update_id(r, &((sc_struct*)n)->type_derivs.backend_id, id_space);
             adjust_body_ids(r, id_space, &((sc_struct*)n)->sb.sc.body);
         } break;
         case SC_STRUCT_GENERIC: {

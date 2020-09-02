@@ -26,7 +26,8 @@ static inline int global_scope_init(scope* gs, global_ptr_map* gpm)
     gs->body.owning_node = (ast_elem*)gs;
     gs->body.symtab = symbol_table_create(PRIMITIVE_COUNT + 1, 0);
     if (!gs->body.symtab) return ERR;
-    ureg ptr_ids = atomic_ureg_add(&gpm->type_ids, PRIMITIVE_COUNT);
+    ureg ptr_ids = atomic_ureg_add(&gpm->type_ids, PRIMITIVE_COUNT * 2);
+    ureg backend_ids = atomic_ureg_add(&gpm->t->node_ids, PRIMITIVE_COUNT);
     int error_on = -1;
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {
         if (symbol_table_insert(gs->body.symtab, (symbol*)&PRIMITIVES[i])) {
@@ -39,6 +40,8 @@ static inline int global_scope_init(scope* gs, global_ptr_map* gpm)
         }
         PRIMITIVES[i].sym.declaring_body = &gs->body;
         PRIMITIVES[i].type_derivs.ptr_id = ptr_ids++;
+        PRIMITIVES[i].type_derivs.slice_id = ptr_ids++;
+        PRIMITIVES[i].type_derivs.backend_id = backend_ids++;
     }
     if (error_on >= 0) {
         for (int i = 0; i < error_on; i++) {
@@ -62,9 +65,10 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
     switch (i) {
         case -1:
         case 10: mdg_fin(&t->mdg); // fallthrough
-        case -2: // skip mdg because we freed that earlier when we still had
-                 // all threads and their permmem
         case 9: global_scope_fin(&t->global_scope); // fallthrough
+        case -2: // skip mdg and global scope because we freed it already
+                 // during free_thread_intertwined_globals
+                 // when we still had all threads and their permmem
         case 8: list_fin(&t->required_files, false); // fallthrough
         case 7: aseglist_fin(&t->module_dtors); // fallthrough
         case 6: aseglist_fin(&t->module_ctors); // fallthrough
@@ -80,6 +84,7 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
 int tauc_core_init(tauc* t)
 {
     int r = llvm_initialize_primitive_information();
+    atomic_ureg_init(&t->node_ids, 0);
     // ^ this doesn't need to be fin'd
     if (r) return tauc_core_partial_fin(t, r, 0);
     r = llvm_backend_init_globals(t);
@@ -88,7 +93,7 @@ int tauc_core_init(tauc* t)
     if (r) return tauc_core_partial_fin(t, r, 1);
     r = aseglist_init(&t->worker_threads);
     if (r) return tauc_core_partial_fin(t, r, 2);
-    r = global_ptr_map_init(&t->gpm);
+    r = global_ptr_map_init(&t->gpm, t);
     if (r) return tauc_core_partial_fin(t, r, 3);
     r = thread_context_init(&t->main_thread_context, t);
     if (r) return tauc_core_partial_fin(t, r, 4);
@@ -105,7 +110,6 @@ int tauc_core_init(tauc* t)
     if (r) return tauc_core_partial_fin(t, r, 9);
 
     atomic_ureg_init(&t->active_thread_count, 1);
-    atomic_ureg_init(&t->node_ids, 0);
     atomic_sreg_init(&t->error_code, 0);
     // 1 for release generation, one for final sanity check
     atomic_ureg_init(&t->linking_holdups, 2);
@@ -403,6 +407,11 @@ void tauc_scaffolding_fin(tauc* t)
     master_error_log_fin(&t->mel);
     file_map_fin(&t->filemap);
 }
+void tauc_fin_thread_intertwined_globals(tauc* t)
+{
+    mdg_fin(&t->mdg);
+    global_scope_fin(&t->global_scope);
+}
 int tauc_run_jobs(tauc* t)
 {
     thread_context_run(&t->main_thread_context);
@@ -417,7 +426,7 @@ int tauc_run_jobs(tauc* t)
             thread_join(&wt->thr);
         }
     }
-    mdg_fin(&t->mdg);
+    tauc_fin_thread_intertwined_globals(t);
     aseglist_iterator_begin(&it, &t->worker_threads);
     while (true) {
         wt = aseglist_iterator_next(&it);

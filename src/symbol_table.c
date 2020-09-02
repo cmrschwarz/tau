@@ -47,7 +47,7 @@ void symbol_table_insert_use(
     usings_table* ut = (usings_table*)st;
     ureg usings_cap = symbol_table_get_using_capacity(st) * sizeof(ast_body*);
     assert(symbol_table_get_using_count(st) * sizeof(void*) < usings_cap);
-    for (int i = AM_ENUM_ELEMENT_COUNT - 1; i != am; i--) {
+    for (access_modifier i = AM_ENUM_ELEMENT_COUNT - 1; i != am; i--) {
         *ut->using_ends[i] = *ut->using_ends[i - 1];
         *(ast_node**)ptradd(ut->using_ends[i], usings_cap) =
             *(ast_node**)ptradd(ut->using_ends[i - 1], usings_cap);

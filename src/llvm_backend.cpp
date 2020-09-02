@@ -410,7 +410,10 @@ LLVMBackend::~LLVMBackend()
         }
         while (f != skip) {
             auto val = (llvm::Value*)_global_value_store[f];
-            if (val) {
+            // we skip pointer types etc. this way
+            // since those just stay 'NOT_GENERATED'
+            bool generated = (_global_value_state[f] != NOT_GENERATED);
+            if (generated && val) {
                 auto fn = llvm::cast_or_null<llvm::Function>(val);
                 if (fn) {
                     fn->dropAllReferences();
@@ -875,7 +878,7 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
             sc_struct_base* sb = (sc_struct_base*)e;
-            ureg id = ((sc_struct*)e)->id;
+            ureg id = ((sc_struct*)e)->type_derivs.backend_id;
             llvm::Type** tp = lookupTypeRaw(id);
             if (*tp) {
                 if (t) *t = *tp;
@@ -946,13 +949,28 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             if (align) *align = PRIMITIVES[PT_VOID_PTR].alignment;
             if (size) *size = PRIMITIVES[PT_VOID_PTR].size;
             if (!t) return LLE_OK;
-            llvm_error lle =
-                lookupCType(((type_pointer*)e)->base_type, t, NULL, NULL);
+            auto p = (type_pointer*)e;
+            auto llt =
+                (llvm::Type**)lookupAstElem(p->tb.type_derivs.backend_id);
+            if (*llt) {
+                *t = *llt;
+                return LLE_OK;
+            }
+            llvm::Type* base;
+            lle = lookupCType(p->base_type, &base, NULL, NULL);
             if (lle) return lle;
-            *t = (**t).getPointerTo();
+            *llt = base->getPointerTo();
+            *t = *llt;
+            return LLE_OK;
         } break;
         case TYPE_ARRAY: {
             auto ta = (type_array*)e;
+            auto llt = (llvm::Type**)lookupAstElem(
+                ta->slice_type.tb.type_derivs.backend_id);
+            if (*llt) {
+                *t = *llt;
+                return LLE_OK;
+            }
             llvm::Type* elem_type;
             llvm_error lle = lookupCType(
                 ta->slice_type.ctype_members, &elem_type, NULL, NULL);
@@ -1157,8 +1175,8 @@ LLVMBackend::buildConstant(ast_elem* ctype, void* data, llvm::Constant** res)
                     return LLE_OK;
                 }
                 case PT_FLOAT: {
-                    auto c = llvm::ConstantFP::get(
-                        _context, *new llvm::APFloat(*(float*)data));
+                    auto f = llvm::APFloat(*(float*)data);
+                    auto c = llvm::ConstantFP::get(_context, f);
                     if (!c) return LLE_FATAL;
                     *res = c;
                     return LLE_OK;
@@ -1490,10 +1508,9 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     return LLE_OK;
                 }
                 case PT_FLOAT: {
-                    auto c = llvm::ConstantFP::get(
-                        _context,
-                        *new llvm::APFloat(
-                            llvm::APFloatBase::IEEEsingle(), l->value.str));
+                    auto f = llvm::APFloat(
+                        llvm::APFloatBase::IEEEsingle(), l->value.str);
+                    auto c = llvm::ConstantFP::get(_context, f);
                     assert(!vl);
                     if (vl_loaded) *vl_loaded = c;
                     return LLE_OK;
@@ -1851,7 +1868,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             }
             else {
                 assert(lhst->kind == TYPE_ARRAY);
-                auto& indexList = *new std::array<llvm::Value*, 2>{
+                auto indexList = std::array<llvm::Value*, 2>{
                     llvm::ConstantInt::get(_primitive_types[PT_UINT], 0),
                     index};
                 auto res = _builder.CreateInBoundsGEP(arr, indexList);

@@ -85,7 +85,7 @@ type_map_reserve(type_map* tm, ureg* capacity, ureg* mask, ureg hash, ureg* idx)
 }
 type_array* type_map_get_array(
     type_map* tm, ptr_map* pm, ast_elem* base_type, ureg length, bool is_const,
-    pool* mem)
+    ureg non_const_id, pool* mem)
 {
     rwlock_read(&tm->lock);
     ureg capacity = 1 << tm->capacity_bitcount;
@@ -140,6 +140,10 @@ type_array* type_map_get_array(
     res->slice_type.tb.kind = TYPE_ARRAY;
     res->slice_type.tb.is_const = is_const;
     res->slice_type.tb.type_derivs.ptr_id = ptr_map_claim_id(pm);
+    res->slice_type.tb.type_derivs.slice_id = ptr_map_claim_id(pm);
+    res->slice_type.tb.type_derivs.backend_id = ptr_map_claim_backend_id(pm);
+    res->slice_type.flipped_const_id =
+        is_const ? non_const_id : ptr_map_claim_id(pm);
     res->slice_type.ctype_members = base_type;
     res->length = length;
     *e = (ast_elem*)res;

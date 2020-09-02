@@ -33,6 +33,7 @@ typedef struct global_ptr_map_s {
     pool segment_mem;
     ureg segment_capacity;
     atomic_ureg type_ids;
+    tauc* t;
 } global_ptr_map;
 
 typedef struct ptr_map_s {
@@ -41,15 +42,21 @@ typedef struct ptr_map_s {
     ureg segment_capacity;
     ureg free_type_ids_start;
     ureg free_type_ids_end;
+    ureg free_backend_ids_start;
+    ureg free_backend_ids_end;
 } ptr_map;
 
 int ptr_map_init(ptr_map* m, global_ptr_map* gtm);
-int global_ptr_map_init(global_ptr_map* gtm);
+int global_ptr_map_init(global_ptr_map* gtm, tauc* t);
 void ptr_map_fin(ptr_map* m);
 void global_ptr_map_fin(global_ptr_map* gtm);
 
 type_pointer* ptr_map_get_pointer(
-    ptr_map* tm, ast_elem* base_type, ureg ptr_id, bool is_const,
-    pool* type_mem);
+    ptr_map* pm, ast_elem* base_type, ureg ptr_id, bool is_const,
+    ureg non_const_id, pool* type_mem);
+type_slice* ptr_map_get_slice(
+    ptr_map* pm, ast_elem* ctype_members, ureg slice_id, bool is_const,
+    ureg non_const_id, pool* type_mem);
 
 ureg ptr_map_claim_id(ptr_map* tm);
+ureg ptr_map_claim_backend_id(ptr_map* tm);
