@@ -295,7 +295,6 @@ typedef struct scope_s {
 } scope;
 
 typedef struct type_derivatives_s {
-    ureg backend_id;
     ureg ptr_id;
     ureg slice_id;
     type_map tm;
@@ -598,6 +597,7 @@ typedef struct sc_struct_s {
     sc_struct_base sb;
     sc_func* dtor;
     type_derivatives type_derivs;
+    ureg backend_id;
 } sc_struct;
 
 typedef struct sc_struct_generic_inst_s sc_struct_generic_inst;
@@ -808,6 +808,7 @@ typedef struct type_base_s {
     };
     bool is_const; // for ptr, slice and array
     type_derivatives type_derivs;
+    ureg backend_id;
 } type_base;
 typedef struct type_pointer_s {
     type_base tb;

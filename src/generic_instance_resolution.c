@@ -225,7 +225,7 @@ resolve_error resolve_generic_struct(
     if (re) return re;
     re = add_body_decls(r, parent_body, NULL, &sgi->st.sb.sc.body, false);
     if (re) return re;
-    sgi->st.type_derivs.backend_id =
+    sgi->st.backend_id =
         claim_symbol_id(r, (symbol*)sgi, ast_body_is_public(&sg->sb.sc.body));
     return resolve_ast_node(r, (ast_node*)sgi, parent_body, value, ctype);
 }

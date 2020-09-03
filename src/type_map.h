@@ -19,5 +19,5 @@ void type_map_fin(type_map* tm);
 
 type_array* type_map_get_array(
     type_map* tm, ptr_map* pm, ast_elem* base_type, ureg elem_count,
-    bool is_const, ureg non_const_id, pool* mem);
+    bool is_const, pool* mem);
 type_tuple* type_map_get_tuple_follower(type_map* tm, ast_elem* following_type);

@@ -878,7 +878,7 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
             sc_struct_base* sb = (sc_struct_base*)e;
-            ureg id = ((sc_struct*)e)->type_derivs.backend_id;
+            ureg id = ((sc_struct*)e)->backend_id;
             llvm::Type** tp = lookupTypeRaw(id);
             if (*tp) {
                 if (t) *t = *tp;
@@ -950,8 +950,7 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             if (size) *size = PRIMITIVES[PT_VOID_PTR].size;
             if (!t) return LLE_OK;
             auto p = (type_pointer*)e;
-            auto llt =
-                (llvm::Type**)lookupAstElem(p->tb.type_derivs.backend_id);
+            auto llt = (llvm::Type**)lookupAstElem(p->tb.backend_id);
             if (*llt) {
                 *t = *llt;
                 return LLE_OK;
@@ -965,8 +964,8 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
         } break;
         case TYPE_ARRAY: {
             auto ta = (type_array*)e;
-            auto llt = (llvm::Type**)lookupAstElem(
-                ta->slice_type.tb.type_derivs.backend_id);
+            auto llt =
+                (llvm::Type**)lookupAstElem(ta->slice_type.tb.backend_id);
             if (*llt) {
                 *t = *llt;
                 return LLE_OK;
@@ -978,6 +977,7 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             auto arr = llvm::ArrayType::get(elem_type, ta->length);
             if (!arr) return LLE_FATAL;
             *t = arr;
+            *llt = arr;
             if (align) *align = _data_layout->getPrefTypeAlignment(arr);
             if (size) *size = _data_layout->getTypeAllocSize(arr);
             return LLE_OK;

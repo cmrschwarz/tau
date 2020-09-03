@@ -241,7 +241,7 @@ type_pointer* ptr_map_get_pointer(
         rwlock_end_write(&seg_ref->segment->lock);
         return NULL;
     }
-    res->tb.type_derivs.backend_id = ptr_map_claim_backend_id(pm);
+    res->tb.backend_id = ptr_map_claim_backend_id(pm);
     res->tb.type_derivs.ptr_id = ptr_map_claim_id(pm);
     res->tb.type_derivs.slice_id = ptr_map_claim_id(pm);
     res->tb.is_const = is_const;
@@ -278,7 +278,7 @@ type_slice* ptr_map_get_slice(
         rwlock_end_write(&seg_ref->segment->lock);
         return NULL;
     }
-    res->tb.type_derivs.backend_id = ptr_map_claim_backend_id(pm);
+    res->tb.backend_id = ptr_map_claim_backend_id(pm);
     res->tb.type_derivs.ptr_id = ptr_map_claim_id(pm);
     res->tb.type_derivs.slice_id = ptr_map_claim_id(pm);
     res->tb.is_const = is_const;

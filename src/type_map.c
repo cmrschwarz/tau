@@ -83,9 +83,15 @@ type_map_reserve(type_map* tm, ureg* capacity, ureg* mask, ureg hash, ureg* idx)
     *idx = fnv_fold(hash, tm->capacity_bitcount, *mask);
     return OK;
 }
+static inline bool
+array_eq(type_array* arr, ast_elem* members_ctype, ureg len, bool is_const)
+{
+    return arr->slice_type.ctype_members == members_ctype &&
+           arr->length == len && arr->slice_type.tb.is_const == is_const;
+}
 type_array* type_map_get_array(
     type_map* tm, ptr_map* pm, ast_elem* base_type, ureg length, bool is_const,
-    ureg non_const_id, pool* mem)
+    pool* mem)
 {
     rwlock_read(&tm->lock);
     ureg capacity = 1 << tm->capacity_bitcount;
@@ -100,7 +106,7 @@ type_array* type_map_get_array(
         if (!*e) break;
         if ((**e).kind == TYPE_ARRAY) {
             res = (type_array*)*e;
-            if (res->length == length) break;
+            if (array_eq(res, base_type, length, is_const)) break;
         }
         idx = (idx + 1) & mask;
     }
@@ -117,7 +123,7 @@ type_array* type_map_get_array(
         if (!*e) break;
         if ((**e).kind == TYPE_ARRAY) {
             res = (type_array*)*e;
-            if (res->length == length) {
+            if (array_eq(res, base_type, length, is_const)) {
                 tm->count--;
                 rwlock_end_write(&tm->lock);
                 return res;
@@ -141,9 +147,7 @@ type_array* type_map_get_array(
     res->slice_type.tb.is_const = is_const;
     res->slice_type.tb.type_derivs.ptr_id = ptr_map_claim_id(pm);
     res->slice_type.tb.type_derivs.slice_id = ptr_map_claim_id(pm);
-    res->slice_type.tb.type_derivs.backend_id = ptr_map_claim_backend_id(pm);
-    res->slice_type.flipped_const_id =
-        is_const ? non_const_id : ptr_map_claim_id(pm);
+    res->slice_type.tb.backend_id = ptr_map_claim_backend_id(pm);
     res->slice_type.ctype_members = base_type;
     res->length = length;
     *e = (ast_elem*)res;

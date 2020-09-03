@@ -871,8 +871,7 @@ static resolve_error add_ast_node_decls(
             re = add_body_decls(
                 r, body, NULL, &s->sb.sc.body, members_public_st);
             if (re) return re;
-            s->type_derivs.backend_id =
-                claim_symbol_id(r, (symbol*)s, public_st);
+            s->backend_id = claim_symbol_id(r, (symbol*)s, public_st);
             return RE_OK;
         }
         case SC_MACRO:
@@ -2378,6 +2377,30 @@ static inline bool is_symbol_kind_overloadable(ast_node_kind k)
         default: return false;
     }
 }
+type_slice* get_slice_of(resolver* r, ast_elem* base_type, bool is_const)
+{
+    ureg id = ast_elem_get_type_derivs(base_type)->slice_id;
+    type_slice* ts =
+        ptr_map_get_slice(&r->pm, base_type, id, false, 0, &r->tc->permmem);
+    if (!ts) return NULL;
+    if (is_const) {
+        ts = ptr_map_get_slice(
+            &r->pm, base_type, ts->flipped_const_id, true, id, &r->tc->permmem);
+        if (!ts) return NULL;
+    }
+    assert(ts->tb.kind == TYPE_SLICE && ts->ctype_members == base_type);
+    return ts;
+}
+type_array*
+get_array_of(resolver* r, ast_elem* base_type, ureg len, bool is_const)
+{
+    type_array* ta = type_map_get_array(
+        &ast_elem_get_type_derivs(base_type)->tm, &r->pm, base_type, len,
+        is_const, &r->tc->permmem);
+    if (!ta) return NULL;
+    assert(ta->length == len);
+    return ta;
+}
 resolve_error resolve_array_or_slice_type(
     resolver* r, ast_node* n, ast_body* body, ureg arr_expr_len,
     ast_elem** value, ast_elem** ctype)
@@ -2390,12 +2413,8 @@ resolve_error resolve_array_or_slice_type(
         resolve_ast_node(r, est->base_type, body, &base_type, NULL);
     if (re) return re;
     if (!eat) {
-        ureg id = ast_elem_get_type_derivs(base_type)->slice_id;
-        type_slice* ts =
-            ptr_map_get_slice(&r->pm, base_type, id, false, 0, &r->tc->permmem);
-        if (!ts) return RE_FATAL;
-        est->ctype = ts;
-        assert(ts->tb.kind == TYPE_SLICE && ts->ctype_members == base_type);
+        est->ctype = get_slice_of(r, base_type, false);
+        if (!est->ctype) return RE_FATAL;
     }
     else {
         ureg len;
@@ -2404,12 +2423,8 @@ resolve_error resolve_array_or_slice_type(
             SET_THEN_RETURN_POISONED(
                 r, re, est, body, value, ctype, est, ERROR_ELEM);
         }
-        type_array* ta = type_map_get_array(
-            &ast_elem_get_type_derivs(base_type)->tm, &r->pm, base_type, len,
-            false, 0, &r->tc->permmem);
-        if (!ta) return RE_FATAL;
-        assert(ta->length == len);
-        est->ctype = (type_slice*)ta;
+        est->ctype = (type_slice*)get_array_of(r, base_type, len, false);
+        if (!est->ctype) return RE_FATAL;
     }
     ast_node_set_resolved(&est->node);
     RETURN_RESOLVED(value, ctype, est->ctype, TYPE_ELEM);
@@ -2833,13 +2848,9 @@ static inline resolve_error resolve_ast_node_raw(
                 re = resolve_ast_node(r, *e, body, NULL, &elem_ctype);
                 if (re) return re;
                 if (!ea->ctype) {
-                    type_array* ta = (type_array*)pool_alloc(
-                        &r->tc->permmem, sizeof(type_array));
-                    if (!ta) return RE_FATAL;
-                    ta->slice_type.ctype_members = elem_ctype;
-                    ta->slice_type.tb.kind = TYPE_ARRAY;
-                    ta->length = ea->elem_count;
-                    ea->ctype = (type_slice*)ta;
+                    ea->ctype = (type_slice*)get_array_of(
+                        r, elem_ctype, ea->elem_count, false);
+                    if (!ea->ctype) return RE_FATAL;
                 }
                 else {
                     type_cast_result tcr;
@@ -3406,7 +3417,7 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
             if (is_local_node((ast_elem*)n)) return;
-            update_id(r, &((sc_struct*)n)->type_derivs.backend_id, id_space);
+            update_id(r, &((sc_struct*)n)->backend_id, id_space);
             adjust_body_ids(r, id_space, &((sc_struct*)n)->sb.sc.body);
         } break;
         case SC_STRUCT_GENERIC: {
@@ -3856,7 +3867,8 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r)
         if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
             print_pprns(r, "running ", true);
             ureg priv_count = r->id_space - PRIV_SYMBOL_OFFSET;
-            llvm_backend_reserve_symbols(r->backend, priv_count, 0);
+            llvm_backend_reserve_symbols(
+                r->backend, priv_count, atomic_ureg_load(&r->tc->t->node_ids));
             if (!r->deps_required_for_pp) {
                 r->deps_required_for_pp = true;
                 for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {

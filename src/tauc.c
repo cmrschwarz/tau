@@ -27,7 +27,6 @@ static inline int global_scope_init(scope* gs, global_ptr_map* gpm)
     gs->body.symtab = symbol_table_create(PRIMITIVE_COUNT + 1, 0);
     if (!gs->body.symtab) return ERR;
     ureg ptr_ids = atomic_ureg_add(&gpm->type_ids, PRIMITIVE_COUNT * 2);
-    ureg backend_ids = atomic_ureg_add(&gpm->t->node_ids, PRIMITIVE_COUNT);
     int error_on = -1;
     for (int i = 0; i < PRIMITIVE_COUNT; i++) {
         if (symbol_table_insert(gs->body.symtab, (symbol*)&PRIMITIVES[i])) {
@@ -41,7 +40,6 @@ static inline int global_scope_init(scope* gs, global_ptr_map* gpm)
         PRIMITIVES[i].sym.declaring_body = &gs->body;
         PRIMITIVES[i].type_derivs.ptr_id = ptr_ids++;
         PRIMITIVES[i].type_derivs.slice_id = ptr_ids++;
-        PRIMITIVES[i].type_derivs.backend_id = backend_ids++;
     }
     if (error_on >= 0) {
         for (int i = 0; i < error_on; i++) {
