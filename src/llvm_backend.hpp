@@ -158,7 +158,6 @@ struct LLVMBackend {
     // we have to avoid pointer invalidation on resize, therefore deque
     std::deque<ControlFlowContext> _control_flow_ctx;
     llvm::Type* _primitive_types[PRIMITIVE_COUNT];
-    llvm::StructType* _slice_struct;
     ureg _slice_struct_size;
     ureg _slice_struct_align;
 
@@ -222,8 +221,9 @@ struct LLVMBackend {
     llvm_error genSpecialFunc(const char* name, llvm::Function** func);
 
     llvm_error genSpecialCall(sc_func* fn);
-
-    llvm::Value* arrayToSlice(llvm::Constant* arr, ureg elem_count);
+    llvm::Value*
+    arrayToSlice(type_slice* ts, llvm::Constant* arr, ureg elem_count);
+    llvm::Type* createSliceStruct(llvm::Type* element_type);
 
   private:
     ControlFlowContext* getTartetCFC(ast_node* target);

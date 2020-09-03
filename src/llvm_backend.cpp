@@ -455,7 +455,6 @@ llvm_error LLVMBackend::setup()
 {
     setupPrimitives();
     setupPasteHelpers();
-    setupSliceStruct();
     return LLE_OK;
 }
 void LLVMBackend::Finalize(LLVMBackend* llvmb)
@@ -464,15 +463,11 @@ void LLVMBackend::Finalize(LLVMBackend* llvmb)
 }
 
 // required primitives to be set up already!
-void LLVMBackend::setupSliceStruct()
+llvm::Type* LLVMBackend::createSliceStruct(llvm::Type* element_type)
 {
-    auto members =
-        (llvm::Type**)pool_alloc(&_tc->permmem, sizeof(llvm::Type*) * 2);
-    members[0] = _primitive_types[PT_VOID_PTR];
-    members[1] = _primitive_types[PT_VOID_PTR];
-    llvm::ArrayRef<llvm::Type*> member_types{members, 2};
-
-    _slice_struct = llvm::StructType::create(_context, member_types);
+    auto el_ptr = element_type->getPointerTo();
+    auto members = std::array<llvm::Type*, 2>{el_ptr, el_ptr};
+    return llvm::StructType::create(_context, members);
 }
 void LLVMBackend::setupPrimitives()
 {
@@ -984,16 +979,25 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
         }
         case TYPE_SLICE: {
             // PERF: we might want to cache this
+            auto sl = (type_slice*)e;
+            auto llt = (llvm::Type**)lookupAstElem(sl->tb.backend_id);
+            if (!*llt) {
+                llvm::Type* mem_type;
+                lle = lookupCType(sl->ctype_members, &mem_type, NULL, NULL);
+                if (lle) return lle;
+                *llt = createSliceStruct(mem_type);
+                if (*llt) return LLE_FATAL;
+            }
+            *t = *llt;
             if (align) {
-                *align = _data_layout->getStructLayout(_slice_struct)
+                *align = _data_layout->getStructLayout((llvm::StructType*)*llt)
                              ->getAlignment()
                              .value();
             }
             if (size) {
-                *size = _data_layout->getStructLayout(_slice_struct)
+                *size = _data_layout->getStructLayout((llvm::StructType*)*llt)
                             ->getSizeInBytes();
             }
-            *t = _slice_struct;
             return LLE_OK;
         }
         default: {
@@ -1424,7 +1428,8 @@ llvm_error LLVMBackend::genFuncCall(
     if (vl_loaded) *vl_loaded = call;
     return LLE_OK;
 }
-llvm::Value* LLVMBackend::arrayToSlice(llvm::Constant* arr, ureg elem_count)
+llvm::Value*
+LLVMBackend::arrayToSlice(type_slice* ts, llvm::Constant* arr, ureg elem_count)
 {
     auto gv = new llvm::GlobalVariable(
         *_module, arr->getType(), true, llvm::GlobalVariable::InternalLinkage,
@@ -1432,8 +1437,12 @@ llvm::Value* LLVMBackend::arrayToSlice(llvm::Constant* arr, ureg elem_count)
     auto start = _builder.CreateConstInBoundsGEP1_64(gv, 0);
     auto end = _builder.CreateConstGEP1_64(gv, elem_count);
     assert(llvm::isa<llvm::Constant>(start) && llvm::isa<llvm::Constant>(end));
+    llvm::StructType* slice_type;
+    llvm_error lle =
+        lookupCType((ast_elem*)ts, (llvm::Type**)&slice_type, NULL, NULL);
+    if (lle) return NULL;
     return llvm::ConstantStruct::get(
-        _slice_struct, (llvm::Constant*)start, (llvm::Constant*)end);
+        slice_type, (llvm::Constant*)start, (llvm::Constant*)end);
 }
 llvm_error
 LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
@@ -1807,7 +1816,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                 return LLE_OK;
             }
             assert(arr->ctype->tb.kind == TYPE_SLICE);
-            auto sl = arrayToSlice(llarr, arr->elem_count);
+            auto sl =
+                arrayToSlice((type_slice*)arr->ctype, llarr, arr->elem_count);
             if (!sl) return LLE_FATAL;
             if (vl) *vl = sl;
             if (vl_loaded) *vl_loaded = sl;
