@@ -5,6 +5,7 @@
 
 const char* COND_KW_CONSTRUCT = "construct";
 const char* COND_KW_DESTRUCT = "destruct";
+const char* COND_KW_FOR = "for";
 const char* COND_KW_ASM = "asm";
 const char* COND_KW_MAIN = "main";
 const char* COND_KW_START = "_start";
@@ -17,8 +18,7 @@ const char* token_strings[255] = {
     [TK_KW_DYNAMIC] = "dynamic",
     [TK_KW_RUNTIME] = "runtime",
     [TK_KW_EXTEND] = "extend",
-    [TK_KW_IMPLEMENT] = "implement",
-    [TK_KW_INTERFACE] = "interface",
+    [TK_KW_IMPL] = "impl",
     [TK_KW_EXTERN] = "extern",
     [TK_KW_REQUIRE] = "require",
     [TK_KW_IMPORT] = "import",
@@ -47,7 +47,6 @@ const char* token_strings[255] = {
     [TK_KW_PRIVATE] = "private",
     [TK_KW_PROTECTED] = "protected",
     [TK_KW_PUBLIC] = "public",
-    [TK_KW_FINALLY] = "finally",
 
     [TK_MINUS_EQUALS] = "-=",
     [TK_PLUS_EQUALS] = "+=",

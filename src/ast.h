@@ -45,6 +45,10 @@ typedef enum PACK_ENUM ast_node_kind_e {
     ASTN_FIRST_ID = ASTN_ANONYMOUS_SYM_IMPORT_GROUP,
     ASTN_ANONYMOUS_MOD_IMPORT_GROUP,
 
+    TRAIT_IMPL,
+    TRAIT_IMPL_GENERIC,
+    TRAIT_IMPL_GENERIC_INST,
+
     MF_MODULE,
     MF_FIRST_ID = MF_MODULE,
     MF_MODULE_GENERIC,
@@ -629,6 +633,34 @@ typedef struct sc_trait_generic_s {
     sym_param* generic_params;
     ureg generic_param_count;
 } sc_trait_generic;
+
+typedef struct trait_impl_base_s {
+    ast_node node;
+    ast_body body;
+    ast_node* impl_of;
+    ast_node* impl_for;
+} trait_impl_base;
+
+typedef struct trait_impl_s {
+    trait_impl_base tib;
+    ast_elem* impl_for_ctype;
+    sc_trait* impl_of_trait;
+    type_derivatives type_derivs;
+    ureg backend_id;
+} trait_impl;
+
+typedef struct trait_impl_generic_s {
+    trait_impl_base tib;
+    sym_param* generic_params;
+    ureg generic_param_count;
+} trait_impl_generic;
+
+typedef struct trait_impl_generic_inst_s {
+    trait_impl ti;
+    ureg generic_arg_count;
+    sym_param_generic_inst* generic_args;
+    trait_impl_generic* base;
+} trait_impl_generic_inst;
 
 typedef struct sym_var_s {
     open_symbol osym;

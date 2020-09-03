@@ -22,7 +22,7 @@ typedef enum PACK_ENUM token_kind_e {
     TK_KW_IMPORT,
     TK_KW_INCLUDE,
     TK_KW_EXTEND,
-    TK_KW_IMPLEMENT,
+    TK_KW_IMPL,
     TK_KW_EXTERN,
     TK_KW_DYNAMIC,
     TK_KW_RUNTIME,
@@ -43,9 +43,7 @@ typedef enum PACK_ENUM token_kind_e {
     TK_KW_EXPLICIT,
     TK_KW_STRUCT,
     TK_KW_TRAIT,
-    TK_KW_INTERFACE,
     TK_KW_LOOP,
-    TK_KW_FINALLY,
     TK_KW_CONTINUE,
     TK_KW_BREAK,
     TK_KW_RETURN,
@@ -116,6 +114,7 @@ typedef enum PACK_ENUM token_kind_e {
 
 extern const char* COND_KW_CONSTRUCT;
 extern const char* COND_KW_DESTRUCT;
+extern const char* COND_KW_FOR;
 extern const char* COND_KW_MAIN;
 extern const char* COND_KW_START;
 extern const char* COND_KW_ASM;

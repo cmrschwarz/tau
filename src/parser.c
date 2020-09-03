@@ -224,7 +224,9 @@ bool ast_node_may_drop_semicolon(ast_node* e)
         case SC_STRUCT_GENERIC:
         case SC_TRAIT:
         case SC_TRAIT_GENERIC:
-        case SC_MACRO: return true;
+        case TRAIT_IMPL:
+        case TRAIT_IMPL_GENERIC:
+        case SC_MACRO:
         case EXPR_WHILE:
         case EXPR_LOOP:
         case EXPR_MATCH:
@@ -481,6 +483,8 @@ char* get_context_msg(parser* p, ast_node* node)
         case EXPR_PP: return "in this preprocessor expression";
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return "in this variable declaration";
+        case TRAIT_IMPL: return "in this trait impl";
+        case TRAIT_IMPL_GENERIC: return "in this generic trait impl";
         case SYM_IMPORT_SYMBOL:
         case SYM_NAMED_MOD_IMPORT_GROUP:
         case ASTN_ANONYMOUS_MOD_IMPORT_GROUP:
@@ -2535,8 +2539,8 @@ void free_failed_param_block_list_symtabs(list_builder* lb, void** list_start)
     list_builder_drop_list(lb, list_start);
 }
 parse_error parse_param_list(
-    parser* p, symbol* parent, sym_param** tgt, ureg* param_count, bool generic,
-    ureg ctx_start, ureg ctx_end, char* msg)
+    parser* p, ast_node* parent, sym_param** tgt, ureg* param_count,
+    bool generic, ureg ctx_start, ureg ctx_end, char* msg)
 {
     token* t;
     token_kind end_tok = generic ? TK_BRACKET_CLOSE : TK_PAREN_CLOSE;
@@ -2615,7 +2619,7 @@ parse_error parse_func_decl(parser* p, modifier_status* mods, ast_node** n)
         fnb = (sc_func_base*)fng;
         lx_void(&p->lx);
         pe = parse_param_list(
-            p, (symbol*)fng, &fng->generic_params, &fng->generic_param_count,
+            p, (ast_node*)fng, &fng->generic_params, &fng->generic_param_count,
             true, mods->start, decl_end, "in this function declaration");
         if (pe) return pe;
         PEEK(p, t);
@@ -2640,7 +2644,7 @@ parse_error parse_func_decl(parser* p, modifier_status* mods, ast_node** n)
     }
     lx_void(&p->lx);
     pe = parse_param_list(
-        p, (symbol*)fnb, &fnb->params, &fnb->param_count, false, mods->start,
+        p, (ast_node*)fnb, &fnb->params, &fnb->param_count, false, mods->start,
         decl_end, "in this function declaration");
     if (pe) return pe;
     *n = (ast_node*)fnb;
@@ -2649,6 +2653,7 @@ parse_error parse_func_decl(parser* p, modifier_status* mods, ast_node** n)
     if (t->kind == TK_ARROW) {
         lx_void(&p->lx);
         ast_node* ret_type;
+        assert(p->disable_macro_body_call == false);
         p->disable_macro_body_call = true;
         pe = parse_expression(p, &ret_type);
         p->disable_macro_body_call = false;
@@ -2715,7 +2720,7 @@ parse_error parse_macro_decl(parser* p, modifier_status* mods, ast_node** n)
     }
     lx_void(&p->lx);
     pe = parse_param_list(
-        p, (symbol*)m, &m->params, &m->param_count, false, mods->start,
+        p, (ast_node*)m, &m->params, &m->param_count, false, mods->start,
         decl_end, "in this macro declaration");
     if (pe) return pe;
     *n = (ast_node*)m;
@@ -2733,6 +2738,88 @@ parse_error parse_macro_decl(parser* p, modifier_status* mods, ast_node** n)
     // TODO: add multi macros
     m->next = NULL;
     return parse_scope_body(p, (scope*)m, m->param_count);
+}
+parse_error
+parse_trait_impl_decl(parser* p, modifier_status* mods, ast_node** n)
+{
+    token* t;
+    t = lx_aquire(&p->lx);
+    lx_void(&p->lx);
+    ureg impl_head_end = t->end;
+    parse_error pe;
+    PEEK(p, t);
+    trait_impl_base* tib;
+    trait_impl_generic* tig = NULL;
+    trait_impl* ti;
+    if (t->kind == TK_BRACKET_OPEN) {
+        tig = alloc_perm(p, sizeof(trait_impl_generic));
+        if (!tig) return PE_FATAL;
+        // TODO:  sg->pprn = NULL;
+        tib = (trait_impl_base*)tig;
+        lx_void(&p->lx);
+        pe = parse_param_list(
+            p, (ast_node*)tig, &tig->generic_params, &tig->generic_param_count,
+            true, mods->start, impl_head_end,
+            get_context_msg(p, (ast_node*)tib));
+        if (pe) return pe;
+        PEEK(p, t);
+    }
+    else {
+        ti = alloc_perm(p, sizeof(trait_impl));
+        if (!ti) return PE_FATAL;
+        tib = (trait_impl_base*)ti;
+        int err = type_map_init(&ti->type_derivs.tm);
+        if (err) return PE_FATAL;
+    }
+    ast_node_init_with_mods(
+        (ast_node*)tib, tig ? TRAIT_IMPL_GENERIC : TRAIT_IMPL, &mods->data);
+
+    pe = parse_expression(p, &tib->impl_of);
+    if (pe == PE_EOEX) {
+        PEEK(p, t);
+        parser_error_2a(
+            p, "invalid trait impl syntax", t->start, t->end,
+            "expected trait name after 'impl'", mods->start, t->end, NULL);
+        return PE_ERROR;
+    }
+    PEEK(p, t);
+    if (t->kind != TK_IDENTIFIER || string_cmp_cstr(t->str, COND_KW_FOR)) {
+        parser_error_2a(
+            p, "invalid trait impl syntax", t->start, t->end,
+            "expected 'for' after trait name", mods->start, t->end, NULL);
+        return PE_ERROR;
+    }
+    lx_void(&p->lx);
+    assert(p->disable_macro_body_call == false);
+    p->disable_macro_body_call = true;
+    pe = parse_expression(p, &tib->impl_for);
+    p->disable_macro_body_call = false;
+    if (pe == PE_EOEX) {
+        PEEK(p, t);
+        parser_error_2a(
+            p, "invalid trait impl syntax", t->start, t->end,
+            "expected type after 'for'", mods->start, t->end, NULL);
+        return PE_ERROR;
+    }
+    ureg decl_end;
+    ast_node_get_bounds(tib->impl_for, NULL, &decl_end);
+    pe = ast_node_fill_srange(p, (ast_node*)tib, mods->start, decl_end);
+    if (pe) return pe;
+
+    *n = (ast_node*)tib;
+    curr_scope_add_decls(p, ast_node_get_access_mod(*n), 1);
+    PEEK(p, t);
+    if (t->kind != TK_BRACE_OPEN) {
+        parser_error_2a(
+            p, "expected trait impl body", t->start, t->end,
+            "expected '{' to trait impl body",
+            src_range_get_start(tib->node.srange),
+            src_range_get_end(tib->node.srange),
+            get_context_msg(p, (ast_node*)tib));
+        return PE_ERROR;
+    }
+    return parse_brace_delimited_body(
+        p, &tib->body, (ast_node*)tib, tig ? tig->generic_param_count : 0);
 }
 parse_error parse_struct_decl(parser* p, modifier_status* mods, ast_node** n)
 {
@@ -2763,8 +2850,8 @@ parse_error parse_struct_decl(parser* p, modifier_status* mods, ast_node** n)
         s = (open_symbol*)sg;
         lx_void(&p->lx);
         pe = parse_param_list(
-            p, &s->sym, &sg->generic_params, &sg->generic_param_count, true,
-            mods->start, decl_end, "in this struct declaration");
+            p, (ast_node*)s, &sg->generic_params, &sg->generic_param_count,
+            true, mods->start, decl_end, "in this struct declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -2844,7 +2931,7 @@ parse_error parse_module_frame_decl(
         if (!md) return PE_FATAL;
         lx_void_n(&p->lx, 2);
         pe = parse_param_list(
-            p, (symbol*)md, &mod_gen->generic_params,
+            p, (ast_node*)md, &mod_gen->generic_params,
             &mod_gen->generic_param_count, true, mods->start, decl_end,
             "in this module frame declaration");
         if (pe) return pe;
@@ -2932,8 +3019,8 @@ parse_error parse_trait_decl(parser* p, modifier_status* mods, ast_node** n)
         tr = (scope*)tg;
         lx_void(&p->lx);
         pe = parse_param_list(
-            p, (symbol*)tr, &tg->generic_params, &tg->generic_param_count, true,
-            mods->start, decl_end, "in this trait declaration");
+            p, (ast_node*)tr, &tg->generic_params, &tg->generic_param_count,
+            true, mods->start, decl_end, "in this trait declaration");
         if (pe) return pe;
         PEEK(p, t);
     }
@@ -3596,6 +3683,7 @@ parse_error parse_statement(parser* p, ast_node** tgt)
             case TK_KW_FUNC: return parse_func_decl(p, &mods, tgt);
             case TK_KW_MACRO: return parse_macro_decl(p, &mods, tgt);
             case TK_KW_STRUCT: return parse_struct_decl(p, &mods, tgt);
+            case TK_KW_IMPL: return parse_trait_impl_decl(p, &mods, tgt);
             case TK_KW_TRAIT: return parse_trait_decl(p, &mods, tgt);
             case TK_KW_MODULE:
                 return parse_module_frame_decl(p, &mods, false, tgt);

@@ -83,7 +83,7 @@ static inline int string_cmp(string l, string r)
     return 1;
 }
 
-static inline int string_cmp_cstr(string l, char* r)
+static inline int string_cmp_cstr(string l, const char* r)
 {
     while (true) {
         if (*r == 0) {

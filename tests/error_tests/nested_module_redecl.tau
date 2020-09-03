@@ -1,8 +1,8 @@
 module m{
-    module impl{}
+    module nested{}
 }
 module m{
-    module impl{}
+    module nested{}
 }
 func main(){
     import m;
