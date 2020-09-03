@@ -29,8 +29,8 @@ static inline resolve_error resolve_ast_node_raw(
 resolve_error resolve_func(
     resolver* r, ast_body* requesting_body, sc_func_base* fnb,
     ast_node** continue_block);
-resolve_error resolve_struct(
-    resolver* r, ast_body* requesting_body, sc_struct* st, ast_elem** value,
+resolve_error resolve_struct_or_trait(
+    resolver* r, ast_body* body, sc_struct_base* stb, ast_elem** value,
     ast_elem** ctype);
 resolve_error resolve_expr_body(
     resolver* r, ast_body* requesting_body, ast_node* expr, ast_body* b,
@@ -865,6 +865,7 @@ static resolve_error add_ast_node_decls(
             // generic inst 'inherits' from struct
             sc_struct* s = (sc_struct*)n;
             s->type_derivs.ptr_id = ptr_map_claim_id(&r->pm);
+            s->type_derivs.slice_id = ptr_map_claim_id(&r->pm);
             re = add_symbol(r, body, shared_body, (symbol*)s);
             bool members_public_st =
                 shared_body && !is_local_node((ast_elem*)n);
@@ -954,10 +955,20 @@ static resolve_error add_ast_node_decls(
             return RE_ERROR;
         }
         case ASTN_ANONYMOUS_SYM_IMPORT_GROUP:
-        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP: // fallthrough
+        case ASTN_ANONYMOUS_MOD_IMPORT_GROUP: {
             return add_anonymous_import_group_decls(
                 r, body, shared_body, n, public_st);
-
+        } break;
+        case SC_TRAIT: {
+            sc_trait* t = (sc_trait*)n;
+            re = add_symbol(r, body, shared_body, (symbol*)n);
+            bool members_public_st =
+                shared_body && !is_local_node((ast_elem*)n);
+            re = add_body_decls(
+                r, body, NULL, &t->sb.sc.body, members_public_st);
+            if (re) return re;
+            return RE_OK;
+        } break;
         default:
             assert(false); // unknown node_kind
             return RE_FATAL;
@@ -2628,10 +2639,12 @@ static inline resolve_error resolve_ast_node_raw(
             // TODO: handle scope escaped pp exprs
             RETURN_RESOLVED(value, ctype, n, GENERIC_TYPE_ELEM);
         }
+        case SC_TRAIT:
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
             if (resolved) RETURN_RESOLVED(value, ctype, n, TYPE_ELEM);
-            return resolve_struct(r, body, (sc_struct*)n, value, ctype);
+            return resolve_struct_or_trait(
+                r, body, (sc_struct_base*)n, value, ctype);
         }
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
@@ -3185,17 +3198,17 @@ resolve_error resolve_func_from_call(
     }
     return RE_OK;
 }
-resolve_error resolve_struct(
-    resolver* r, ast_body* body, sc_struct* st, ast_elem** value,
+resolve_error resolve_struct_or_trait(
+    resolver* r, ast_body* body, sc_struct_base* stb, ast_elem** value,
     ast_elem** ctype)
 {
     resolve_error re = RE_OK;
-    if (st->sb.sc.body.pprn && st->sb.sc.body.pprn->dep_count) {
-        re = curr_pprn_depend_on(r, body, &st->sb.sc.body.pprn);
+    if (stb->sc.body.pprn && stb->sc.body.pprn->dep_count) {
+        re = curr_pprn_depend_on(r, body, &stb->sc.body.pprn);
         if (re) return re;
         return RE_UNREALIZED_COMPTIME;
     }
-    ast_body* b = &st->sb.sc.body;
+    ast_body* b = &stb->sc.body;
     bool unrealized_comptime = false;
     for (ast_node** n = b->elements; *n != NULL; n++) {
         re = resolve_ast_node(r, *n, b, NULL, NULL);
@@ -3207,11 +3220,11 @@ resolve_error resolve_struct(
             break;
         }
     }
-    if (st->sb.sc.body.pprn) {
-        resolve_error re2 = curr_pprn_depend_on(r, body, &st->sb.sc.body.pprn);
+    if (stb->sc.body.pprn) {
+        resolve_error re2 = curr_pprn_depend_on(r, body, &stb->sc.body.pprn);
         if (!re2) {
             re2 = pp_resolve_node_activate(
-                r, body, &st->sb.sc.body.pprn, re == RE_OK);
+                r, body, &stb->sc.body.pprn, re == RE_OK);
         }
         if (re2) {
             assert(re2 == RE_FATAL);
@@ -3221,8 +3234,8 @@ resolve_error resolve_struct(
 
     if (re) return re;
     if (unrealized_comptime) return RE_UNREALIZED_COMPTIME;
-    ast_node_set_resolved((ast_node*)st);
-    RETURN_RESOLVED(value, ctype, st, TYPE_ELEM);
+    ast_node_set_resolved((ast_node*)stb);
+    RETURN_RESOLVED(value, ctype, stb, TYPE_ELEM);
 }
 // TODO: make sure we return!
 resolve_error resolve_func(

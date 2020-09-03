@@ -1469,8 +1469,9 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case SC_STRUCT_GENERIC: // TODO: emit instances somewhere somhow
         case MF_MODULE:
         case MF_EXTEND:
+        case SC_TRAIT:
             // no codegen required
-            assert(!vl);
+            assert(!vl && !vl_loaded);
             return LLE_OK;
 
         case SC_STRUCT: {
