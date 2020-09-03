@@ -1,0 +1,8 @@
+extend a{
+
+}
+
+module a{
+    require "prevent_extend_error_on_module_decl_error.tau";
+    xxx
+}
