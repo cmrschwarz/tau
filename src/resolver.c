@@ -959,13 +959,20 @@ static resolve_error add_ast_node_decls(
             return add_anonymous_import_group_decls(
                 r, body, shared_body, n, public_st);
         } break;
+        case SC_TRAIT_GENERIC: {
+            sc_trait_generic* tg = (sc_trait_generic*)n;
+            for (ureg i = 0; i < tg->generic_param_count; i++) {
+                re = add_symbol(
+                    r, &tg->sb.sc.body, NULL, (symbol*)&tg->generic_params[i]);
+                if (re) return re;
+            }
+        } // fallthrough
         case SC_TRAIT: {
-            sc_trait* t = (sc_trait*)n;
+            sc_struct_base* t = (sc_struct_base*)n;
             re = add_symbol(r, body, shared_body, (symbol*)n);
             bool members_public_st =
                 shared_body && !is_local_node((ast_elem*)n);
-            re = add_body_decls(
-                r, body, NULL, &t->sb.sc.body, members_public_st);
+            re = add_body_decls(r, body, NULL, &t->sc.body, members_public_st);
             if (re) return re;
             return RE_OK;
         } break;
@@ -2634,10 +2641,14 @@ static inline resolve_error resolve_ast_node_raw(
             return resolve_scoped_identifier(r, esa, body, value, ctype);
         }
         case SC_STRUCT_GENERIC: {
-            // sc_struct_generic* sg = (sc_struct_generic*)n;
             if (!resolved) ast_node_set_resolved(n);
             // TODO: handle scope escaped pp exprs
             RETURN_RESOLVED(value, ctype, n, GENERIC_TYPE_ELEM);
+        }
+        case SC_TRAIT_GENERIC: {
+            if (!resolved) ast_node_set_resolved(n);
+            // TODO: handle scope escaped pp exprs
+            RETURN_RESOLVED(value, ctype, n, GENERIC_TRAIT_ELEM);
         }
         case SC_TRAIT:
         case SC_STRUCT:

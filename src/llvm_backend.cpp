@@ -500,6 +500,8 @@ void LLVMBackend::setupPrimitives()
             case PT_TYPE:
             case PT_PASTED_EXPR:
             case PT_GENERIC_TYPE:
+            case PT_GENERIC_TRAIT:
+            case PT_TRAIT:
             case PT_DEFINED:
             case PT_ERROR:
             case PT_UNDEFINED:
@@ -1470,6 +1472,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case MF_MODULE:
         case MF_EXTEND:
         case SC_TRAIT:
+        case SC_TRAIT_GENERIC:
             // no codegen required
             assert(!vl && !vl_loaded);
             return LLE_OK;

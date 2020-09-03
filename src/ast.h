@@ -15,6 +15,8 @@
 #define PASTED_EXPR_ELEM ((ast_elem*)&PRIMITIVES[PT_PASTED_EXPR])
 #define GENERIC_TYPE_ELEM ((ast_elem*)&PRIMITIVES[PT_GENERIC_TYPE])
 #define TYPE_ELEM ((ast_elem*)&PRIMITIVES[PT_TYPE])
+#define GENERIC_TRAIT_ELEM ((ast_elem*)&PRIMITIVES[PT_GENERIC_TRAIT])
+#define TRAIT_ELEM ((ast_elem*)&PRIMITIVES[PT_TRAIT])
 
 typedef struct mdg_node_s mdg_node;
 typedef struct pp_resolve_node_s pp_resolve_node;
@@ -207,12 +209,14 @@ typedef enum PACK_ENUM primitive_kind_e {
     PT_UNDEFINED,
     PT_DEFINED,
     PT_GENERIC_TYPE,
+    PT_GENERIC_TRAIT,
     PT_INT,
     PT_UINT,
     PT_FLOAT,
     PT_STRING,
     PT_BINARY_STRING,
     PT_TYPE,
+    PT_TRAIT,
     PT_VOID_PTR,
     PT_PASTED_EXPR,
     PRIMITIVE_COUNT,
