@@ -28,15 +28,19 @@ typedef struct parser_s {
     sbuffer body_stack;
 } parser;
 
+typedef struct element_occurence_counts_s {
+    ureg decl_count;
+    ureg usings_count;
+    ureg impl_count;
+    ureg generic_impl_count;
+} element_occurence_counts;
 // pp scopes sit below the rt scope, the node ist the pp node, the body is
 // repeated
 typedef struct body_parse_data_s {
     ast_node* node;
     ast_body* body;
-    ureg decl_count;
-    ureg usings_count;
-    ureg shared_decl_count;
-    ureg shared_uses_count;
+    element_occurence_counts elem_counts;
+    element_occurence_counts shared_elem_counts;
 } body_parse_data;
 
 int parser_init(parser* p, thread_context* tc);

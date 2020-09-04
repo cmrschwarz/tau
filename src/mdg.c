@@ -140,6 +140,8 @@ mdg_node* mdg_node_create(
     atomic_ureg_init(&n->unparsed_files, 1);
     atomic_ureg_init(&n->decl_count, 0);
     atomic_ureg_init(&n->using_count, 0);
+    atomic_ureg_init(&n->impl_count, 0);
+    atomic_ureg_init(&n->generic_impl_count, 0);
     // we init this to 1 so we don't get notified while the mdg  is still
     // resolving itself. before its suspended this is decremented
     atomic_ureg_init(&n->ungenerated_pp_deps, 1);

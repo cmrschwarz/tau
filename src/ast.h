@@ -637,7 +637,7 @@ typedef struct sc_trait_generic_s {
 typedef struct trait_impl_base_s {
     ast_node node;
     ast_body body;
-    ast_node* impl_of;
+    ast_node* impl_of; // may be null in case of impl for Foo{}
     ast_node* impl_for;
 } trait_impl_base;
 

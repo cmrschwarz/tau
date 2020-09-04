@@ -24,7 +24,7 @@ static inline int global_scope_init(scope* gs, global_ptr_map* gpm)
     gs->body.srange = SRC_RANGE_INVALID;
     gs->body.parent = NULL;
     gs->body.owning_node = (ast_elem*)gs;
-    gs->body.symtab = symbol_table_create(PRIMITIVE_COUNT + 1, 0);
+    gs->body.symtab = symbol_table_create(PRIMITIVE_COUNT + 1, 0, 0, 0);
     if (!gs->body.symtab) return ERR;
     ureg ptr_ids = atomic_ureg_add(&gpm->type_ids, PRIMITIVE_COUNT * 2);
     int error_on = -1;

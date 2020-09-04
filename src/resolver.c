@@ -3649,8 +3649,11 @@ resolve_error resolver_init_mdg_symtabs_and_handle_root(resolver* r)
         r->error_occured |= (**i).error_occured;
         ureg sym_count = atomic_ureg_load(&(**i).decl_count);
         ureg using_count = atomic_ureg_load(&(**i).using_count);
+        ureg impl_count = atomic_ureg_load(&(**i).impl_count);
+        ureg generic_impl_count = atomic_ureg_load(&(**i).generic_impl_count);
         if (sym_count || using_count) {
-            (**i).body.symtab = symbol_table_create(sym_count, using_count);
+            (**i).body.symtab = symbol_table_create(
+                sym_count, using_count, impl_count, generic_impl_count);
             if (!(**i).body.symtab) return RE_FATAL;
         }
         else {

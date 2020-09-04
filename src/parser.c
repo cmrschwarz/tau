@@ -360,15 +360,20 @@ static inline body_parse_data* get_bpd(parser* p)
     return (body_parse_data*)sbuffer_back(
         &p->body_stack, sizeof(body_parse_data));
 }
+
 static inline void
 init_bpd(body_parse_data* bpd, ast_node* node, ast_body* body)
 {
     bpd->node = node;
     bpd->body = body;
-    bpd->decl_count = 0;
-    bpd->usings_count = 0;
-    bpd->shared_decl_count = 0;
-    bpd->shared_uses_count = 0;
+    const element_occurence_counts init_elem_counts = {0, 0, 0, 0};
+    bpd->elem_counts = init_elem_counts;
+    bpd->shared_elem_counts = init_elem_counts;
+}
+bool element_occurence_counts_zeroed(element_occurence_counts* eoc)
+{
+    return eoc->decl_count == 0 && eoc->usings_count == 0 &&
+           eoc->impl_count == 0 && eoc->generic_impl_count == 0;
 }
 static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
 {
@@ -384,15 +389,23 @@ static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
     }
     return OK;
 }
-static inline int amend_potential_symtab(ast_body* b, ureg syms, ureg usings)
+static inline symbol_table*
+create_symtab_from_eoc(element_occurence_counts* eoc)
+{
+    return symbol_table_create(
+        eoc->decl_count, eoc->usings_count, eoc->impl_count,
+        eoc->generic_impl_count);
+}
+static inline int
+amend_potential_symtab(ast_body* b, element_occurence_counts* eoc)
 {
     if (b->symtab) {
-        if (symbol_table_amend(&b->symtab, syms, usings)) {
-            return ERR;
-        }
+        int r =
+            symbol_table_amend(&b->symtab, eoc->decl_count, eoc->usings_count);
+        if (r) return r;
     }
     else {
-        b->symtab = symbol_table_create(syms, usings);
+        b->symtab = create_symtab_from_eoc(eoc);
         if (!b->symtab) return ERR;
     }
     return OK;
@@ -400,15 +413,13 @@ static inline int amend_potential_symtab(ast_body* b, ureg syms, ureg usings)
 static inline int
 handle_paste_bpd(parser* p, body_parse_data* bpd, symbol_table** st)
 {
-    if (bpd->decl_count || bpd->usings_count) {
+    if (!element_occurence_counts_zeroed(&bpd->elem_counts)) {
         ast_body* npp = ast_body_get_non_paste_parent(p->paste_parent_body);
-        if (amend_potential_symtab(npp, bpd->decl_count, bpd->usings_count))
-            return ERR;
+        if (amend_potential_symtab(npp, &bpd->elem_counts)) return ERR;
     }
-    if (bpd->shared_decl_count || bpd->shared_uses_count) {
+    if (!element_occurence_counts_zeroed(&bpd->shared_elem_counts)) {
         if (amend_potential_symtab(
-                p->paste_parent_shared_body, bpd->shared_decl_count,
-                bpd->shared_uses_count))
+                p->paste_parent_shared_body, &bpd->shared_elem_counts))
             return ERR;
     }
     bpd->body->symtab = NULL;
@@ -432,14 +443,22 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
         return handle_paste_bpd(p, &bpd, &bd->symtab);
     }
     bool mf = ast_elem_is_module_frame((ast_elem*)bpd.node);
-    if (bpd.shared_decl_count > 0 || bpd.shared_uses_count > 0) {
+    if (!element_occurence_counts_zeroed(&bpd.shared_elem_counts)) {
         assert(mf);
         // assert(*mf is member of current module*);
-        atomic_ureg_add(&p->current_module->decl_count, bpd.shared_decl_count);
-        atomic_ureg_add(&p->current_module->using_count, bpd.shared_uses_count);
+        atomic_ureg_add(
+            &p->current_module->decl_count, bpd.shared_elem_counts.decl_count);
+        atomic_ureg_add(
+            &p->current_module->using_count,
+            bpd.shared_elem_counts.usings_count);
+        atomic_ureg_add(
+            &p->current_module->impl_count, bpd.shared_elem_counts.impl_count);
+        atomic_ureg_add(
+            &p->current_module->generic_impl_count,
+            bpd.shared_elem_counts.generic_impl_count);
     }
-    if (bpd.decl_count || bpd.usings_count) {
-        bd->symtab = symbol_table_create(bpd.decl_count, bpd.usings_count);
+    if (!element_occurence_counts_zeroed(&bpd.elem_counts)) {
+        bd->symtab = create_symtab_from_eoc(&bpd.elem_counts);
         if (!bd->symtab) return ERR;
     }
     else {
@@ -508,39 +527,35 @@ static inline void
 curr_scope_add_uses(parser* p, access_modifier am, ureg count)
 {
     body_parse_data* bpd = get_bpd(p);
-    if (am == AM_LOCAL || am == AM_NONE) {
-        bpd->usings_count += count;
+    bool local = am == AM_LOCAL || am == AM_NONE;
+    if (!local) {
+        local = ast_elem_is_module_frame((ast_elem*)bpd->node);
+    }
+    if (local) {
+        bpd->elem_counts.usings_count += count;
     }
     else {
-        if (ast_elem_is_module_frame((ast_elem*)bpd->node)) {
-            bpd->shared_uses_count += count;
-        }
-        else {
-            bpd->usings_count += count;
-        }
+        bpd->shared_elem_counts.usings_count += count;
     }
 }
 static inline void
 curr_scope_add_decls(parser* p, access_modifier am, ureg count)
 {
     body_parse_data* bpd = get_bpd(p);
-    if (am == AM_LOCAL || am == AM_NONE) {
-        bpd->decl_count += count;
-    }
-    else {
-        bool shared = false;
+    bool shared = false;
+    if (am != AM_LOCAL && am != AM_NONE) {
         if (bpd->body && bpd->body->owning_node) {
             ast_body* npp = ast_body_get_non_paste_parent(bpd->body);
             if (ast_elem_is_module_frame(npp->owning_node)) {
                 shared = true;
             }
         }
-        if (shared) {
-            bpd->shared_decl_count += count;
-        }
-        else {
-            bpd->decl_count += count;
-        }
+    }
+    if (shared) {
+        bpd->shared_elem_counts.decl_count += count;
+    }
+    else {
+        bpd->elem_counts.decl_count += count;
     }
 }
 
@@ -2775,20 +2790,26 @@ parse_trait_impl_decl(parser* p, modifier_status* mods, ast_node** n)
         (ast_node*)tib, tig ? TRAIT_IMPL_GENERIC : TRAIT_IMPL, &mods->data);
 
     pe = parse_expression(p, &tib->impl_of);
-    if (pe == PE_EOEX) {
-        PEEK(p, t);
-        parser_error_2a(
-            p, "invalid trait impl syntax", t->start, t->end,
-            "expected trait name after 'impl'", mods->start, t->end, NULL);
-        return PE_ERROR;
-    }
-    PEEK(p, t);
     if (t->kind != TK_IDENTIFIER || string_cmp_cstr(t->str, COND_KW_FOR)) {
-        parser_error_2a(
-            p, "invalid trait impl syntax", t->start, t->end,
-            "expected 'for' after trait name", mods->start, t->end, NULL);
-        return PE_ERROR;
+        if (pe == PE_EOEX) {
+            PEEK(p, t);
+            parser_error_2a(
+                p, "invalid trait impl syntax", t->start, t->end,
+                "expected trait name after 'impl'", mods->start, t->end, NULL);
+            return PE_ERROR;
+        }
+        PEEK(p, t);
+        if (t->kind != TK_IDENTIFIER || string_cmp_cstr(t->str, COND_KW_FOR)) {
+            parser_error_2a(
+                p, "invalid trait impl syntax", t->start, t->end,
+                "expected 'for' after trait name", mods->start, t->end, NULL);
+            return PE_ERROR;
+        }
     }
+    else {
+        tib->impl_of = NULL;
+    }
+
     lx_void(&p->lx);
     assert(p->disable_macro_body_call == false);
     p->disable_macro_body_call = true;

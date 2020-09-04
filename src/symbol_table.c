@@ -11,6 +11,7 @@
 #include <assert.h>
 #include "utils/error.h"
 #include "tauc.h"
+#include "trait_table.h"
 
 ureg symbol_table_has_usings(symbol_table* st)
 {
@@ -152,7 +153,8 @@ symbol* symtab_it_next(symtab_it* stit)
     }
 }
 
-symbol_table* symbol_table_create(ureg sym_count, ureg using_count)
+symbol_table* symbol_table_create(
+    ureg sym_count, ureg using_count, ureg impl_count, ureg generic_impl_count)
 {
     assert(sym_count || using_count);
     ureg size = sym_count * sizeof(symbol*);
@@ -196,10 +198,21 @@ symbol_table* symbol_table_create(ureg sym_count, ureg using_count)
     ureg size_in_ptrs = size_ceiled / sizeof(void*);
     st->table_bitcount = ulog2(size_in_ptrs);
     st->sym_bitcount = ulog2(ceil_to_pow2(size_in_ptrs - st->table_offset));
+    if (impl_count || generic_impl_count) {
+        st->tt = trait_table_create(impl_count, generic_impl_count);
+        if (!st->tt) {
+            symbol_table_destroy(st->tt);
+            return NULL;
+        }
+    }
+    else {
+        st->tt = NULL;
+    }
     return st;
 }
 void symbol_table_destroy(symbol_table* st)
 {
+    if (st->tt) trait_table_destroy(st->tt);
     tfree(st);
 }
 int symbol_table_amend(symbol_table** stp, ureg sym_count, ureg using_count)
@@ -211,7 +224,8 @@ int symbol_table_amend(symbol_table** stp, ureg sym_count, ureg using_count)
         symbol_table_has_usings(st) ? symbol_table_get_using_capacity(st) : 0;
     ureg sym_cap = symbol_table_get_symbol_capacity(st);
     if (st->sym_count <= sym_cap && new_using_count <= using_cap) return OK;
-    symbol_table* st_new = symbol_table_create(st->sym_count, new_using_count);
+    symbol_table* st_new =
+        symbol_table_create(st->sym_count, new_using_count, 0, 0);
     symtab_it it;
     symtab_it_init(&it, st);
     for (symbol* s = symtab_it_next(&it); s; s = symtab_it_next(&it)) {
@@ -230,6 +244,8 @@ int symbol_table_amend(symbol_table** stp, ureg sym_count, ureg using_count)
             }
         }
     }
+    st_new->tt = st->tt;
+    st->tt = NULL;
     symbol_table_destroy(st);
     *stp = st_new;
     return OK;

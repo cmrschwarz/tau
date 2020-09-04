@@ -2,6 +2,7 @@
 
 #include "ast_flags.h"
 #include "utils/string.h"
+#include "trait_table.h"
 typedef struct symbol_s symbol;
 typedef struct ast_body_s ast_body;
 typedef struct stmt_s stmt;
@@ -27,6 +28,7 @@ typedef struct symbol_table_s {
     // when there are no usings this is sizeof(symbol_table)
     // in units of sizeof(void*)
     ureg table_offset;
+    trait_table* tt;
 } symbol_table;
 
 typedef struct usings_table_s {
@@ -34,7 +36,8 @@ typedef struct usings_table_s {
     ast_body** using_ends[AM_ENUM_ELEMENT_COUNT];
 } usings_table;
 
-symbol_table* symbol_table_create(ureg sym_count, ureg using_count);
+symbol_table* symbol_table_create(
+    ureg sym_count, ureg using_count, ureg impl_count, ureg generic_impl_count);
 
 void symbol_table_destroy(symbol_table* st);
 

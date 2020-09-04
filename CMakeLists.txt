@@ -35,6 +35,7 @@ set(TAUC_C_SRCS
     ./src/mdg.c
     ./src/ptr_map.c
     ./src/type_map.c
+    ./src/trait_table.c
     ./src/scc_detector.c
     ./src/generic_instance_resolution.c
     ./src/mdght.c
@@ -70,7 +71,7 @@ else()
 endif()
 
 
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR 
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR
     "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"
 )
     # add "-pg -no-pie" for profiling with gprof
@@ -83,11 +84,11 @@ endif ()
 add_executable(tauc ${TAUC_C_SRCS} ${TAUC_CPP_SRCS})
 
 
-target_compile_definitions(tauc PRIVATE 
+target_compile_definitions(tauc PRIVATE
     ${TAUC_PP_DIRECTIVES}
     ${TAU_DEPS_DEFINITIONS}
 )
-target_include_directories(tauc PUBLIC 
+target_include_directories(tauc PUBLIC
     ${TAUC_INCLUDE_DIRS}
     ${TAU_DEPS_INCLUDE_DIRS}
 )

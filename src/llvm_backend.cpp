@@ -1309,9 +1309,11 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             ast_body_get_non_paste_parent(var->osym.sym.declaring_body)
                 ->owning_node->kind;
         llvm::Value* var_val;
-        if (k == ELEM_MDG_NODE || k == MF_MODULE || k == MF_EXTEND ||
-            (_pp_mode && !_curr_fn_ast_node)) {
-            // global var
+        bool is_global =
+            (k == ELEM_MDG_NODE || k == MF_MODULE || k == MF_EXTEND);
+        is_global = is_global || (_pp_mode && !_curr_fn_ast_node);
+        is_global = is_global || ast_node_get_static((ast_node*)var);
+        if (is_global) {
             llvm::GlobalVariable::LinkageTypes lt;
             if (gen_stub) {
                 lt = llvm::GlobalVariable::InternalLinkage;
