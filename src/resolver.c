@@ -11,6 +11,7 @@
 #include "generic_instance_resolution.h"
 #include <assert.h>
 #include "symbol_lookup.h"
+#include "trait_resolution.h"
 
 typedef enum type_cast_result_e {
     TYPE_CAST_SUCCESS = 0,
@@ -18,7 +19,6 @@ typedef enum type_cast_result_e {
     TYPE_CAST_POISONED,
 } type_cast_result;
 
-resolve_error resolver_run_pp_resolve_nodes(resolver* r);
 resolve_error
 resolve_param(resolver* r, sym_param* p, bool generic, ast_elem** ctype);
 resolve_error
@@ -871,7 +871,6 @@ static resolve_error add_ast_node_decls(
                 shared_body && !is_local_node((ast_elem*)n);
             re = add_body_decls(
                 r, body, NULL, &s->sb.sc.body, members_public_st);
-            if (re) return re;
             s->backend_id = claim_symbol_id(r, (symbol*)s, public_st);
             return RE_OK;
         }
@@ -3911,14 +3910,17 @@ resolve_error report_cyclic_pp_deps(resolver* r)
     }
     return re;
 }
-resolve_error resolver_run_pp_resolve_nodes(resolver* r)
+resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
 {
     llvm_error lle;
     pli it;
     resolve_error re;
     bool progress;
     do {
-        progress = false;
+        if (progress) {
+            if (made_progress) *made_progress = true;
+            progress = false;
+        }
         if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
             print_pprns(r, "running ", true);
             ureg priv_count = r->id_space - PRIV_SYMBOL_OFFSET;
@@ -4051,7 +4053,7 @@ resolve_error resolver_handle_post_pp(resolver* r)
             ast_node_set_resolved(&mf->node);
         }
     }
-    re = resolver_run_pp_resolve_nodes(r);
+    re = resolver_run_pp_resolve_nodes(r, NULL);
     if (re) return re;
     return report_cyclic_pp_deps(r);
 }
@@ -4111,7 +4113,9 @@ static inline resolve_error resolver_resolve_raw(resolver* r)
         re = resolver_add_mf_decls(r);
         if (re) return re;
     }
-    re = resolver_run_pp_resolve_nodes(r);
+    re = resolve_mf_traits(r);
+    if (re) return re;
+    re = resolver_run_pp_resolve_nodes(r, NULL);
     if (re) return re;
     re = resolver_handle_post_pp(r);
     if (re) return re;

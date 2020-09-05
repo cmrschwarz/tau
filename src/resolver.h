@@ -125,7 +125,7 @@ resolve_error resolver_resolve_and_emit(
     resolver* r, mdg_node** start, mdg_node** end, partial_resolution_data* prd,
     llvm_module** module);
 ast_elem* get_resolved_ast_node_ctype(ast_node* n);
-
+resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress);
 resolve_error resolve_ast_node(
     resolver* r, ast_node* n, ast_body* body, ast_elem** value,
     ast_elem** ctype);

@@ -98,6 +98,10 @@ void dbuffer_pop(dbuffer* db, ureg size)
 {
     db->head -= size;
 }
+void* dbuffer_back(dbuffer* db, ureg size)
+{
+    return ptrsub(db->head, size);
+}
 void dbuffer_clear(dbuffer* db)
 {
     db->head = db->start;

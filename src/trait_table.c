@@ -1,5 +1,4 @@
 #include "trait_table.h"
-#include "ast.h"
 
 trait_table* trait_table_create(ureg impls, ureg generic_impls)
 {

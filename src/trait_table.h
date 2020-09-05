@@ -34,13 +34,13 @@ typedef struct trait_table_s {
     u8 impl_lists_bitcount;
 } trait_table;
 
-trait_table* trait_table_create(ureg impl_count, ureg generic_impl_count);
-void trait_table_destroy(trait_table* t);
-int trait_table_append_generic_impl(trait_table* t, trait_impl_generic* tig);
-int trait_table_append_unresolved_impl(trait_table* t, trait_impl* ti);
-
 typedef struct trait_impl_iterator_s {
     resolver* r;
     ast_body* looking_body;
     ast_elem* looking_type;
 } trait_impl_iterator;
+
+trait_table* trait_table_create(ureg impl_count, ureg generic_impl_count);
+void trait_table_destroy(trait_table* t);
+int trait_table_append_generic_impl(trait_table* t, trait_impl_generic* tig);
+int trait_table_append_unresolved_impl(trait_table* t, trait_impl* ti);

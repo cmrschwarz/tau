@@ -11,6 +11,11 @@ typedef struct dbuffer_s {
     u8* head;
 } dbuffer;
 
+typedef struct dbuffer_iterator_s {
+    u8* pos;
+    u8* end;
+} dbuffer_iterator;
+
 // 0: success, -1: allocation failiure
 int dbuffer_init_with_capacity(dbuffer* db, ureg size);
 int dbuffer_init(dbuffer* db);
@@ -45,6 +50,7 @@ void dbuffer_remove_at(dbuffer* db, void* pos, ureg size);
 void dbuffer_swap(dbuffer* db, void* posa, void* posb, ureg size);
 
 void dbuffer_pop(dbuffer* db, ureg size);
+void* dbuffer_back(dbuffer* db, ureg size);
 void dbuffer_clear(dbuffer* db);
 
 // 0: success, -1: allocation failiure
@@ -74,3 +80,23 @@ static inline void* dbuffer_get_element_ptr(dbuffer* db, ureg idx, ureg size)
     do {                                                                       \
         (*(typeof(val)*)dbuffer_claim(db, sizeof(val))) = (val);               \
     } while (0)
+
+static inline void dbuffer_iterator_init(dbuffer_iterator* it, dbuffer* db)
+{
+    it->pos = db->start;
+    it->end = db->head;
+}
+
+static inline void* dbuffer_iterator_next(dbuffer_iterator* it, ureg size)
+{
+    if (it->pos == it->end) return NULL;
+    void* res = it->pos;
+    it->pos += size;
+    return res;
+}
+
+static inline void* dbuffer_iterator_get(dbuffer_iterator* it, ureg size)
+{
+    if (it->pos == it->end) return NULL;
+    return it->pos;
+}

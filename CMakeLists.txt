@@ -36,6 +36,7 @@ set(TAUC_C_SRCS
     ./src/ptr_map.c
     ./src/type_map.c
     ./src/trait_table.c
+    ./src/trait_resolution.c
     ./src/scc_detector.c
     ./src/generic_instance_resolution.c
     ./src/mdght.c
