@@ -1,6 +1,6 @@
 #pragma once
-
 #include "types.h"
+#include "string.h"
 // the FNV-1a hash algorithm
 
 #if UREG_MAX == U64_MAX
@@ -55,4 +55,3 @@ static inline ureg fnv_fold_bc(ureg hash, ureg bitcount)
 {
     return fnv_fold(hash, bitcount, (1 << bitcount) - 1);
 }
-

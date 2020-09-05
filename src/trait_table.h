@@ -18,7 +18,7 @@ typedef struct impl_list_for_type_s {
 } impl_list_for_type;
 
 typedef struct impl_status_for_type_s {
-    ast_elem* type; // NULL iff we are in unresolved impls mode
+    ast_elem* type;
     sc_trait* trait;
     trait_impl* impl; // NULL means there is definitely no impl
 } impl_status_for_type;
@@ -44,3 +44,12 @@ trait_table* trait_table_create(ureg impl_count, ureg generic_impl_count);
 void trait_table_destroy(trait_table* t);
 int trait_table_append_generic_impl(trait_table* t, trait_impl_generic* tig);
 int trait_table_append_unresolved_impl(trait_table* t, trait_impl* ti);
+
+// NULL result means alloc failiure
+// NULL in result type means not present yet
+impl_status_for_type* trait_table_get_impl_status_for_type(
+    trait_table* t, ast_elem* type, sc_trait* trait);
+
+// NULL result means not present
+impl_status_for_type* trait_table_try_get_impl_status_for_type(
+    trait_table* t, ast_elem* type, sc_trait* trait);

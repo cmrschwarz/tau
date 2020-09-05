@@ -34,8 +34,6 @@ resolve_error resolve_trait_impl(resolver* r, trait_impl* ti, ast_body* body)
         r, ti->tib.impl_for, body, (ast_elem**)&ti->impl_for_ctype,
         &impl_for_ctype_ctype);
     if (re) return re;
-    // we can continue if impl_of contains an error, we can still treat
-    // the trait impl as a non trait bound impl
     if (ti->impl_for_ctype == ERROR_ELEM) {
         ast_node_set_poisoned((ast_node*)ti);
         return RE_OK;
@@ -54,6 +52,39 @@ resolve_error resolve_trait_impl(resolver* r, trait_impl* ti, ast_body* body)
         ast_node_set_poisoned((ast_node*)ti);
         return RE_OK;
     }
+
+    if (ti->impl_for_ctype == ERROR_ELEM) {
+        ast_node_set_poisoned((ast_node*)ti);
+        return RE_OK;
+    }
+    if (ti->impl_of_trait != (sc_trait*)ERROR_ELEM &&
+        ti->impl_of_trait != NULL) {
+        assert(body->symtab && body->symtab->tt);
+        impl_status_for_type* is;
+        is = trait_table_get_impl_status_for_type(
+            body->symtab->tt, ti->impl_for_ctype, ti->impl_of_trait);
+        if (!is) return RE_FATAL;
+        if (is->type) {
+            assert(is->impl != ti);
+            assert(is->impl); // TODO: handle pp trashing our state
+            src_range_large prev_srl, ti_srl;
+            ast_node_get_src_range((ast_node*)is->impl, body, &prev_srl);
+            ast_node_get_src_range((ast_node*)ti, body, &ti_srl);
+            error_log_report_annotated_twice(
+                r->tc->err_log, ES_RESOLVER, false,
+                "conflicting impls found in the same scope", ti_srl.smap,
+                ti_srl.start, ti_srl.end, "conflicting impl here",
+                prev_srl.smap, prev_srl.start, prev_srl.end,
+                "previous impl here");
+            r->error_occured = true;
+            ast_node_set_poisoned((ast_node*)ti);
+            return RE_OK; // no point adding both to impl list
+        }
+        is->type = ti->impl_for_ctype;
+        is->trait = ti->impl_of_trait;
+        is->impl = ti;
+    }
+
     return RE_OK;
 }
 static inline resolve_error
@@ -77,9 +108,11 @@ resolve_body_traits(resolver* r, ast_body* body, bool* progress)
         else {
             if (re) return re;
         }
+        void* new_end = ptrsub(it.end, sizeof(trait_impl*));
+        dbuffer_swap(ui, it.pos, new_end, sizeof(trait_impl*));
         dbuffer_pop(ui, sizeof(trait_impl*));
         // hacky way of fixing the iterator
-        it.end = ptrsub(it.end, sizeof(trait_impl*));
+        it.end = new_end;
         *progress = true;
     }
 }

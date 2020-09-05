@@ -1594,7 +1594,13 @@ ast_elem* get_resolved_symbol_ctype(symbol* s)
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
         case SYM_NAMED_USE: assert(false); return NULL; // TODO
         case SYM_PRIMITIVE: assert(false); return NULL; // would be ctype "Type"
-        default: return (ast_elem*)s;
+        case SC_TRAIT:
+        case SC_TRAIT_GENERIC_INST: return TRAIT_ELEM;
+        case SC_TRAIT_GENERIC: return GENERIC_TRAIT_ELEM;
+        case SC_STRUCT_GENERIC: return GENERIC_TYPE_ELEM;
+        case SC_STRUCT:
+        case SC_STRUCT_GENERIC_INST: return TYPE_ELEM;
+        default: assert(false);
     }
 }
 ast_elem** get_break_target_ctype(ast_elem* n)

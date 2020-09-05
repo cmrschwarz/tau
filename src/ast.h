@@ -63,6 +63,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SC_STRUCT_GENERIC_INST,
     SC_TRAIT,
     SC_TRAIT_GENERIC,
+    SC_TRAIT_GENERIC_INST,
     SC_FUNC,
     SC_MACRO,
     SC_FUNC_GENERIC,
