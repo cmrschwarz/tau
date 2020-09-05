@@ -37,14 +37,15 @@ resolve_error instantiate_body(
     if (src->symtab) {
         ureg using_count = symbol_table_get_using_count(src->symtab);
         ureg sym_count = symbol_table_get_symbol_count(src->symtab);
-
         ureg impl_count = 0;
         ureg generic_impl_count = 0;
         if (src->symtab->tt) {
-            impl_count =
-                (1 << src->symtab->tt->impl_list_for_types_bitcount) - 1;
+            impl_count = (1 << src->symtab->tt->impl_lists_bitcount) - 1;
             generic_impl_count =
-                (1 << src->symtab->tt->generic_trait_impls_bitcount) - 1;
+                dbuffer_is_invalid(&src->symtab->tt->generic_impls)
+                    ? 0
+                    : dbuffer_get_size(&src->symtab->tt->generic_impls) /
+                          sizeof(trait_impl_generic*);
         }
         tgt->symtab = symbol_table_create(
             sym_count, using_count, impl_count, generic_impl_count);

@@ -7,6 +7,7 @@
 #include "utils/threading.h"
 #include "utils/zero.h"
 #include "scc_detector.h"
+#include "ast_flags.h"
 #include "print_ast.h"
 #include <assert.h>
 
@@ -146,8 +147,10 @@ mdg_node* mdg_node_create(
     // resolving itself. before its suspended this is decremented
     atomic_ureg_init(&n->ungenerated_pp_deps, 1);
     n->stage = initial_stage;
+    ast_node_set_default_flags((ast_node*)n);
     n->body.symtab = NULL;
-    n->body.elements = NULL;
+    n->body.pprn = NULL;
+    n->body.elements = (ast_node**)NULL_PTR_PTR;
     n->body.parent = NULL; // TODO: put global scope here
     n->notifier = NULL;
     n->body.owning_node = (ast_elem*)n;
@@ -319,6 +322,14 @@ void free_astn_symtabs(ast_node* n)
             for (ureg i = 0; i < ea->arg_count; i++) {
                 free_astn_symtabs(ea->args[i]);
             }
+        } break;
+        case TRAIT_IMPL_GENERIC_INST:
+        case TRAIT_IMPL_GENERIC:
+        case TRAIT_IMPL: {
+            trait_impl_base* tib = (trait_impl_base*)n;
+            free_astn_symtabs(tib->impl_for);
+            free_astn_symtabs(tib->impl_of);
+            free_body_symtabs(&((trait_impl*)n)->tib.body);
         } break;
         default: assert(false);
     }

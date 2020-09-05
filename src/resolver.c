@@ -976,6 +976,22 @@ static resolve_error add_ast_node_decls(
             if (re) return re;
             return RE_OK;
         } break;
+        case TRAIT_IMPL_GENERIC: {
+            ast_body* tgt_body = get_decl_target_body(n, body, shared_body);
+            assert(tgt_body->symtab->tt);
+            int res = trait_table_append_generic_impl(
+                tgt_body->symtab->tt, (trait_impl_generic*)n);
+            if (res) return RE_FATAL;
+            return RE_OK;
+        } break;
+        case TRAIT_IMPL: {
+            ast_body* tgt_body = get_decl_target_body(n, body, shared_body);
+            assert(tgt_body->symtab->tt);
+            int res = trait_table_append_unresolved_impl(
+                tgt_body->symtab->tt, (trait_impl*)n);
+            if (res) return RE_FATAL;
+            return RE_OK;
+        } break;
         default:
             assert(false); // unknown node_kind
             return RE_FATAL;
@@ -1362,6 +1378,10 @@ resolve_error resolve_call(
         ast_body* lhs_body;
         resolve_error re = resolve_ast_node(r, esa->lhs, body, &esa_lhs, NULL);
         if (re) return re;
+        if (esa_lhs == ERROR_ELEM) {
+            SET_THEN_RETURN_POISONED(
+                r, RE_OK, c, body, NULL, ctype, NULL, ERROR_ELEM);
+        }
         assert(ast_elem_is_symbol(esa_lhs));
         re = get_resolved_symbol_body(r, (symbol*)esa_lhs, &lhs_body);
         if (re) return re;
@@ -1376,6 +1396,10 @@ resolve_error resolve_call(
         resolve_error re =
             resolve_ast_node(r, esa->lhs, body, &esa_lhs, &esa_lhs_ctype);
         if (re) return re;
+        if (esa_lhs_ctype == ERROR_ELEM) {
+            SET_THEN_RETURN_POISONED(
+                r, RE_OK, c, body, NULL, ctype, NULL, ERROR_ELEM);
+        }
         assert(ast_elem_is_struct(esa_lhs_ctype)); // TODO: error
         ast_node_set_instance_member(&c->node);
         return resolve_func_call(
@@ -2974,11 +2998,15 @@ static inline resolve_error resolve_ast_node_raw(
             ast_node_set_resolved(n);
             RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
         }
-        // nothing to do here
+            // nothing to do here
+        case TRAIT_IMPL_GENERIC_INST:
+        case TRAIT_IMPL_GENERIC:
+        case TRAIT_IMPL:
         case ASTN_ANONYMOUS_MOD_IMPORT_GROUP: {
             ast_node_set_resolved(n);
             return RE_OK;
         }
+
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
@@ -4110,20 +4138,22 @@ resolve_error resolver_finalize_resolution(resolver* r)
     if (lle) return RE_ERROR;
 
     // mark nodes as resolved and remap ids
-    ureg glob_id_head = glob_id_start;
-    for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
-        aseglist_iterator it;
-        aseglist_iterator_begin(&it, &(**n).module_frames);
-        for (module_frame* mf = aseglist_iterator_next(&it); mf;
-             mf = aseglist_iterator_next(&it)) {
-            adjust_body_ids(r, &glob_id_head, &mf->body);
+    if (!r->error_occured) {
+        ureg glob_id_head = glob_id_start;
+        for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
+            aseglist_iterator it;
+            aseglist_iterator_begin(&it, &(**n).module_frames);
+            for (module_frame* mf = aseglist_iterator_next(&it); mf;
+                 mf = aseglist_iterator_next(&it)) {
+                adjust_body_ids(r, &glob_id_head, &mf->body);
+            }
         }
+        assert(glob_id_head - glob_id_start == r->public_sym_count);
+        r->glob_id_start = glob_id_start;
     }
     int res =
         mdg_nodes_resolved(r->mdgs_begin, r->mdgs_end, r->tc, r->error_occured);
     if (res) return RE_FATAL;
-    assert(glob_id_head - glob_id_start == r->public_sym_count);
-    r->glob_id_start = glob_id_start;
     if (r->error_occured) tauc_error_occured(r->tc->t, ERR);
     return RE_OK;
 }
@@ -4131,6 +4161,7 @@ resolve_error resolver_resolve(resolver* r)
 {
     resolve_error re = resolver_resolve_raw(r);
     if (re == RE_SUSPENDED) return re;
+    if (re == RE_FATAL) r->error_occured = true;
     free_pprns(r, re != RE_OK);
     if (re && r->tc->t->trap_on_error) debugbreak();
     resolve_error re2 = resolver_finalize_resolution(r);

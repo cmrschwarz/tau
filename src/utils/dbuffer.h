@@ -15,6 +15,9 @@ typedef struct dbuffer_s {
 int dbuffer_init_with_capacity(dbuffer* db, ureg size);
 int dbuffer_init(dbuffer* db);
 
+void dbuffer_set_invalid(dbuffer* db);
+bool dbuffer_is_invalid(dbuffer* db);
+
 void dbuffer_fin(dbuffer* db);
 
 ureg dbuffer_get_capacity(dbuffer* db);

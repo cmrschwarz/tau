@@ -523,23 +523,8 @@ ast_body* get_current_body(parser* p)
 {
     return get_bpd(p)->body;
 }
-static inline void
-curr_scope_add_uses(parser* p, access_modifier am, ureg count)
-{
-    body_parse_data* bpd = get_bpd(p);
-    bool local = am == AM_LOCAL || am == AM_NONE;
-    if (!local) {
-        local = ast_elem_is_module_frame((ast_elem*)bpd->node);
-    }
-    if (local) {
-        bpd->elem_counts.usings_count += count;
-    }
-    else {
-        bpd->shared_elem_counts.usings_count += count;
-    }
-}
-static inline void
-curr_scope_add_decls(parser* p, access_modifier am, ureg count)
+static inline element_occurence_counts*
+curr_scope_get_appropriate_eoc(parser* p, access_modifier am)
 {
     body_parse_data* bpd = get_bpd(p);
     bool shared = false;
@@ -552,11 +537,21 @@ curr_scope_add_decls(parser* p, access_modifier am, ureg count)
         }
     }
     if (shared) {
-        bpd->shared_elem_counts.decl_count += count;
+        return &bpd->shared_elem_counts;
     }
     else {
-        bpd->elem_counts.decl_count += count;
+        return &bpd->elem_counts;
     }
+}
+static inline void
+curr_scope_add_uses(parser* p, access_modifier am, ureg count)
+{
+    curr_scope_get_appropriate_eoc(p, am)->usings_count += count;
+}
+static inline void
+curr_scope_add_decls(parser* p, access_modifier am, ureg count)
+{
+    curr_scope_get_appropriate_eoc(p, am)->decl_count += count;
 }
 
 static inline void
@@ -2197,6 +2192,7 @@ static inline parse_error parse_delimited_module_frame(
     bool cntnt = false;
     // to allow deallocation in case of early failiure
     mf->body.elements = (ast_node**)NULL_PTR_PTR;
+    mf->body.pprn = NULL;
     if (push_bpd(p, (ast_node*)mf, &mf->body)) return PE_FATAL;
     void* requires_list_start = list_builder_start_blocklist(&p->lx.tc->listb);
     void** element_list_start = list_builder_start(&p->lx.tc->listb2);
@@ -2769,7 +2765,6 @@ parse_trait_impl_decl(parser* p, modifier_status* mods, ast_node** n)
     if (t->kind == TK_BRACKET_OPEN) {
         tig = alloc_perm(p, sizeof(trait_impl_generic));
         if (!tig) return PE_FATAL;
-        // TODO:  sg->pprn = NULL;
         tib = (trait_impl_base*)tig;
         lx_void(&p->lx);
         pe = parse_param_list(
@@ -2778,6 +2773,8 @@ parse_trait_impl_decl(parser* p, modifier_status* mods, ast_node** n)
             get_context_msg(p, (ast_node*)tib));
         if (pe) return pe;
         PEEK(p, t);
+        curr_scope_get_appropriate_eoc(p, mods->data.access_mod)
+            ->generic_impl_count++;
     }
     else {
         ti = alloc_perm(p, sizeof(trait_impl));
@@ -2785,10 +2782,10 @@ parse_trait_impl_decl(parser* p, modifier_status* mods, ast_node** n)
         tib = (trait_impl_base*)ti;
         int err = type_map_init(&ti->type_derivs.tm);
         if (err) return PE_FATAL;
+        curr_scope_get_appropriate_eoc(p, mods->data.access_mod)->impl_count++;
     }
     ast_node_init_with_mods(
         (ast_node*)tib, tig ? TRAIT_IMPL_GENERIC : TRAIT_IMPL, &mods->data);
-
     pe = parse_expression(p, &tib->impl_of);
     if (t->kind != TK_IDENTIFIER || string_cmp_cstr(t->str, COND_KW_FOR)) {
         if (pe == PE_EOEX) {
@@ -3781,8 +3778,11 @@ static inline parse_error parse_delimited_body(
 {
     token* t;
     parse_error pe = PE_OK;
-    PEEK(p, t);
+    // to allow deallocation in case of early failiure
+    b->elements = (ast_node**)NULL_PTR_PTR;
+    b->pprn = NULL;
     ast_node* target;
+    PEEK(p, t);
     if (!first_stmt) {
         if (push_bpd(p, parent, b)) return PE_FATAL;
     }
@@ -3836,7 +3836,6 @@ static inline parse_error parse_delimited_body(
     }
     b->elements = (ast_node**)list_builder_pop_list_zt(
         &p->lx.tc->listb2, elements_list_start, &p->lx.tc->permmem);
-    b->pprn = NULL;
     if (!b->elements) {
         free_failed_ast_node_list_symtabs(
             &p->lx.tc->listb2, elements_list_start, &b->elements);

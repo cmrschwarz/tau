@@ -201,7 +201,7 @@ symbol_table* symbol_table_create(
     if (impl_count || generic_impl_count) {
         st->tt = trait_table_create(impl_count, generic_impl_count);
         if (!st->tt) {
-            symbol_table_destroy(st->tt);
+            symbol_table_destroy(st);
             return NULL;
         }
     }

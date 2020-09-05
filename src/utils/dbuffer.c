@@ -22,6 +22,16 @@ void dbuffer_fin(dbuffer* db)
 {
     tfree(db->start);
 }
+
+void dbuffer_set_invalid(dbuffer* db)
+{
+    db->start = NULL;
+}
+bool dbuffer_is_invalid(dbuffer* db)
+{
+    return db->start == NULL;
+}
+
 ureg dbuffer_get_size(dbuffer* db)
 {
     return db->head - db->start;
