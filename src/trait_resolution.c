@@ -84,7 +84,17 @@ resolve_error resolve_trait_impl(resolver* r, trait_impl* ti, ast_body* body)
         is->trait = ti->impl_of_trait;
         is->impl = ti;
     }
-
+    impl_list_for_type* il = trait_table_get_impl_list_for_type(
+        body->symtab->tt, ti->impl_for_ctype);
+    if (!il) return RE_FATAL;
+    if (!il->type) {
+        if (list_init(&il->impls)) {
+            body->symtab->tt->impl_lists_count--;
+            return RE_FATAL;
+        }
+        il->type = ti->impl_for_ctype;
+    }
+    if (list_append(&il->impls, NULL, ti)) return RE_FATAL;
     return RE_OK;
 }
 static inline resolve_error

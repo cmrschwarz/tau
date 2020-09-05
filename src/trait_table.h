@@ -53,3 +53,12 @@ impl_status_for_type* trait_table_get_impl_status_for_type(
 // NULL result means not present
 impl_status_for_type* trait_table_try_get_impl_status_for_type(
     trait_table* t, ast_elem* type, sc_trait* trait);
+
+// NULL result means alloc failiure
+// NULL in result type means not present yet
+impl_list_for_type*
+trait_table_get_impl_list_for_type(trait_table* t, ast_elem* type);
+
+// NULL result means not present
+impl_list_for_type*
+trait_table_try_get_impl_list_for_type(trait_table* t, ast_elem* type);
