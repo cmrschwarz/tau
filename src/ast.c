@@ -98,6 +98,16 @@ bool ast_elem_is_struct_base(ast_elem* s)
     return s->kind == SC_STRUCT || s->kind == SC_STRUCT_GENERIC ||
            s->kind == SC_STRUCT_GENERIC_INST;
 }
+bool ast_elem_is_trait_base(ast_elem* s)
+{
+    return s->kind == SC_TRAIT || s->kind == SC_TRAIT_GENERIC ||
+           s->kind == SC_TRAIT_GENERIC_INST;
+}
+bool ast_elem_has_unordered_body(ast_elem* e)
+{
+    return ast_elem_is_trait_base(e) || ast_elem_is_struct_base(e) ||
+           ast_elem_is_module_frame(e) || e->kind == ELEM_MDG_NODE;
+}
 bool ast_elem_is_any_import(ast_elem* s)
 {
     switch (s->kind) {

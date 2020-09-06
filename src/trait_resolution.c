@@ -97,8 +97,8 @@ resolve_error resolve_trait_impl(resolver* r, trait_impl* ti, ast_body* body)
     if (list_append(&il->impls, NULL, ti)) return RE_FATAL;
     return RE_OK;
 }
-static inline resolve_error
-resolve_body_traits_raw(resolver* r, ast_body* body, bool* progress)
+static inline resolve_error resolve_body_traits_raw(
+    resolver* r, ast_body* body, bool* progress, resolve_error* holdup)
 {
     dbuffer_iterator it;
     resolve_error re;
@@ -111,7 +111,10 @@ resolve_body_traits_raw(resolver* r, ast_body* body, bool* progress)
         trait_impl** ti = dbuffer_iterator_get(&it, sizeof(trait_impl*));
         if (!ti) return RE_OK;
         re = resolve_trait_impl(r, *ti, body);
-        if (re == RE_UNKNOWN_SYMBOL) {
+        if (re == RE_UNKNOWN_SYMBOL || re == RE_UNREALIZED_COMPTIME) {
+            if (holdup && *holdup != RE_UNREALIZED_COMPTIME) {
+                *holdup = re;
+            }
             dbuffer_iterator_next(&it, sizeof(trait_impl*));
             continue;
         }
@@ -123,13 +126,15 @@ resolve_body_traits_raw(resolver* r, ast_body* body, bool* progress)
         dbuffer_pop(ui, sizeof(trait_impl*));
         // hacky way of fixing the iterator
         it.end = new_end;
-        *progress = true;
+        if (progress) *progress = true;
     }
 }
 resolve_error resolve_body_traits(resolver* r, ast_body* body)
 {
-    bool x;
-    resolve_body_traits_raw(r, body, &x);
+    resolve_error holdup = RE_OK;
+    resolve_error re = resolve_body_traits_raw(r, body, NULL, &holdup);
+    if (re) return re;
+    return holdup;
 }
 resolve_error resolve_mf_traits(resolver* r)
 {
@@ -143,7 +148,7 @@ resolve_error resolve_mf_traits(resolver* r)
             for (module_frame* mf = aseglist_iterator_next(&asi); mf != NULL;
                  mf = aseglist_iterator_next(&asi)) {
                 resolve_error re =
-                    resolve_body_traits_raw(r, &mf->body, &progress);
+                    resolve_body_traits_raw(r, &mf->body, &progress, NULL);
                 if (re) return re;
             }
         }
@@ -154,6 +159,18 @@ resolve_error resolve_mf_traits(resolver* r)
             }
             r->report_unused_symbols = true;
         }
+    }
+    return RE_OK;
+}
+
+resolve_error
+block_elem_resolve_traits(resolver* r, ast_body* body, ast_node* n)
+{
+    if (n->kind == TRAIT_IMPL) {
+        if (ast_node_get_trait_resolved(n)) return RE_OK;
+        resolve_error re = resolve_trait_impl(r, (trait_impl*)n, body);
+        if (re) return re;
+        ast_node_set_trait_resolved(n);
     }
     return RE_OK;
 }

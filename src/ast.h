@@ -882,6 +882,8 @@ extern primitive PRIMITIVES[];
 bool ast_elem_is_func_base(ast_elem* s);
 bool symbol_is_open_symbol(symbol* s);
 bool ast_elem_is_struct_base(ast_elem* s);
+bool ast_elem_has_unordered_body(ast_elem* e);
+bool ast_elem_is_trait_base(ast_elem* s);
 bool ast_elem_is_struct(ast_elem* s);
 bool ast_elem_is_var(ast_elem* s);
 bool ast_elem_is_any_import(ast_elem* s);

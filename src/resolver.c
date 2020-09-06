@@ -986,9 +986,11 @@ static resolve_error add_ast_node_decls(
         case TRAIT_IMPL: {
             ast_body* tgt_body = get_decl_target_body(n, body, shared_body);
             assert(tgt_body->symtab->tt);
-            int res = trait_table_append_unresolved_impl(
-                tgt_body->symtab->tt, (trait_impl*)n);
-            if (res) return RE_FATAL;
+            if (ast_elem_has_unordered_body(body->owning_node)) {
+                int res = trait_table_append_unresolved_impl(
+                    tgt_body->symtab->tt, (trait_impl*)n);
+                if (res) return RE_FATAL;
+            }
             return RE_OK;
         } break;
         default:
@@ -3116,7 +3118,6 @@ resolve_error resolve_expr_body(
     resolve_error re;
     ast_elem* stmt_ctype = NULL;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
-    ureg saved_decl_count = 0;
     pp_resolve_node* pprn = b->pprn;
 
     bool parent_allows_type_loops = r->allow_type_loops;
@@ -3136,15 +3137,9 @@ resolve_error resolve_expr_body(
     for (; *n != NULL; n++) {
         re = add_ast_node_decls(r, b, NULL, *n, false);
         if (re) break;
+        re = block_elem_resolve_traits(r, b, *n);
+        if (re) break;
         re = resolve_ast_node(r, *n, b, NULL, stmt_ctype_ptr);
-        if (b->pprn && b->pprn->pending_pastes) {
-            b->pprn->continue_block = n;
-            re = RE_SYMBOL_NOT_FOUND_YET;
-            break;
-        }
-        if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
-            stmt_ctype_ptr = NULL;
-        }
         if (re == RE_TYPE_LOOP) {
             if (r->type_loop_start == expr) {
                 if (r->retracing_type_loop) {
@@ -3160,12 +3155,15 @@ resolve_error resolve_expr_body(
             }
             re = RE_OK;
         }
-        else {
-            if (re) break; // this includes RE_UNREALIZED_COMPTIME
+        if (re) break;
+        if (stmt_ctype_ptr && stmt_ctype == UNREACHABLE_ELEM) {
+            stmt_ctype_ptr = NULL;
         }
-    }
-    if (saved_decl_count) {
-        b->symtab->sym_count = saved_decl_count;
+        if (b->pprn && b->pprn->pending_pastes) {
+            b->pprn->continue_block = n;
+            re = RE_SYMBOL_NOT_FOUND_YET;
+            break;
+        }
     }
     pprn = b->pprn;
     *end_reachable = (stmt_ctype_ptr != NULL);
@@ -3254,14 +3252,22 @@ resolve_error resolve_struct_or_trait(
     }
     ast_body* b = &stb->sc.body;
     bool unrealized_comptime = false;
-    for (ast_node** n = b->elements; *n != NULL; n++) {
-        re = resolve_ast_node(r, *n, b, NULL, NULL);
-        if (re == RE_UNREALIZED_COMPTIME) {
-            unrealized_comptime = true;
-            re = RE_OK;
-        }
-        else if (re) {
-            break;
+    bool unknown_symbol = false;
+    re = resolve_body_traits(r, b);
+    if (!re) {
+        for (ast_node** n = b->elements; *n != NULL; n++) {
+            re = resolve_ast_node(r, *n, b, NULL, NULL);
+            if (re == RE_UNREALIZED_COMPTIME) {
+                unrealized_comptime = true;
+                re = RE_OK;
+            }
+            else if (re == RE_UNKNOWN_SYMBOL) {
+                unknown_symbol = true;
+                re = RE_OK;
+            }
+            else if (re) {
+                break;
+            }
         }
     }
     if (stb->sc.body.pprn) {
@@ -3275,9 +3281,9 @@ resolve_error resolve_struct_or_trait(
             return re2;
         }
     }
-
     if (re) return re;
     if (unrealized_comptime) return RE_UNREALIZED_COMPTIME;
+    if (unknown_symbol) return RE_UNKNOWN_SYMBOL;
     ast_node_set_resolved((ast_node*)stb);
     RETURN_RESOLVED(value, ctype, stb, TYPE_ELEM);
 }
@@ -3364,6 +3370,8 @@ resolve_error resolve_func(
             break;
         }
         re = add_ast_node_decls(r, &fnb->sc.body, NULL, *n, false);
+        if (re) break;
+        re = block_elem_resolve_traits(r, &fnb->sc.body, *n);
         if (re) break;
         re = resolve_ast_node(r, *n, &fnb->sc.body, NULL, stmt_ctype_ptr);
         if (re) break;

@@ -191,6 +191,16 @@ void ast_node_clear_resolving(ast_node* n)
     ast_node_set_status(n, NODE_STATUS_DECLARED);
 }
 
+void ast_node_set_trait_resolved(ast_node* n)
+{
+    assert(ast_node_get_status(n) <= NODE_STATUS_RESOLVING);
+    ast_node_set_status(n, NODE_STATUS_TRAIT_RESOLVED);
+}
+bool ast_node_get_trait_resolved(ast_node* n)
+{
+    return ast_node_get_status(n) >= NODE_STATUS_TRAIT_RESOLVED;
+}
+
 void ast_node_set_resolved(ast_node* n)
 {
     assert(ast_node_get_status(n) <= NODE_STATUS_RESOLVED);

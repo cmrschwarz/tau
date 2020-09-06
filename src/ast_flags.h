@@ -18,6 +18,7 @@ typedef enum access_modifier_e {
 typedef enum ast_node_status_e {
     NODE_STATUS_PARSED,
     NODE_STATUS_DECLARED,
+    NODE_STATUS_TRAIT_RESOLVED,
     NODE_STATUS_RESOLVING,
     NODE_STATUS_RESOLVED,
     NODE_STATUS_PUBLISHED,
@@ -125,6 +126,9 @@ void ast_node_clear_declared(ast_node* n);
 void ast_node_set_resolving(ast_node* n);
 void ast_node_clear_resolving(ast_node* n);
 bool ast_node_get_resolving(ast_node* n);
+
+void ast_node_set_trait_resolved(ast_node* n);
+bool ast_node_get_trait_resolved(ast_node* n);
 
 void ast_node_set_resolved(ast_node* n);
 bool ast_node_get_resolved(ast_node* n);
