@@ -86,6 +86,7 @@ typedef struct resolver_s {
     ast_node* type_loop_start;
     bool allow_type_loops;
     bool post_pp;
+    bool report_unused_symbols;
     bool retracing_type_loop;
     bool generic_context;
     bool resumed; // whether we come from a partial resolution

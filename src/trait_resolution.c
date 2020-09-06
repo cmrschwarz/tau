@@ -98,7 +98,7 @@ resolve_error resolve_trait_impl(resolver* r, trait_impl* ti, ast_body* body)
     return RE_OK;
 }
 static inline resolve_error
-resolve_body_traits(resolver* r, ast_body* body, bool* progress)
+resolve_body_traits_raw(resolver* r, ast_body* body, bool* progress)
 {
     dbuffer_iterator it;
     resolve_error re;
@@ -126,9 +126,14 @@ resolve_body_traits(resolver* r, ast_body* body, bool* progress)
         *progress = true;
     }
 }
+resolve_error resolve_body_traits(resolver* r, ast_body* body)
+{
+    bool x;
+    resolve_body_traits_raw(r, body, &x);
+}
 resolve_error resolve_mf_traits(resolver* r)
 {
-    assert(r->post_pp == false);
+    assert(r->report_unused_symbols == false);
     bool progress;
     while (true) {
         progress = false;
@@ -137,16 +142,17 @@ resolve_error resolve_mf_traits(resolver* r)
             aseglist_iterator_begin(&asi, &(**i).module_frames);
             for (module_frame* mf = aseglist_iterator_next(&asi); mf != NULL;
                  mf = aseglist_iterator_next(&asi)) {
-                resolve_error re = resolve_body_traits(r, &mf->body, &progress);
+                resolve_error re =
+                    resolve_body_traits_raw(r, &mf->body, &progress);
                 if (re) return re;
             }
         }
         if (!progress) {
-            if (r->post_pp) {
-                r->post_pp = false;
+            if (r->report_unused_symbols) {
+                r->report_unused_symbols = false;
                 break;
             }
-            r->post_pp = true;
+            r->report_unused_symbols = true;
         }
     }
     return RE_OK;

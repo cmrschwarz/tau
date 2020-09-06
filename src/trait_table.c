@@ -5,10 +5,10 @@ trait_table* trait_table_create(ureg impls, ureg generic_impls)
 {
     trait_table* t = tmalloc(sizeof(trait_table));
     if (!t) return NULL;
-    t->impl_lists = (impl_list_for_type*)NULL_PTR_PTR;
+    t->impl_lists = NULL;
     t->impl_lists_count = 0;
     t->impl_lists_bitcount = 0;
-    t->impl_statuses = (impl_status_for_type*)NULL_PTR_PTR;
+    t->impl_statuses = NULL;
     t->impl_statuses_count = 0;
     t->impl_statuses_bitcount = 0;
     if (!generic_impls) {
@@ -29,6 +29,7 @@ trait_table* trait_table_create(ureg impls, ureg generic_impls)
     }
     else {
         ureg impl_cap = ceil_to_pow2(impls);
+        if (impl_cap < 4) impl_cap = 4;
         ureg impl_bc = ulog2(impl_cap);
         int r = dbuffer_init_with_capacity(
             &t->unresolved_impls, impl_cap * sizeof(trait_impl_generic*));
@@ -168,7 +169,7 @@ trait_table_impl_lists_realloc(trait_table* t, ureg cap_old, ureg* cap_new)
     if (t->impl_lists_bitcount == 0) {
         ureg initial_bc = 2;
         ureg capn = 1 << initial_bc;
-        t->impl_lists = tmallocz(capn * sizeof(impl_status_for_type));
+        t->impl_lists = tmallocz(capn * sizeof(impl_list_for_type));
         if (!t->impl_statuses) return ERR;
         t->impl_lists_bitcount = initial_bc;
         *cap_new = capn;

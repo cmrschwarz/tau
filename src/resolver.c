@@ -1313,7 +1313,7 @@ resolve_error resolve_func_call(
             // that the call is in
             sbuffer_remove_back(
                 &r->temp_stack, c->arg_count * sizeof(ast_elem*));
-            if (!r->post_pp) return RE_UNKNOWN_SYMBOL;
+            if (!r->report_unused_symbols) return RE_UNKNOWN_SYMBOL;
             report_unknown_symbol(r, c->lhs, body);
             SET_THEN_RETURN_POISONED(
                 r, RE_OK, c, body, NULL, ctype, c, ERROR_ELEM);
@@ -1578,7 +1578,7 @@ resolve_error choose_binary_operator_overload(
             assert(false); // TODO: error
         }
     }
-    if (!r->post_pp) return RE_UNKNOWN_SYMBOL;
+    if (!r->report_unused_symbols) return RE_UNKNOWN_SYMBOL;
     src_range_large srl;
     src_range_unpack(ob->node.srange, &srl);
     error_log_report_annotated(
@@ -1730,7 +1730,7 @@ resolve_error resolve_scoped_identifier(
         r, lhs_body, NULL, body, esa->target.name, &idf, &amb);
     if (re) return re;
     if (!idf) {
-        if (!r->post_pp) return RE_UNKNOWN_SYMBOL;
+        if (!r->report_unused_symbols) return RE_UNKNOWN_SYMBOL;
         report_unknown_symbol(r, (ast_node*)esa, body);
         SET_THEN_RETURN_POISONED(
             r, RE_OK, esa, body, value, ctype, esa, ERROR_ELEM);
@@ -1770,7 +1770,7 @@ resolve_error resolve_expr_member_accesss(
         &amb);
     if (re) return re;
     if (!mem) {
-        if (!r->post_pp) return RE_UNKNOWN_SYMBOL;
+        if (!r->report_unused_symbols) return RE_UNKNOWN_SYMBOL;
         report_unknown_symbol(r, (ast_node*)ema, struct_body);
         SET_THEN_RETURN_POISONED(
             r, RE_OK, ema, body, value, ctype, ema, ERROR_ELEM);
@@ -2030,7 +2030,7 @@ static inline resolve_error resolve_identifier(
         resolver_lookup_single(r, body, NULL, body, e->value.str, &sym, &amb);
     if (re) return re;
     if (!sym) {
-        if (!r->post_pp) return RE_UNKNOWN_SYMBOL;
+        if (!r->report_unused_symbols) return RE_UNKNOWN_SYMBOL;
         report_unknown_symbol(r, (ast_node*)e, body);
         SET_THEN_RETURN_POISONED(
             r, RE_OK, e, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
@@ -2504,7 +2504,7 @@ resolve_import_symbol(resolver* r, sym_import_symbol* is, ast_body* body)
     if (re || !sym) ast_node_clear_resolving(node);
     if (re) return re;
     if (!sym) {
-        if (!r->post_pp) return RE_UNKNOWN_SYMBOL;
+        if (!r->report_unused_symbols) return RE_UNKNOWN_SYMBOL;
         report_unknown_symbol(r, (ast_node*)is, decl_body);
         is->target.sym = (symbol*)ERROR_ELEM;
         RETURN_POISONED(r, RE_OK, is, body);
@@ -3921,7 +3921,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
     llvm_error lle;
     pli it;
     resolve_error re;
-    bool progress;
+    bool progress = false;
     do {
         if (progress) {
             if (made_progress) *made_progress = true;
@@ -4048,6 +4048,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
 resolve_error resolver_handle_post_pp(resolver* r)
 {
     r->post_pp = true;
+    r->report_unused_symbols = true;
     resolve_error re;
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         aseglist_iterator asi;
@@ -4313,6 +4314,7 @@ void resolver_setup_blank_resolve(resolver* r)
     r->public_sym_count = 0;
     r->private_sym_count = 0;
     r->post_pp = false;
+    r->report_unused_symbols = false;
     r->id_space = PRIV_SYMBOL_OFFSET;
     r->deps_required_for_pp = false;
     r->committed_waiters = 0;
@@ -4345,6 +4347,7 @@ void resolver_unpack_partial_resolution_data(
     r->public_sym_count = prd->public_sym_count;
     r->private_sym_count = prd->private_sym_count;
     r->post_pp = false;
+    r->report_unused_symbols = false;
 }
 resolve_error resolver_resolve_and_emit(
     resolver* r, mdg_node** start, mdg_node** end, partial_resolution_data* prd,

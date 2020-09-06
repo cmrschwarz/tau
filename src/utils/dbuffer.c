@@ -139,11 +139,12 @@ void dbuffer_swap(dbuffer* db, void* posa, void* posb, ureg size)
     else {
         // otherwise do manual swapping
         // if both pos's are aligned on a sizeof(ureg) boundary
+        void* aend = a + size;
         if (!(((ureg)a) & (sizeof(ureg) - 1)) &&
             !(((ureg)b) & (sizeof(ureg) - 1))) {
-            void* aend = a + (size - size % sizeof(ureg));
+            void* aend_masked = a + (size - size % sizeof(ureg));
             ureg temp;
-            while (a != aend) {
+            while (a != aend_masked) {
                 temp = *(ureg*)a;
                 *(ureg*)a = *(ureg*)b;
                 *(ureg*)b = temp;
@@ -151,7 +152,6 @@ void dbuffer_swap(dbuffer* db, void* posa, void* posb, ureg size)
                 b += sizeof(ureg);
             }
         }
-        void* aend = a + size;
         uint8_t temp;
         while (a != aend) {
             temp = *a;

@@ -3048,10 +3048,10 @@ parse_error parse_trait_decl(parser* p, modifier_status* mods, ast_node** n)
     }
     tr->osym.sym.name = name;
     tr->osym.visible_within_body = NULL; // TODO
-    pe = sym_fill_srange(p, (symbol*)tr, mods->start, decl_end);
-    if (pe) return pe;
     ast_node_init_with_mods(
         (ast_node*)tr, tg ? SC_TRAIT_GENERIC : SC_TRAIT, &mods->data);
+    pe = sym_fill_srange(p, (symbol*)tr, mods->start, decl_end);
+    if (pe) return pe;
     *n = (ast_node*)tr;
     curr_scope_add_decls(p, ast_node_get_access_mod(*n), 1);
     return parse_scope_body(p, tr, tg ? tg->generic_param_count : 0);
