@@ -282,7 +282,7 @@ typedef struct open_symbol_s {
 typedef struct ast_body_s {
     ast_node** elements; // zero terminated
     struct ast_body_s* parent;
-    ast_elem* owning_node;
+    ast_node* owning_node;
     symbol_table* symtab;
     // this is always NULL for module frames, but
     // it's still necessary because we want to be able to get the

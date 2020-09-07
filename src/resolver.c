@@ -196,8 +196,8 @@ add_symbol(resolver* r, ast_body* body, ast_body* shared_body, symbol* sym)
     // symbol_table_inc_decl_count(tgtst);
     if (conflict) {
         report_redeclaration_error(r, sym, conflict);
-        assert(ast_elem_is_node(sym->declaring_body->owning_node));
-        ast_node_set_poisoned((ast_node*)sym->declaring_body->owning_node);
+        assert(ast_elem_is_node((ast_elem*)sym->declaring_body->owning_node));
+        ast_node_set_poisoned(sym->declaring_body->owning_node);
         // TODO: poison the target body?
         // what to do for modules
         // symbol lookup should probably respect this
@@ -333,7 +333,7 @@ static inline resolve_error
 get_curr_block_pprn(resolver* r, ast_body* body, pp_resolve_node** curr_pprn)
 {
     body = ast_body_get_non_paste_parent(body);
-    if (ast_elem_is_module_frame(body->owning_node)) {
+    if (ast_elem_is_module_frame((ast_elem*)body->owning_node)) {
         // when in public scope, nobody depends on this
         //(for now, this might change with is_defined and so on)
         *curr_pprn = NULL;
@@ -345,7 +345,7 @@ get_curr_block_pprn(resolver* r, ast_body* body, pp_resolve_node** curr_pprn)
     }
     // the only other non sequential blocks are module frames
     // for that case we already returned null earlier
-    bool is_struct = ast_elem_is_struct(body->owning_node);
+    bool is_struct = ast_elem_is_struct((ast_elem*)body->owning_node);
     // TODO: body->parent might be wrong here
     body->pprn = pp_resolve_node_create(
         r, (ast_node*)body->owning_node, body->parent, !is_struct, !is_struct,
@@ -544,7 +544,7 @@ ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st)
 ureg claim_symbol_id(resolver* r, symbol* s, bool public_st)
 {
     ast_body* decl_body = ast_body_get_non_paste_parent(s->declaring_body);
-    ast_elem* on = decl_body->owning_node;
+    ast_elem* on = (ast_elem*)decl_body->owning_node;
     if (ast_elem_is_var((ast_elem*)s) && !ast_node_get_static(&s->node) &&
         ast_elem_is_struct(on)) {
         ast_node_set_instance_member(&s->node);
@@ -579,7 +579,7 @@ static resolve_error add_func_decl(
         sc_func_generic* fng = (sc_func_generic*)n;
         param_count = fng->fnb.param_count;
         params = fng->fnb.params;
-        assert(fng->generic_param_count == 0 || b->owning_node == (ast_elem*)n);
+        assert(fng->generic_param_count == 0 || b->owning_node == n);
         for (ureg i = 0; i < fng->generic_param_count; i++) {
             symbol* p = (symbol*)&fng->generic_params[i];
             re = add_symbol(r, b, NULL, p);
@@ -626,7 +626,7 @@ static resolve_error add_func_decl(
     }
     // we only do the parameters here because the declaration and
     // use func body vars is strongly ordered
-    assert(param_count == 0 || b->owning_node == (ast_elem*)n);
+    assert(param_count == 0 || b->owning_node == n);
     for (ureg i = 0; i < param_count; i++) {
         re = add_symbol(r, b, NULL, (symbol*)&params[i]);
         if (re) return re;
@@ -986,7 +986,7 @@ static resolve_error add_ast_node_decls(
         case TRAIT_IMPL: {
             ast_body* tgt_body = get_decl_target_body(n, body, shared_body);
             assert(tgt_body->symtab->tt);
-            if (ast_elem_has_unordered_body(body->owning_node)) {
+            if (ast_elem_has_unordered_body((ast_elem*)body->owning_node)) {
                 int res = trait_table_append_unresolved_impl(
                     tgt_body->symtab->tt, (trait_impl*)n);
                 if (res) return RE_FATAL;
@@ -1241,17 +1241,13 @@ resolve_error overload_applicable(
     *applicable = true;
     if (fn) {
         if (!ast_node_get_resolved((ast_node*)fn)) {
-            // PERF: this is horrible, consider storing owning body instead
             if (!fn->fnb.return_type) {
                 fn->fnb.return_ctype = VOID_ELEM;
             }
             else {
-                ast_body* decl_body = ast_elem_get_body(
-                    overload->osym.sym.declaring_body->owning_node);
-
                 resolve_error re = resolve_ast_node(
-                    r, fn->fnb.return_type, decl_body, &fn->fnb.return_ctype,
-                    NULL);
+                    r, fn->fnb.return_type, overload->osym.sym.declaring_body,
+                    &fn->fnb.return_ctype, NULL);
                 if (re) return re;
             }
         }
@@ -1625,7 +1621,7 @@ resolve_error resolve_break_target(
             body->owning_node->kind == SC_FUNC_GENERIC) {
             assert(false); // TODO error
         }
-        assert(ast_elem_is_expr_block_base(body->owning_node));
+        assert(ast_elem_is_expr_block_base((ast_elem*)body->owning_node));
         expr_block_base* ebb = (expr_block_base*)body->owning_node;
         if ((name && ebb->name && cstr_eq(ebb->name, name)) ||
             (name == ebb->name)) {
@@ -1669,7 +1665,7 @@ resolve_param(resolver* r, sym_param* p, bool generic, ast_elem** ctype)
     resolve_error re;
     // PERF: eeeh
     ast_body* declaring_body =
-        ast_elem_get_body(p->sym.declaring_body->owning_node);
+        ast_elem_get_body((ast_elem*)p->sym.declaring_body->owning_node);
     if (p->type) {
         re = resolve_ast_node(r, p->type, declaring_body, &p->ctype, NULL);
         if (re) return re;
@@ -1781,9 +1777,7 @@ resolve_error resolve_expr_member_accesss(
         assert(false); // TODO: report ambiguity
     }
     ema->target.sym = mem;
-    // PERF: maybe we should store declaring body instead?
-    ast_body* b = ast_elem_get_body(mem->declaring_body->owning_node);
-    re = resolve_ast_node(r, (ast_node*)mem, b, value, ctype);
+    re = resolve_ast_node(r, (ast_node*)mem, body, value, ctype);
     if (re) return re;
     ast_node_set_resolved(&ema->node);
     return RE_OK;
@@ -1796,7 +1790,7 @@ static inline resolve_error resolve_var(
     ast_body* declaring_body = v->osym.sym.declaring_body;
     bool comptime = ast_node_get_comptime((ast_node*)v);
     ast_elem* owner =
-        ast_body_get_non_paste_parent(declaring_body)->owning_node;
+        (ast_elem*)ast_body_get_non_paste_parent(declaring_body)->owning_node;
     bool public_symbol = ast_elem_is_module_frame(owner);
     if (!public_symbol) {
         bool is_static = ast_node_get_static((ast_node*)v);
@@ -1940,8 +1934,8 @@ resolve_return(resolver* r, ast_body* body, expr_return* er)
     ast_node_set_resolved(&er->node);
     ast_elem* tgt_type;
     // make the current body ctype unrachable since we exit early
-    if (ast_elem_is_expr_block_base(body->owning_node)) {
-        ast_elem** tgtt = get_break_target_ctype(body->owning_node);
+    if (ast_elem_is_expr_block_base((ast_elem*)body->owning_node)) {
+        ast_elem** tgtt = get_break_target_ctype((ast_elem*)body->owning_node);
         if (tgtt) {
             if (*tgtt) {
                 if (*tgtt != UNREACHABLE_ELEM) {
@@ -2130,7 +2124,7 @@ static inline resolve_error resolve_expr_pp(
         ast_body* npp_body = ast_body_get_non_paste_parent(body);
         ast_body* shared_body = NULL;
         bool public_st = true;
-        if (ast_elem_is_module_frame(npp_body->owning_node)) {
+        if (ast_elem_is_module_frame((ast_elem*)npp_body->owning_node)) {
             shared_body = ast_body_get_non_paste_parent(npp_body->parent);
         }
         if (!is_stmt) {
@@ -2144,11 +2138,12 @@ static inline resolve_error resolve_expr_pp(
             pe = parser_parse_paste_stmt(&r->tc->p, ppe, body, shared_body);
             if (!pe) {
                 while (true) {
-                    if (ast_elem_is_module_frame(npp_body->owning_node)) {
+                    ast_elem* owning_elem = (ast_elem*)npp_body->owning_node;
+                    if (ast_elem_is_module_frame(owning_elem)) {
                         break;
                     }
-                    if (ast_elem_is_struct(npp_body->owning_node)) {
-                        if (is_local_node(npp_body->owning_node)) {
+                    if (ast_elem_is_struct(owning_elem)) {
+                        if (is_local_node(owning_elem)) {
                             public_st = false;
                             break;
                         }
@@ -3215,10 +3210,8 @@ resolve_error resolve_func_from_call(
         }
     }
     else {
-        ast_body* decl_body =
-            ast_elem_get_body(fn->fnb.sc.osym.sym.declaring_body->owning_node);
+        ast_body* decl_body = fn->fnb.sc.osym.sym.declaring_body;
         if (!fn->fnb.sc.body.pprn) {
-
             fn->fnb.sc.body.pprn = pp_resolve_node_create(
                 r, (ast_node*)fn, decl_body, false, true, false, false);
             if (!fn->fnb.sc.body.pprn) return RE_FATAL;
@@ -3298,9 +3291,9 @@ resolve_error resolve_func(
     resolve_error re = RE_OK;
     if (!continue_block) {
         if (!ast_node_get_static((ast_node*)fnb)) {
-            if (ast_elem_is_struct(ast_body_get_non_paste_parent(
-                                       fnb->sc.osym.sym.declaring_body)
-                                       ->owning_node)) {
+            ast_body* npp =
+                ast_body_get_non_paste_parent(fnb->sc.osym.sym.declaring_body);
+            if (ast_elem_is_struct((ast_elem*)npp->owning_node)) {
                 ast_node_set_instance_member((ast_node*)fnb);
             }
         }

@@ -385,7 +385,7 @@ static inline int push_bpd(parser* p, ast_node* n, ast_body* b)
         // this gets reset in pop_bpd,
         // but we need it early for get_non_paste_parent
         // to check for shared decls
-        bpd->body->owning_node = (ast_elem*)n;
+        bpd->body->owning_node = n;
     }
     return OK;
 }
@@ -438,7 +438,7 @@ static inline int pop_bpd(parser* p, parse_error prec_pe)
     sbuffer_remove_next(&p->body_stack, &i, sizeof(body_parse_data));
     if (prec_pe) return OK;
     ast_body* bd = bpd.body;
-    bd->owning_node = (ast_elem*)bpd.node;
+    bd->owning_node = bpd.node;
     if (bpd.body == p->paste_block) {
         return handle_paste_bpd(p, &bpd, &bd->symtab);
     }
@@ -531,7 +531,7 @@ curr_scope_get_appropriate_eoc(parser* p, access_modifier am)
     if (am != AM_LOCAL && am != AM_NONE) {
         if (bpd->body && bpd->body->owning_node) {
             ast_body* npp = ast_body_get_non_paste_parent(bpd->body);
-            if (ast_elem_is_module_frame(npp->owning_node)) {
+            if (ast_elem_is_module_frame((ast_elem*)npp->owning_node)) {
                 shared = true;
             }
         }
@@ -2331,7 +2331,7 @@ parse_error init_paste_evaluation_parse(
     // we only care about the file here
     pe->source_pp_expr = expr;
     pe->body.parent = parent_body;
-    pe->body.owning_node = (ast_elem*)pe;
+    pe->body.owning_node = (ast_node*)pe;
     pe->body.pprn = NULL;
     pe->body.symtab = NULL;
     pe->body.elements = (ast_node**)NULL_PTR_PTR; // in case we fail

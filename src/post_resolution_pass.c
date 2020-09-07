@@ -633,7 +633,7 @@ prp_run_modules(post_resolution_pass* prp, mdg_node** start, mdg_node** end)
         aseglist_iterator_begin(&it, &(**n).module_frames);
         for (module_frame* mf = aseglist_iterator_next(&it); mf;
              mf = aseglist_iterator_next(&it)) {
-            assert(mf->body.owning_node == (ast_elem*)mf);
+            assert(mf->body.owning_node == (ast_node*)mf);
             err = prp_run_symtab(prp, mf->body.symtab);
             if (err) return err;
         }

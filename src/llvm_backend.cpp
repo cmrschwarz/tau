@@ -2164,7 +2164,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         if (!params) return LLE_FATAL;
         ureg i = 0;
         if (mem_func) {
-            ast_elem* owner = ast_body_get_non_paste_parent(
+            ast_elem* owner = (ast_elem*)ast_body_get_non_paste_parent(
                                   fn->fnb.sc.osym.sym.declaring_body)
                                   ->owning_node;
             assert(ast_elem_is_struct_base(owner));

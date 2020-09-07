@@ -1,6 +1,9 @@
 #pragma once
 
 #include "pool.h"
+#if DEBUG
+   #include <assert.h>
+#endif
 
 typedef struct freelist_node_s {
     struct freelist_node_s* next;

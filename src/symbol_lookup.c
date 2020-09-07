@@ -69,7 +69,7 @@ static inline resolve_error update_ams(
     if (*am_end == AM_NONE) {
         *am_end = AM_PUBLIC;
         if (lookup_body->owning_node &&
-            ast_elem_is_struct(lookup_body->owning_node)) {
+            ast_elem_is_struct((ast_elem*)lookup_body->owning_node)) {
             if (looking_struct) {
                 sc_struct* lookup_struct = (sc_struct*)lookup_body->owning_node;
                 while (true) {
@@ -80,8 +80,8 @@ static inline resolve_error update_ams(
                     if (!looking_struct->sb.extends_spec) break;
                     if (!looking_struct->sb.extends) {
                         // PERF: meh
-                        ast_body* decl_body =
-                            ast_elem_get_body(lookup_body->owning_node);
+                        ast_body* decl_body = ast_elem_get_body(
+                            (ast_elem*)lookup_body->owning_node);
                         resolve_error re = resolve_ast_node(
                             r, looking_struct->sb.extends_spec, decl_body,
                             (ast_elem**)&looking_struct->sb.extends, NULL);
@@ -203,7 +203,7 @@ resolve_error symbol_lookup_level_run(
     ast_body** usings_start = NULL;
     if (!sym || !sli->enable_shadowing) {
         if (lookup_body->owning_node &&
-            ast_elem_is_struct(lookup_body->owning_node)) {
+            ast_elem_is_struct((ast_elem*)lookup_body->owning_node)) {
             sc_struct* st = (sc_struct*)lookup_body->owning_node;
             // TODO: respect extends visibility
             if (st->sb.extends_spec) {
@@ -281,10 +281,10 @@ resolve_error symbol_lookup_iterator_init(
     ast_body* i = looking_body;
     while (true) {
         assert(i && i->owning_node);
-        if (!looking_struct && ast_elem_is_struct(i->owning_node)) {
+        if (!looking_struct && ast_elem_is_struct((ast_elem*)i->owning_node)) {
             looking_struct = (sc_struct*)i->owning_node;
         }
-        if (ast_elem_is_module_frame(i->owning_node)) {
+        if (ast_elem_is_module_frame((ast_elem*)i->owning_node)) {
             looking_mf_body = i;
             if (looking_mf_body->parent->owning_node->kind == ELEM_MDG_NODE) {
                 looking_mod_body = looking_mf_body->parent;

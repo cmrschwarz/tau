@@ -153,7 +153,7 @@ mdg_node* mdg_node_create(
     n->body.elements = (ast_node**)NULL_PTR_PTR;
     n->body.parent = NULL; // TODO: put global scope here
     n->notifier = NULL;
-    n->body.owning_node = (ast_elem*)n;
+    n->body.owning_node = (ast_node*)n;
     n->ppe_stage = PPES_UNNEEDED;
     n->requested_for_pp = false;
     n->partial_res_data = NULL;
