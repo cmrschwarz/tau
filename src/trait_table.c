@@ -233,7 +233,7 @@ trait_table_get_impl_list_for_type(trait_table* t, ast_elem* type)
     return trait_table_get_impl_list_raw(t, type, cap, true);
 }
 impl_list_for_type*
-trait_table_try_get_impl_lits_for_type(trait_table* t, ast_elem* type)
+trait_table_try_get_impl_list_for_type(trait_table* t, ast_elem* type)
 {
     if (!t->impl_lists_bitcount) return NULL;
     return trait_table_get_impl_list_raw(

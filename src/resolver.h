@@ -20,7 +20,6 @@ typedef enum resolve_error_e {
     // returned by the first # on the way up to let the parent know he can't
     // continue until the paste was evaluated
     RE_UNREALIZED_COMPTIME, // could be paste or a value needed for a type
-    RE_SYMBOL_NOT_FOUND_YET,
     RE_SUSPENDED,
 } resolve_error;
 
@@ -86,7 +85,7 @@ typedef struct resolver_s {
     ast_node* type_loop_start;
     bool allow_type_loops;
     bool post_pp;
-    bool report_unused_symbols;
+    bool report_unknown_symbols;
     bool retracing_type_loop;
     bool generic_context;
     bool resumed; // whether we come from a partial resolution

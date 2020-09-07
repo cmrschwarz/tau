@@ -15,6 +15,7 @@ typedef struct ast_body_s ast_body;
 typedef struct impl_list_for_type_s {
     ast_elem* type; // the type or trait we have impls for
     list impls;
+    bool generics_done;
 } impl_list_for_type;
 
 typedef struct impl_status_for_type_s {
