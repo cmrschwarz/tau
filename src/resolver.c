@@ -60,7 +60,6 @@ resolve_error handle_resolve_error(
     resolver* r, ast_node* n, ast_body* body, resolve_error re);
 type_cast_result type_cast(
     ast_elem* source_type, ast_elem* target_type, ast_node** src_node_ptr);
-resolve_error ast_body_propagate_error(resolver* r, ast_body* body);
 // must be a macro so value and ctype become lazily evaluated
 
 #define SET_VAL_CTYPE(pvalue, pctype, value, ctype)                            \
@@ -141,48 +140,48 @@ get_decl_target_body(ast_node* decl, ast_body* body, ast_body* shared_body)
     }
     return ast_body_get_non_paste_parent(tgt);
 }
-resolve_error ast_node_propagate_error(resolver* r, ast_node* n)
+int ast_node_propagate_error(resolver* r, ast_node* n)
 {
-    if (ast_node_get_contains_error(n)) return RE_OK;
+    if (ast_node_get_contains_error(n)) return OK;
     ast_node_set_contains_error(n);
     ast_body* b = ast_elem_try_get_body((ast_elem*)n);
-    if (!b) return RE_OK;
+    if (!b) return OK;
     return ast_body_propagate_error(r, b);
 }
-resolve_error pprn_propagate_error(resolver* r, pp_resolve_node* pprn)
+int pprn_propagate_error(resolver* r, pp_resolve_node* pprn)
 {
     assert(pprn->node);
-    if (ast_node_get_contains_error(pprn->node)) return RE_OK;
-    resolve_error re = ast_node_propagate_error(r, pprn->node);
-    if (re) return re;
+    if (ast_node_get_contains_error(pprn->node)) return OK;
+    int res = ast_node_propagate_error(r, pprn->node);
+    if (res) return res;
     list_it it;
     list_it_begin(&it, &pprn->notified_by);
     pp_resolve_node** pprnp;
     while ((pprnp = list_it_next(&it, &pprn->notified_by))) {
         if (!*pprnp) continue;
-        re = pprn_propagate_error(r, *pprnp);
-        if (re) return re;
+        res = pprn_propagate_error(r, *pprnp);
+        if (res) return res;
     }
-    return RE_OK;
+    return OK;
 }
-resolve_error ast_body_propagate_error(resolver* r, ast_body* body)
+int ast_body_propagate_error(resolver* r, ast_body* body)
 {
     ast_node* on = (ast_node*)body->owning_node;
     if (ast_node_get_contains_error(on)) return RE_OK;
     ast_node_set_contains_error(on);
-    resolve_error re;
+    int res;
     if (body->pprn) {
-        re = pprn_propagate_error(r, body->pprn);
-        if (re) return re;
+        res = pprn_propagate_error(r, body->pprn);
+        if (res) return res;
     }
-    if (!body->parent) return RE_OK;
+    if (!body->parent) return OK;
     return ast_body_propagate_error(r, body->parent);
 }
-resolve_error curr_body_propagate_error(resolver* r, ast_body* body)
+int curr_body_propagate_error(resolver* r, ast_body* body)
 {
     assert(r->error_occured); // sanity check
-    resolve_error re = ast_body_propagate_error(r, body);
-    if (re) return re;
+    int res = ast_body_propagate_error(r, body);
+    if (res) return res;
     if (!r->curr_pp_node) return RE_OK;
     return pprn_propagate_error(r, r->curr_pp_node);
 }

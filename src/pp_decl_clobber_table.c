@@ -79,7 +79,28 @@ int ppdct_add_symbol(pp_decl_clobber_table* t, symbol* s, ast_body* target_body)
         ppdct_lookup_raw(t, target_body, s->name, name_hash);
     if (ppdc->body) {
         ast_node_set_poisoned(&s->node);
-        assert(false); // TODO: report error here about decl after use in pp
+        src_range_large srl_parent_sym;
+        src_range_large srl_shadowing_decl;
+        src_range_large srl_parent_use;
+        ast_node_get_src_range(
+            (ast_node*)ppdc->parent_sym, ppdc->parent_sym->declaring_body,
+            &srl_parent_sym);
+        ast_node_get_src_range(
+            (ast_node*)s, s->declaring_body, &srl_shadowing_decl);
+        ast_node_get_src_range(
+            (ast_node*)ppdc->parent_use.user, ppdc->parent_use.user_body,
+            &srl_parent_use);
+        error_log_report_annotated_thrice(
+            t->r->tc->err_log, ES_RESOLVER, false,
+            "cannot shadow previously used symbol during the preprocessor",
+            srl_shadowing_decl.smap, srl_shadowing_decl.start,
+            srl_shadowing_decl.end, "illegal shadowing here",
+            srl_parent_sym.smap, srl_parent_sym.start, srl_parent_sym.end,
+            "symbol that would be shadowed", srl_parent_use.smap,
+            srl_parent_use.start, srl_parent_use.end,
+            "use of the to be shadowed symbol here");
+        t->r->error_occured = true;
+        if (curr_body_propagate_error(t->r, target_body)) return ERR;
     }
     return OK;
 }

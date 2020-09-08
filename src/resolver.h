@@ -142,3 +142,4 @@ ureg claim_symbol_id(resolver* r, symbol* s, bool public_st);
 bool ctypes_unifiable(ast_elem* a, ast_elem* b);
 
 bool ast_body_is_pp_done(resolver* r, ast_body* b);
+int curr_body_propagate_error(resolver* r, ast_body* body);
