@@ -180,6 +180,7 @@ resolve_error ast_body_propagate_error(resolver* r, ast_body* body)
 }
 resolve_error curr_body_propagate_error(resolver* r, ast_body* body)
 {
+    assert(r->error_occured); // sanity check
     resolve_error re = ast_body_propagate_error(r, body);
     if (re) return re;
     if (!r->curr_pp_node) return RE_OK;
@@ -1963,7 +1964,11 @@ resolve_return(resolver* r, ast_body* body, expr_return* er)
         assert(false); // TODO: error
         return RE_ERROR;
     }
-    if (type_cast(tgt_type, er->value_ctype, &er->value)) {
+    type_cast_result tcr = type_cast(tgt_type, er->value_ctype, &er->value);
+    if (tcr) {
+        if (tcr == TYPE_CAST_POISONED) {
+            RETURN_POISONED(r, RE_OK, er, body);
+        }
         ureg vstart, vend;
         ast_node_get_bounds(er->value, &vstart, &vend);
         error_log_report_annotated_twice(
@@ -1974,7 +1979,7 @@ resolve_return(resolver* r, ast_body* body, expr_return* er)
             // TODO: st is kinda wrong here
             ast_body_get_smap(body), src_range_get_start(er->target->srange),
             src_range_get_end(er->target->srange), "target scope here");
-        return RE_TYPE_MISSMATCH;
+        RETURN_POISONED(r, RE_OK, er, body);
     }
     return RE_OK;
 }
@@ -2039,7 +2044,7 @@ static inline resolve_error resolve_identifier(
     if (amb) {
         assert(false); // TODO: report ambiguity
     }
-    if (ppdct_use_symbol(&r->ppdct, sym, e, body)) return RE_FATAL;
+    if (ppdct_use_symbol(&r->ppdct, sym, (ast_node*)e, body)) return RE_FATAL;
     re = resolve_ast_node(r, (ast_node*)sym, body, (ast_elem**)&sym, ctype);
     if (re) return re;
     e->value.sym = (symbol*)sym;
@@ -2245,31 +2250,10 @@ static inline resolve_error resolve_expr_paste_str(
     resolver* r, ast_body* body, expr_paste_str* eps, ast_elem** value,
     ast_elem** ctype)
 {
-    if (!r->curr_pp_node) {
-        src_range_large paste_srl;
-        ast_node_get_src_range((ast_node*)eps, body, &paste_srl);
-        error_log_report_annotated(
-            r->tc->err_log, ES_RESOLVER, false,
-            "paste call outside of preprocessor expression", paste_srl.smap,
-            paste_srl.start, paste_srl.end,
-            "paste call must reside in a preprocessor expression"
-            "result");
-        return RE_ERROR;
-    }
+    resolve_error re;
     ast_elem* val_type;
-    resolve_error re = resolve_ast_node(r, eps->value, body, NULL, &val_type);
+    re = resolve_ast_node(r, eps->value, body, NULL, &val_type);
     if (re) return re;
-    ast_node_set_resolved(&eps->node);
-    expr_pp* tgt_ppe = (expr_pp*)r->curr_pp_node->node;
-
-    assert(((ast_elem*)tgt_ppe)->kind == EXPR_PP);
-    if (!tgt_ppe->result_buffer.pasted_src) {
-        tgt_ppe->result_buffer.pasted_src = file_map_create_pasted_source(
-            &r->tc->t->filemap, r->tc, tgt_ppe,
-            ast_body_get_smap(r->curr_pp_node->declaring_body));
-        if (!tgt_ppe->result_buffer.pasted_src) return RE_FATAL;
-    }
-    eps->target = tgt_ppe->result_buffer.pasted_src;
     type_cast_result tcr =
         type_cast((ast_elem*)&PRIMITIVES[PT_STRING], val_type, &eps->value);
     if (tcr) {
@@ -2284,8 +2268,32 @@ static inline resolve_error resolve_expr_paste_str(
                 "paste expects a string as an argument", paste_srl.smap,
                 paste_srl.start, paste_srl.end, NULL);
         }
-        SET_THEN_RETURN_IF_RESOLVED(RE_OK, value, ctype, VOID_ELEM, ERROR_ELEM);
+        SET_THEN_RETURN_POISONED(
+            r, re, eps, body, value, ctype, VOID_ELEM, ERROR_ELEM);
     }
+    if (!r->curr_pp_node) {
+        src_range_large paste_srl;
+        ast_node_get_src_range((ast_node*)eps, body, &paste_srl);
+        error_log_report_annotated(
+            r->tc->err_log, ES_RESOLVER, false,
+            "paste call outside of preprocessor expression", paste_srl.smap,
+            paste_srl.start, paste_srl.end,
+            "paste call must reside in a preprocessor expression "
+            "result");
+        r->error_occured = true;
+        SET_THEN_RETURN_POISONED(
+            r, re, eps, body, value, ctype, VOID_ELEM, ERROR_ELEM);
+    }
+    ast_node_set_resolved(&eps->node);
+    expr_pp* tgt_ppe = (expr_pp*)r->curr_pp_node->node;
+    assert(((ast_elem*)tgt_ppe)->kind == EXPR_PP);
+    if (!tgt_ppe->result_buffer.pasted_src) {
+        tgt_ppe->result_buffer.pasted_src = file_map_create_pasted_source(
+            &r->tc->t->filemap, r->tc, tgt_ppe,
+            ast_body_get_smap(r->curr_pp_node->declaring_body));
+        if (!tgt_ppe->result_buffer.pasted_src) return RE_FATAL;
+    }
+    eps->target = tgt_ppe->result_buffer.pasted_src;
     r->curr_pp_node->pending_pastes = true;
     RETURN_RESOLVED(value, ctype, VOID_ELEM, VOID_ELEM);
 }
