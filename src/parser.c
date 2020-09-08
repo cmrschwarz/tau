@@ -2885,6 +2885,7 @@ parse_error parse_struct_decl(parser* p, modifier_status* mods, ast_node** n)
         (ast_node*)s, sg ? SC_STRUCT_GENERIC : SC_STRUCT, &mods->data);
     s->sym.name = name;
     s->visible_within_body = NULL; // TODO: parse this
+    ((sc_struct_base*)s)->extends_spec = NULL;
     pe = sym_fill_srange(p, &s->sym, mods->start, decl_end);
     if (pe) return pe;
 

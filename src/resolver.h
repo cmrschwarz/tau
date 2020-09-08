@@ -9,6 +9,7 @@
 #include "llvm_backend_api.h"
 #include "post_resolution_pass.h"
 #include "ptr_map.h"
+#include "pp_decl_clobber_table.h"
 typedef enum resolve_error_e {
     RE_FATAL = -1,
     RE_OK = 0,
@@ -72,6 +73,7 @@ typedef struct resolver_s {
     // general stuff
     thread_context* tc;
     ptr_map pm;
+    pp_decl_clobber_table ppdct;
     post_resolution_pass prp;
     llvm_backend* backend;
     bool deps_required_for_pp;
@@ -138,3 +140,5 @@ ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st);
 void report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev);
 ureg claim_symbol_id(resolver* r, symbol* s, bool public_st);
 bool ctypes_unifiable(ast_elem* a, ast_elem* b);
+
+bool ast_body_is_pp_done(resolver* r, ast_body* b);

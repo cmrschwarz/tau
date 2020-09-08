@@ -80,6 +80,9 @@ bool ast_elem_is_module_frame(ast_elem* s)
 {
     return s->kind >= MF_FIRST_ID && s->kind <= MF_LAST_ID;
 }
+bool ast_elem_is_from_module(ast_elem* s){
+    return ast_elem_is_module_frame(s) || s->kind == ELEM_MDG_NODE;
+}
 bool symbol_is_open_symbol(symbol* s)
 {
     // since we know it's a symbol an upper bounds check is uneccessary

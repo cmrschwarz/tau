@@ -2,40 +2,41 @@
 #include "utils/types.h"
 #include "utils/freelist.h"
 #include "ast.h"
-typedef struct symbol_table_s symbol_table;
+typedef struct ast_body_s ast_body;
 typedef struct resolver_s resolver;
 
-typedef struct pp_decl_users_s {
-    list users;
-} pp_decl_users;
-
 typedef struct pp_decl_clobber_s {
-    symbol_table* symtab;
+    ast_body* body;
     char* name;
-    symbol* parent_sym; //
+    symbol* parent_sym; // iff NULL waiting_users is set, otherwise parent_use
     union {
-        pp_decl_users* waiting_users; // when there is no matching parent sym
-        // first use of the parent symbol in the pp
+        list waiting_users;
+
+        // first use of the parent symbol in the pp is
         // recorded for error reporting on attempted decls
-        ast_node* parent_use;
+        struct {
+            ast_node* user;
+            ast_body* user_body;
+        } parent_use;
     };
 } pp_decl_clobber;
 
 typedef struct pp_decl_clobber_table_s {
     pp_decl_clobber* table;
     ureg hash_bits;
+    ureg hash_mask;
+    ureg max_fill;
     ureg clobber_count;
-    freelist pp_decl_users_mem;
+    resolver* r;
 } pp_decl_clobber_table;
 
-ppdct_init(pp_decl_clobber_table* t);
+int ppdct_init(pp_decl_clobber_table* t, resolver* r);
+void ppdct_fin(pp_decl_clobber_table* t);
 
 ureg ppdct_prehash_name(char* name);
 
-pp_decl_clobber* ppdct_lookup_raw(
-    pp_decl_clobber_table* t, symbol_table* st, char* name, ureg name_prehash,
-    ureg cap, ureg mask);
+int ppdct_add_symbol(
+    pp_decl_clobber_table* t, symbol* s, ast_body* target_body);
 
-ppdct_append(
-    pp_decl_clobber_table* t, pp_decl_clobber* loc, symbol_table* st,
-    char* name, ast_node* conflicting);
+int ppdct_use_symbol(
+    pp_decl_clobber_table* t, symbol* s, ast_node* user, ast_body* user_body);

@@ -888,6 +888,7 @@ bool ast_elem_is_struct(ast_elem* s);
 bool ast_elem_is_var(ast_elem* s);
 bool ast_elem_is_any_import(ast_elem* s);
 bool ast_elem_is_module_frame(ast_elem* s);
+bool ast_elem_is_from_module(ast_elem* s); // matches module frame and mdg node
 bool ast_elem_is_scope(ast_elem* s);
 bool ast_elem_is_symbol(ast_elem* s);
 bool ast_elem_is_expr(ast_elem* s);

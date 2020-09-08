@@ -202,6 +202,11 @@ add_symbol(resolver* r, ast_body* body, ast_body* shared_body, symbol* sym)
         // what to do for modules
         // symbol lookup should probably respect this
     }
+    else {
+        if (!ast_body_is_pp_done(r, tgt_body)) {
+            if (ppdct_add_symbol(&r->ppdct, sym, tgt_body)) return RE_FATAL;
+        }
+    }
     return RE_OK;
 }
 resolve_error add_pprn_to_waiting_list(resolver* r, pp_resolve_node* pprn)
@@ -2034,6 +2039,7 @@ static inline resolve_error resolve_identifier(
     if (amb) {
         assert(false); // TODO: report ambiguity
     }
+    if (ppdct_use_symbol(&r->ppdct, sym, e, body)) return RE_FATAL;
     re = resolve_ast_node(r, (ast_node*)sym, body, (ast_elem**)&sym, ctype);
     if (re) return re;
     e->value.sym = (symbol*)sym;
@@ -4114,6 +4120,8 @@ void resolver_reset_resolution_state(resolver* r)
     r->retracing_type_loop = false;
     r->module_group_constructor = NULL;
     r->module_group_destructor = NULL;
+    r->post_pp = false;
+    r->report_unknown_symbols = false;
 }
 static inline resolve_error resolver_resolve_raw(resolver* r)
 {
@@ -4456,7 +4464,8 @@ int resolver_partial_fin(resolver* r, int i, int res)
 {
     switch (i) {
         case -1:
-        case 11: llvm_backend_delete(r->backend); // fallthrough
+        case 12: llvm_backend_delete(r->backend); // fallthrough
+        case 11: ppdct_fin(&r->ppdct); // fallthrough
         case 10: ptr_map_fin(&r->pm); // fallthrough
         case 9: prp_fin(&r->prp); // fallthrough
         case 8: ptrlist_fin(&r->import_module_data_nodes); // fallthrough
@@ -4499,8 +4508,10 @@ int resolver_init(resolver* r, thread_context* tc)
     if (e) return resolver_partial_fin(r, 8, e);
     e = ptr_map_init(&r->pm, &r->tc->t->gpm);
     if (e) return resolver_partial_fin(r, 9, e);
+    e = ppdct_init(&r->ppdct, r);
+    if (e) return resolver_partial_fin(r, 10, e);
     r->backend = llvm_backend_new(r->tc);
-    if (!r->backend) return resolver_partial_fin(r, 10, ERR);
+    if (!r->backend) return resolver_partial_fin(r, 11, ERR);
     r->allow_type_loops = false;
     r->type_loop_start = NULL;
     return OK;
@@ -4511,4 +4522,14 @@ ast_elem* get_resolved_ast_node_ctype(ast_node* n)
     ast_elem* ctype;
     resolve_ast_node_raw(NULL, n, NULL, NULL, &ctype);
     return ctype;
+}
+
+bool ast_body_is_pp_done(resolver* r, ast_body* b)
+{
+    b = ast_body_get_non_paste_parent(b);
+    if (ast_elem_is_from_module((ast_elem*)b->owning_node)) {
+        return r->post_pp;
+    }
+    if (b->pprn) return false;
+    return true;
 }
