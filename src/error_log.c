@@ -641,7 +641,10 @@ int print_src_line(
                         next++;
                     }
                     ep_pos = next;
-                    if (ep_pos != ep_end) continue;
+                    if (ep_pos != ep_end) {
+                        msg_len = strlen(ep_pos->message);
+                        continue;
+                    }
                 }
             }
             ep_pos = next;
