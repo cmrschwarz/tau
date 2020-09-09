@@ -3718,16 +3718,9 @@ parse_error parse_statement(parser* p, ast_node** tgt)
                 if (t2->kind == TK_COLON) {
                     return parse_var_decl(p, &mods, tgt);
                 }
-                if (curr_parent_supports_exprs(p)) {
-                    pe = reject_modifiers(p, t, &mods);
-                    if (pe) return pe;
-                    return parse_expr_stmt(p, tgt);
-                }
-                t = lx_peek_2nd(&p->lx);
-                parser_error_1a(
-                    p, "unexpected token in statement", t->start, t->end,
-                    "expected ':' to initiate a declaration");
-                return PE_ERROR;
+                pe = reject_modifiers(p, t, &mods);
+                if (pe) return pe;
+                return parse_expr_stmt(p, tgt);
             }
             default: {
                 pe = reject_modifiers(p, t, &mods);

@@ -46,6 +46,7 @@ void pool_fin(pool* p)
 }
 void* pool_alloc(pool* p, ureg size)
 {
+    size = ceil_to_mult_of_pow_two(size, 8);
     // PERF: this is quite a hot function so not doing this and adjusting
     // the steal functions to leave a segment instead might be a good idea
     if (!p->head_segment) {

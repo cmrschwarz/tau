@@ -185,6 +185,11 @@ int curr_body_propagate_error(resolver* r, ast_body* body)
     if (!r->curr_pp_node) return RE_OK;
     return pprn_propagate_error(r, r->curr_pp_node);
 }
+bool is_curr_resolution_for_pp(resolver* r, ast_body* body)
+{
+    if (r->curr_pp_node) return true;
+    return !ast_body_is_pp_done(r, body);
+}
 static resolve_error
 add_symbol(resolver* r, ast_body* body, ast_body* shared_body, symbol* sym)
 {
@@ -836,14 +841,16 @@ static resolve_error add_ast_node_decls(
         case EXPR_PP: {
             expr_pp* epp = (expr_pp*)n;
             pp_resolve_node* prevcurr = r->curr_pp_node;
-            if (shared_body) {
+            bool create_pp =
+                shared_body || ast_elem_is_struct((ast_elem*)body->owning_node);
+            if (create_pp) {
                 // we need to add these during add decls already
                 // because we want to handle these before resolving
                 // any non pp stuff in the scope
                 assert(epp->pprn == NULL);
                 bool is_expr = ast_elem_is_expr((ast_elem*)epp->pp_expr);
                 pp_resolve_node* pprn = pp_resolve_node_create(
-                    r, is_expr ? n : epp->pp_expr, body, is_expr, false, false,
+                    r, is_expr ? n : epp->pp_expr, body, true, false, false,
                     false);
                 if (!pprn) return RE_FATAL;
                 epp->pprn = pprn;
@@ -853,7 +860,7 @@ static resolve_error add_ast_node_decls(
             }
             re = add_ast_node_decls(
                 r, body, shared_body, epp->pp_expr, public_st);
-            if (shared_body) r->curr_pp_node = prevcurr;
+            if (create_pp) r->curr_pp_node = prevcurr;
             if (re) return re;
             return RE_OK;
         }
@@ -872,10 +879,8 @@ static resolve_error add_ast_node_decls(
             s->type_derivs.ptr_id = ptr_map_claim_id(&r->pm);
             s->type_derivs.slice_id = ptr_map_claim_id(&r->pm);
             re = add_symbol(r, body, shared_body, (symbol*)s);
-            bool members_public_st =
-                shared_body && !is_local_node((ast_elem*)n);
-            re = add_body_decls(
-                r, body, NULL, &s->sb.sc.body, members_public_st);
+            // bool members_public_st =
+            // shared_body && !is_local_node((ast_elem*)n);
             s->backend_id = claim_symbol_id(r, (symbol*)s, public_st);
             return RE_OK;
         }
@@ -1139,6 +1144,9 @@ resolve_error add_body_decls(
     bool public_st)
 {
     assert(body->parent == parent_body); // TODO: remove parent body parameter
+    if (body->elements[0] && ast_node_get_declared(body->elements[0])) {
+        return RE_OK;
+    }
     for (ast_node** n = body->elements; *n; n++) {
         resolve_error re =
             add_ast_node_decls(r, body, shared_body, *n, public_st);
@@ -3225,11 +3233,23 @@ resolve_error resolve_func_from_call(
     else {
         ast_body* decl_body = fn->fnb.sc.osym.sym.declaring_body;
         if (!fn->fnb.sc.body.pprn) {
+            if (is_curr_resolution_for_pp(r, body)) {
+                re = resolve_func(r, body, &fn->fnb, NULL);
+                if (re) return re;
+                if (fn->fnb.sc.body.pprn) {
+                    re = curr_pprn_depend_on(r, body, &fn->fnb.sc.body.pprn);
+                    if (re) return re;
+                }
+                if (ast_node_get_contains_error((ast_node*)fn)) {
+                    return curr_body_propagate_error(r, body);
+                }
+                return RE_OK;
+            }
             fn->fnb.sc.body.pprn = pp_resolve_node_create(
                 r, (ast_node*)fn, decl_body, false, true, false, false);
             if (!fn->fnb.sc.body.pprn) return RE_FATAL;
         }
-        if (fn->fnb.return_type) {
+        if (fn->fnb.return_type && !fn->fnb.return_ctype) {
             re = resolve_ast_node(
                 r, fn->fnb.return_type, decl_body, &fn->fnb.return_ctype, NULL);
             if (re) return re;
@@ -3250,8 +3270,17 @@ resolve_error resolve_struct_or_trait(
     resolver* r, ast_body* body, sc_struct_base* stb, ast_elem** value,
     ast_elem** ctype)
 {
-    resolve_error re = RE_OK;
+    pp_resolve_node* prev_curr_pp = r->curr_pp_node;
+    r->curr_pp_node = NULL;
+    resolve_error re;
+    re = add_body_decls(
+        r, body, NULL, &stb->sc.body, !is_local_node((ast_elem*)stb));
+    if (re) return RE_OK;
+    re = resolver_run_pp_resolve_nodes(r, NULL);
+    if (re) return re;
     if (stb->sc.body.pprn && stb->sc.body.pprn->dep_count) {
+        assert(!r->curr_pp_node);
+        r->curr_pp_node = prev_curr_pp;
         re = curr_pprn_depend_on(r, body, &stb->sc.body.pprn);
         if (re) return re;
         return RE_UNREALIZED_COMPTIME;
@@ -3259,6 +3288,7 @@ resolve_error resolve_struct_or_trait(
     ast_body* b = &stb->sc.body;
     bool unrealized_comptime = false;
     bool unknown_symbol = false;
+    r->curr_pp_node = NULL;
     re = resolve_body_traits(r, b);
     if (!re) {
         for (ast_node** n = b->elements; *n != NULL; n++) {
@@ -3276,6 +3306,8 @@ resolve_error resolve_struct_or_trait(
             }
         }
     }
+    assert(!r->curr_pp_node);
+    r->curr_pp_node = prev_curr_pp;
     if (stb->sc.body.pprn) {
         resolve_error re2 = curr_pprn_depend_on(r, body, &stb->sc.body.pprn);
         if (!re2) {
@@ -3295,7 +3327,7 @@ resolve_error resolve_struct_or_trait(
 }
 // TODO: make sure we return!
 resolve_error resolve_func(
-    resolver* r, ast_body* parent_body, sc_func_base* fnb,
+    resolver* r, ast_body* requesting_body, sc_func_base* fnb,
     ast_node** continue_block)
 {
     bool generic = (fnb->sc.osym.sym.node.kind == SC_FUNC_GENERIC);
@@ -3347,7 +3379,7 @@ resolve_error resolve_func(
             r->generic_context = generic_parent;
             if (fnb->sc.body.pprn) {
                 return pp_resolve_node_activate(
-                    r, parent_body, &fnb->sc.body.pprn, true);
+                    r, requesting_body, &fnb->sc.body.pprn, true);
             }
             return RE_OK;
         }
@@ -3399,8 +3431,8 @@ resolve_error resolve_func(
     r->generic_context = generic_parent;
     if (re == RE_UNREALIZED_COMPTIME) {
         assert(bpprn);
-        re =
-            pp_resolve_node_activate(r, parent_body, &fnb->sc.body.pprn, false);
+        re = pp_resolve_node_activate(
+            r, requesting_body, &fnb->sc.body.pprn, false);
         if (re) return re;
         bpprn->continue_block = n;
         bpprn->block_pos_reachable = (stmt_ctype_ptr != NULL);
@@ -3413,7 +3445,7 @@ resolve_error resolve_func(
             fnb->sc.body.pprn->dummy = true;
         }
         resolve_error re2 = pp_resolve_node_activate(
-            r, parent_body, &fnb->sc.body.pprn, re == RE_OK);
+            r, requesting_body, &fnb->sc.body.pprn, re == RE_OK);
         if (re2) {
             assert(re2 == RE_FATAL);
             return re2;
@@ -3422,7 +3454,7 @@ resolve_error resolve_func(
 
     if (re) {
         ast_node_set_contains_error((ast_node*)fnb);
-        RETURN_POISONED(r, re, fnb, parent_body);
+        RETURN_POISONED(r, re, fnb, requesting_body);
     }
     if (stmt_ctype_ptr && fnb->return_ctype != VOID_ELEM) {
         ureg brace_end = src_range_get_end(fnb->sc.body.srange);
@@ -4537,6 +4569,6 @@ bool ast_body_is_pp_done(resolver* r, ast_body* b)
     if (ast_elem_is_from_module((ast_elem*)b->owning_node)) {
         return r->post_pp;
     }
-    if (b->pprn) return false;
-    return true;
+    if (!b->pprn) return true;
+    return !b->pprn->dummy;
 }

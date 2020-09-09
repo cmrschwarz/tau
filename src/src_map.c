@@ -170,6 +170,7 @@ src_range src_range_large_pack(thread_context* tc, src_range_large* d)
         ureg len = d->end - d->start;
         if (len > SRC_RANGE_MAX_LENGTH || d->start > SRC_RANGE_MAX_START) {
             ureg* tgt = pool_alloc(&tc->permmem, sizeof(ureg) * 2);
+            assert(((ureg)tgt & 0x3) == 0);
             if (!tgt) return SRC_RANGE_INVALID;
             *tgt = d->start;
             *(tgt + 1) = d->end;
@@ -178,6 +179,7 @@ src_range src_range_large_pack(thread_context* tc, src_range_large* d)
         return (d->start << SRC_RANGE_LENGTH_BITS) | len;
     }
     src_map** tgt = (src_map**)pool_alloc(&tc->permmem, sizeof(ureg) * 3);
+    assert(((ureg)tgt & 0x3) == 0);
     if (!tgt) return SRC_RANGE_INVALID;
     *tgt = d->smap;
     ureg* range = (void*)(tgt + 1);

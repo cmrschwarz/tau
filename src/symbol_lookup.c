@@ -370,6 +370,9 @@ symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res)
             sli->next_lookup_body = sli->next_lookup_body->parent;
         }
         re = symbol_lookup_level_run(sli, nlb, &sym);
+        if (sym && sli->enable_shadowing) {
+            sli->next_lookup_body = NULL;
+        }
         if (re) return re;
         if (sym) break;
     }
