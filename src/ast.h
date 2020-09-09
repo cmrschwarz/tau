@@ -243,7 +243,7 @@ typedef struct ast_node_s {
         operator_kind op_kind;
         // separate byte for this since it races
         // with flag access from other modules
-        // used on symbols
+        // used on symbols and expr_pp
         bool emitted_for_pp;
     };
     u16 flags;
@@ -498,6 +498,7 @@ typedef struct pasted_str_s {
     struct pasted_str_s* next;
 } pasted_str;
 
+typedef struct paste_evaluation_s paste_evaluation;
 typedef struct expr_pp_s {
     ast_node node;
     ast_node* pp_expr;
@@ -505,10 +506,9 @@ typedef struct expr_pp_s {
     struct pp_resolve_node_s* pprn;
     void* result;
     union result_buffer_u {
+        paste_evaluation* paste_eval;
         pasted_source* pasted_src;
-        // this must be big enough that
-        // sizeof(expr_paste_evaluation) <= sizeof(expr_pp)
-        ureg data[8];
+        ureg data[2];
     } result_buffer;
 } expr_pp;
 
@@ -528,7 +528,6 @@ typedef struct paste_evaluation_s {
     ast_node* expr;
     ast_elem* ctype;
     pasted_source* pasted_src;
-    ast_node* source_pp_expr; // the original expr contained in expr_pp
 } paste_evaluation;
 
 typedef struct pasted_source_s {
@@ -924,3 +923,5 @@ void import_group_get_data(
     const char** name, mdg_node** group_parent);
 
 bool ast_elem_is_import_group(ast_elem* e);
+pp_resolve_node** ast_node_try_get_pprn_ptr(ast_node* n);
+pp_resolve_node** ast_node_get_pprn_ptr(ast_node* n);

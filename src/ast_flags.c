@@ -63,6 +63,14 @@ bool ast_node_get_pp_expr_res_used(ast_node* n)
     return u16_get_bit(n->flags, ASTF_PP_EXPR_RES_USED);
 }
 
+void ast_node_set_pp_expr_contains_paste_eval(ast_node* n)
+{
+    u16_set_bit(&n->flags, ASTF_PP_EXPR_CONTAINS_PASTE_EVAL);
+}
+bool ast_node_get_pp_expr_contains_paste_eval(ast_node* n)
+{
+    return u16_get_bit(n->flags, ASTF_PP_EXPR_CONTAINS_PASTE_EVAL);
+}
 void ast_node_set_extern_func(ast_node* n)
 {
     u16_set_bit(&n->flags, ASTF_EXTERN_FUNC_OFFSET);

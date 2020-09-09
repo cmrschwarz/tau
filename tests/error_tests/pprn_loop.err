@@ -1,19 +1,12 @@
-resolver error: encountered cyclic dependency during preprocessor execution
+resolver error: resolution cycle
  ==> ./tests/error_tests/pprn_loop.tau:1:1
 1 |func test() -> int{
-  |^^^^^^^^^ loop contains this element
-
-resolver error: encountered cyclic dependency during preprocessor execution
- ==> ./tests/error_tests/pprn_loop.tau:2:12
+  |^^^^^^^^^ type definition depends on itself
 2 |    return #main();
-  |           ^^^^^^^ loop contains this element
-
-resolver error: encountered cyclic dependency during preprocessor execution
- ==> ./tests/error_tests/pprn_loop.tau:4:1
-4 |public func main() -> int{
-  |^^^^^^^^^^^^^^^^ loop contains this element
-
-resolver error: encountered cyclic dependency during preprocessor execution
- ==> ./tests/error_tests/pprn_loop.tau:5:10
-5 |  return #test();
-  |         ^^^^^^^ loop contains this element
+  |    ^^^^^^^^^^^^^^
+...
+7 |public func main() -> int{
+  |^^^^^^^^^^^^^^^^ 
+8 |    return #bar(test());
+  |    ^^^^^^^^^^^^^^^^^^^
+  |       loop detected^^

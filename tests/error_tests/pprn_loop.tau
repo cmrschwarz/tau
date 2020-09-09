@@ -1,6 +1,9 @@
 func test() -> int{
     return #main();
 }
+func bar(x: int) -> int{
+    return x;
+}
 public func main() -> int{
-  return #test();
+    return #bar(test());
 }

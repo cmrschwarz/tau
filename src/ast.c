@@ -414,3 +414,33 @@ bool ast_elem_is_import_group(ast_elem* s)
         default: return false;
     }
 }
+
+pp_resolve_node** ast_node_try_get_pprn_ptr(ast_node* n)
+{
+    switch (n->kind) {
+        case SC_FUNC:
+        case SC_FUNC_GENERIC: return &((sc_func_base*)n)->sc.body.pprn;
+        case SYM_VAR:
+        case SYM_VAR_INITIALIZED: return &((sym_var*)n)->pprn;
+        case EXPR_BLOCK: return &((expr_block*)n)->ebb.body.pprn;
+        case EXPR_LOOP: return &((expr_loop*)n)->ebb.body.pprn;
+        case SC_STRUCT: return &((sc_struct*)n)->sb.sc.body.pprn;
+        case SYM_NAMED_SYM_IMPORT_GROUP:
+            return &((sym_named_sym_import_group*)n)->im_data.pprn;
+        case ASTN_ANONYMOUS_SYM_IMPORT_GROUP:
+            return &((astn_anonymous_sym_import_group*)n)->im_data.pprn;
+        case SYM_IMPORT_MODULE: return &((sym_import_module*)n)->im_data.pprn;
+        case EXPR_PP: return &((expr_pp*)n)->pprn;
+        case EXPR_PASTE_EVALUATION:
+        case STMT_PASTE_EVALUATION:
+            return &((paste_evaluation*)n)->body.pprn;
+            // used for freeing pp_exprs replaced by pastes
+        default: return NULL;
+    }
+}
+pp_resolve_node** ast_node_get_pprn_ptr(ast_node* n)
+{
+    pp_resolve_node** pprnp = ast_node_try_get_pprn_ptr(n);
+    if (!pprnp) panic("invalid pprn node type");
+    return pprnp;
+}

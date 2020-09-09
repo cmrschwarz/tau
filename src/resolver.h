@@ -134,8 +134,7 @@ resolve_error resolve_ast_node(
 resolve_error resolve_import_symbol(
     resolver* r, sym_import_symbol* is, ast_body* requesting_body);
 resolve_error add_body_decls(
-    resolver* r, ast_body* parent_body, ast_body* shared_body, ast_body* body,
-    bool public_st);
+    resolver* r, ast_body* body, ast_body* shared_body, bool public_st);
 ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st);
 void report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev);
 ureg claim_symbol_id(resolver* r, symbol* s, bool public_st);

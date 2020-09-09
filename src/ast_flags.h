@@ -43,14 +43,15 @@ typedef enum dtor_kind_e {
 #define ASTF_PP_STMT_END_UNREACHABLE 3 // on stmt_paste_evaluation
 
 #define ASTF_COMPTIME_OFFSET 4 // on vars / funcs
+#define ASTF_PP_EXPR_CONTAINS_PASTE_EVAL 4 // on expr pp
 
-#define ASTF_USED_IN_PP_OFFSET 5
+#define ASTF_USED_IN_PP_OFFSET 5 // on any symbol
 
 #define ASTF_CONTAINS_ERRORS 6 // on any node
 
 #define ASTF_COMPUND_DECL_OFFSET 7 // on sym_var
 #define ASTF_TYPE_OPERATOR_OFFSET 7 // on op_binary / op_unary
-#define ASTF_RELATIVE_IMPORT_OFFSET 7 // on sym_import_module (when not ::xx)
+#define ASTF_RELATIVE_IMPORT_OFFSET 7 // on sym_import_module (when not ::sxx)
 #define ASTF_EXTERN_FUNC_OFFSET 7 // on funcs
 
 // needs 2 bits (8 - 9)
@@ -81,6 +82,9 @@ bool ast_node_get_const(ast_node* n);
 
 void ast_node_set_pp_expr_res_used(ast_node* n);
 bool ast_node_get_pp_expr_res_used(ast_node* n);
+
+void ast_node_set_pp_expr_contains_paste_eval(ast_node* n);
+bool ast_node_get_pp_expr_contains_paste_eval(ast_node* n);
 
 void ast_node_set_extern_func(ast_node* n);
 bool ast_node_get_extern_func(ast_node* n);

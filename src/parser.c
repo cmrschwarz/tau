@@ -2315,21 +2315,18 @@ parse_error init_paste_evaluation_parse(
     parser* p, expr_pp* epp, ast_node_kind kind, ast_body* parent_body,
     ast_body* parent_shared_body, paste_evaluation** eval)
 {
-    assert(sizeof(expr_pp) >= sizeof(paste_evaluation));
     pasted_source* ps = epp->result_buffer.pasted_src;
     *ps->paste_data.last_next = NULL;
     pasted_str* str = ps->paste_data.first;
     ps->read_data.paste_str = str;
     ps->read_data.read_str = NULL;
     ps->read_data.read_pos = NULL;
-    paste_evaluation* pe = (paste_evaluation*)epp;
-    ast_node* expr = epp->pp_expr;
+    paste_evaluation* pe = alloc_perm(p, sizeof(paste_evaluation));
+    if (!pe) return RE_FATAL;
     ps->source_pp_smap = ast_body_get_smap(parent_body);
     ps->source_pp_srange = epp->pp_expr->srange;
     pe->node.kind = kind;
     pe->node.flags = AST_NODE_FLAGS_DEFAULT;
-    // we only care about the file here
-    pe->source_pp_expr = expr;
     pe->body.parent = parent_body;
     pe->body.owning_node = (ast_node*)pe;
     pe->body.pprn = NULL;
@@ -2357,6 +2354,8 @@ parse_error init_paste_evaluation_parse(
         src_map_seek_set(paste_smap, lx_pos);
     }
     pe->node.srange = src_range_pack(p->lx.tc, 0, 0, paste_smap);
+    epp->result_buffer.paste_eval = pe;
+    ast_node_set_pp_expr_contains_paste_eval((ast_node*)epp);
     *eval = pe;
     p->file_root = NULL;
     p->paste_parent_body = parent_body;

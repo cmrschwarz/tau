@@ -234,7 +234,7 @@ resolve_error resolve_generic_struct(
     sbuffer_remove_back(&r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
     sbuffer_remove_back(&r->temp_stack, sizeof(ast_elem*) * ea->arg_count);
     if (re) return re;
-    re = add_body_decls(r, parent_body, NULL, &sgi->st.sb.sc.body, false);
+    re = add_body_decls(r, &sgi->st.sb.sc.body, NULL, false);
     if (re) return re;
     sgi->st.backend_id =
         claim_symbol_id(r, (symbol*)sgi, ast_body_is_public(&sg->sb.sc.body));

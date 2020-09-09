@@ -228,8 +228,13 @@ void free_astn_symtabs(ast_node* n)
             expr_macro_call* emc = (expr_macro_call*)n;
             free_body_symtabs(&emc->body);
         } break;
-
-        case EXPR_PP: free_astn_symtabs(((expr_pp*)n)->pp_expr); break;
+        case EXPR_PP: {
+            expr_pp* epp = (expr_pp*)n;
+            free_astn_symtabs(epp->pp_expr);
+            if (ast_node_get_pp_expr_contains_paste_eval(n)) {
+                free_astn_symtabs((ast_node*)epp->result_buffer.paste_eval);
+            }
+        } break;
         case EXPR_PASTE_STR: {
             free_astn_symtabs(((expr_paste_str*)n)->value);
         } break;
@@ -288,11 +293,9 @@ void free_astn_symtabs(ast_node* n)
         case EXPR_PASTE_EVALUATION: {
             paste_evaluation* pe = (paste_evaluation*)n;
             free_astn_symtabs(pe->expr);
-            free_astn_symtabs(pe->source_pp_expr);
         } break;
         case STMT_PASTE_EVALUATION: {
             paste_evaluation* pe = (paste_evaluation*)n;
-            free_astn_symtabs(pe->source_pp_expr);
             free_body_symtabs(&pe->body);
         } break;
         case EXPR_ARRAY_TYPE: {

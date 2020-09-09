@@ -1458,8 +1458,12 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     llvm_error lle;
     switch (n->kind) {
         case EXPR_PP: {
-            if (!vl && !vl_loaded) return LLE_OK;
             auto epp = (expr_pp*)n;
+            if (ast_node_get_pp_expr_contains_paste_eval(n)) {
+                return genAstNode(
+                    (ast_node*)epp->result_buffer.paste_eval, vl, vl_loaded);
+            }
+            if (!vl && !vl_loaded) return LLE_OK;
             if (!ast_node_get_emitted_for_pp(n)) {
                 return genAstNode(epp->pp_expr, vl, vl_loaded);
             }
