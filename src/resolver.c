@@ -57,7 +57,8 @@ static resolve_error add_ast_node_decls(
     resolver* r, ast_body* body, ast_body* shared_body, ast_node* n,
     bool public_st);
 resolve_error handle_resolve_error(
-    resolver* r, ast_node* n, ast_body* body, resolve_error re);
+    resolver* r, ast_node* n, ast_body* body, resolve_error re,
+    ast_elem** value, ast_elem** ctype);
 type_cast_result type_cast(
     ast_elem* source_type, ast_elem* target_type, ast_node** src_node_ptr);
 // must be a macro so value and ctype become lazily evaluated
@@ -402,7 +403,7 @@ resolve_error pprn_set_used_in_pp(resolver* r, pp_resolve_node* pprn)
                 r, im_data, pprn->node, pprn->declaring_body, true, NULL, NULL);
             if (re) {
                 return handle_resolve_error(
-                    r, pprn->node, pprn->declaring_body, re);
+                    r, pprn->node, pprn->declaring_body, re, NULL, NULL);
             }
         }
     }
@@ -2722,6 +2723,11 @@ static inline resolve_error resolve_ast_node_raw(
         case SYM_VAR_INITIALIZED: {
             sym_var* v = (sym_var*)n;
             if (resolved) {
+                if (ast_node_get_poisoned(n)) {
+                    re = curr_body_propagate_error(r, body);
+                    if (re) return re;
+                    RETURN_RESOLVED(value, ctype, v, ERROR_ELEM);
+                }
                 if (v->pprn) {
                     // if the symbol table isn't public we are looking up a
                     // symbol inside a function since we can find it we're
@@ -3042,22 +3048,8 @@ report_type_loop(resolver* r, ast_node* n, ast_body* body)
         r->tc->err_log, ES_RESOLVER, false, "resolution cycle", srl.smap,
         srl.start, srl.end, "type definition depends on itself", annot_count);
     bool skip_next = false;
-    for (ureg i = 0; i < annot_count; i++) {
-        n = (ast_node*)stack_pop(&r->error_stack);
-        assert(n);
-        ast_body* err_body = (ast_body*)stack_pop(&r->error_stack);
-        ast_node_get_src_range(n, err_body, &srl);
-        bool last_annot = (i + 1 == annot_count);
-        if (!last_annot && (skip_next || n->kind == EXPR_BLOCK)) {
-            // don't highlight too much stuff
-            ast_node_get_src_range(n, err_body, &srl);
-            error_add_annotation(e, srl.smap, srl.start, srl.end, NULL);
-            skip_next = false;
-        }
-        else {
-            char* annot = last_annot ? "loop detected" : "";
-            error_add_annotation(e, srl.smap, srl.start, srl.end, annot);
-        }
+    annot_count++;
+    while (true) {
         ast_node_set_resolved(n);
         ast_node_set_poisoned(n);
         re = ast_node_propagate_error(r, n);
@@ -3068,6 +3060,23 @@ report_type_loop(resolver* r, ast_node* n, ast_body* body)
         if (n->kind == EXPR_RETURN || n->kind == EXPR_OP_UNARY ||
             n->kind == EXPR_OP_BINARY || n->kind == EXPR_PP) {
             skip_next = true;
+        }
+        annot_count--;
+        if (annot_count == 0) break;
+        n = (ast_node*)stack_pop(&r->error_stack);
+        assert(n);
+        ast_body* err_body = (ast_body*)stack_pop(&r->error_stack);
+        ast_node_get_src_range(n, err_body, &srl);
+        bool last_annot = (annot_count == 1);
+        if (!last_annot && (skip_next || n->kind == EXPR_BLOCK)) {
+            // don't highlight too much stuff
+            ast_node_get_src_range(n, err_body, &srl);
+            error_add_annotation(e, srl.smap, srl.start, srl.end, NULL);
+            skip_next = false;
+        }
+        else {
+            char* annot = last_annot ? "loop detected" : "";
+            error_add_annotation(e, srl.smap, srl.start, srl.end, annot);
         }
         if (re) return re;
     }
@@ -3081,28 +3090,26 @@ resolve_error add_error_entry(resolver* r, ast_node* n, ast_body* body)
     if (stack_push(&r->error_stack, n)) return RE_FATAL;
     return RE_OK;
 }
-resolve_error
-handle_resolve_error(resolver* r, ast_node* n, ast_body* body, resolve_error re)
+resolve_error handle_resolve_error(
+    resolver* r, ast_node* n, ast_body* body, resolve_error re,
+    ast_elem** value, ast_elem** ctype)
 {
     if (!re) return RE_OK;
+    bool started_here = false;
     if (re == RE_TYPE_LOOP) {
-        if (!r->allow_type_loops) {
-            if (!r->type_loop_start) {
-                r->type_loop_start = n;
-            }
-            else {
-                if (n == r->type_loop_start) {
-                    if (r->retracing_type_loop) return re;
-                    return report_type_loop(r, n, body);
-                }
-                if (r->retracing_type_loop) {
-                    add_error_entry(r, n, body);
-                }
-            }
+        if (!r->type_loop_start) {
+            r->type_loop_start = n;
+            started_here = true;
         }
-        else if (n != r->type_loop_start) {
-            if (re != RE_UNREALIZED_COMPTIME && r->tc->t->trap_on_error) {
-                debugbreak();
+        if (!r->allow_type_loops && !started_here) {
+            if (n == r->type_loop_start) {
+                if (r->retracing_type_loop) return re;
+                re = report_type_loop(r, n, body);
+                SET_VAL_CTYPE(value, ctype, ERROR_ELEM, ERROR_ELEM);
+                return re;
+            }
+            if (r->retracing_type_loop) {
+                add_error_entry(r, n, body);
             }
         }
         ast_node_clear_resolving(n);
@@ -3112,6 +3119,10 @@ handle_resolve_error(resolver* r, ast_node* n, ast_body* body, resolve_error re)
             ast_node_clear_resolving(n);
         }
     }
+    if (re != RE_UNREALIZED_COMPTIME && re != RE_TYPE_LOOP &&
+        r->tc->t->trap_on_error) {
+        debugbreak();
+    }
     return re;
 }
 resolve_error resolve_ast_node(
@@ -3119,7 +3130,7 @@ resolve_error resolve_ast_node(
     ast_elem** ctype)
 {
     resolve_error re = resolve_ast_node_raw(r, n, body, value, ctype);
-    return handle_resolve_error(r, n, body, re);
+    return handle_resolve_error(r, n, body, re, value, ctype);
 }
 resolve_error resolve_expr_body(
     resolver* r, ast_body* parent_body, ast_node* expr, ast_body* b,
@@ -4029,7 +4040,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
                 else {
                     panic("compiler bug");
                 }
-                re = handle_resolve_error(r, node, body, re);
+                re = handle_resolve_error(r, node, body, re, NULL, NULL);
                 if (re) {
                     if (re == RE_UNREALIZED_COMPTIME) {
                         progress = true;
