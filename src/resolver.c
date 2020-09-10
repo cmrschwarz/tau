@@ -2104,10 +2104,17 @@ static inline resolve_error resolve_if(
     RETURN_RESOLVED(value, ctype, ei, ei->ctype);
 }
 static inline resolve_error resolve_expr_pp(
-    resolver* r, ast_body* body, expr_pp* ppe, ast_elem** value,
-    ast_elem** ctype)
+    resolver* r, ast_body* body, expr_pp* ppe, bool from_pprnlist,
+    ast_elem** value, ast_elem** ctype)
 {
-    if (ppe->pprn && ppe->pprn->pending_pastes) return RE_UNREALIZED_COMPTIME;
+    if (ppe->pprn) {
+        if (ppe->pprn->pending_pastes) return RE_UNREALIZED_COMPTIME;
+        if (!from_pprnlist && ppe->pprn->run_individually &&
+            ast_elem_has_unordered_body((ast_elem*)body->owning_node)) {
+            assert(ppe->pprn->activated);
+            return RE_UNREALIZED_COMPTIME;
+        }
+    }
     bool is_stmt = !ast_node_get_pp_expr_res_used(&ppe->node);
     resolve_error re;
     if (ppe->ctype == PASTED_EXPR_ELEM) {
@@ -2839,7 +2846,7 @@ static inline resolve_error resolve_ast_node_raw(
                 assert(!value);
                 RETURN_RESOLVED(value, ctype, NULL, ppe->ctype);
             }
-            return resolve_expr_pp(r, body, ppe, value, ctype);
+            return resolve_expr_pp(r, body, ppe, false, value, ctype);
         }
         case EXPR_PASTE_STR: {
             if (resolved) {
@@ -3020,7 +3027,6 @@ static inline resolve_error resolve_ast_node_raw(
             ast_node_set_resolved(n);
             return RE_OK;
         }
-
         default: assert(false); return RE_UNKNOWN_SYMBOL;
     }
 }
@@ -3280,8 +3286,6 @@ resolve_error resolve_struct_or_trait(
     r->curr_pp_node = NULL;
     resolve_error re;
     re = add_body_decls(r, &stb->sc.body, NULL, !is_local_node((ast_elem*)stb));
-    if (re) return RE_OK;
-    re = resolver_run_pp_resolve_nodes(r, NULL);
     if (re) return re;
     if (stb->sc.body.pprn && stb->sc.body.pprn->dep_count) {
         assert(!r->curr_pp_node);
@@ -3295,6 +3299,9 @@ resolve_error resolve_struct_or_trait(
     bool unknown_symbol = false;
     r->curr_pp_node = NULL;
     re = resolve_body_traits(r, b);
+    if (!re) {
+        re = resolver_run_pp_resolve_nodes(r, NULL);
+    }
     if (!re) {
         for (ast_node** n = b->elements; *n != NULL; n++) {
             re = resolve_ast_node(r, *n, b, NULL, NULL);
@@ -4035,7 +4042,8 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
                 else if (rn->node->kind == EXPR_PP) {
                     rn->pending_pastes = false;
                     rn->continue_block = NULL;
-                    re = resolve_expr_pp(r, body, (expr_pp*)node, NULL, NULL);
+                    re = resolve_expr_pp(
+                        r, body, (expr_pp*)node, true, NULL, NULL);
                 }
                 else {
                     panic("compiler bug");
@@ -4059,7 +4067,14 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
             // can't be the mdgn because of "declaring" st node
             assert(rn->node->kind != ELEM_MDG_NODE);
             ast_node* astn = rn->node;
-            re = resolve_ast_node(r, astn, rn->declaring_body, NULL, NULL);
+            if (astn->kind == EXPR_PP) {
+                // so we can set from_pprnlist to true
+                re = resolve_expr_pp(
+                    r, rn->declaring_body, (expr_pp*)astn, true, NULL, NULL);
+            }
+            else {
+                re = resolve_ast_node(r, astn, rn->declaring_body, NULL, NULL);
+            }
             if (re == RE_UNREALIZED_COMPTIME) {
                 ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
                 progress = true;
