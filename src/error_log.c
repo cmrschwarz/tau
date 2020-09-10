@@ -728,6 +728,7 @@ int report_error(master_error_log* mel, error* e, bool last_err)
     static err_point err_points[ERR_POINT_BUFFER_SIZE];
     pec(mel, ANSICOLOR_BOLD);
     switch (e->stage) {
+        case ES_LINKER: break; // already part of the message
         case ES_TOKENIZER: pect(mel, ANSICOLOR_GREEN, "lexer "); break;
         case ES_PARSER: pect(mel, ANSICOLOR_CYAN, "parser "); break;
         case ES_RESOLVER: pect(mel, ANSICOLOR_MAGENTA, "resolver "); break;
@@ -738,7 +739,7 @@ int report_error(master_error_log* mel, error* e, bool last_err)
         pec(mel, ANSICOLOR_YELLOW);
     }
     else {
-        pe("error: ");
+        if (e->stage != ES_LINKER) pe("error: ");
         pec(mel, ANSICOLOR_RED);
     }
     pe(e->message);

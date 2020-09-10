@@ -18,6 +18,7 @@ typedef struct sbuffer_s ptrlist;
 
 typedef enum llvm_error_e {
     LLE_OK = 0,
+    LLE_ERROR,
     LLE_FATAL,
 } llvm_error;
 
@@ -47,8 +48,8 @@ llvm_error llvm_backend_emit_module(
 void llvm_free_module(llvm_module* mod);
 
 int llvm_link_modules(
-    tauc* t, llvm_module** start, llvm_module** end, ptrlist* link_libs,
-    char* output_path);
+    thread_context* tc, llvm_module** start, llvm_module** end,
+    ptrlist* link_libs, char* output_path);
 
 llvm_error llvm_backend_generate_entrypoint(
     llvm_backend* llvmb, sc_func* mainfn, sc_func* startfn, aseglist* ctors,

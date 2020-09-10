@@ -646,7 +646,7 @@ int tauc_link(tauc* t)
     int r = 0;
 
     if (t->emit_exe) {
-        r = llvm_link_modules(t, mods, i, &t->filemap.rt_src_libs, "a.out");
+        r = llvm_link_modules(tc, mods, i, &t->filemap.rt_src_libs, "a.out");
         if (!t->emit_objs) {
             r |= llvm_delete_objs(mods, i);
         }
@@ -655,6 +655,7 @@ int tauc_link(tauc* t)
         llvm_free_module(*m);
     }
     tfree(mods);
+    if (r) tauc_error_occured(t, r);
     return r;
 }
 void tauc_error_occured(tauc* t, int ec)

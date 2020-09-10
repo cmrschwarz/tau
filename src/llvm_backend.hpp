@@ -289,8 +289,8 @@ struct LLVMBackend {
 };
 
 llvm_error linkLLVMModules(
-    LLVMModule** start, LLVMModule** end, ptrlist* link_libs,
-    char* output_path);
+    thread_context* tc, LLVMModule** start, LLVMModule** end,
+    ptrlist* link_libs, char* output_path);
 
 llvm_error removeObjs(LLVMModule** start, LLVMModule** end);
 #endif

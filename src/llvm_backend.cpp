@@ -163,15 +163,16 @@ void llvm_free_module(llvm_module* mod)
     delete (LLVMModule*)mod;
 }
 int llvm_link_modules(
-    tauc* t, llvm_module** start, llvm_module** end, ptrlist* link_libs,
-    char* output_path)
+    thread_context* tc, llvm_module** start, llvm_module** end,
+    ptrlist* link_libs, char* output_path)
 {
     llvm_error lle;
     TAU_TIME_STAGE_CTX(
-        t,
+        tc->t,
         {
             lle = linkLLVMModules(
-                (LLVMModule**)start, (LLVMModule**)end, link_libs, output_path);
+                tc, (LLVMModule**)start, (LLVMModule**)end, link_libs,
+                output_path);
         },
         {
             tprintf("linking {");
@@ -2576,13 +2577,13 @@ llvm_error LLVMBackend::generateEntrypoint(
     }
     return LLE_OK;
 }
-
 llvm_error linkLLVMModules(
-    LLVMModule** start, LLVMModule** end, ptrlist* link_libs, char* output_path)
+    thread_context* tc, LLVMModule** start, LLVMModule** end,
+    ptrlist* link_libs, char* output_path)
 {
     // ureg args_count = 10 + (end - start);
     std::vector<const char*> args;
-    args.push_back("lld"); // argv[0] -> programm location
+    args.push_back("linker"); // argv[0] -> programm location
     for (LLVMModule** i = start; i != end; i++) {
         args.push_back((**i).module_obj.c_str());
     }
@@ -2617,12 +2618,31 @@ llvm_error linkLLVMModules(
       tflush();
       */
     llvm::ArrayRef<const char*> arr_ref(&args[0], args.size());
-    // TODO: wrap these errors
-    lld::elf::link(arr_ref, false, llvm::outs(), llvm::errs());
+    llvm::SmallVector<char, 128> errs_sv;
+    llvm::raw_svector_ostream errs_sv_stream{errs_sv};
+    bool res = lld::elf::link(arr_ref, false, llvm::nulls(), errs_sv_stream);
     for (char** i = libs; i != libs_head; i++) {
         tfree(*i);
     }
     tfree(libs);
+    if (errs_sv.size()) {
+        while (true) { // trim trailing whitespace
+            if (errs_sv.empty()) break; // probably can't happen but eh
+            char b = errs_sv.back();
+            if (b == '\n' || b == '\r' || b == ' ') {
+                errs_sv.pop_back();
+            }
+            else {
+                break;
+            }
+        }
+        errs_sv.push_back('\0');
+        const char* begin = errs_sv.begin();
+        char* msg = error_log_cat_strings(tc->err_log, 1, &begin);
+        if (!msg) return LLE_FATAL;
+        error_log_report_general(tc->err_log, ES_LINKER, false, msg);
+        return LLE_ERROR;
+    }
     return LLE_OK;
 }
 
