@@ -2643,6 +2643,12 @@ llvm_error linkLLVMModules(
         error_log_report_general(tc->err_log, ES_LINKER, false, msg);
         return LLE_ERROR;
     }
+    else if (!res) {
+        error_log_report_general(
+            tc->err_log, ES_LINKER, false,
+            "linker error: fatal error inside lld");
+        return LLE_ERROR;
+    }
     return LLE_OK;
 }
 
