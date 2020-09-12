@@ -86,7 +86,7 @@ typedef struct resolver_s {
     stack error_stack;
     ast_node* type_loop_start;
     bool allow_type_loops;
-    bool post_pp;
+    bool mf_pp_done;
     bool report_unknown_symbols;
     bool retracing_type_loop;
     bool generic_context;

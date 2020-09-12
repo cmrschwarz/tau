@@ -32,6 +32,7 @@ void ppdct_fin(pp_decl_clobber_table* t)
     for (pp_decl_clobber* i = t->table; i != end; i++) {
         if (!i->body || i->parent_sym || !i->name) continue;
         list_fin(&i->waiting_users->waiting_users, true);
+        freelist_free(&t->waiting_users_mem, i->waiting_users);
     }
     tfree(t->table);
     freelist_fin(&t->waiting_users_mem);
@@ -116,13 +117,13 @@ notify_users(pp_decl_clobber_table* t, ppdct_waiting_users* wu, bool found)
     resolve_error re1 = RE_OK;
     while ((v = list_it_next(&it, &wu->waiting_users))) {
         if ((ureg)v & (ureg)1) {
-            re = notify_users(
-                t, (ppdct_waiting_users*)((ureg)v ^ (ureg)1), found);
+            if (found || rc0) {
+                re = pp_resolve_node_dep_done(
+                    t->r, (pp_resolve_node*)((ureg)v ^ (ureg)1), NULL);
+            }
         }
         else {
-            if (found || rc0) {
-                re = pp_resolve_node_dep_done(t->r, (pp_resolve_node*)v, NULL);
-            }
+            re = notify_users(t, (ppdct_waiting_users*)v, found);
         }
         re1 = add_resolve_error(re1, re);
     }
@@ -144,7 +145,7 @@ int ppdct_add_symbol(
     ureg name_hash = ppdct_prehash_name(s->name);
     pp_decl_clobber* ppdc =
         ppdct_lookup_raw(t, target_body, associtated_type, s->name, name_hash);
-    if (!ppdc->body) return RE_OK;
+    if (!ppdc->body || ppdc->body == TOMBSTONE) return RE_OK;
     if (ppdc->parent_sym) {
         ast_node_set_poisoned(&s->node);
         src_range_large srl_parent_sym;
@@ -188,7 +189,8 @@ static inline int ppdct_block_symbol(
 {
     ureg name_hash = ppdct_prehash_name(name);
     bool continue_up = true;
-    void* lower_waiting_users = NULL;
+    ppdct_waiting_users* lower_waiting_users = NULL;
+    void* dep_mangled = (void*)((ureg)dependency | 1);
     for (ast_body* b = lower_body; continue_up; b = b->parent) {
         b = ast_body_get_non_paste_parent(b);
         if (b == upper_body) break;
@@ -227,6 +229,7 @@ static inline int ppdct_block_symbol(
                     return r;
                 }
                 ppdc->waiting_users = wu;
+                wu->refcount = 1;
             }
             ppdc->body = b;
             ppdc->associated_type = associtated_type;
@@ -239,12 +242,12 @@ static inline int ppdct_block_symbol(
                 r = list_append(
                     &ppdc->waiting_users->waiting_users, NULL,
                     lower_waiting_users);
+                lower_waiting_users->refcount++;
             }
             else {
-                assert(!((ureg)ppdc->waiting_users & 1));
-                lower_waiting_users = (void*)((ureg)ppdc->waiting_users | 1);
+                lower_waiting_users = ppdc->waiting_users;
                 r = list_append(
-                    &ppdc->waiting_users->waiting_users, NULL, dependency);
+                    &ppdc->waiting_users->waiting_users, NULL, dep_mangled);
             }
             if (r) return r;
             assert(notifier_added);

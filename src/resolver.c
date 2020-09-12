@@ -2024,8 +2024,15 @@ static inline resolve_error resolve_identifier(
         resolver_lookup_single(r, body, NULL, body, e->value.str, &sym, &amb);
     if (re) return re;
     if (!sym) {
-        if (!r->report_unknown_symbols) {
-            return RE_UNKNOWN_SYMBOL;
+        pp_resolve_node* pprn;
+        re = get_curr_pprn(r, body, &pprn);
+        if (re) return re;
+        if (pprn) {
+            bool not_added = false;
+            int res = ppdct_require_symbol(
+                &r->ppdct, body, NULL, e->value.str, pprn, &not_added);
+            if (res) return RE_FATAL;
+            if (not_added) return RE_UNKNOWN_SYMBOL;
         }
         report_unknown_symbol(r, (ast_node*)e, body);
         SET_THEN_RETURN_POISONED(
@@ -4134,7 +4141,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
 }
 resolve_error resolver_handle_post_pp(resolver* r)
 {
-    r->post_pp = true;
+    r->mf_pp_done = true;
     r->report_unknown_symbols = true;
     resolve_error re;
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
@@ -4196,7 +4203,7 @@ void resolver_reset_resolution_state(resolver* r)
     r->retracing_type_loop = false;
     r->module_group_constructor = NULL;
     r->module_group_destructor = NULL;
-    r->post_pp = false;
+    r->mf_pp_done = false;
     r->report_unknown_symbols = false;
 }
 static inline resolve_error resolver_resolve_raw(resolver* r)
@@ -4402,7 +4409,7 @@ void resolver_setup_blank_resolve(resolver* r)
     // global ids of other modules it might use
     r->public_sym_count = 0;
     r->private_sym_count = 0;
-    r->post_pp = false;
+    r->mf_pp_done = false;
     r->report_unknown_symbols = false;
     r->id_space = PRIV_SYMBOL_OFFSET;
     r->deps_required_for_pp = false;
@@ -4435,7 +4442,7 @@ void resolver_unpack_partial_resolution_data(
     r->committed_waiters = prd->committed_waiters;
     r->public_sym_count = prd->public_sym_count;
     r->private_sym_count = prd->private_sym_count;
-    r->post_pp = false;
+    r->mf_pp_done = false;
     r->report_unknown_symbols = false;
 }
 resolve_error resolver_resolve_and_emit(
@@ -4604,7 +4611,7 @@ bool ast_body_is_pp_done(resolver* r, ast_body* b)
 {
     b = ast_body_get_non_paste_parent(b);
     if (ast_elem_is_from_module((ast_elem*)b->owning_node)) {
-        return r->post_pp;
+        return r->mf_pp_done;
     }
     if (!b->pprn) return true;
     return !b->pprn->dummy;
