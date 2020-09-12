@@ -18,7 +18,6 @@ typedef enum type_cast_result_e {
     TYPE_CAST_INCOMPATIBLE,
     TYPE_CAST_POISONED,
 } type_cast_result;
-
 resolve_error
 resolve_param(resolver* r, sym_param* p, bool generic, ast_elem** ctype);
 resolve_error
@@ -99,6 +98,13 @@ type_cast_result type_cast(
         RETURN_POISONED(r, re, node, body);                                    \
     } while (false)
 
+resolve_error add_resolve_error(resolve_error res, resolve_error add)
+{
+    if (!res) return add;
+    if (res == RE_FATAL) return res;
+    if (add == RE_SUSPENDED) return add;
+    return res;
+}
 static void report_unknown_symbol(resolver* r, ast_node* n, ast_body* body)
 {
     src_range_large srl;
@@ -210,7 +216,8 @@ add_symbol(resolver* r, ast_body* body, ast_body* shared_body, symbol* sym)
     }
     else {
         if (!ast_body_is_pp_done(r, tgt_body)) {
-            if (ppdct_add_symbol(&r->ppdct, sym, tgt_body)) return RE_FATAL;
+            if (ppdct_add_symbol(&r->ppdct, sym, tgt_body, NULL))
+                return RE_FATAL;
         }
     }
     return RE_OK;
@@ -2017,7 +2024,9 @@ static inline resolve_error resolve_identifier(
         resolver_lookup_single(r, body, NULL, body, e->value.str, &sym, &amb);
     if (re) return re;
     if (!sym) {
-        if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
+        if (!r->report_unknown_symbols) {
+            return RE_UNKNOWN_SYMBOL;
+        }
         report_unknown_symbol(r, (ast_node*)e, body);
         SET_THEN_RETURN_POISONED(
             r, RE_OK, e, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
@@ -2025,7 +2034,8 @@ static inline resolve_error resolve_identifier(
     if (amb) {
         assert(false); // TODO: report ambiguity
     }
-    if (ppdct_use_symbol(&r->ppdct, sym, (ast_node*)e, body)) return RE_FATAL;
+    if (ppdct_use_symbol(&r->ppdct, sym, body, NULL, (ast_node*)e))
+        return RE_FATAL;
     re = resolve_ast_node(r, (ast_node*)sym, body, (ast_elem**)&sym, ctype);
     if (re) return re;
     e->value.sym = (symbol*)sym;
@@ -3894,8 +3904,6 @@ resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn)
 }
 
 resolve_error
-pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress);
-resolve_error
 pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
 {
     assert(pprn->node);
@@ -3979,10 +3987,90 @@ resolve_error report_cyclic_pp_deps(resolver* r)
     }
     return re;
 }
+resolve_error handle_pending_pprns(resolver* r, bool* progress)
+{
+    resolve_error re;
+    pli it = pli_begin(&r->pp_resolve_nodes_pending);
+    for (pp_resolve_node* rn = pli_next(&it); rn; rn = pli_next(&it)) {
+        if (rn->ready) {
+            *progress = true;
+            ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
+            continue;
+        }
+        if (rn->continue_block) {
+            ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
+            *progress = true;
+            ast_node* node = rn->node;
+            ast_body* body = rn->declaring_body;
+            if (rn->node->kind == SC_FUNC) {
+                re = resolve_func(
+                    r, body, (sc_func_base*)node, rn->continue_block);
+            }
+            else if (rn->node->kind == EXPR_BLOCK) {
+                re = resolve_expr_block(r, (expr_block*)node, body, NULL, NULL);
+            }
+            else if (rn->node->kind == STMT_PASTE_EVALUATION) {
+                bool end_reachable;
+                re = resolve_expr_body(
+                    r, body, node, &((paste_evaluation*)node)->body,
+                    &end_reachable);
+            }
+            else if (rn->node->kind == EXPR_PP) {
+                rn->pending_pastes = false;
+                rn->continue_block = NULL;
+                re = resolve_expr_pp(r, body, (expr_pp*)node, true, NULL, NULL);
+            }
+            else {
+                panic("compiler bug");
+            }
+            re = handle_resolve_error(r, node, body, re, NULL, NULL);
+            if (re) {
+                if (re == RE_UNREALIZED_COMPTIME) {
+                    *progress = true;
+                }
+                else if (re == RE_UNKNOWN_SYMBOL) {
+                    continue;
+                }
+                else {
+                    return re;
+                }
+            }
+            continue;
+        }
+        assert(r->curr_pp_node == NULL);
+        assert(rn->run_individually);
+        // can't be the mdgn because of "declaring" st node
+        assert(rn->node->kind != ELEM_MDG_NODE);
+        ast_node* astn = rn->node;
+        if (astn->kind == EXPR_PP) {
+            // so we can set from_pprnlist to true
+            re = resolve_expr_pp(
+                r, rn->declaring_body, (expr_pp*)astn, true, NULL, NULL);
+        }
+        else {
+            re = resolve_ast_node(r, astn, rn->declaring_body, NULL, NULL);
+        }
+        if (re == RE_UNREALIZED_COMPTIME) {
+            ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
+            *progress = true;
+            continue;
+        }
+        if (re == RE_UNKNOWN_SYMBOL) {
+            continue;
+        }
+        if (re) return re;
+        // these have their own list
+        assert(!ast_elem_is_any_import((ast_elem*)astn));
+        // otherwise we would have gotten an error?
+        assert(ast_node_get_resolved(astn));
+        *progress = true;
+        ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
+    }
+    return RE_OK;
+}
 resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
 {
     llvm_error lle;
-    pli it;
     resolve_error re;
     bool progress = false;
     do {
@@ -3990,109 +4078,11 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
             if (made_progress) *made_progress = true;
             progress = false;
         }
-        if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
-            print_pprns(r, "running ", true);
-            ureg priv_count = r->id_space - PRIV_SYMBOL_OFFSET;
-            llvm_backend_reserve_symbols(
-                r->backend, priv_count, atomic_ureg_load(&r->tc->t->node_ids));
-            if (!r->deps_required_for_pp) {
-                r->deps_required_for_pp = true;
-                for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
-                    int res = mdg_node_require_requirements(*n, r->tc, true);
-                    if (res) return RE_FATAL;
-                }
-            }
-            lle = llvm_backend_run_pp(
-                r->backend, priv_count, &r->pp_resolve_nodes_ready);
-            if (lle) return RE_FATAL;
-            it = pli_rbegin(&r->pp_resolve_nodes_ready);
-            for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
-                pp_resolve_node_done(r, rn, &progress);
-                ptrlist_remove_next(&r->pp_resolve_nodes_ready, &it);
-            }
-            if (made_progress) *made_progress = true;
-        }
         // we try to resolve pending nodes again
-        it = pli_begin(&r->pp_resolve_nodes_pending);
-        for (pp_resolve_node* rn = pli_next(&it); rn; rn = pli_next(&it)) {
-            if (rn->ready) {
-                progress = true;
-                ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
-                continue;
-            }
-            if (rn->continue_block) {
-                ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
-                progress = true;
-                ast_node* node = rn->node;
-                ast_body* body = rn->declaring_body;
-                if (rn->node->kind == SC_FUNC) {
-                    re = resolve_func(
-                        r, body, (sc_func_base*)node, rn->continue_block);
-                }
-                else if (rn->node->kind == EXPR_BLOCK) {
-                    re = resolve_expr_block(
-                        r, (expr_block*)node, body, NULL, NULL);
-                }
-                else if (rn->node->kind == STMT_PASTE_EVALUATION) {
-                    bool end_reachable;
-                    re = resolve_expr_body(
-                        r, body, node, &((paste_evaluation*)node)->body,
-                        &end_reachable);
-                }
-                else if (rn->node->kind == EXPR_PP) {
-                    rn->pending_pastes = false;
-                    rn->continue_block = NULL;
-                    re = resolve_expr_pp(
-                        r, body, (expr_pp*)node, true, NULL, NULL);
-                }
-                else {
-                    panic("compiler bug");
-                }
-                re = handle_resolve_error(r, node, body, re, NULL, NULL);
-                if (re) {
-                    if (re == RE_UNREALIZED_COMPTIME) {
-                        progress = true;
-                    }
-                    else if (re == RE_UNKNOWN_SYMBOL) {
-                        continue;
-                    }
-                    else {
-                        return re;
-                    }
-                }
-                continue;
-            }
-            assert(r->curr_pp_node == NULL);
-            assert(rn->run_individually);
-            // can't be the mdgn because of "declaring" st node
-            assert(rn->node->kind != ELEM_MDG_NODE);
-            ast_node* astn = rn->node;
-            if (astn->kind == EXPR_PP) {
-                // so we can set from_pprnlist to true
-                re = resolve_expr_pp(
-                    r, rn->declaring_body, (expr_pp*)astn, true, NULL, NULL);
-            }
-            else {
-                re = resolve_ast_node(r, astn, rn->declaring_body, NULL, NULL);
-            }
-            if (re == RE_UNREALIZED_COMPTIME) {
-                ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
-                progress = true;
-                continue;
-            }
-            if (re == RE_UNKNOWN_SYMBOL) {
-                continue;
-            }
-            if (re) return re;
-            // these have their own list
-            assert(!ast_elem_is_any_import((ast_elem*)astn));
-            // otherwise we would have gotten an error?
-            assert(ast_node_get_resolved(astn));
-            progress = true;
-            ptrlist_remove_prev(&r->pp_resolve_nodes_pending, &it);
-        }
+        re = handle_pending_pprns(r, &progress);
+        if (re) return re;
         if (!progress && r->committed_waiters != 0) {
-            it = pli_rbegin(&r->import_module_data_nodes);
+            pli it = pli_rbegin(&r->import_module_data_nodes);
             bool awaiting = false;
             for (ast_node* n = pli_prev(&it); n; n = pli_prev(&it)) {
                 import_module_data* im_data = (import_module_data*)n;
@@ -4116,6 +4106,28 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
                 // resume progress = true;
                 return resolver_suspend(r);
             }
+        }
+        if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
+            print_pprns(r, "running ", true);
+            ureg priv_count = r->id_space - PRIV_SYMBOL_OFFSET;
+            llvm_backend_reserve_symbols(
+                r->backend, priv_count, atomic_ureg_load(&r->tc->t->node_ids));
+            if (!r->deps_required_for_pp) {
+                r->deps_required_for_pp = true;
+                for (mdg_node** n = r->mdgs_begin; n != r->mdgs_end; n++) {
+                    int res = mdg_node_require_requirements(*n, r->tc, true);
+                    if (res) return RE_FATAL;
+                }
+            }
+            lle = llvm_backend_run_pp(
+                r->backend, priv_count, &r->pp_resolve_nodes_ready);
+            if (lle) return RE_FATAL;
+            pli it = pli_rbegin(&r->pp_resolve_nodes_ready);
+            for (pp_resolve_node* rn = pli_prev(&it); rn; rn = pli_prev(&it)) {
+                pp_resolve_node_done(r, rn, &progress);
+                ptrlist_remove_next(&r->pp_resolve_nodes_ready, &it);
+            }
+            if (made_progress) *made_progress = true;
         }
     } while (progress);
     return RE_OK;

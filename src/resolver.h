@@ -143,3 +143,8 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b);
 bool ast_body_is_pp_done(resolver* r, ast_body* b);
 int ast_body_propagate_error(resolver* r, ast_body* body);
 int curr_body_propagate_error(resolver* r, ast_body* body);
+
+resolve_error
+pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress);
+
+resolve_error add_resolve_error(resolve_error res, resolve_error add);
