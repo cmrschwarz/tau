@@ -30,11 +30,12 @@ void ppdct_fin(pp_decl_clobber_table* t)
 {
     pp_decl_clobber* end = t->table + t->hash_mask + 1;
     for (pp_decl_clobber* i = t->table; i != end; i++) {
-        if (!i->body || i->parent_sym || !i->name) continue;
+        if (!i->body || i->conflicting_symbol || !i->name) continue;
         list_fin(&i->waiting_users->waiting_users, true);
         freelist_free(&t->waiting_users_mem, i->waiting_users);
     }
     tfree(t->table);
+    t->waiting_users_mem.alloc_count = 0;
     freelist_fin(&t->waiting_users_mem);
 }
 
@@ -104,7 +105,6 @@ void ppdct_remove(pp_decl_clobber_table* t, pp_decl_clobber* ppdc)
         ppdc->body = TOMBSTONE;
     }
 }
-
 resolve_error
 notify_users(pp_decl_clobber_table* t, ppdct_waiting_users* wu, bool found)
 {
@@ -146,27 +146,26 @@ int ppdct_add_symbol(
     pp_decl_clobber* ppdc =
         ppdct_lookup_raw(t, target_body, associtated_type, s->name, name_hash);
     if (!ppdc->body || ppdc->body == TOMBSTONE) return RE_OK;
-    if (ppdc->parent_sym) {
+    if (ppdc->conflicting_symbol) {
         ast_node_set_poisoned(&s->node);
-        src_range_large srl_parent_sym;
-        src_range_large srl_shadowing_decl;
-        src_range_large srl_parent_use;
+        src_range_large srl_conflicting_sym;
+        src_range_large srl_new_decl;
+        src_range_large srl_conflicting_use;
         ast_node_get_src_range(
-            (ast_node*)ppdc->parent_sym, ppdc->parent_sym->declaring_body,
-            &srl_parent_sym);
+            (ast_node*)ppdc->conflicting_symbol,
+            ppdc->conflicting_symbol->declaring_body, &srl_conflicting_sym);
+        ast_node_get_src_range((ast_node*)s, s->declaring_body, &srl_new_decl);
         ast_node_get_src_range(
-            (ast_node*)s, s->declaring_body, &srl_shadowing_decl);
-        ast_node_get_src_range(
-            (ast_node*)ppdc->parent_use.user, ppdc->parent_use.user_body,
-            &srl_parent_use);
+            (ast_node*)ppdc->conflicting_use.user,
+            ppdc->conflicting_use.user_body, &srl_conflicting_use);
         error_log_report_annotated_thrice(
             t->r->tc->err_log, ES_RESOLVER, false,
             "cannot shadow previously used symbol during the preprocessor",
-            srl_shadowing_decl.smap, srl_shadowing_decl.start,
-            srl_shadowing_decl.end, "illegal shadowing here",
-            srl_parent_sym.smap, srl_parent_sym.start, srl_parent_sym.end,
-            "symbol that would be shadowed", srl_parent_use.smap,
-            srl_parent_use.start, srl_parent_use.end,
+            srl_new_decl.smap, srl_new_decl.start, srl_new_decl.end,
+            "illegal shadowing here", srl_conflicting_sym.smap,
+            srl_conflicting_sym.start, srl_conflicting_sym.end,
+            "symbol that would be shadowed", srl_conflicting_use.smap,
+            srl_conflicting_use.start, srl_conflicting_use.end,
             "use of the to be shadowed symbol here");
         t->r->error_occured = true;
         if (curr_body_propagate_error(t->r, target_body)) return ERR;
@@ -184,7 +183,7 @@ ppdct_get_scope_list(pp_decl_clobber_table* t, ast_body* body)
 }
 static inline int ppdct_block_symbol(
     pp_decl_clobber_table* t, ast_body* lower_body, ast_body* upper_body,
-    ast_elem* associtated_type, const char* name, symbol* parent_sym,
+    ast_elem* associtated_type, const char* name, symbol* conflicting_symbol,
     ast_node* user, pp_resolve_node* dependency, bool* notifier_added)
 {
     ureg name_hash = ppdct_prehash_name(name);
@@ -199,9 +198,27 @@ static inline int ppdct_block_symbol(
         pp_decl_clobber* ppdc =
             ppdct_lookup_raw(t, b, associtated_type, name, name_hash);
         if (ppdc->body && ppdc->body != TOMBSTONE) {
-            if (parent_sym) {
+            if (conflicting_symbol) {
                 // we are using that parent, so it exists
-                assert(ppdc->parent_sym);
+                if (!ppdc->conflicting_symbol) {
+                    // the used symbol was pasted in a scope below
+                    // all users here must have been satisfied,
+                    // since we can no longer paste in this scope ore above
+                    // since that would trigger the ambiguity error.
+                    // therefore we can cut off the users here
+                    ppdc->conflicting_symbol = conflicting_symbol;
+
+                    ppdc->waiting_users->refcount--;
+                    list_fin(&ppdc->waiting_users->waiting_users, true);
+                    if (!ppdc->waiting_users->refcount) {
+                        int r = list_init(&ppdc->waiting_users->waiting_users);
+                        if (r) return ERR;
+                    }
+                    else {
+                        freelist_free(
+                            &t->waiting_users_mem, ppdc->waiting_users);
+                    }
+                }
                 assert(!notifier_added);
                 // somebody else already added a clobber. good for us
                 continue;
@@ -216,9 +233,9 @@ static inline int ppdct_block_symbol(
                     ppdct_lookup_raw(t, b, associtated_type, name, name_hash);
                 assert(!ppdc->body);
             }
-            if (parent_sym) {
-                ppdc->parent_use.user = user;
-                ppdc->parent_use.user_body = lower_body;
+            if (conflicting_symbol) {
+                ppdc->conflicting_use.user = user;
+                ppdc->conflicting_use.user_body = lower_body;
                 assert(!dependency);
             }
             else {
@@ -234,9 +251,9 @@ static inline int ppdct_block_symbol(
             ppdc->body = b;
             ppdc->associated_type = associtated_type;
             ppdc->name = name;
-            ppdc->parent_sym = parent_sym;
+            ppdc->conflicting_symbol = conflicting_symbol;
         }
-        if (!parent_sym) {
+        if (!conflicting_symbol) {
             int r;
             if (lower_waiting_users) {
                 r = list_append(
@@ -257,7 +274,7 @@ static inline int ppdct_block_symbol(
         if (!scope_list->body || scope_list->body == TOMBSTONE) {
             scope_list->body = b;
             scope_list->name = NULL;
-            scope_list->parent_sym = NULL;
+            scope_list->conflicting_symbol = NULL;
             scope_list->prev = ppdc;
             ppdc->prev = NULL;
         }
@@ -293,7 +310,7 @@ int ppdct_seal_body(pp_decl_clobber_table* t, ast_body* body)
     resolve_error re;
     resolve_error re1 = RE_OK;
     for (pp_decl_clobber* ppdc = scope_list->prev; ppdc; ppdc = ppdc->prev) {
-        if (ppdc->parent_sym) {
+        if (ppdc->conflicting_symbol) {
             ppdct_remove(t, ppdc);
             continue;
         }

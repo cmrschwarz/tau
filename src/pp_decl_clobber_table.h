@@ -14,15 +14,16 @@ typedef struct pp_decl_clobber_s {
     ast_body* body;
     ast_elem* associated_type; // NULL for free functions
     const char* name; // if this is NULL this entry lists all entries
-    symbol* parent_sym; // iff NULL waiting_users is set, otherwise parent_use
+    symbol* conflicting_symbol; // iff NULL waiting_users is set, otherwise
+                                // parent_use
     union {
         ppdct_waiting_users* waiting_users;
-        // first use of the parent symbol in the pp is
+        // first use of the conflicting_symbol symbol in the pp is
         // recorded for error reporting on attempted decls
         struct {
             ast_node* user;
             ast_body* user_body;
-        } parent_use;
+        } conflicting_use;
     };
     struct pp_decl_clobber_s* prev;
 } pp_decl_clobber;
