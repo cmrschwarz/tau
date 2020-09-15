@@ -66,8 +66,6 @@ parse_error parse_expr_in_parens(
 static inline parse_error parse_delimited_body(
     parser* p, ast_body* b, ast_node* parent, ureg param_count,
     ast_node* first_stmt, ureg bstart, ureg bend, token_kind delimiter);
-static inline void init_expr_block_base(
-    parser* p, expr_block_base* ebb, bool already_has_bpd, char* name);
 parse_error handle_semicolon_after_statement(parser* p, ast_node* s);
 
 static const unsigned char op_precedence[] = {
@@ -1463,8 +1461,7 @@ static inline parse_error parse_expr_block(
     b->ebb.ctype = NULL;
     ast_node_init((ast_node*)b, EXPR_BLOCK);
     *ex = (ast_node*)b;
-    init_expr_block_base(
-        p, (expr_block_base*)b, first_stmt ? true : false, label);
+    b->ebb.name = label;
     parse_error pe = parse_delimited_body(
         p, &b->ebb.body, (ast_node*)b, 0, first_stmt, bstart, bend,
         TK_BRACE_CLOSE);
@@ -1528,7 +1525,7 @@ parse_error parse_loop(parser* p, ast_node** tgt)
     if (ast_node_fill_srange(p, (ast_node*)l, start, t->end)) return PE_FATAL;
     ast_node_init((ast_node*)l, EXPR_LOOP);
     *tgt = (ast_node*)l;
-    init_expr_block_base(p, (expr_block_base*)l, false, NULL);
+    l->ebb.name = NULL;
     return parse_braced_namable_body(
         p, (ast_node*)l, &l->ebb.body, &l->ebb.name);
 }
@@ -1750,7 +1747,6 @@ parse_error parse_if(parser* p, ast_node** tgt)
     expr_if* i = alloc_perm(p, sizeof(expr_if));
     if (!i) return PE_FATAL;
     i->prpbn = NULL;
-    init_expr_block_base(p, (expr_block_base*)i, false, NULL);
     i->ctype = NULL;
     parse_error pe =
         parse_expr_in_parens(p, (ast_node*)i, start, end, &i->condition);
@@ -3736,34 +3732,6 @@ parse_error parse_statement(parser* p, ast_node** tgt)
             }
         }
     }
-}
-static inline void init_expr_block_base(
-    parser* p, expr_block_base* ebb, bool already_has_bpd, char* name)
-{
-    sbuffer_iterator it = sbuffer_iterator_begin_at_end(&p->body_stack);
-    if (already_has_bpd)
-        sbuffer_iterator_previous(&it, sizeof(body_parse_data));
-    ebb->name = name;
-    body_parse_data* bpd;
-    while (true) {
-        bpd = sbuffer_iterator_previous(&it, sizeof(body_parse_data));
-        if (!bpd) break;
-        if (!bpd->node) continue;
-        // TODO: rework this mess
-        if (ast_elem_is_expr_block_base((ast_elem*)bpd->node)) {
-            ebb->body.parent = bpd->body;
-            return;
-        }
-        if (bpd->node->kind == SC_FUNC || bpd->node->kind == SC_FUNC_GENERIC) {
-            ebb->body.parent = bpd->body;
-            return;
-        }
-        if (ast_elem_is_paste_evaluation((ast_elem*)bpd->node)) {
-            ebb->body.parent = bpd->body;
-            return;
-        }
-    }
-    assert(false);
 }
 static inline parse_error parse_delimited_body(
     parser* p, ast_body* b, ast_node* parent, ureg param_count,

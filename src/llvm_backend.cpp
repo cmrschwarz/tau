@@ -713,6 +713,7 @@ void LLVMBackend::remapLocalID(ureg old_id, ureg new_id)
 llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
 {
     llvm_error lle;
+    assert(n->first_unresolved_child || ast_node_get_resolved(n->node));
     if (n->node->kind == EXPR_PP) {
         auto expr = (expr_pp*)n->node;
         if (ast_node_get_pp_expr_res_used(&expr->node) &&

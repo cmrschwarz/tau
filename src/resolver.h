@@ -26,27 +26,34 @@ typedef enum resolve_error_e {
 
 typedef struct thread_context_s thread_context;
 
+typedef enum PACK_ENUM pprn_state_e {
+    PPRN_INFANT,
+    PPRN_WAITING, // dep_count > 0, uncommitted waiter
+    PPRN_PENDING, // dep count == 0, resolved=false
+    PPRN_READY, //
+} pprn_state;
+
 typedef struct pp_resolve_node_s {
-    ast_node* node; // either expr_pp, stmt_use or func or var
-    ast_body* declaring_body; // for continuing top level expressions
-    list notify;
+    ast_node* node;
+    ast_body* declaring_body; // needed for continuing top level expressions
+    list notify; // list of pprn*'s to notify once this is ready/done
     // stores pointers to the pprn pointer inside the notifying node
     // this way if the notifying node's pprn gets fin'd we notice that
     list notified_by;
     ast_node** continue_block;
     ureg dep_count;
-    bool nested_pp_exprs;
+    bool needs_further_resolution;
     bool pending_pastes;
-    bool ready;
+    bool considered_committed; // incremented committed_waiters
     bool activated; // prevent early ready
-    bool run_individually; // false for exprs in functions
+    // false for exprs in functions (true in structs and mf)
+    bool run_individually;
     bool block_pos_reachable; // for continuing blocks
     bool sequential_block;
     bool notify_when_ready; // by default we notify when done
     bool dummy; // clean once ready messages sent, no running required
-    // struct pp_resolve_node_s* parent; // gets informed once this is pending
-    bool considered_committed; // incremented 'committed waiter' count
-    struct pp_resolve_node_s** waiting_list_entry;
+    pprn_state state;
+    struct pp_resolve_node_s** pprn_list_entry;
     struct pp_resolve_node_s* first_unresolved_child;
     struct pp_resolve_node_s* last_unresolved_child;
     struct pp_resolve_node_s* next;

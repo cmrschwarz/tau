@@ -1,0 +1,5 @@
+func main() -> int{
+    return #x - 3;
+}
+#main();
+#paste("x := 3;");
