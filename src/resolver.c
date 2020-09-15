@@ -285,7 +285,8 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
     ast_node* n = pprn->node;
     assert(n);
     assert(
-        error_occured || pprn->dep_count == 0 || !ast_node_get_used_in_pp(n));
+        error_occured || pprn->dep_count == 0 || !ast_node_get_used_in_pp(n) ||
+        ast_node_get_contains_error(n));
     for (pp_resolve_node* rn = pprn->first_unresolved_child; rn;
          rn = rn->next) {
         pprn_fin(r, rn, error_occured);
@@ -527,8 +528,9 @@ resolve_error pp_resolve_node_activate(
         // TODO: implement this properly
         resolve_func_from_call(r, body, r->module_group_constructor, NULL);
     }
-    if (pprn->dep_count == 0) {
-        if (resolved || ast_node_get_contains_error(pprn->node)) {
+    bool contains_error = ast_node_get_contains_error(pprn->node);
+    if (pprn->dep_count == 0 || contains_error) {
+        if (resolved || contains_error) {
             pprn->needs_further_resolution = false;
             return pp_resolve_node_ready(r, pprn);
         }
