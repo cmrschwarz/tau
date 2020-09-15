@@ -1,0 +1,10 @@
+#x: D;
+#paste("asdf:= 3;");
+struct D{
+    d : xxx = 1;
+    #paste("yyy:= 12;");
+}
+func main() -> int{
+    return #x.d;
+}
+#x.d = 3;

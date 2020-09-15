@@ -939,7 +939,7 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
                 *align = sl->getAlignment().value();
             }
             if (size) {
-                *size = _data_layout->getTypeAllocSize((llvm::StructType*)*t);
+                *size = _data_layout->getTypeAllocSize((llvm::StructType*)*tp);
             }
         } break;
         case TYPE_POINTER: {

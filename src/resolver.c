@@ -151,51 +151,47 @@ int ast_node_propagate_error(resolver* r, ast_node* n)
 {
     if (ast_node_get_contains_error(n)) return OK;
     ast_node_set_contains_error(n);
+    int res;
+    pp_resolve_node** pprnp = ast_node_try_get_pprn_ptr(n);
+    if (pprnp && *pprnp) {
+        pp_resolve_node* pprn = *pprnp;
+        list_it it;
+        list_it_begin(&it, &pprn->notify);
+        pp_resolve_node* pprn_it;
+        while ((pprn_it = list_it_next(&it, &pprn->notify))) {
+            res = ast_node_propagate_error(r, pprn_it->node);
+            if (res) return res;
+        }
+    }
     ast_body* b = ast_elem_try_get_body((ast_elem*)n);
-    if (!b) return OK;
-    return ast_body_propagate_error(r, b);
-}
-int pprn_propagate_error(resolver* r, pp_resolve_node* pprn)
-{
-    assert(pprn->node);
-    if (ast_node_get_contains_error(pprn->node)) return OK;
-    int res = ast_node_propagate_error(r, pprn->node);
-    if (res) return res;
-    list_it it;
-    list_it_begin(&it, &pprn->notified_by);
-    pp_resolve_node** pprnp;
-    while ((pprnp = list_it_next(&it, &pprn->notified_by))) {
-        if (!*pprnp) continue;
-        res = pprn_propagate_error(r, *pprnp);
+    if (b) {
+        res = ast_body_propagate_error(r, b->parent);
         if (res) return res;
     }
     return OK;
 }
+int pprn_propagate_error(resolver* r, pp_resolve_node* pprn)
+{
+    return ast_node_propagate_error(r, pprn->node);
+}
 int ast_body_propagate_error(resolver* r, ast_body* body)
 {
-    ast_node* on = (ast_node*)body->owning_node;
-    if (ast_node_get_contains_error(on)) return RE_OK;
-    ast_node_set_contains_error(on);
-    int res;
-    if (body->pprn) {
-        res = pprn_propagate_error(r, body->pprn);
-        if (res) return res;
-    }
-    if (!body->parent) return OK;
-    return ast_body_propagate_error(r, body->parent);
+    return ast_node_propagate_error(r, body->owning_node);
 }
 int curr_body_propagate_error(resolver* r, ast_body* body)
 {
     assert(r->error_occured); // sanity check
-    int res = ast_body_propagate_error(r, body);
+    int res = ast_node_propagate_error(r, body->owning_node);
     if (res) return res;
     if (!r->curr_pp_node) return RE_OK;
     return pprn_propagate_error(r, r->curr_pp_node);
 }
-bool is_curr_resolution_for_pp(resolver* r, ast_body* body)
+bool is_curr_resolution_for_pastes(resolver* r, ast_body* body)
 {
-    if (r->curr_pp_node) return true;
-    return !ast_body_is_pp_done(r, body);
+    if (r->curr_pp_node) {
+        return !ast_body_pastes_done(r, r->curr_pp_node->declaring_body);
+    }
+    return !ast_body_pastes_done(r, body);
 }
 static resolve_error
 add_symbol(resolver* r, ast_body* body, ast_body* shared_body, symbol* sym)
@@ -215,7 +211,7 @@ add_symbol(resolver* r, ast_body* body, ast_body* shared_body, symbol* sym)
         // symbol lookup should probably respect this
     }
     else {
-        if (!ast_body_is_pp_done(r, tgt_body)) {
+        if (!ast_body_pastes_done(r, tgt_body)) {
             if (ppdct_add_symbol(&r->ppdct, sym, tgt_body, NULL))
                 return RE_FATAL;
         }
@@ -368,10 +364,11 @@ get_curr_block_pprn(resolver* r, ast_body* body, pp_resolve_node** curr_pprn)
         r, (ast_node*)body->owning_node, body->parent, !is_struct, !is_struct,
         is_struct, false);
     if (!body->pprn) return RE_FATAL;
+    if (is_struct) body->pprn->pending_pastes = true;
     *curr_pprn = body->pprn;
     return RE_OK;
 }
-static inline resolve_error
+resolve_error
 get_curr_pprn(resolver* r, ast_body* body, pp_resolve_node** curr_pprn)
 {
     if (r->curr_pp_node) {
@@ -379,6 +376,11 @@ get_curr_pprn(resolver* r, ast_body* body, pp_resolve_node** curr_pprn)
         return RE_OK;
     }
     return get_curr_block_pprn(r, body, curr_pprn);
+}
+static inline pp_resolve_node* try_get_curr_pprn(resolver* r, ast_body* body)
+{
+    if (r->curr_pp_node) return r->curr_pp_node;
+    return body->pprn;
 }
 void resolver_set_ast_node_used_in_pp(resolver* r, ast_node* n)
 {
@@ -1826,7 +1828,9 @@ static inline resolve_error resolve_var(
         v->pprn = pp_resolve_node_create(
             r, (ast_node*)v, declaring_body, true, false, !comptime, true);
         if (!v->pprn) return RE_FATAL;
-        resolver_set_ast_node_used_in_pp(r, (ast_node*)v);
+        if (!ast_node_get_used_in_pp((ast_node*)v)) {
+            resolver_set_ast_node_used_in_pp(r, (ast_node*)v);
+        }
     }
     pp_resolve_node* prev_pp_node = r->curr_pp_node;
     r->curr_pp_node = v->pprn;
@@ -1917,17 +1921,19 @@ static inline resolve_error resolve_var(
     }
     if (!re) ast_node_set_resolved((ast_node*)v);
     if (v->pprn) {
+        resolve_error re2;
         if (public_symbol) {
-            re = curr_pprn_depend_on(r, requesting_body, &v->pprn);
+            re2 = curr_pprn_depend_on(r, requesting_body, &v->pprn);
         }
         else {
-            re = curr_pp_block_add_child(r, requesting_body, &v->pprn);
+            re2 = curr_pp_block_add_child(r, requesting_body, &v->pprn);
         }
-        resolve_error re2 =
+        if (re2) return re2;
+        re2 =
             pp_resolve_node_activate(r, requesting_body, &v->pprn, re == RE_OK);
         if (re2) return re2;
     }
-    SET_VAL_CTYPE(value, ctype, v, v->ctype);
+    SET_THEN_RETURN_IF_RESOLVED(re == RE_OK, value, ctype, v, v->ctype);
     return re;
 }
 static inline resolve_error
@@ -2050,16 +2056,11 @@ static inline resolve_error resolve_identifier(
         resolver_lookup_single(r, body, NULL, body, e->value.str, &sym, &amb);
     if (re) return re;
     if (!sym) {
-        pp_resolve_node* pprn;
-        re = get_curr_pprn(r, body, &pprn);
-        if (re) return re;
-        if (pprn) {
-            bool not_added = false;
-            int res = ppdct_require_symbol(
-                &r->ppdct, body, NULL, e->value.str, pprn, &not_added);
-            if (res) return RE_FATAL;
-            if (not_added) return RE_UNKNOWN_SYMBOL;
-        }
+        bool notif_added = false;
+        int res = ppdct_curr_pprn_require_symbol(
+            &r->ppdct, body, NULL, e->value.str, &notif_added);
+        if (res) return RE_FATAL;
+        if (notif_added) return RE_UNKNOWN_SYMBOL;
         report_unknown_symbol(r, (ast_node*)e, body);
         SET_THEN_RETURN_POISONED(
             r, RE_OK, e, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
@@ -2217,6 +2218,7 @@ static inline resolve_error resolve_expr_pp(
     resolver* r, ast_body* body, expr_pp* ppe, bool from_pprnlist,
     ast_elem** value, ast_elem** ctype)
 {
+    bool rerun = false;
     if (ppe->pprn) {
         if (ppe->pprn->pending_pastes) {
             return RE_UNREALIZED_COMPTIME;
@@ -2226,6 +2228,8 @@ static inline resolve_error resolve_expr_pp(
             assert(ppe->pprn->activated);
             return RE_UNREALIZED_COMPTIME;
         }
+        ppe->pprn->activated = false;
+        rerun = true;
     }
     resolve_error re;
     if (ppe->ctype == PASTED_EXPR_ELEM) {
@@ -2268,7 +2272,7 @@ static inline resolve_error resolve_expr_pp(
         if (!re) {
             ast_node_set_resolved(&ppe->node);
         }
-        if (!pprn->activated) {
+        if (!rerun) {
             if (curr_pp_block_add_child(r, body, &ppe->pprn)) return RE_FATAL;
         }
         if (pp_resolve_node_activate(r, body, &ppe->pprn, re == RE_OK)) {
@@ -3301,7 +3305,7 @@ resolve_error resolve_func_from_call(
     else {
         ast_body* decl_body = fn->fnb.sc.osym.sym.declaring_body;
         if (!fn->fnb.sc.body.pprn) {
-            if (is_curr_resolution_for_pp(r, body)) {
+            if (is_curr_resolution_for_pastes(r, body)) {
                 // node instead of func to deal with type loops
                 re = resolve_ast_node(r, (ast_node*)fn, body, NULL, NULL);
                 if (re) return re;
@@ -3351,6 +3355,16 @@ resolve_error resolve_struct_or_trait(
     re = resolve_body_traits(r, b);
     if (!re) {
         re = resolver_run_pp_resolve_nodes(r, NULL);
+        if (!re && b->pprn) {
+            if (b->pprn->dep_count) {
+                b->pprn->needs_further_resolution = true;
+                re = RE_UNREALIZED_COMPTIME;
+            }
+            else {
+                b->pprn->pending_pastes = false;
+                re = ppdct_seal_body(&r->ppdct, b);
+            }
+        }
     }
     if (!re) {
         for (ast_node** n = b->elements; *n != NULL; n++) {
@@ -3373,6 +3387,10 @@ resolve_error resolve_struct_or_trait(
     if (!re) {
         if (unrealized_comptime) re = RE_UNREALIZED_COMPTIME;
         if (unknown_symbol) re = RE_UNKNOWN_SYMBOL;
+        if (re) {
+            assert(b->pprn);
+            b->pprn->needs_further_resolution = true;
+        }
     }
     if (!re) ast_node_set_resolved((ast_node*)stb);
     if (stb->sc.body.pprn) {
@@ -4166,9 +4184,20 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
 }
 resolve_error resolver_handle_post_pp(resolver* r)
 {
-    r->mf_pp_done = true;
+    r->mf_pastes_done = true;
     r->report_unknown_symbols = true;
     resolve_error re;
+    for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
+        aseglist_iterator asi;
+        aseglist_iterator_begin(&asi, &(**i).module_frames);
+        if (ppdct_seal_body(&r->ppdct, &(**i).body)) return RE_FATAL;
+        for (module_frame* mf = aseglist_iterator_next(&asi); mf != NULL;
+             mf = aseglist_iterator_next(&asi)) {
+            if (ppdct_seal_body(&r->ppdct, &mf->body)) return RE_FATAL;
+        }
+    }
+    re = resolver_run_pp_resolve_nodes(r, NULL);
+    if (re) return re;
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         aseglist_iterator asi;
         aseglist_iterator_begin(&asi, &(**i).module_frames);
@@ -4227,7 +4256,7 @@ void resolver_reset_resolution_state(resolver* r)
     r->retracing_type_loop = false;
     r->module_group_constructor = NULL;
     r->module_group_destructor = NULL;
-    r->mf_pp_done = false;
+    r->mf_pastes_done = false;
     r->report_unknown_symbols = false;
 }
 static inline resolve_error resolver_resolve_raw(resolver* r)
@@ -4433,7 +4462,7 @@ void resolver_setup_blank_resolve(resolver* r)
     // global ids of other modules it might use
     r->public_sym_count = 0;
     r->private_sym_count = 0;
-    r->mf_pp_done = false;
+    r->mf_pastes_done = false;
     r->report_unknown_symbols = false;
     r->id_space = PRIV_SYMBOL_OFFSET;
     r->deps_required_for_pp = false;
@@ -4466,7 +4495,7 @@ void resolver_unpack_partial_resolution_data(
     r->committed_waiters = prd->committed_waiters;
     r->public_sym_count = prd->public_sym_count;
     r->private_sym_count = prd->private_sym_count;
-    r->mf_pp_done = false;
+    r->mf_pastes_done = false;
     r->report_unknown_symbols = false;
 }
 resolve_error resolver_resolve_and_emit(
@@ -4630,13 +4659,14 @@ ast_elem* get_resolved_ast_node_ctype(ast_node* n)
     resolve_ast_node_raw(NULL, n, NULL, NULL, &ctype);
     return ctype;
 }
-
-bool ast_body_is_pp_done(resolver* r, ast_body* b)
+bool ast_body_pastes_done(resolver* r, ast_body* b)
 {
     b = ast_body_get_non_paste_parent(b);
     if (ast_elem_is_from_module((ast_elem*)b->owning_node)) {
-        return r->mf_pp_done;
+        return r->mf_pastes_done;
     }
-    if (!b->pprn) return true;
-    return !b->pprn->dummy;
+    if (!ast_elem_has_unordered_body((ast_elem*)b->owning_node)) return true;
+    if (!b->pprn || b->pprn->dummy) return true;
+    if (b->pprn->pending_pastes) return false;
+    return true;
 }

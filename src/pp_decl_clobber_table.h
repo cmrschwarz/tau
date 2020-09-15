@@ -54,3 +54,9 @@ int ppdct_use_symbol(
 int ppdct_require_symbol(
     pp_decl_clobber_table* t, ast_body* body, ast_elem* associated_type,
     const char* name, pp_resolve_node* dep, bool* notifier_added);
+
+int ppdct_curr_pprn_require_symbol(
+    pp_decl_clobber_table* t, ast_body* body, ast_elem* associated_type,
+    const char* name, bool* notifier_added);
+
+int ppdct_seal_body(pp_decl_clobber_table* t, ast_body* body);

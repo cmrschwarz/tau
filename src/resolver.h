@@ -93,7 +93,7 @@ typedef struct resolver_s {
     stack error_stack;
     ast_node* type_loop_start;
     bool allow_type_loops;
-    bool mf_pp_done;
+    bool mf_pastes_done;
     bool report_unknown_symbols;
     bool retracing_type_loop;
     bool generic_context;
@@ -143,11 +143,13 @@ resolve_error resolve_import_symbol(
 resolve_error add_body_decls(
     resolver* r, ast_body* body, ast_body* shared_body, bool public_st);
 ureg ast_node_claim_id(resolver* r, ast_node* n, bool public_st);
+resolve_error
+get_curr_pprn(resolver* r, ast_body* body, pp_resolve_node** curr_pprn);
 void report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev);
 ureg claim_symbol_id(resolver* r, symbol* s, bool public_st);
 bool ctypes_unifiable(ast_elem* a, ast_elem* b);
 
-bool ast_body_is_pp_done(resolver* r, ast_body* b);
+bool ast_body_pastes_done(resolver* r, ast_body* b);
 int ast_body_propagate_error(resolver* r, ast_body* body);
 int curr_body_propagate_error(resolver* r, ast_body* body);
 

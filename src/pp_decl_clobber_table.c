@@ -30,12 +30,12 @@ void ppdct_fin(pp_decl_clobber_table* t)
 {
     pp_decl_clobber* end = t->table + t->hash_mask + 1;
     for (pp_decl_clobber* i = t->table; i != end; i++) {
-        if (!i->body || i->conflicting_symbol || !i->name) continue;
+        if (!i->body || i->body == TOMBSTONE) continue;
+        if (i->conflicting_symbol || !i->name) continue;
         list_fin(&i->waiting_users->waiting_users, true);
         freelist_free(&t->waiting_users_mem, i->waiting_users);
     }
     tfree(t->table);
-    t->waiting_users_mem.alloc_count = 0;
     freelist_fin(&t->waiting_users_mem);
 }
 
@@ -113,19 +113,20 @@ notify_users(pp_decl_clobber_table* t, ppdct_waiting_users* wu, bool found)
     list_it it;
     list_it_begin(&it, &wu->waiting_users);
     void* v;
-    resolve_error re;
+    resolve_error re = RE_OK;
     resolve_error re1 = RE_OK;
     while ((v = list_it_next(&it, &wu->waiting_users))) {
         if ((ureg)v & (ureg)1) {
             if (found || rc0) {
                 re = pp_resolve_node_dep_done(
                     t->r, (pp_resolve_node*)((ureg)v ^ (ureg)1), NULL);
+                re1 = add_resolve_error(re1, re);
             }
         }
         else {
             re = notify_users(t, (ppdct_waiting_users*)v, found);
+            re1 = add_resolve_error(re1, re);
         }
-        re1 = add_resolve_error(re1, re);
     }
     if (found || rc0) list_fin(&wu->waiting_users, true);
     if (found && !rc0) {
@@ -189,12 +190,11 @@ static inline int ppdct_block_symbol(
     ureg name_hash = ppdct_prehash_name(name);
     bool continue_up = true;
     ppdct_waiting_users* lower_waiting_users = NULL;
-    void* dep_mangled = (void*)((ureg)dependency | 1);
     for (ast_body* b = lower_body; continue_up; b = b->parent) {
         b = ast_body_get_non_paste_parent(b);
         if (b == upper_body) break;
         if (b->owning_node->kind == ELEM_MDG_NODE) continue_up = false;
-        if (ast_body_is_pp_done(t->r, b)) continue;
+        if (ast_body_pastes_done(t->r, b)) continue;
         pp_decl_clobber* ppdc =
             ppdct_lookup_raw(t, b, associtated_type, name, name_hash);
         if (ppdc->body && ppdc->body != TOMBSTONE) {
@@ -254,6 +254,7 @@ static inline int ppdct_block_symbol(
             ppdc->conflicting_symbol = conflicting_symbol;
         }
         if (!conflicting_symbol) {
+            assert(notifier_added);
             int r;
             if (lower_waiting_users) {
                 r = list_append(
@@ -263,11 +264,18 @@ static inline int ppdct_block_symbol(
             }
             else {
                 lower_waiting_users = ppdc->waiting_users;
+                if (!dependency) {
+                    resolve_error re =
+                        get_curr_pprn(t->r, lower_body, &dependency);
+                    if (re) return re;
+                }
+                assert(!*notifier_added);
+                dependency->dep_count++;
+                void* dep_mangled = (void*)((ureg)dependency | 1);
                 r = list_append(
                     &ppdc->waiting_users->waiting_users, NULL, dep_mangled);
             }
             if (r) return r;
-            assert(notifier_added);
             *notifier_added = true;
         }
         pp_decl_clobber* scope_list = ppdct_get_scope_list(t, b);
@@ -293,7 +301,13 @@ int ppdct_use_symbol(
         t, user_body, s->declaring_body, associtated_type, s->name, s, user,
         NULL, NULL);
 }
-
+int ppdct_curr_pprn_require_symbol(
+    pp_decl_clobber_table* t, ast_body* body, ast_elem* associated_type,
+    const char* name, bool* notifier_added)
+{
+    return ppdct_block_symbol(
+        t, body, NULL, associated_type, name, NULL, NULL, NULL, notifier_added);
+}
 int ppdct_require_symbol(
     pp_decl_clobber_table* t, ast_body* body, ast_elem* associated_type,
     const char* name, pp_resolve_node* dep, bool* notifier_added)
@@ -304,9 +318,9 @@ int ppdct_require_symbol(
 }
 int ppdct_seal_body(pp_decl_clobber_table* t, ast_body* body)
 {
-    assert(body->pprn == NULL);
+    assert(ast_body_pastes_done(t->r, body));
     pp_decl_clobber* scope_list = ppdct_get_scope_list(t, body);
-    if (!scope_list->body) return OK;
+    if (!scope_list->body || scope_list->body == TOMBSTONE) return OK;
     resolve_error re;
     resolve_error re1 = RE_OK;
     for (pp_decl_clobber* ppdc = scope_list->prev; ppdc; ppdc = ppdc->prev) {
@@ -316,6 +330,7 @@ int ppdct_seal_body(pp_decl_clobber_table* t, ast_body* body)
         }
         re = notify_users(t, ppdc->waiting_users, false);
         re1 = add_resolve_error(re1, re);
+        ppdct_remove(t, ppdc);
     }
-    return re;
+    return re1;
 }
