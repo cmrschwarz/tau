@@ -1,5 +1,0 @@
-#paste("x: int = 3;");
-#z:= main();
-public func main(){
-    return x;
-}

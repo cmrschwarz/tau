@@ -1204,11 +1204,11 @@ type_cast(ast_elem* target_type, ast_elem* source_type, ast_node** src_node_ptr)
         // TODO: insert cast
         return r;
     }
-    if (target_type == (ast_elem*)&PRIMITIVES[PT_UNDEFINED] ||
-        target_type == (ast_elem*)&PRIMITIVES[PT_DEFINED]) {
-        return true;
+    if (source_type == (ast_elem*)&PRIMITIVES[PT_UNDEFINED] ||
+        source_type == (ast_elem*)&PRIMITIVES[PT_DEFINED]) {
+        return TYPE_CAST_SUCCESS;
     }
-    return false; // TODO
+    return TYPE_CAST_INCOMPATIBLE; // TODO
     /*
     switch (a->kind) {
         case TYPE_MODIFIERS:
@@ -1967,19 +1967,26 @@ static inline resolve_error resolve_var(
     SET_THEN_RETURN_IF_RESOLVED(re == RE_OK, value, ctype, v, v->ctype);
     return re;
 }
-static inline resolve_error
-resolve_return_target(resolver* r, ast_body* body, ast_node** tgt)
+static inline int resolve_return_target(
+    resolver* r, expr_return* er, ast_body* body, ast_node** tgt)
 {
+    ast_body* body_orig = body;
     while (body) {
         if (body->owning_node->kind == SC_FUNC ||
             body->owning_node->kind == SC_FUNC_GENERIC) {
             *tgt = (ast_node*)body->owning_node;
-            return RE_OK;
+            return OK;
         }
         body = body->parent;
     }
-    assert(false); // TODO: error
-    return RE_ERROR;
+    ureg vstart, vend;
+    ast_node_get_bounds((ast_node*)er, &vstart, &vend);
+    error_log_report_annotated(
+        r->tc->err_log, ES_RESOLVER, false, "orphaned return statement",
+        ast_body_get_smap(body_orig), vstart, vend,
+        "the return statement is not inside a function");
+    r->error_occured = true;
+    return ERR;
 }
 
 static inline resolve_error
@@ -2005,7 +2012,9 @@ resolve_return(resolver* r, ast_body* body, expr_return* er)
             }
         }
     }
-    re = resolve_return_target(r, body, &er->target);
+    if (resolve_return_target(r, er, body, &er->target)) {
+        RETURN_POISONED(r, RE_OK, er, body);
+    }
     if (re) return re;
     if (ast_elem_is_func_base((ast_elem*)er->target)) {
         // must already be resolved since parenting function
@@ -2023,11 +2032,10 @@ resolve_return(resolver* r, ast_body* body, expr_return* er)
         ureg vstart, vend;
         ast_node_get_bounds(er->value, &vstart, &vend);
         error_log_report_annotated_twice(
-            r->tc->err_log, ES_RESOLVER, false, "type missmatch",
+            r->tc->err_log, ES_RESOLVER, false, "return type missmatch",
             ast_body_get_smap(body), vstart, vend,
             "the type returned from here doesn't match the target "
             "scope's",
-            // TODO: st is kinda wrong here
             ast_body_get_smap(body), src_range_get_start(er->target->srange),
             src_range_get_end(er->target->srange), "target scope here");
         RETURN_POISONED(r, RE_OK, er, body);

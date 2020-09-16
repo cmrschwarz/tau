@@ -1,0 +1,5 @@
+#a:= main();
+b:= return 3;
+public func main(){
+    return 3;
+}
