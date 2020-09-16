@@ -1924,7 +1924,7 @@ static inline resolve_error resolve_var(
             src_range_large var_srl, srl_2;
             ast_node_get_src_range((ast_node*)v, declaring_body, &var_srl);
             char* msg2;
-            if (v->type) {
+            if (!v->type) {
                 ast_node_get_src_range(
                     ((sym_var_initialized*)v)->initial_value, declaring_body,
                     &srl_2);

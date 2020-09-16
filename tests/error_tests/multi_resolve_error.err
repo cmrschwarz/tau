@@ -3,8 +3,8 @@ resolver error: unknown symbol
 3 |    x: Type = []int;
   |       ^^^^ use of an undefined symbol
 
-resolver error: variable of type 'Type' is not allowed
+resolver error: variable of type 'type' is not allowed
  ==> ./tests/error_tests/multi_resolve_error.tau:4:5
 4 |    y := int;
   |    ^ for this variable
-  |         ^^^ the initializer expression is a type, not a value
+  |         ^^^ illegal type deduced from this initializer expression
