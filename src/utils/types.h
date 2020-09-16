@@ -1,14 +1,9 @@
 #pragma once
 
-#ifndef __cplusplus
 #include <float.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
-#else
-#include <cstdint>
-#include <cstdlib>
-#endif
 
 typedef uint8_t u8;
 typedef int8_t s8;
@@ -90,4 +85,3 @@ typedef f64 freg;
 #else
 #error "Environment not 32 or 64-bit."
 #endif
-

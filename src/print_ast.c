@@ -8,6 +8,7 @@
 #include "utils/math_utils.h"
 #include "utils/debug_utils.h"
 #include "utils/math_utils.h"
+#include "utils/panic.h"
 #include <assert.h>
 
 void pc(char c)
@@ -750,7 +751,7 @@ char* ctype_to_string(
     thread_context* tc, pool* mem, ast_body* context, ast_elem* ctype,
     ureg* str_len)
 {
-    const sbuffer* buff = &tc->temp_buffer;
+    sbuffer* buff = &tc->temp_buffer;
     ureg size_prev = sbuffer_get_used_size(buff);
     sbuffer_iterator it = sbuffer_iterator_begin_at_end(buff);
     if (ctype_to_string_raw(buff, context, ctype)) {

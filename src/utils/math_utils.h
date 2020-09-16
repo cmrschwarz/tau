@@ -2,6 +2,7 @@
 
 #include "plattform.h"
 #include "types.h"
+#include "math.h"
 
 // ulog2(0) = 0
 // ulog2(1) = 1
