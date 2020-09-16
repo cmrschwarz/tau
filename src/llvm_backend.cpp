@@ -25,9 +25,10 @@ int llvm_backend_init_globals(tauc* t)
     llvm::InitializeAllTargetMCs();
     llvm::InitializeNativeTargetAsmParser();
     llvm::InitializeNativeTargetAsmPrinter();
-    const char* args[] = {"tauc",
-                          /*"-time-passes",*/
-                          /*"--debug-pass=Structure"*/};
+    const char* args[] = {
+        "tauc",
+        /*"-time-passes",*/
+        /*"--debug-pass=Structure"*/};
 
     llvm::cl::ParseCommandLineOptions(sizeof(args) / sizeof(char*), args);
     PP_RUNNER = new (std::nothrow) PPRunner();
@@ -2361,8 +2362,8 @@ llvm_error LLVMBackend::emitModuleToPP(
     if (lle) return lle;
     if (write_out_file) {
         std::error_code ec;
-        llvm::raw_fd_ostream file_stream{_mod_handle->module_obj, ec,
-                                         llvm::sys::fs::F_None};
+        llvm::raw_fd_ostream file_stream{
+            _mod_handle->module_obj, ec, llvm::sys::fs::F_None};
         file_stream.write(obj_sv.begin(), obj_sv.size());
     }
     std::unique_ptr<llvm::MemoryBuffer> obj_svmb{

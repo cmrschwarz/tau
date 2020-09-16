@@ -255,7 +255,14 @@ int sbuffer_steal_used(sbuffer* sb, sbuffer* donor, bool sb_initialized)
     donor->tail_seg = donor_new;
     return OK;
 }
-
+void sbuffer_set_end(sbuffer* b, sbuffer_iterator* end)
+{
+    while (b->tail_seg != end->seg) {
+        b->tail_seg->tail = ptradd(b->tail_seg, sizeof(sbuffer_segment));
+        b->tail_seg = b->tail_seg->prev;
+    }
+    b->tail_seg->tail = end->pos;
+}
 void sbuffer_memcpy(void* target, sbuffer_iterator src, ureg size)
 {
     while (true) {

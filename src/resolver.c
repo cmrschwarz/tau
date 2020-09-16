@@ -530,9 +530,8 @@ resolve_error pp_resolve_node_activate(
         // TODO: implement this properly
         resolve_func_from_call(r, body, r->module_group_constructor, NULL);
     }
-    bool contains_error = ast_node_get_contains_error(pprn->node);
-    if (pprn->dep_count == 0 || contains_error) {
-        if (resolved || contains_error) {
+    if (pprn->dep_count == 0) {
+        if (resolved || ast_node_get_contains_error(pprn->node)) {
             pprn->needs_further_resolution = false;
             return pp_resolve_node_ready(r, pprn);
         }
@@ -1810,6 +1809,11 @@ resolve_error resolve_expr_member_accesss(
     ast_node_set_resolved(&ema->node);
     return RE_OK;
 }
+static inline bool is_legal_type_for_var(ast_elem* ctype)
+{
+    // TOOD: is this sufficient?
+    return ctype != TYPE_ELEM && ctype != VOID_ELEM;
+}
 static inline resolve_error resolve_var(
     resolver* r, ast_body* requesting_body, sym_var* v, ast_elem** value,
     ast_elem** ctype)
@@ -1877,23 +1881,6 @@ static inline resolve_error resolve_var(
         else {
             re = resolve_ast_node(
                 r, vi->initial_value, declaring_body, NULL, &vi->var.ctype);
-            if (vi->var.ctype == TYPE_ELEM) {
-                src_range_large var_srl, val_srl;
-                ast_node_get_src_range((ast_node*)vi, declaring_body, &var_srl);
-                ast_node_get_src_range(
-                    vi->initial_value, declaring_body, &val_srl);
-                error_log_report_annotated_twice(
-                    r->tc->err_log, ES_RESOLVER, false,
-                    "variable of type 'Type' is not allowed", var_srl.smap,
-                    var_srl.start, var_srl.end, "for this variable",
-                    val_srl.smap, val_srl.start, val_srl.end,
-                    "the initializer expression is a type, not a value");
-                r->error_occured = true;
-                vi->var.ctype = ERROR_ELEM;
-                SET_THEN_RETURN_POISONED(
-                    r, RE_OK, vi, requesting_body, value, ctype, vi,
-                    ERROR_ELEM);
-            }
             // this could become needed again once we support typeof,
             // it allows one retry in cases of a variable initially
             // assigned to a self referential expr block
@@ -1916,10 +1903,54 @@ static inline resolve_error resolve_var(
     r->curr_pp_node = prev_pp_node;
     if (re && re != RE_UNREALIZED_COMPTIME && re != RE_UNKNOWN_SYMBOL) {
         // so we can free it... sigh
-        if (v->pprn) pprn_set_state(r, v->pprn, PPRN_WAITING);
+        if (v->pprn) {
+            if (pprn_set_state(r, v->pprn, PPRN_WAITING)) return RE_FATAL;
+        }
         return re;
     }
-    if (!re) ast_node_set_resolved((ast_node*)v);
+    if (!re) {
+        ast_node_set_resolved((ast_node*)v);
+        if (!is_legal_type_for_var(v->ctype)) {
+            ureg len;
+            char* tgt_type = ctype_to_string(
+                r->tc, &r->tc->tempmem, v->osym.sym.declaring_body, v->ctype,
+                &len);
+            if (!tgt_type) return RE_FATAL;
+            char* msg = error_log_cat_strings_3(
+                r->tc->err_log, "variable of type '", tgt_type,
+                "' is not allowed");
+            if (!msg) return RE_FATAL;
+            pool_undo_last_alloc(&r->tc->tempmem, len);
+            src_range_large var_srl, srl_2;
+            ast_node_get_src_range((ast_node*)v, declaring_body, &var_srl);
+            char* msg2;
+            if (v->type) {
+                ast_node_get_src_range(
+                    ((sym_var_initialized*)v)->initial_value, declaring_body,
+                    &srl_2);
+                msg2 = "illegal type deduced from this initializer expression";
+            }
+            else {
+                ast_node_get_src_range(v->type, declaring_body, &srl_2);
+                msg2 = "illegal type specified here";
+            }
+            error_log_report_annotated_twice(
+                r->tc->err_log, ES_RESOLVER, false, msg, var_srl.smap,
+                var_srl.start, var_srl.end, "for this variable", srl_2.smap,
+                srl_2.start, srl_2.end, msg2);
+            r->error_occured = true;
+            v->ctype = ERROR_ELEM;
+            ast_node_set_poisoned((ast_node*)v);
+            ast_node_set_contains_error((ast_node*)v);
+            if (v->pprn) {
+                re = pp_resolve_node_activate(
+                    r, requesting_body, &v->pprn, false);
+            }
+            SET_THEN_RETURN_POISONED(
+                r, re, v, requesting_body, value, ctype, ERROR_ELEM,
+                ERROR_ELEM);
+        }
+    }
     if (v->pprn) {
         resolve_error re2;
         if (public_symbol) {
@@ -3322,10 +3353,13 @@ resolve_error resolve_func_from_call(
                 r, (ast_node*)fn, decl_body, false, true, false, false);
             if (!fn->fnb.sc.body.pprn) return RE_FATAL;
         }
-        if (fn->fnb.return_type && !fn->fnb.return_ctype) {
-            re = resolve_ast_node(
-                r, fn->fnb.return_type, decl_body, &fn->fnb.return_ctype, NULL);
-            if (re) return re;
+        if (fn->fnb.return_type) {
+            if (!fn->fnb.return_ctype) {
+                re = resolve_ast_node(
+                    r, fn->fnb.return_type, decl_body, &fn->fnb.return_ctype,
+                    NULL);
+                if (re) return re;
+            }
         }
         else {
             fn->fnb.return_ctype = VOID_ELEM;

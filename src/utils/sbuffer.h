@@ -105,5 +105,5 @@ static inline void* sbuffer_iterator_get(sbuffer_iterator* sbi, ureg size)
     }
     return sbi->pos;
 }
-
+void sbuffer_set_end(sbuffer* b, sbuffer_iterator* end);
 void sbuffer_memcpy(void* target, sbuffer_iterator src, ureg size);

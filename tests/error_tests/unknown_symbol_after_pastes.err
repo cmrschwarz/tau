@@ -1,0 +1,4 @@
+resolver error: unknown symbol
+ ==> ./tests/error_tests/unknown_symbol_after_pastes.tau:4:9
+4 |    d : xxx = 1;
+  |        ^^^ use of an undefined symbol

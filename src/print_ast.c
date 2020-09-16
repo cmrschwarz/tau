@@ -7,6 +7,7 @@
 #include "tauc.h"
 #include "utils/math_utils.h"
 #include "utils/debug_utils.h"
+#include "utils/math_utils.h"
 #include <assert.h>
 
 void pc(char c)
@@ -692,4 +693,76 @@ void print_mdg_node(mdg_node* mdg, ureg indent)
     }
     print_indent(indent);
     p("}");
+}
+
+int ctype_to_string_raw(sbuffer* buff, ast_body* ctx, ast_elem* ctype)
+{
+    // TODO: check if the type is shadowed and return the fully qualified name
+    // in that case
+    switch (ctype->kind) {
+        case SYM_PRIMITIVE:
+        case SC_TRAIT:
+        case SC_STRUCT: {
+            char* n = ((symbol*)ctype)->name;
+            ureg len = strlen(n);
+            char* t = sbuffer_append(buff, len);
+            if (!t) return ERR;
+            memcpy(t, n, len);
+        } break;
+        case TYPE_POINTER: {
+            char* v = sbuffer_append(buff, 1);
+            if (!v) return ERR;
+            *v = '*';
+            return ctype_to_string_raw(
+                buff, ctx, ((type_pointer*)ctype)->base_type);
+        } break;
+        case TYPE_SLICE: {
+            char* v = sbuffer_append(buff, 2);
+            if (!v) return ERR;
+            *v = '[';
+            v++;
+            *v = ']';
+            return ctype_to_string_raw(
+                buff, ctx, ((type_slice*)ctype)->ctype_members);
+        } break;
+        case TYPE_ARRAY: {
+            type_array* ta = (type_array*)ctype;
+            ureg len;
+            if (ta->length < 10) {
+                len = 1;
+            }
+            else {
+                len = floor(log10(ta->length)) + 1;
+            }
+            len += 2;
+            char* v = sbuffer_append(buff, len);
+            if (!v) return ERR;
+            ureg l = snprintf(v, len, "[%zu]", ta->length);
+            UNUSED(l);
+            assert(l == len);
+            return ctype_to_string_raw(buff, ctx, ta->slice_type.ctype_members);
+        } break;
+        default: assert("false"); panic("compiler error");
+    }
+    return OK;
+}
+char* ctype_to_string(
+    thread_context* tc, pool* mem, ast_body* context, ast_elem* ctype,
+    ureg* str_len)
+{
+    const sbuffer* buff = &tc->temp_buffer;
+    ureg size_prev = sbuffer_get_used_size(buff);
+    sbuffer_iterator it = sbuffer_iterator_begin_at_end(buff);
+    if (ctype_to_string_raw(buff, context, ctype)) {
+        sbuffer_set_end(buff, &it);
+        return NULL;
+    }
+    ureg size_after = sbuffer_get_used_size(buff);
+    ureg size = size_after - size_prev;
+    char* res = pool_alloc(mem, size + 1);
+    if (!res) return NULL;
+    sbuffer_memcpy(res, it, size);
+    res[size] = '\0';
+    if (str_len) *str_len = size + 1;
+    return res;
 }
