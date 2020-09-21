@@ -3,6 +3,7 @@
 #include "utils/error.h"
 #include "utils/zero.h"
 #include "resolver.h"
+#include "utils/debug_utils.h"
 #include "thread_context.h"
 ast_body* TOMBSTONE = (ast_body*)&NULL_BYTES;
 int ppdct_init(pp_decl_clobber_table* t, resolver* r)
@@ -11,7 +12,7 @@ int ppdct_init(pp_decl_clobber_table* t, resolver* r)
         &t->waiting_users_mem, &r->tc->permmem, sizeof(ppdct_waiting_users));
     if (res) return ERR;
     t->clobber_count = 0;
-    t->hash_bits = 5;
+    t->hash_bits = 4;
     ureg cap = 1 << t->hash_bits;
     t->table = tmallocz(cap * sizeof(pp_decl_clobber));
     if (!t->table) {
@@ -116,23 +117,44 @@ static inline pp_decl_clobber* ppdct_lookup_raw(
 int ppdct_grow(pp_decl_clobber_table* t)
 {
     // size times two but 0 becomes 2 :)
-    ureg cap_new = (t->hash_mask + 1) << 2;
+    ureg cap_new = (t->hash_mask + 1) << 1;
     pp_decl_clobber* tn = tmallocz(cap_new * sizeof(pp_decl_clobber));
     if (!tn) return ERR;
-    pp_decl_clobber* i = t->table;
+    pp_decl_clobber* t_old = t->table;
     pp_decl_clobber* end = t->table + cap_new;
     t->table = tn;
     t->hash_bits++;
     t->hash_mask = cap_new - 1;
     t->max_fill = cap_new - (cap_new >> 2);
-    while (i != end) {
-        if (i->body && i->body != TOMBSTONE) {
-            *ppdct_lookup_raw(
-                t, i->body, i->associated_type, i->name,
-                ppdct_prehash_name(i->name)) = *i;
+    ureg elem_count = 0;
+    UNUSED(elem_count);
+    for (pp_decl_clobber* i = t_old; i != end; i++) {
+        // we have to fixup the scope elem linked lists
+        // so we skip past non scope lists
+        // and handle all scope list elems once we hit the scope list
+        if (i->body && i->body != TOMBSTONE && i->name == NULL) {
+            pp_decl_clobber* old_ppdc = i;
+            pp_decl_clobber* prev_new_ppdc = NULL;
+            ureg name_prehash = FNV_START_HASH;
+            while (true) {
+                pp_decl_clobber* new_ppdc = ppdct_lookup_raw(
+                    t, old_ppdc->body, old_ppdc->associated_type,
+                    old_ppdc->name, name_prehash);
+                *new_ppdc = *old_ppdc;
+                elem_count++;
+                if (prev_new_ppdc) {
+                    prev_new_ppdc->prev = new_ppdc;
+                }
+                old_ppdc->body = NULL;
+                old_ppdc = old_ppdc->prev;
+                if (!old_ppdc) break;
+                prev_new_ppdc = new_ppdc;
+                name_prehash = ppdct_prehash_name(old_ppdc->name);
+            }
         }
-        i++;
     }
+    assert(elem_count == t->clobber_count);
+    tfree(t_old);
     return OK;
 }
 void ppdct_remove(pp_decl_clobber_table* t, pp_decl_clobber* ppdc)
@@ -231,7 +253,9 @@ static inline int ppdct_block_symbol(
         }
         else {
             // we have to add a clobber. resize if needed
-            if (t->clobber_count == t->max_fill) {
+            // we say  +1 to avoid having to grow for the scope list
+            // which would leak this entry
+            if (t->clobber_count + 1 >= t->max_fill) {
                 int res = ppdct_grow(t);
                 if (res) return ERR;
                 ppdc =
