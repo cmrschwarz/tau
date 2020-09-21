@@ -3344,21 +3344,8 @@ resolve_error resolve_func_from_call(
     else {
         ast_body* decl_body = fn->fnb.sc.osym.sym.declaring_body;
         if (!fn->fnb.sc.body.pprn) {
-            if (is_curr_resolution_for_pastes(r, body)) {
-                // node instead of func to deal with type loops
-                re = resolve_ast_node(r, (ast_node*)fn, body, NULL, NULL);
-                if (re) return re;
-                if (fn->fnb.sc.body.pprn) {
-                    re = curr_pprn_depend_on(r, body, &fn->fnb.sc.body.pprn);
-                    if (re) return re;
-                }
-                if (ast_node_get_contains_error((ast_node*)fn)) {
-                    return curr_body_propagate_error(r, body);
-                }
-                return RE_OK;
-            }
             fn->fnb.sc.body.pprn = pp_resolve_node_create(
-                r, (ast_node*)fn, decl_body, false, true, false, false);
+                r, (ast_node*)fn, decl_body, true, true, false, false);
             if (!fn->fnb.sc.body.pprn) return RE_FATAL;
         }
         if (fn->fnb.return_type) {
@@ -3378,6 +3365,9 @@ resolve_error resolve_func_from_call(
     if (re) return re;
     if (ast_node_get_contains_error((ast_node*)fn)) {
         return curr_body_propagate_error(r, body);
+    }
+    if (is_curr_resolution_for_pastes(r, body)) {
+        pp_resolve_node_activate(r, body, &fn->fnb.sc.body.pprn, false);
     }
     return RE_OK;
 }
@@ -3554,13 +3544,13 @@ resolve_error resolve_func(
     r->generic_context = generic_parent;
     if (re == RE_UNREALIZED_COMPTIME || re == RE_UNKNOWN_SYMBOL) {
         assert(bpprn);
-        re = pp_resolve_node_activate(
+        resolve_error re2 = pp_resolve_node_activate(
             r, requesting_body, &fnb->sc.body.pprn, false);
-        if (re) return re;
+        if (re2) return re2;
         bpprn->continue_block = n;
         bpprn->block_pos_reachable = (stmt_ctype_ptr != NULL);
         ast_node_clear_resolving((ast_node*)fnb);
-        return RE_OK;
+        return re;
     }
     if (re == RE_TYPE_LOOP) return re;
     if (!re && stmt_ctype_ptr && fnb->return_ctype != VOID_ELEM) {
