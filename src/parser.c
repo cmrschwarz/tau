@@ -2282,21 +2282,35 @@ parse_error parser_parse_file(parser* p, job_parse* j)
     ast_node_init((ast_node*)&j->file->root, MF_EXTEND);
     bool content = false;
     token* t;
-    PEEK(p, t); // TODO: better error handling
-    src_range_large srl;
-    srl.start = t->start;
-    parse_error pe =
-        parse_eof_delimited_module_frame(p, &j->file->root, &content);
-    PEEK(p, t);
-    srl.end = t->end;
-    srl.smap = p->lx.smap;
-    p->file_root->node.srange = src_range_large_pack(p->lx.tc, &srl);
-    if (p->file_root->node.srange == SRC_RANGE_INVALID) return PE_FATAL;
-    lx_close_file(&p->lx);
-    if (pe) {
-        free_body_symtabs(&j->file->root.body);
-        if (pe == PE_FATAL) return pe;
+    t = lx_peek(&(p)->lx);
+    parse_error pe;
+    if (!t) {
+        pe = PE_LX_ERROR;
     }
+    else {
+        src_range_large srl;
+        srl.start = t->start;
+        pe = parse_eof_delimited_module_frame(p, &j->file->root, &content);
+        if (pe) {
+            free_body_symtabs(&j->file->root.body);
+        }
+        else {
+            t = lx_peek(&(p)->lx);
+            if (!t) {
+                if (!pe) pe = PE_LX_ERROR;
+            }
+            else {
+                srl.end = t->end;
+                srl.smap = p->lx.smap;
+                p->file_root->node.srange =
+                    src_range_large_pack(p->lx.tc, &srl);
+                if (p->file_root->node.srange == SRC_RANGE_INVALID)
+                    pe = PE_FATAL;
+            }
+        }
+    }
+    lx_close_file(&p->lx);
+    if (pe == PE_FATAL) return pe;
     int r = thread_context_preorder_job(p->lx.tc);
     if (content && !pe) {
         if (aseglist_add(
