@@ -276,6 +276,9 @@ ast_body* ast_elem_try_get_body(ast_elem* s)
         case EXPR_BLOCK: return &((expr_block*)s)->ebb.body;
         case EXPR_MATCH: return &((expr_match*)s)->body;
         case EXPR_LOOP: return &((expr_loop*)s)->ebb.body;
+        case TRAIT_IMPL:
+        case TRAIT_IMPL_GENERIC:
+        case TRAIT_IMPL_GENERIC_INST: return &((trait_impl_base*)s)->body;
         case EXPR_PASTE_EVALUATION:
         case STMT_PASTE_EVALUATION: return &((paste_evaluation*)s)->body;
         case MF_EXTEND:
@@ -314,6 +317,10 @@ type_derivatives* ast_elem_get_type_derivs(ast_elem* e)
 bool ast_elem_is_struct(ast_elem* s)
 {
     return s->kind == SC_STRUCT || s->kind == SC_STRUCT_GENERIC_INST;
+}
+bool ast_elem_is_trait_impl(ast_elem* s)
+{
+    return s->kind == TRAIT_IMPL || s->kind == TRAIT_IMPL_GENERIC_INST;
 }
 bool ast_elem_is_var(ast_elem* s)
 {

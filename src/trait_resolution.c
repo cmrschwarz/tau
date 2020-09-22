@@ -96,9 +96,10 @@ resolve_error resolve_trait_impl(resolver* r, trait_impl* ti, ast_body* body)
         il->generics_done = false;
     }
     if (list_append(&il->impls, NULL, ti)) return RE_FATAL;
-    return RE_OK;
+    return add_body_decls(
+        r, &ti->tib.body, NULL, ast_body_is_public(&ti->tib.body));
 }
-static inline resolve_error resolve_body_traits_raw(
+static inline resolve_error unordered_body_add_trait_decls_raw(
     resolver* r, ast_body* body, bool* progress, resolve_error* holdup)
 {
     dbuffer_iterator it;
@@ -130,15 +131,15 @@ static inline resolve_error resolve_body_traits_raw(
         *progress = true;
     }
 }
-resolve_error resolve_body_traits(resolver* r, ast_body* body)
+resolve_error unordered_body_add_trait_decls(resolver* r, ast_body* body)
 {
     bool x;
     resolve_error holdup = RE_OK;
-    resolve_error re = resolve_body_traits_raw(r, body, &x, &holdup);
+    resolve_error re = unordered_body_add_trait_decls_raw(r, body, &x, &holdup);
     if (re) return re;
     return holdup;
 }
-resolve_error resolve_mf_traits(resolver* r)
+resolve_error add_mf_trait_decls(resolver* r)
 {
     assert(r->report_unknown_symbols == false);
     bool progress;
@@ -151,8 +152,8 @@ resolve_error resolve_mf_traits(resolver* r)
             aseglist_iterator_begin(&asi, &(**i).module_frames);
             for (module_frame* mf = aseglist_iterator_next(&asi); mf != NULL;
                  mf = aseglist_iterator_next(&asi)) {
-                resolve_error re =
-                    resolve_body_traits_raw(r, &mf->body, &progress, &holdup);
+                resolve_error re = unordered_body_add_trait_decls_raw(
+                    r, &mf->body, &progress, &holdup);
                 if (re) return re;
             }
         }
@@ -171,8 +172,7 @@ resolve_error resolve_mf_traits(resolver* r)
     return RE_OK;
 }
 
-resolve_error
-block_elem_resolve_traits(resolver* r, ast_body* body, ast_node* n)
+resolve_error ast_node_add_trait_decls(resolver* r, ast_body* body, ast_node* n)
 {
     if (n->kind == TRAIT_IMPL) {
         if (ast_node_get_trait_resolved(n)) return RE_OK;

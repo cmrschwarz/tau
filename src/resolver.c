@@ -28,9 +28,6 @@ static inline resolve_error resolve_ast_node_raw(
 resolve_error resolve_func(
     resolver* r, ast_body* requesting_body, sc_func_base* fnb,
     ast_node** continue_block);
-resolve_error resolve_struct_or_trait(
-    resolver* r, ast_body* body, sc_struct_base* stb, ast_elem** value,
-    ast_elem** ctype);
 resolve_error resolve_expr_body(
     resolver* r, ast_body* requesting_body, ast_node* expr, ast_body* b,
     bool* end_reachable);
@@ -60,6 +57,9 @@ resolve_error handle_resolve_error(
     ast_elem** value, ast_elem** ctype);
 type_cast_result type_cast(
     ast_elem* source_type, ast_elem* target_type, ast_node** src_node_ptr);
+resolve_error resolve_unordered_body(
+    resolver* r, ast_body* requesting_body, ast_body* unordered_body,
+    ast_node* owning_node, ast_elem** value, ast_elem** ctype);
 // must be a macro so value and ctype become lazily evaluated
 
 #define SET_VAL_CTYPE(pvalue, pctype, value, ctype)                            \
@@ -84,6 +84,7 @@ type_cast_result type_cast(
     do {                                                                       \
         ast_node* n = (ast_node*)(node);                                       \
         if (re != RE_FATAL) {                                                  \
+            r->error_occured = true;                                           \
             if (curr_body_propagate_error(r, body)) return RE_FATAL;           \
             ast_node_set_poisoned(n);                                          \
             ast_node_set_resolved(n);                                          \
@@ -1301,23 +1302,24 @@ static inline resolve_error resolve_no_block_macro_call(
     return RE_FATAL;
 }
 
-// for ex. wth foo::bar() func_body is foo's st, body is body containing the
-// call, args are looked up there
+// for ex. wth foo::bar() lookup_body is foo's st, looking_body is the body
+// containing the call, args are looked up there
 resolve_error resolve_func_call(
-    resolver* r, expr_call* c, ast_body* body, char* func_name,
-    ast_body* func_body, ast_elem** ctype)
+    resolver* r, expr_call* c, ast_elem* lhs_ctype, ast_body* looking_body,
+    char* func_name, ast_body* lookup_body, ast_elem** ctype)
 {
     ast_elem** call_arg_types =
         sbuffer_append(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
     resolve_error re = RE_OK;
     for (ureg i = 0; i < c->arg_count; i++) {
-        re = resolve_ast_node(r, c->args[i], body, NULL, &call_arg_types[i]);
+        re = resolve_ast_node(
+            r, c->args[i], looking_body, NULL, &call_arg_types[i]);
         if (re) return re;
     }
     scope* tgt;
     symbol_lookup_iterator sli;
     re = symbol_lookup_iterator_init(
-        &sli, r, func_body, NULL, body, func_name, false, true);
+        &sli, r, lookup_body, lhs_ctype, looking_body, func_name, false, true);
     bool applicable = false;
     if (re) {
         sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
@@ -1339,9 +1341,9 @@ resolve_error resolve_func_call(
             sbuffer_remove_back(
                 &r->temp_stack, c->arg_count * sizeof(ast_elem*));
             if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
-            report_unknown_symbol(r, c->lhs, body);
+            report_unknown_symbol(r, c->lhs, looking_body);
             SET_THEN_RETURN_POISONED(
-                r, RE_OK, c, body, NULL, ctype, c, ERROR_ELEM);
+                r, RE_OK, c, looking_body, NULL, ctype, c, ERROR_ELEM);
         }
         overload_existant = true;
         if (sym->node.kind == SC_FUNC) {
@@ -1366,7 +1368,7 @@ resolve_error resolve_func_call(
     sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
     if (!applicable) {
         src_range_large srl;
-        ast_node_get_src_range(c->lhs, body, &srl);
+        ast_node_get_src_range(c->lhs, looking_body, &srl);
         error_log_report_annotated(
             r->tc->err_log, ES_RESOLVER, false, "no matching overload",
             srl.smap, srl.start, srl.end,
@@ -1376,25 +1378,26 @@ resolve_error resolve_func_call(
     if (re) return re;
     if (tgt->osym.sym.node.kind == SC_MACRO) {
         c->node.kind = EXPR_NO_BLOCK_MACRO_CALL;
-        re = resolve_no_block_macro_call(r, c, body, (sc_macro*)tgt, ctype);
+        re = resolve_no_block_macro_call(
+            r, c, looking_body, (sc_macro*)tgt, ctype);
     }
     else {
         c->target.fn = (sc_func*)tgt;
         // we sadly need to do this so the resolved flag means
         //"ready to emit and run" which we need for the pp
-        re = resolve_func_from_call(r, body, (sc_func*)tgt, ctype);
+        re = resolve_func_from_call(r, looking_body, (sc_func*)tgt, ctype);
         if (!re) ast_node_set_resolved(&c->node);
     }
     return re;
 }
 // see func call for why we need body and st (foo::bar(args + 1))
-resolve_error resolve_call(
-    resolver* r, expr_call* c, ast_body* call_body, ast_body* body,
-    ast_elem** ctype)
+resolve_error
+resolve_call(resolver* r, expr_call* c, ast_body* body, ast_elem** ctype)
 {
     if (c->lhs->kind == EXPR_IDENTIFIER) {
         return resolve_func_call(
-            r, c, body, ((expr_identifier*)c->lhs)->value.str, body, ctype);
+            r, c, NULL, body, ((expr_identifier*)c->lhs)->value.str, body,
+            ctype);
     }
     if (c->lhs->kind == EXPR_SCOPE_ACCESS) {
         expr_scope_access* esa = (expr_scope_access*)c->lhs;
@@ -1411,7 +1414,7 @@ resolve_error resolve_call(
         if (re) return re;
         // TODO: not sure whether call body is correct here
         return resolve_func_call(
-            r, c, call_body, esa->target.name, lhs_body, ctype);
+            r, c, esa_lhs, body, esa->target.name, body, ctype);
     }
     if (c->lhs->kind == EXPR_MEMBER_ACCESS) {
         expr_member_access* esa = (expr_member_access*)c->lhs;
@@ -1427,8 +1430,7 @@ resolve_error resolve_call(
         assert(ast_elem_is_struct(esa_lhs_ctype)); // TODO: error
         ast_node_set_instance_member(&c->node);
         return resolve_func_call(
-            r, c, body, esa->target.name,
-            &((sc_struct*)esa_lhs_ctype)->sb.sc.body, ctype);
+            r, c, esa_lhs_ctype, body, esa->target.name, body, ctype);
     }
     assert(false); // TODO
     return RE_OK;
@@ -1731,7 +1733,8 @@ resolve_error resolver_lookup_single(
 {
     symbol_lookup_iterator sli;
     resolve_error re = symbol_lookup_iterator_init(
-        &sli, r, body, struct_inst, looking_body, tgt_name, true, true);
+        &sli, r, body, (ast_elem*)struct_inst, looking_body, tgt_name, true,
+        true);
     if (re) return re;
     re = symbol_lookup_iterator_next(&sli, res);
     if (re) return re;
@@ -1782,6 +1785,10 @@ resolve_error resolve_expr_member_accesss(
     ast_elem* lhs_type;
     resolve_error re = resolve_ast_node(r, ema->lhs, body, NULL, &lhs_type);
     if (re) return re;
+    if (lhs_type == ERROR_ELEM) {
+        SET_THEN_RETURN_POISONED(
+            r, RE_OK, ema, body, value, ctype, ema, ERROR_ELEM);
+    }
     if (!ast_elem_is_struct(lhs_type)) { // TODO: pointers
         // TODO: errror
         assert(false);
@@ -1791,8 +1798,7 @@ resolve_error resolve_expr_member_accesss(
     symbol* amb;
     ast_body* struct_body = &((scope*)lhs_type)->body;
     re = resolver_lookup_single(
-        r, struct_body, (sc_struct*)lhs_type, body, ema->target.name, &mem,
-        &amb);
+        r, body, (sc_struct*)lhs_type, body, ema->target.name, &mem, &amb);
     if (re) return re;
     if (!mem) {
         if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
@@ -2696,7 +2702,7 @@ static inline resolve_error resolve_ast_node_raw(
                 SET_THEN_RETURN(
                     value, ctype, c, c->target.fn->fnb.return_ctype);
             }
-            return resolve_call(r, c, body, body, ctype);
+            return resolve_call(r, c, body, ctype);
         }
         case EXPR_NO_BLOCK_MACRO_CALL: {
             expr_call* c = (expr_call*)n;
@@ -2779,12 +2785,15 @@ static inline resolve_error resolve_ast_node_raw(
             // TODO: handle scope escaped pp exprs
             SET_THEN_RETURN(value, ctype, n, GENERIC_TRAIT_ELEM);
         }
+        case TRAIT_IMPL_GENERIC_INST:
+        case TRAIT_IMPL_GENERIC:
+        case TRAIT_IMPL:
         case SC_TRAIT:
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
             if (resolved) SET_THEN_RETURN(value, ctype, n, TYPE_ELEM);
-            return resolve_struct_or_trait(
-                r, body, (sc_struct_base*)n, value, ctype);
+            return resolve_unordered_body(
+                r, body, ast_elem_get_body((ast_elem*)n), n, value, ctype);
         }
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
@@ -3117,10 +3126,6 @@ static inline resolve_error resolve_ast_node_raw(
             ast_node_set_resolved(n);
             SET_THEN_RETURN(value, ctype, VOID_ELEM, VOID_ELEM);
         }
-            // nothing to do here
-        case TRAIT_IMPL_GENERIC_INST:
-        case TRAIT_IMPL_GENERIC:
-        case TRAIT_IMPL:
         case ASTN_ANONYMOUS_MOD_IMPORT_GROUP: {
             ast_node_set_resolved(n);
             return RE_OK;
@@ -3262,7 +3267,7 @@ resolve_error resolve_expr_body(
     for (; *n != NULL; n++) {
         re = add_ast_node_decls(r, b, NULL, *n, false);
         if (re) break;
-        re = block_elem_resolve_traits(r, b, *n);
+        re = ast_node_add_trait_decls(r, b, *n);
         if (re) break;
         re = resolve_ast_node(r, *n, b, NULL, stmt_ctype_ptr);
         if (re == RE_TYPE_LOOP) {
@@ -3371,20 +3376,21 @@ resolve_error resolve_func_from_call(
     }
     return RE_OK;
 }
-resolve_error resolve_struct_or_trait(
-    resolver* r, ast_body* body, sc_struct_base* stb, ast_elem** value,
-    ast_elem** ctype)
+// used for structs, traits, trait impls and their generic counterparts
+resolve_error resolve_unordered_body(
+    resolver* r, ast_body* requesting_body, ast_body* unordered_body,
+    ast_node* owning_node, ast_elem** value, ast_elem** ctype)
 {
     pp_resolve_node* prev_curr_pp = r->curr_pp_node;
     r->curr_pp_node = NULL;
     resolve_error re;
-    re = add_body_decls(r, &stb->sc.body, NULL, !is_local_node((ast_elem*)stb));
+    ast_body* b = unordered_body;
+    re = add_body_decls(r, b, NULL, !is_local_node((ast_elem*)owning_node));
     if (re) return re;
-    ast_body* b = &stb->sc.body;
     bool unrealized_comptime = false;
     bool unknown_symbol = false;
     r->curr_pp_node = NULL;
-    re = resolve_body_traits(r, b);
+    re = unordered_body_add_trait_decls(r, b);
     if (!re) {
         re = resolver_run_pp_resolve_nodes(r, NULL);
         if (!re && b->pprn) {
@@ -3424,19 +3430,19 @@ resolve_error resolve_struct_or_trait(
             b->pprn->needs_further_resolution = true;
         }
     }
-    if (!re) ast_node_set_resolved((ast_node*)stb);
-    if (stb->sc.body.pprn) {
-        resolve_error re2 = curr_pprn_depend_on(r, body, &stb->sc.body.pprn);
+    if (!re) ast_node_set_resolved((ast_node*)owning_node);
+    if (b->pprn) {
+        resolve_error re2 = curr_pprn_depend_on(r, requesting_body, &b->pprn);
         if (!re2) {
             re2 = pp_resolve_node_activate(
-                r, body, &stb->sc.body.pprn, re == RE_OK);
+                r, requesting_body, &b->pprn, re == RE_OK);
         }
         if (re2) {
             assert(re2 == RE_FATAL);
             return re2;
         }
     }
-    SET_VAL_CTYPE(value, ctype, stb, TYPE_ELEM);
+    SET_VAL_CTYPE(value, ctype, owning_node, TYPE_ELEM);
     return re;
 }
 // TODO: make sure we return!
@@ -3452,7 +3458,8 @@ resolve_error resolve_func(
         if (!ast_node_get_static((ast_node*)fnb)) {
             ast_body* npp =
                 ast_body_get_non_paste_parent(fnb->sc.osym.sym.declaring_body);
-            if (ast_elem_is_struct((ast_elem*)npp->owning_node)) {
+            ast_elem* on = (ast_elem*)npp->owning_node;
+            if (ast_elem_is_struct(on) || ast_elem_is_trait_impl(on)) {
                 ast_node_set_instance_member((ast_node*)fnb);
             }
         }
@@ -3523,7 +3530,7 @@ resolve_error resolve_func(
         }
         re = add_ast_node_decls(r, &fnb->sc.body, NULL, *n, false);
         if (re) break;
-        re = block_elem_resolve_traits(r, &fnb->sc.body, *n);
+        re = ast_node_add_trait_decls(r, &fnb->sc.body, *n);
         if (re) break;
         re = resolve_ast_node(r, *n, &fnb->sc.body, NULL, stmt_ctype_ptr);
         if (re) break;
@@ -4301,7 +4308,7 @@ static inline resolve_error resolver_resolve_raw(resolver* r)
         re = resolver_add_mf_decls(r);
         if (re) return re;
     }
-    re = resolve_mf_traits(r);
+    re = add_mf_trait_decls(r);
     if (re) return re;
     re = resolver_run_pp_resolve_nodes(r, NULL);
     if (re) return re;

@@ -96,12 +96,28 @@ static inline resolve_error update_ams(
     }
     return RE_OK;
 }
-
+void pop_symbol_lookup_level(symbol_lookup_iterator* sli)
+{
+    if (sli->stack_height > 1) {
+        sbuffer_remove_back(&sli->r->temp_stack, sizeof(symbol_lookup_level));
+    }
+    sli->stack_height--;
+    if (sli->stack_height > 1) {
+        sli->head =
+            sbuffer_back(&sli->r->temp_stack, sizeof(symbol_lookup_level));
+    }
+    else if (sli->stack_height == 1) {
+        sli->head = &sli->sll_prealloc;
+    }
+    else {
+        sli->head = NULL;
+    }
+}
 resolve_error push_symbol_lookup_level(
-    symbol_lookup_iterator* sli, ast_body* lookup_body, ast_body** usings_head,
+    symbol_lookup_iterator* sli, list_rit trait_impls, ast_body** usings_head,
     ast_body** usings_end, ast_body* extends_body,
     open_symbol* overloaded_sym_head, access_modifier am_start,
-    access_modifier am_end)
+    access_modifier am_end, bool look_for_members)
 {
     symbol_lookup_level* sll;
     if (sli->head == NULL) {
@@ -112,25 +128,32 @@ resolve_error push_symbol_lookup_level(
             &sli->r->temp_stack, sizeof(symbol_lookup_level));
         if (!sll) return RE_FATAL;
     }
-    sll->lookup_body = lookup_body;
+    sll->trait_impls = trait_impls;
     sll->usings_head = usings_head;
     sll->usings_end = usings_end;
-    sll->parent = sli->head;
     sll->extends_body = extends_body;
     sll->overloaded_sym_head = overloaded_sym_head;
     sll->am_start = am_start;
     sll->am_end = am_end;
+    sll->look_for_members = look_for_members;
     sli->head = sll;
+    sli->stack_height++;
     return RE_OK;
 }
 resolve_error symbol_lookup_level_run(
-    symbol_lookup_iterator* sli, ast_body* lookup_body, symbol** res)
+    symbol_lookup_iterator* sli, ast_body* lookup_body, bool look_for_members,
+    symbol** res)
 {
     // access modifiers that would be visible to
     access_modifier am_start = AM_NONE;
     access_modifier am_end = AM_NONE;
     resolve_error re;
-    symbol* sym = ast_body_lookup(lookup_body, sli->hash, sli->tgt_name);
+    symbol* sym = NULL;
+    list_rit impls;
+    int responsibility_count = 0;
+    if (!sli->lhs_ctype || look_for_members) {
+        sym = ast_body_lookup(lookup_body, sli->hash, sli->tgt_name);
+    }
     if (sym != NULL) {
         access_modifier am = ast_node_get_access_mod(&sym->node);
         bool vis_within = false;
@@ -167,9 +190,11 @@ resolve_error symbol_lookup_level_run(
             }
             if (is->target_body) {
                 if (sli->enable_shadowing) {
-                    return symbol_lookup_level_run(sli, is->target_body, res);
+                    return symbol_lookup_level_run(
+                        sli, is->target_body, look_for_members, res);
                 }
                 overloaded_import_symbol = is;
+                responsibility_count++;
                 sym = NULL;
             }
             else {
@@ -193,9 +218,24 @@ resolve_error symbol_lookup_level_run(
             }
             if (sym) {
                 overloaded_sym_head = s;
+                responsibility_count++;
                 break;
             }
             sym = (symbol*)s;
+        }
+    }
+    if (sli->lhs_ctype && lookup_body->symtab && lookup_body->symtab->tt) {
+        trait_table* tt = lookup_body->symtab->tt;
+        impl_list_for_type* il =
+            trait_table_try_get_impl_list_for_type(tt, sli->lhs_ctype);
+        // TODO: we need to generate this here :/
+        if (il && !list_empty(&il->impls)) {
+            list_rit_begin_at_end(&impls, &il->impls);
+            responsibility_count++;
+            if (list_length(&il->impls) > 1) responsibility_count++;
+        }
+        else {
+            list_rit_empty(&impls);
         }
     }
     ast_body* extends_body = NULL;
@@ -215,6 +255,7 @@ resolve_error symbol_lookup_level_run(
                     assert(ast_elem_is_struct((ast_elem*)st->sb.extends));
                 }
                 extends_body = &st->sb.extends->sb.sc.body;
+                responsibility_count++;
             }
         }
 
@@ -229,25 +270,23 @@ resolve_error symbol_lookup_level_run(
                 symbol_table_get_uses_start(lookup_body->symtab, am_start);
             usings_end = symbol_table_get_uses_end(lookup_body->symtab, am_end);
         }
+        if (usings_start != usings_end) {
+            responsibility_count++;
+            if (usings_start + 1 != usings_end) responsibility_count++;
+        }
     }
-    int responsibility_count =
-        (sym != NULL) + (overloaded_sym_head != NULL) +
-        (overloaded_import_symbol != NULL) + (usings_end != usings_start) +
-        (ptrdiff(usings_start, usings_end) > sizeof(symbol_table*)) +
-        (extends_body != NULL);
-
+    if (sym) responsibility_count++;
     if (responsibility_count == 0) {
         *res = NULL;
         return RE_OK;
     }
-
-    bool second_resp = false;
-    if (responsibility_count >= 2) {
-        second_resp = true;
+    bool second_resp = (responsibility_count >= 2);
+    if (second_resp) {
         re = push_symbol_lookup_level(
-            sli, lookup_body, usings_start, usings_end, extends_body,
-            overloaded_sym_head, am_start, am_end);
+            sli, impls, usings_start, usings_end, extends_body,
+            overloaded_sym_head, am_start, am_end, look_for_members);
         if (re) return re;
+        sli->last_match_loc = MATCH_LOCATION_PUSHED;
     }
     if (sym) {
         *res = sym;
@@ -255,26 +294,37 @@ resolve_error symbol_lookup_level_run(
     }
     // if overloaded_symbol_head was set than sym was set
     if (overloaded_import_symbol) { // if this is set than sym was NULL
+        sli->last_match_loc = MATCH_LOCATION_OVERLOAD;
         return symbol_lookup_level_run(
-            sli, overloaded_import_symbol->target_body, res);
+            sli, overloaded_import_symbol->target_body, look_for_members, res);
+    }
+    trait_impl* ti = list_rit_prev(&impls);
+    if (ti) {
+        if (second_resp) sli->head->trait_impls = impls;
+        sli->last_match_loc = MATCH_LOCATION_TRAIT_IMPLS;
+        return symbol_lookup_level_run(sli, &ti->tib.body, true, res);
     }
     if (usings_end != usings_start) {
         if (second_resp) sli->head->usings_head++;
-        return symbol_lookup_level_run(sli, *usings_start, res);
+        sli->last_match_loc = MATCH_LOCATION_USING;
+        return symbol_lookup_level_run(
+            sli, *usings_start, look_for_members, res);
     }
     // otherwise some condition above would have fired
-    assert(extends_body && responsibility_count == 1);
-    if (second_resp) sli->head->extends_body = NULL;
-    return symbol_lookup_level_run(sli, extends_body, res);
+    assert(extends_body && !second_resp);
+    return symbol_lookup_level_run(sli, extends_body, look_for_members, res);
 }
 
 resolve_error symbol_lookup_iterator_init(
     symbol_lookup_iterator* sli, resolver* r, ast_body* lookup_body,
-    sc_struct* struct_inst_lookup, ast_body* looking_body, const char* tgt_name,
+    ast_elem* lhs_ctype, ast_body* looking_body, const char* tgt_name,
     bool enable_shadowing, bool deref_aliases)
 {
+    bool indirect_lookup = (looking_body != lookup_body);
+    sli->explore_parents = !indirect_lookup;
     lookup_body = ast_body_get_non_paste_parent(lookup_body);
-    looking_body = ast_body_get_non_paste_parent(looking_body);
+    looking_body = indirect_lookup ? ast_body_get_non_paste_parent(looking_body)
+                                   : lookup_body;
     sc_struct* looking_struct = NULL;
     ast_body* looking_mf_body;
     ast_body* looking_mod_body;
@@ -301,6 +351,7 @@ resolve_error symbol_lookup_iterator_init(
         }
         i = i->parent;
     }
+    sli->explore_type = (lhs_ctype && ast_elem_is_scope((ast_elem*)lhs_ctype));
     sli->r = r;
     sli->first_hidden_match = NULL;
     sli->hash = symbol_table_prehash(tgt_name);
@@ -312,8 +363,11 @@ resolve_error symbol_lookup_iterator_init(
     sli->enable_shadowing = enable_shadowing;
     sli->deref_aliases = deref_aliases;
     sli->head = NULL;
-    sli->struct_inst_lookup = struct_inst_lookup;
+    sli->last_match_loc = MATCH_LOCATION_POPPED;
+    sli->stack_height = 0;
+    sli->lhs_ctype = lhs_ctype;
     sli->next_lookup_body = lookup_body;
+    sli->exploring_members = false;
     return RE_OK;
 }
 static inline resolve_error symbol_lookup_level_continue(
@@ -326,27 +380,44 @@ static inline resolve_error symbol_lookup_level_continue(
         if (am < sll->am_start || am > sll->am_end) continue;
         if (check_visible_within(sli->looking_body, s->visible_within_body)) {
             *res = (symbol*)s;
+            sli->last_match_loc = MATCH_LOCATION_OVERLOAD;
+            return RE_OK;
+        }
+    }
+    while (true) {
+        trait_impl* ti = list_rit_prev(&sll->trait_impls);
+        if (!ti) break;
+        resolve_error re =
+            symbol_lookup_level_run(sli, &ti->tib.body, true, res);
+        if (re) return re;
+        if (*res) {
+            sli->last_match_loc = MATCH_LOCATION_TRAIT_IMPLS;
             return RE_OK;
         }
     }
     while (sll->usings_head != sll->usings_end) {
         ast_body* t = *sll->usings_head;
         sll->usings_head++;
-        resolve_error re = symbol_lookup_level_run(sli, t, res);
+        resolve_error re =
+            symbol_lookup_level_run(sli, t, sll->look_for_members, res);
         if (re) return re;
-        if (*res) return RE_OK;
+        if (*res) {
+            sli->last_match_loc = MATCH_LOCATION_USING;
+            return RE_OK;
+        }
     }
     if (sll->extends_body) {
         ast_body* body = sll->extends_body;
         sll->extends_body = NULL;
-        return symbol_lookup_level_run(sli, body, res);
+        pop_symbol_lookup_level(sli);
+        sli->last_match_loc = MATCH_LOCATION_POPPED;
+        return symbol_lookup_level_run(sli, body, sll->look_for_members, res);
     }
-    if (sll != &sli->sll_prealloc) {
-        sbuffer_remove_back(&sli->r->temp_stack, sizeof(symbol_lookup_level));
-    }
+    pop_symbol_lookup_level(sli);
     *res = NULL;
     return RE_OK;
 }
+
 resolve_error
 symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res)
 {
@@ -363,13 +434,19 @@ symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res)
         }
         ast_body* nlb = sli->next_lookup_body;
         if (!nlb) break;
-        if (sli->struct_inst_lookup) {
+        if (!sli->explore_parents) {
             sli->next_lookup_body = NULL;
         }
-        else {
-            sli->next_lookup_body = sli->next_lookup_body->parent;
+        else if (nlb) {
+            sli->next_lookup_body = nlb->parent;
         }
-        re = symbol_lookup_level_run(sli, nlb, &sym);
+        if (!sli->next_lookup_body && sli->explore_type) {
+            sli->explore_type = false;
+            sli->explore_parents = true;
+            sli->next_lookup_body = &((scope*)sli->lhs_ctype)->body;
+            sli->exploring_members = true;
+        }
+        re = symbol_lookup_level_run(sli, nlb, sli->exploring_members, &sym);
         if (sym && sli->enable_shadowing) {
             sli->next_lookup_body = NULL;
         }
@@ -378,4 +455,26 @@ symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res)
     }
     *res = sym;
     return RE_OK;
+}
+
+void symbol_lookup_iterator_cut_off_shadowed(symbol_lookup_iterator* sli)
+{
+    assert(!sli->enable_shadowing); // always cut off in that case
+    switch (sli->last_match_loc) {
+        case MATCH_LOCATION_PUSHED: {
+            pop_symbol_lookup_level(sli);
+        } break;
+        case MATCH_LOCATION_OVERLOAD: {
+            assert(sli->head);
+            sli->head->usings_head = sli->head->usings_end;
+            list_rit_empty(&sli->head->trait_impls);
+        } // fallthrough
+        case MATCH_LOCATION_TRAIT_IMPLS:
+        case MATCH_LOCATION_USING: {
+            assert(sli->head);
+            sli->head->extends_body = NULL;
+        } break;
+        case MATCH_LOCATION_POPPED: break;
+    }
+    sli->next_lookup_body = NULL;
 }

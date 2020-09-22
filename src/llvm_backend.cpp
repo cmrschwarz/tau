@@ -25,10 +25,9 @@ int llvm_backend_init_globals(tauc* t)
     llvm::InitializeAllTargetMCs();
     llvm::InitializeNativeTargetAsmParser();
     llvm::InitializeNativeTargetAsmPrinter();
-    const char* args[] = {
-        "tauc",
-        /*"-time-passes",*/
-        /*"--debug-pass=Structure"*/};
+    const char* args[] = {"tauc",
+                          /*"-time-passes",*/
+                          /*"--debug-pass=Structure"*/};
 
     llvm::cl::ParseCommandLineOptions(sizeof(args) / sizeof(char*), args);
     PP_RUNNER = new (std::nothrow) PPRunner();
@@ -1480,6 +1479,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         case SC_STRUCT_GENERIC: // TODO: emit instances somewhere somhow
         case MF_MODULE:
         case MF_EXTEND:
+        case TRAIT_IMPL:
+        case TRAIT_IMPL_GENERIC:
         case SC_TRAIT:
         case SC_TRAIT_GENERIC:
             // no codegen required
@@ -2174,21 +2175,18 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
             ast_elem* owner = (ast_elem*)ast_body_get_non_paste_parent(
                                   fn->fnb.sc.osym.sym.declaring_body)
                                   ->owning_node;
-            assert(ast_elem_is_struct_base(owner));
-            llvm::Type* struct_type;
-            /*
-            ureg id;
-            if (owner->kind == SC_STRUCT_GENERIC_INST) {
-                id = ((sc_struct_generic_inst*)owner)->id; // TODO: fill id
+            llvm::Type* instance_type;
+            if (ast_elem_is_struct_base(owner)) {
+                lle = lookupCType(owner, &instance_type, NULL, NULL);
             }
             else {
-                assert(owner->kind == SC_STRUCT);
-                id = ((sc_struct*)owner)->id;
+                assert(ast_elem_is_trait_impl(owner));
+                lle = lookupCType(
+                    ((trait_impl*)owner)->impl_for_ctype, &instance_type, NULL,
+                    NULL);
             }
-            */
-            lle = lookupCType(owner, &struct_type, NULL, NULL);
             if (lle) return lle;
-            params[i] = struct_type->getPointerTo();
+            params[i] = instance_type->getPointerTo();
             assert(params[i]);
             i++;
         }
@@ -2362,8 +2360,8 @@ llvm_error LLVMBackend::emitModuleToPP(
     if (lle) return lle;
     if (write_out_file) {
         std::error_code ec;
-        llvm::raw_fd_ostream file_stream{
-            _mod_handle->module_obj, ec, llvm::sys::fs::F_None};
+        llvm::raw_fd_ostream file_stream{_mod_handle->module_obj, ec,
+                                         llvm::sys::fs::F_None};
         file_stream.write(obj_sv.begin(), obj_sv.size());
     }
     std::unique_ptr<llvm::MemoryBuffer> obj_svmb{
