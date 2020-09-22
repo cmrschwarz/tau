@@ -100,7 +100,9 @@ static inline pp_decl_clobber* ppdct_lookup_raw(
         if (!ppdc->body || ppdc->body == TOMBSTONE) return ppdc;
         if (ppdc->body == body && ppdc->associated_type == associtated_type) {
             if (name) {
-                if (cstr_eq(ppdc->name, name)) return ppdc;
+                if (ppdc->name) {
+                    if (cstr_eq(ppdc->name, name)) return ppdc;
+                }
             }
             else {
                 if (!ppdc->name) return ppdc;
