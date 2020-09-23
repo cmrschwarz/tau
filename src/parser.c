@@ -1814,7 +1814,7 @@ static inline parse_error parse_value_expr(parser* p, ast_node** ex, ureg prec)
 
         case TK_KW_CONTINUE: return parse_continue(p, ex);
 
-        case TK_NUMBER: return parse_literal(p, EXPR_LITERAL, PT_INT, ex);
+        case TK_NUMBER: return parse_literal(p, EXPR_LITERAL, PT_FLUID_INT, ex);
         case TK_STRING: return parse_literal(p, EXPR_LITERAL, PT_STRING, ex);
         case TK_BINARY_STRING:
             // TODO: handle this properly

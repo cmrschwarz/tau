@@ -17,6 +17,7 @@
     }
 primitive PRIMITIVES[] = {
     mk_prim(PT_ERROR, "__error__"),
+    mk_prim(PT_FLUID_INT, "__fluid_int__"),
     mk_prim(PT_VOID, "void"),
     mk_prim(PT_GENERIC_TYPE, "type[]"),
     mk_prim(PT_GENERIC_TRAIT, "trait[]"),

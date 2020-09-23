@@ -85,3 +85,5 @@ typedef f64 freg;
 #else
 #error "Environment not 32 or 64-bit."
 #endif
+
+#define BYTE_BITS 8

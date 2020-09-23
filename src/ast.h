@@ -215,6 +215,7 @@ typedef enum PACK_ENUM primitive_kind_e {
     PT_DEFINED,
     PT_GENERIC_TYPE,
     PT_GENERIC_TRAIT,
+    PT_FLUID_INT,
     PT_INT,
     PT_UINT,
     PT_FLOAT,

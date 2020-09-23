@@ -96,3 +96,16 @@ static inline ureg ceil_to_mult_of_pow_two(ureg val, ureg pow2)
 {
     return CEIL_TO_MULT_OF_POW2(val, pow2);
 }
+
+static inline ureg swap_endianness(ureg val)
+{
+#if (CMPLR_GCC || CMPLR_CLANG)
+    return __builtin_bswap32(val);
+#else
+    ureg res = 0;
+    for (ureg i = 0; i < sizeof(ureg); i++) {
+        res |= ((res >> (8 * i)) & U8_MAX) << ((sizeof(ureg) - i - 1) * 8);
+    }
+    return res;
+#endif
+}

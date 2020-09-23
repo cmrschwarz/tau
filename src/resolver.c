@@ -1053,11 +1053,14 @@ static inline resolve_error parse_int_literal(
             overflow = true;
             break;
         }
+        res *= 10;
         res += digit;
-        digit_val *= 10;
         str++;
     }
     if (!overflow) {
+        if (lit->node.pt_kind == PT_FLUID_INT) {
+            lit->node.pt_kind = negative ? PT_INT : PT_UINT;
+        }
         if (*negative) {
             if (res > SREG_MAX) {
                 overflow = true;
@@ -1071,12 +1074,15 @@ static inline resolve_error parse_int_literal(
         }
         if (!overflow) return RE_OK;
     }
+    lit->node.pt_kind = PT_ERROR;
+    if (ast_node_propagate_error(r, (ast_node*)lit)) return RE_FATAL;
+    if (curr_body_propagate_error(r, body)) return RE_FATAL;
     src_range_large srl;
     ast_node_get_src_range((ast_node*)lit, body, &srl);
     error_log_report_annotated(
         r->tc->err_log, ES_RESOLVER, false, "integer literal overflow",
         srl.smap, srl.start, srl.end, "in this integer literal");
-    return RE_ERROR;
+    return RE_OK;
 }
 static resolve_error evaluate_array_bounds(
     resolver* r, expr_array_type* ad, ast_body* body, ureg arr_expr_len,
@@ -1093,13 +1099,18 @@ static resolve_error evaluate_array_bounds(
     }
     resolve_error re = resolve_ast_node(r, ad->length_spec, body, NULL, &t);
     if (re) return re;
+    if (t == ERROR_ELEM) {
+        ast_node_set_poisoned((ast_node*)ad);
+        if (curr_body_propagate_error(r, body)) return RE_FATAL;
+        return RE_OK;
+    }
     bool negative = false;
     bool incompatible = false;
     if (ad->length_spec->kind == EXPR_LITERAL) {
         expr_literal* lit = (expr_literal*)ad->length_spec;
         if (lit->node.pt_kind == PT_UINT || lit->node.pt_kind == PT_INT) {
-            resolve_error re = parse_int_literal(r, lit, body, res, &negative);
-            if (re) return re;
+            *res = lit->value.val_ureg;
+            negative = (lit->node.pt_kind == PT_INT && (sreg)*res < 0);
         }
         else {
             incompatible = true;
@@ -1402,19 +1413,25 @@ resolve_call(resolver* r, expr_call* c, ast_body* body, ast_elem** ctype)
     if (c->lhs->kind == EXPR_SCOPE_ACCESS) {
         expr_scope_access* esa = (expr_scope_access*)c->lhs;
         ast_elem* esa_lhs;
-        ast_body* lhs_body;
         resolve_error re = resolve_ast_node(r, esa->lhs, body, &esa_lhs, NULL);
         if (re) return re;
         if (esa_lhs == ERROR_ELEM) {
             SET_THEN_RETURN_POISONED(
                 r, RE_OK, c, body, NULL, ctype, NULL, ERROR_ELEM);
         }
-        assert(ast_elem_is_symbol(esa_lhs));
-        re = get_resolved_symbol_body(r, (symbol*)esa_lhs, &lhs_body);
-        if (re) return re;
-        // TODO: not sure whether call body is correct here
-        return resolve_func_call(
-            r, c, esa_lhs, body, esa->target.name, body, ctype);
+        if (ast_elem_is_from_module(esa_lhs) ||
+            ast_elem_is_any_import(esa_lhs)) {
+            assert(ast_elem_is_symbol(esa_lhs));
+            ast_body* lhs_body;
+            re = get_resolved_symbol_body(r, (symbol*)esa_lhs, &lhs_body);
+            if (re) return re;
+            return resolve_func_call(
+                r, c, NULL, body, esa->target.name, lhs_body, ctype);
+        }
+        else {
+            return resolve_func_call(
+                r, c, esa_lhs, body, esa->target.name, body, ctype);
+        }
     }
     if (c->lhs->kind == EXPR_MEMBER_ACCESS) {
         expr_member_access* esa = (expr_member_access*)c->lhs;
@@ -1427,7 +1444,6 @@ resolve_call(resolver* r, expr_call* c, ast_body* body, ast_elem** ctype)
             SET_THEN_RETURN_POISONED(
                 r, RE_OK, c, body, NULL, ctype, NULL, ERROR_ELEM);
         }
-        assert(ast_elem_is_struct(esa_lhs_ctype)); // TODO: error
         ast_node_set_instance_member(&c->node);
         return resolve_func_call(
             r, c, esa_lhs_ctype, body, esa->target.name, body, ctype);
@@ -1460,6 +1476,10 @@ resolve_error choose_unary_operator_overload(
     resolve_error re =
         resolve_ast_node(r, ou->child, body, &child_value, &child_type);
     if (re) return re;
+    if (child_type == ERROR_ELEM) {
+        SET_THEN_RETURN_POISONED(
+            r, re, ou, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
+    }
 
     if (child_type == TYPE_ELEM || child_type == GENERIC_TYPE_ELEM) {
         ast_node_set_type_operator(&ou->node);
@@ -2156,10 +2176,13 @@ static inline resolve_error resolve_if(
         else {
             if (re) return re;
         }
-        if (if_branch_type_loop || ctype_if == UNREACHABLE_ELEM) {
+        if (if_branch_type_loop || ctype_if == UNREACHABLE_ELEM ||
+            ctype_if == ERROR_ELEM) {
             ei->ctype = ctype_else; // TODO: this could lead to void instead
         }
-        else if (else_branch_type_loop || ctype_else == UNREACHABLE_ELEM) {
+        else if (
+            else_branch_type_loop || ctype_else == UNREACHABLE_ELEM ||
+            ctype_else == ERROR_ELEM) {
             ei->ctype = ctype_if;
         }
         else if (ctype_if != ctype_else) {
@@ -2679,6 +2702,17 @@ static inline resolve_error resolve_ast_node_raw(
             return RE_OK;
         }
         case EXPR_LITERAL: {
+            if (resolved) {
+                SET_THEN_RETURN(value, ctype, n, &PRIMITIVES[n->pt_kind]);
+            }
+            expr_literal* lit = (expr_literal*)n;
+            if (n->pt_kind == PT_FLUID_INT) {
+                ureg res;
+                bool neg;
+                re = parse_int_literal(r, lit, body, &res, &neg);
+                if (re) return re;
+                lit->value.val_ureg = res;
+            }
             if (!resolved) ast_node_set_resolved(n);
             SET_THEN_RETURN(value, ctype, n, &PRIMITIVES[n->pt_kind]);
         }

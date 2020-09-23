@@ -8,6 +8,7 @@
 static PPRunner* PP_RUNNER;
 extern "C" {
 #include "utils/ptrlist.h"
+#include "utils/math_utils.h"
 #include "utils/panic.h"
 #include "thread_context.h"
 #include "ast_flags.h"
@@ -505,6 +506,7 @@ void LLVMBackend::setupPrimitives()
             case PT_TRAIT:
             case PT_DEFINED:
             case PT_ERROR:
+            case PT_FLUID_INT:
             case PT_UNDEFINED:
             case PT_UNREACHABLE: t = NULL; break;
             default: assert(false); return;
@@ -1515,11 +1517,26 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                 case PT_INT:
                 case PT_UINT: {
                     auto t = (llvm::IntegerType*)_primitive_types[n->pt_kind];
-                    auto c = llvm::ConstantInt::get(t, l->value.str, 10);
-                    if (!c) return LLE_FATAL;
-                    assert(!vl);
-                    if (vl_loaded) *vl_loaded = c;
-                    return LLE_OK;
+                    auto c = llvm::ConstantInt::get(
+                        t, l->value.val_ureg, n->pt_kind == PT_INT);
+                    if (vl) {
+                        auto* gv = new llvm::GlobalVariable(
+                            *_module, t, true,
+                            llvm::GlobalValue::PrivateLinkage, c);
+                        if (!gv) return LLE_FATAL;
+                        gv->setUnnamedAddr(
+                            llvm::GlobalValue::UnnamedAddr::Global);
+                        auto ma = llvm::MaybeAlign(
+                            _data_layout->getPrefTypeAlignment(t));
+                        gv->setAlignment(ma);
+                        *vl = gv;
+                        return LLE_OK;
+                    }
+                    else {
+                        if (!c) return LLE_FATAL;
+                        if (vl_loaded) *vl_loaded = c;
+                        return LLE_OK;
+                    }
                 }
                 case PT_STRING: {
                     lle = processEscapeSymbols(&l->value.str);
@@ -1534,8 +1551,25 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     auto f = llvm::APFloat(
                         llvm::APFloatBase::IEEEsingle(), l->value.str);
                     auto c = llvm::ConstantFP::get(_context, f);
-                    assert(!vl);
-                    if (vl_loaded) *vl_loaded = c;
+                    auto t = _primitive_types[PT_FLOAT];
+                    if (vl) {
+                        auto* gv = new llvm::GlobalVariable(
+                            *_module, t, true,
+                            llvm::GlobalValue::PrivateLinkage, c);
+                        if (!gv) return LLE_FATAL;
+                        gv->setUnnamedAddr(
+                            llvm::GlobalValue::UnnamedAddr::Global);
+                        auto ma = llvm::MaybeAlign(
+                            _data_layout->getPrefTypeAlignment(t));
+                        gv->setAlignment(ma);
+                        *vl = gv;
+                        return LLE_OK;
+                    }
+                    else {
+                        if (!c) return LLE_FATAL;
+                        if (vl_loaded) *vl_loaded = c;
+                        return LLE_OK;
+                    }
                     return LLE_OK;
                 }
                 default: assert(false);

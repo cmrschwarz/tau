@@ -448,7 +448,9 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
                     pu(l->value.str);
                     pc('"');
                     break;
-                case PT_INT: pu(l->value.str); break;
+                case PT_FLUID_INT: pu(l->value.str); break;
+                case PT_UINT: tprintf("%zu", l->value.val_ureg); break;
+                case PT_INT: tprintf("%zi", l->value.val_ureg); break;
                 default: assert(false); break;
             }
         } break;
