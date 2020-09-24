@@ -1,5 +1,5 @@
 resolver error: multiple candidates for main function
- ==> ./tests/error_tests/double_main.tau:1:1
+ ==> ./tests/errors/double_main.tau:1:1
 1 |func main() -> int{
   |^^^^^^^^^ first here
 ...

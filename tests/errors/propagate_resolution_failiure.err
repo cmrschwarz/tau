@@ -1,4 +1,4 @@
 resolver error: unknown symbol
- ==> ./tests/error_tests/propagate_resolution_failiure.tau:3:9
+ ==> ./tests/errors/propagate_resolution_failiure.tau:3:9
 3 |        asdf;
   |        ^^^^ use of an undefined symbol

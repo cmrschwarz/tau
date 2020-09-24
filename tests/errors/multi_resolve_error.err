@@ -1,10 +1,10 @@
 resolver error: unknown symbol
- ==> ./tests/error_tests/multi_resolve_error.tau:3:8
+ ==> ./tests/errors/multi_resolve_error.tau:3:8
 3 |    x: Type = []int;
   |       ^^^^ use of an undefined symbol
 
 resolver error: variable of type 'type' is not allowed
- ==> ./tests/error_tests/multi_resolve_error.tau:4:5
+ ==> ./tests/errors/multi_resolve_error.tau:4:5
 4 |    y := int;
   |    ^ for this variable
   |         ^^^ illegal type deduced from this initializer expression

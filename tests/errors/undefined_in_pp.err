@@ -1,9 +1,9 @@
 resolver error: unknown symbol
- ==> ./tests/error_tests/undefined_in_pp.tau:2:6
+ ==> ./tests/errors/undefined_in_pp.tau:2:6
 2 |    #s = "3"; //error: undefined
   |     ^ use of an undefined symbol
 
 resolver error: unknown symbol
- ==> ./tests/error_tests/undefined_in_pp.tau:3:19
+ ==> ./tests/errors/undefined_in_pp.tau:3:19
 3 |    return #paste(s);
   |                  ^ use of an undefined symbol

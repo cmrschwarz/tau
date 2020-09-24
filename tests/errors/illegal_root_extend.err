@@ -1,5 +1,5 @@
 resolver error: extend in non required file
- ==> ./tests/error_tests/illegal_root_extend.tau.second:1:1
+ ==> ./tests/errors/illegal_root_extend.tau.second:1:1
 1 |func foo(){ //this should cause an error
   |^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ 
 2 |

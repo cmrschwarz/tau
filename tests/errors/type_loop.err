@@ -1,5 +1,5 @@
 resolver error: resolution cycle
- ==> ./tests/error_tests/type_loop.tau:2:5
+ ==> ./tests/errors/type_loop.tau:2:5
 2 |    y: int = y;
   |    ^ type definition depends on itself
   |             ^ loop detected

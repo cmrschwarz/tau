@@ -1,9 +1,9 @@
 lexer error: required file is not available
- ==> ./tests/error_tests/illegal_require_and_extend.tau:2:5
+ ==> ./tests/errors/illegal_require_and_extend.tau:2:5
 2 |    require "test1.tau";
   |    ^^^^^^^^^^^^^^^^^^^ required here
 
 resolver error: extend in non required file
- ==> ./tests/error_tests/illegal_require_and_extend.tau:4:1
+ ==> ./tests/errors/illegal_require_and_extend.tau:4:1
 4 |extend m{
   |^^^^^^^^ the file containing this has not been required by module m

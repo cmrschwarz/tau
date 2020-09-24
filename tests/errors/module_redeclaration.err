@@ -1,5 +1,5 @@
 resolver error: module redeclaration
- ==> ./tests/error_tests/module_redeclaration.tau:1:1
+ ==> ./tests/errors/module_redeclaration.tau:1:1
 1 |module a{}
   |^^^^^^^^ one declaration here
 2 |module a{}

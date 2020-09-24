@@ -1,16 +1,16 @@
 resolver error: variable of type 'void' is not allowed
- ==> ./tests/error_tests/illegal_returns.tau:1:2
+ ==> ./tests/errors/illegal_returns.tau:1:2
 1 |#a:= main();
   | ^ for this variable
   |         ^^ illegal type deduced from this initializer expression
 
 resolver error: orphaned return statement
- ==> ./tests/error_tests/illegal_returns.tau:2:5
+ ==> ./tests/errors/illegal_returns.tau:2:5
 2 |b:= return 3;
   |    ^^^^^^^^ the return statement is not inside a function
 
 resolver error: return type missmatch
- ==> ./tests/error_tests/illegal_returns.tau:4:12
+ ==> ./tests/errors/illegal_returns.tau:4:12
 3 |public func main(){
   |^^^^^^^^^^^^^^^^ target scope here
 4 |    return 3;
