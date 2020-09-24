@@ -5,11 +5,12 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd "$SCRIPT_DIR/../"
 export ROOT_DIR="$(pwd -P)"
 export TAUC="$ROOT_DIR/build/tauc"
+export skip_tests=()
 
 pretty_print_time() {
-    before=$1
-    after=$2
-    time=$(bc <<< "( $after - $before ) * 1000 / 1")
+    local before=$1
+    local after=$2
+    local time=$(bc <<< "( $after - $before ) * 1000 / 1")
     if [ $time -gt 1000 ]; then
         time=$(bc <<< "scale=2; ( $after - $before )  / 1")
         echo "$time s"
@@ -22,7 +23,7 @@ print_seperator() {
 }
 
 print_err_out() {
-    message=$1
+    local message=$1
 
     print_seperator
     printf "\033[0;31m$message\033[0m"
@@ -30,6 +31,13 @@ print_err_out() {
     print_seperator
 }
 
+should_skip () {
+    local taufile=$1
+    for e in "${skip_tests[@]}"; do 
+        [[ "$taufile" == *"$e"* ]] && return 0;
+    done
+    return 1
+}
 
 run_test_folder() {
     folder=$1
@@ -43,6 +51,10 @@ run_test_folder() {
     fi
     for taufile in "$folder"/*.tau ; do
         [ -e "$taufile" ] || continue
+        if should_skip "$taufile"; then
+            echo "SKIPPED $taufile"
+            continue
+        fi 
         expected_output_file=`echo "$taufile" | head  -c -4 && echo "$out_ext"`
         output_file_exists=`[ -f "$expected_output_file" ] && echo true || echo false`
         comp_crash=false
@@ -133,6 +145,7 @@ run_unit=false
 run_regular=false
 run_error=false
 use_valgrind=false
+
 while true; do
     if [ $# -eq 0 ]; then break; fi
     case $1 in
@@ -153,6 +166,11 @@ while true; do
         ;;
         -v|--valgrind)
             use_valgrind=true
+            shift
+        ;;
+        -s|--skip)
+            shift
+            export skip_tests=("${skip_tests[@]}" $1)
             shift
         ;;
         --|*) 
@@ -185,7 +203,7 @@ if $run_all || $run_error; then
 fi
 rm "$tmp_file"
 
-if [ $errors -eq 0 ]; then   
+if [ $errors -eq 0 ] && ! $unit_tests_err; then   
     printf "\033[0;32mall $successes tests passed\033[0m\n"
     exit 0
 else
