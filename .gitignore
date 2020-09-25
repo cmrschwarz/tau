@@ -7,7 +7,7 @@
 /tests/debug/**
 *.obj
 *.ll
-*.out
+a.out
 *.asm
 /core
 /env
