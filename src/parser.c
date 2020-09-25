@@ -286,6 +286,10 @@ static inline bool is_kw_valid_label(token_kind t)
         default: return false;
     }
 }
+static inline bool is_cond_kw(token* t, const char* cond_kw)
+{
+    return t->kind == TK_IDENTIFIER && string_cmp_cstr(t->str, cond_kw) == 0;
+}
 static inline void* alloc_ppool(parser* p, ureg size, pool* pool)
 {
     return pool_alloc(pool, size);
@@ -2775,9 +2779,11 @@ parse_trait_impl_decl(parser* p, modifier_status* mods, ast_node** n)
         tig = alloc_perm(p, sizeof(trait_impl_generic));
         if (!tig) return PE_FATAL;
         tib = (trait_impl_base*)tig;
+        ast_node_init_with_mods(
+            (ast_node*)tib, TRAIT_IMPL_GENERIC, &mods->data);
         lx_void(&p->lx);
         pe = parse_param_list(
-            p, (ast_node*)tig, &tig->generic_params, &tig->generic_param_count,
+            p, (ast_node*)tib, &tig->generic_params, &tig->generic_param_count,
             true, mods->start, impl_head_end,
             get_context_msg(p, (ast_node*)tib));
         if (pe) return pe;
@@ -2789,47 +2795,45 @@ parse_trait_impl_decl(parser* p, modifier_status* mods, ast_node** n)
         ti = alloc_perm(p, sizeof(trait_impl));
         if (!ti) return PE_FATAL;
         tib = (trait_impl_base*)ti;
+        ast_node_init_with_mods((ast_node*)tib, TRAIT_IMPL, &mods->data);
         int err = type_map_init(&ti->type_derivs.tm);
         if (err) return PE_FATAL;
         curr_scope_get_appropriate_eoc(p, mods->data.access_mod)->impl_count++;
     }
-    ast_node_init_with_mods(
-        (ast_node*)tib, tig ? TRAIT_IMPL_GENERIC : TRAIT_IMPL, &mods->data);
-    pe = parse_expression(p, &tib->impl_of);
-    if (t->kind != TK_IDENTIFIER || string_cmp_cstr(t->str, COND_KW_FOR)) {
+    ast_node* first_expr;
+    assert(p->disable_macro_body_call == false);
+    p->disable_macro_body_call = true;
+    pe = parse_expression(p, &first_expr);
+    p->disable_macro_body_call = false;
+    PEEK(p, t);
+    if (pe == PE_EOEX) {
+        parser_error_2a(
+            p, "invalid trait impl syntax", t->start, t->end,
+            "expected trait or type name after 'impl'", mods->start, t->end,
+            NULL);
+        return PE_ERROR;
+    }
+    ureg decl_end;
+    if (is_cond_kw(t, COND_KW_FOR)) {
+        lx_void(&p->lx);
+        tib->impl_of = first_expr;
+        p->disable_macro_body_call = true;
+        pe = parse_expression(p, &tib->impl_for);
+        p->disable_macro_body_call = false;
         if (pe == PE_EOEX) {
             PEEK(p, t);
             parser_error_2a(
                 p, "invalid trait impl syntax", t->start, t->end,
-                "expected trait name after 'impl'", mods->start, t->end, NULL);
+                "expected type name after 'for'", mods->start, t->end, NULL);
             return PE_ERROR;
         }
-        PEEK(p, t);
-        if (t->kind != TK_IDENTIFIER || string_cmp_cstr(t->str, COND_KW_FOR)) {
-            parser_error_2a(
-                p, "invalid trait impl syntax", t->start, t->end,
-                "expected 'for' after trait name", mods->start, t->end, NULL);
-            return PE_ERROR;
-        }
+        ast_node_get_bounds(tib->impl_of, NULL, &decl_end);
     }
     else {
+        tib->impl_for = first_expr;
         tib->impl_of = NULL;
+        ast_node_get_bounds(tib->impl_for, NULL, &decl_end);
     }
-
-    lx_void(&p->lx);
-    assert(p->disable_macro_body_call == false);
-    p->disable_macro_body_call = true;
-    pe = parse_expression(p, &tib->impl_for);
-    p->disable_macro_body_call = false;
-    if (pe == PE_EOEX) {
-        PEEK(p, t);
-        parser_error_2a(
-            p, "invalid trait impl syntax", t->start, t->end,
-            "expected type after 'for'", mods->start, t->end, NULL);
-        return PE_ERROR;
-    }
-    ureg decl_end;
-    ast_node_get_bounds(tib->impl_for, NULL, &decl_end);
     pe = ast_node_fill_srange(p, (ast_node*)tib, mods->start, decl_end);
     if (pe) return pe;
 
@@ -2839,7 +2843,7 @@ parse_trait_impl_decl(parser* p, modifier_status* mods, ast_node** n)
     if (t->kind != TK_BRACE_OPEN) {
         parser_error_2a(
             p, "expected trait impl body", t->start, t->end,
-            "expected '{' to trait impl body",
+            "expected '{' to begin trait impl body",
             src_range_get_start(tib->node.srange),
             src_range_get_end(tib->node.srange),
             get_context_msg(p, (ast_node*)tib));
