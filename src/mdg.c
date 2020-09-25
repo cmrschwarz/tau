@@ -370,10 +370,10 @@ void mdg_node_fin(mdg_node* n)
         n->body.symtab = NULL;
     }
     if (n->partial_res_data) {
-        pool_fin(&n->partial_res_data->pprn_mem);
         ptrlist_fin(&n->partial_res_data->import_module_data_nodes);
         ptrlist_fin(&n->partial_res_data->pprns_pending);
         ptrlist_fin(&n->partial_res_data->pprns_waiting);
+        pool_fin(&n->partial_res_data->pprn_mem);
     }
     mdg_node_partial_fin(n, -1);
 }

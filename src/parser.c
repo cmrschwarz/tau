@@ -54,7 +54,6 @@ parse_error parse_statement(parser* p, ast_node** tgt);
 parse_error parse_scope_body(parser* p, scope* s, ureg param_count);
 parse_error parse_module_frame_body(
     parser* p, module_frame* mf, mdg_node* n, ureg param_count);
-parse_error parse_body(parser* p, ast_body* b, ast_node* parent);
 parse_error parse_expression(parser* p, ast_node** tgt);
 parse_error parse_expression_of_prec(parser* p, ast_node** ex, ureg prec);
 parse_error parse_brace_delimited_body(
@@ -2189,6 +2188,7 @@ static inline parse_error parse_delimited_module_frame(
     // to allow deallocation in case of early failiure
     mf->body.elements = (ast_node**)NULL_PTR_PTR;
     mf->body.pprn = NULL;
+    mf->body.symtab = NULL;
     if (push_bpd(p, (ast_node*)mf, &mf->body)) return PE_FATAL;
     void* requires_list_start = list_builder_start_blocklist(&p->lx.tc->listb);
     void** element_list_start = list_builder_start(&p->lx.tc->listb2);
@@ -3756,6 +3756,7 @@ static inline parse_error parse_delimited_body(
     // to allow deallocation in case of early failiure
     b->elements = (ast_node**)NULL_PTR_PTR;
     b->pprn = NULL;
+    b->symtab = NULL;
     ast_node* target;
     PEEK(p, t);
     if (!first_stmt) {
@@ -3766,7 +3767,6 @@ static inline parse_error parse_delimited_body(
         body_parse_data* bpd = get_bpd(p);
         bpd->body = b;
         bpd->body->parent = b->parent;
-        bpd->body->symtab = NULL;
         bpd->node = parent;
         if (list_builder_add(&p->lx.tc->listb2, first_stmt)) {
             pop_bpd(p, PE_FATAL);

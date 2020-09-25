@@ -3038,7 +3038,7 @@ static inline resolve_error resolve_ast_node_raw(
         case EXPR_ARRAY: {
             expr_array* ea = (expr_array*)n;
             if (resolved) SET_THEN_RETURN(value, ctype, ea, ea->ctype);
-            if (ea->explicit_decl && !ea->ctype) {
+            if (ea->explicit_decl) {
                 re = resolve_array_or_slice_type(
                     r, (ast_node*)ea->explicit_decl, body, ea->elem_count,
                     (ast_elem**)&ea->ctype, NULL);
@@ -3775,8 +3775,9 @@ static inline void resolver_mark_required_frame(
     ureg* unverified_count)
 {
     unverified_module_frame *left, *right, *center;
+    assert(frames != frames_end);
     left = frames;
-    right = frames_end;
+    right = frames_end - 1;
     while (true) {
         center = left + (right - left) / 2;
         int cmp = ptrcmp(file, center->file);
@@ -4624,8 +4625,15 @@ resolve_error resolver_suspend(resolver* r)
     p->pprn_count = r->pp_resolve_nodes.alloc_count;
 #endif
     freelist_clear(&r->pp_resolve_nodes);
+    p->deps_required_for_pp = r->deps_required_for_pp;
+    p->error_occured = r->error_occured;
+    p->id_space = r->id_space;
+    p->committed_waiters = r->committed_waiters;
+    p->private_sym_count = r->private_sym_count;
+    p->public_sym_count = r->public_sym_count;
     // put partial res data in scc. no need for a lock since nobody accesses
     // this while we are in the resolving stage
+    assert(!(**r->mdgs_begin).partial_res_data);
     (**r->mdgs_begin).partial_res_data = p;
     // 'unblock' the mdg in the scc and decrement the dummy ungenerated pps
     // since we can't do all at once we need to check afterwards
@@ -4661,12 +4669,6 @@ resolve_error resolver_suspend(resolver* r)
         }
         return RE_FATAL;
     }
-    p->deps_required_for_pp = r->deps_required_for_pp;
-    p->error_occured = r->error_occured;
-    p->id_space = r->id_space;
-    p->committed_waiters = r->committed_waiters;
-    p->private_sym_count = r->private_sym_count;
-    p->public_sym_count = r->public_sym_count;
     return RE_SUSPENDED;
 }
 int resolver_partial_fin(resolver* r, int i, int res)
