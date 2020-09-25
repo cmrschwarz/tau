@@ -87,3 +87,24 @@ linux:test:release:
     only:
         - master
         - testing
+
+linux:valgrind:debug:
+    stage: test
+    needs: ["linux:build:debug"]
+    tags: [g++, CMake, amd64, debian]
+    script:
+       - ./tests/run.sh -v -s bigtest
+    only:
+        - master
+        - testing
+
+
+linux:valgrind:release:
+    stage: test
+    needs: ["linux:build:release"]
+    tags: [g++, CMake, amd64, debian]
+    script:
+       - ./tests/run.sh -v -s bigtest
+    only:
+        - master
+        - testing
