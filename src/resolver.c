@@ -225,8 +225,10 @@ ptrlist* get_pprn_list_from_state(resolver* r, pprn_state state)
         case PPRN_WAITING: return &r->pp_resolve_nodes_waiting;
         case PPRN_PENDING: return &r->pp_resolve_nodes_pending;
         case PPRN_READY: return &r->pp_resolve_nodes_ready;
-        default: assert(false);
+        default: break;
     }
+    panic("compiler bug");
+    return NULL;
 }
 void remove_pprn_list_raw(resolver* r, pp_resolve_node* pprn)
 {
