@@ -91,8 +91,9 @@ linux:test:release:
 linux:valgrind:debug:
     stage: test
     needs: ["linux:build:debug"]
-    tags: [g++, CMake, amd64, debian]
+    tags: [g++, CMake, amd64, debian, valgrind]
     script:
+      # skipping bigtest because it's very slow in valgrind
        - ./tests/run.sh -v -s bigtest
     only:
         - master
@@ -102,8 +103,9 @@ linux:valgrind:debug:
 linux:valgrind:release:
     stage: test
     needs: ["linux:build:release"]
-    tags: [g++, CMake, amd64, debian]
+    tags: [g++, CMake, amd64, debian, valgrind]
     script:
+      # skipping bigtest because it's very slow in valgrind
        - ./tests/run.sh -v -s bigtest
     only:
         - master
