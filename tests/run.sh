@@ -6,6 +6,7 @@ cd "$SCRIPT_DIR/../"
 export ROOT_DIR="$(pwd -P)"
 export TAUC="$ROOT_DIR/build/tauc"
 export skip_tests=()
+export only_tests=("")
 
 pretty_print_time() {
     local before=$1
@@ -31,10 +32,23 @@ print_err_out() {
     print_seperator
 }
 
-should_skip () {
+check_skip () {
     local taufile=$1
+    local not_whitelisted=true
+    for e in "${only_tests[@]}"; do 
+        if [[ "$taufile" == *"$e"* ]];  then
+            not_whitelisted=false
+            break 
+        fi
+    done
+    if $not_whitelisted; then
+        return 0;
+    fi
     for e in "${skip_tests[@]}"; do 
-        [[ "$taufile" == *"$e"* ]] && return 0;
+        if [[ "$taufile" == *"$e"* ]];  then
+            echo "SKIPPED $taufile"
+            return 0;
+        fi
     done
     return 1
 }
@@ -51,8 +65,7 @@ run_test_folder() {
     fi
     for taufile in "$folder"/*.tau ; do
         [ -e "$taufile" ] || continue
-        if should_skip "$taufile"; then
-            echo "SKIPPED $taufile"
+        if check_skip "$taufile"; then
             continue
         fi 
         expected_output_file=`echo "$taufile" | head  -c -4 && echo "$out_ext"`
@@ -150,23 +163,34 @@ while true; do
     if [ $# -eq 0 ]; then break; fi
     case $1 in
         -u|--run-unit-tests)
-            run_all=fallse
+            run_all=false
             run_unit=true
             shift
         ;;
         -r|--run-regular-tests)
-            run_all=fallse
+            run_all=false
             run_regular=true
             shift
         ;;
         -e|--run-error-tests)
-            run_all=fallse
+            run_all=false
             run_error=true
             shift
         ;;
         -v|--valgrind)
             use_valgrind=true
             shift
+        ;;
+        -o|--only)
+            shift
+            if [[ "${only_tests[@]}" == "" ]]; then
+                export only_tests=()
+            fi
+            export only_tests=("${only_tests[@]}" $1)
+            shift
+            run_all=false
+            run_regular=true
+            run_error=true
         ;;
         -s|--skip)
             shift
