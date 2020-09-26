@@ -46,6 +46,7 @@ typedef struct symbol_lookup_iterator {
     bool explore_parents;
     bool explore_type;
     bool exploring_members;
+    bool lhs_is_instance;
     last_match_location last_match_loc;
     ureg stack_height;
 } symbol_lookup_iterator;
@@ -53,7 +54,7 @@ typedef struct symbol_lookup_iterator {
 resolve_error symbol_lookup_iterator_init(
     symbol_lookup_iterator* sli, resolver* r, ast_body* lookup_body,
     ast_elem* lhs_ctype, ast_body* looking_body, const char* tgt_name,
-    bool enable_shadowing, bool deref_aliases);
+    bool lhs_is_instance, bool enable_shadowing, bool deref_aliases);
 
 void symbol_lookup_iterator_cut_off_shadowed(symbol_lookup_iterator* sli);
 

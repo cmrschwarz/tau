@@ -258,6 +258,9 @@ struct LLVMBackend {
     llvm_error
     genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded);
 
+    llvm_error genMemberAccess(
+        expr_member_access* ema, llvm::Value** vl, llvm::Value** vl_loaded);
+
     llvm_error genFunction(sc_func* fn, llvm::Value** llfn);
 
     llvm_error

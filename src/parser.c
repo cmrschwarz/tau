@@ -697,6 +697,30 @@ static inline parse_error parse_identifier(parser* p, ast_node** tgt)
     *tgt = (ast_node*)ident;
     return PE_OK;
 }
+static inline parse_error parse_special_identifier(parser* p, ast_node** tgt)
+{
+    token* t = lx_aquire(&p->lx);
+    expr_identifier* ident =
+        (expr_identifier*)alloc_perm(p, sizeof(expr_identifier));
+    if (!ident) return PE_FATAL;
+    ast_node_init(&ident->node, EXPR_SPECIAL_IDENTIFIER);
+    ident->value.special_ident_kind = t->kind;
+    if (ast_node_fill_srange(p, &ident->node, t->start, t->end))
+        return PE_FATAL;
+    lx_void(&p->lx);
+    *tgt = (ast_node*)ident;
+    return PE_OK;
+}
+static parse_error try_parse_special_ident(parser* p, ast_node** tgt)
+{
+    token* t = lx_aquire(&p->lx);
+    UNUSED(t);
+    assert(t->kind == TK_KW_MODULE || t->kind == TK_KW_EXTEND);
+    token* t2 = lx_peek_2nd(&p->lx);
+    if (!t2) return PE_LX_ERROR;
+    if (t2->kind == TK_IDENTIFIER || t2->kind == TK_BRACE_OPEN) return PE_EOEX;
+    return parse_special_identifier(p, tgt);
+}
 parse_error parse_param_decl(
     parser* p, sym_param* tgt, ureg ctx_start, ureg ctx_end, bool generic,
     char* msg_context)
@@ -1017,12 +1041,14 @@ build_empty_tuple(parser* p, ureg t_start, ureg t_end, ast_node** ex)
     *ex = (ast_node*)tp;
     return PE_OK;
 }
+static inline bool has_modifiers(modifier_status* mods)
+{
+    return memcmp(&mods->data, &MODIFIERS_NONE, sizeof(modifier_data)) != 0;
+}
 static inline parse_error
 reject_modifiers(parser* p, token* t, modifier_status* mods)
 {
-    if (memcmp(&mods->data, &MODIFIERS_NONE, sizeof(modifier_data)) == 0) {
-        return PE_OK;
-    }
+    if (!has_modifiers(mods)) return PE_OK;
     char* loc_msg = error_log_cat_strings_2(
         p->lx.tc->err_log, token_strings[t->kind],
         " does not accept any modifiers");
@@ -1790,6 +1816,16 @@ static inline parse_error parse_pp_expr(parser* p, ast_node** tgt)
     *tgt = (ast_node*)sp;
     return pe;
 }
+static inline bool is_special_identifier_token(token_kind tk)
+{
+    switch (tk) {
+        case TK_KW_SELF:
+        case TK_KW_SELF_UPPERCASE:
+        case TK_KW_SUPER:
+        case TK_KW_MODULE: return true;
+        default: return false;
+    }
+}
 static inline parse_error parse_value_expr(parser* p, ast_node** ex, ureg prec)
 {
     token* t;
@@ -1827,6 +1863,9 @@ static inline parse_error parse_value_expr(parser* p, ast_node** ex, ureg prec)
         case TK_AT: return parse_labeled_block(p, ex);
 
         default: {
+            if (is_special_identifier_token(t->kind)) {
+                return parse_special_identifier(p, ex);
+            }
             return PE_EOEX; // investigate: shouldn't this be unexp. tok?
         } break;
     }
@@ -2024,7 +2063,7 @@ parse_scope_access(parser* p, ast_node** ex, ast_node* lhs, bool member)
         member ? OP_MEMBER_ACCESS : OP_SCOPE_ACCESS, &MODIFIERS_NONE);
     esa->lhs = lhs;
     PEEK(p, t);
-    if (t->kind != TK_IDENTIFIER) {
+    if (t->kind != TK_IDENTIFIER && !is_special_identifier_token(t->kind)) {
         return parser_error_1a(
             p,
             member ? "invalid operand for the member access operator"
@@ -2940,9 +2979,13 @@ parse_error check_if_first_stmt(
 parse_error parse_module_frame_decl(
     parser* p, modifier_status* mods, bool extend, ast_node** n)
 {
+    parse_error pe;
+    if (!has_modifiers(mods)) {
+        pe = try_parse_special_ident(p, n);
+        if (pe != PE_EOEX) return pe;
+    }
     lx_void(&p->lx);
     token *t, *t2;
-    parse_error pe;
     PEEK(p, t);
     if (t->kind != TK_IDENTIFIER) {
         parser_error_2a(
@@ -3669,7 +3712,8 @@ parse_pp_stmt(parser* p, modifier_status* mods, ast_node** tgt)
     pe = parse_statement(p, &pp_stmt);
     if (pe) return pe;
     ast_elem* ppe = (ast_elem*)pp_stmt;
-    // for pp symbols we don't want a pp expr node but just the comptime flag
+    // for pp symbols we don't want a pp expr node but just the comptime
+    // flag
     // TODO: handle pp modules, pp requires etc.
     if (ast_elem_is_var(ppe) || ast_elem_is_struct_base(ppe) ||
         ast_elem_is_func_base(ppe)) {

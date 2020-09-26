@@ -8,6 +8,7 @@
 #include "utils/c_extensions.h"
 #include "utils/list.h"
 #include "type_map.h"
+#include "token.h"
 
 #define VOID_ELEM ((ast_elem*)&PRIMITIVES[PT_VOID])
 #define ERROR_ELEM ((ast_elem*)&PRIMITIVES[PT_ERROR])
@@ -111,6 +112,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     EXPR_MACRO, // TODO
     EXPR_LITERAL,
     EXPR_IDENTIFIER,
+    EXPR_SPECIAL_IDENTIFIER,
     EXPR_VARIABLE,
     EXPR_TYPE,
     EXPR_ARRAY,
@@ -778,7 +780,8 @@ typedef struct expr_literal_s {
 typedef struct expr_identifier_s {
     ast_node node;
     union {
-        char* str;
+        const char* str;
+        token_kind special_ident_kind;
         symbol* sym;
     } value;
 } expr_identifier;
@@ -875,6 +878,7 @@ typedef struct primitive_s {
     ureg size; // size is different from alignment e.g. for void, string, etc.
     ureg alignment;
     type_derivatives type_derivs;
+    ast_elem* ctype;
 } primitive;
 
 extern primitive PRIMITIVES[];

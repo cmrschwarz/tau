@@ -287,6 +287,7 @@ void free_astn_symtabs(ast_node* n)
             free_astn_symtabs(esa->lhs);
         }
         case EXPR_IDENTIFIER:
+        case EXPR_SPECIAL_IDENTIFIER:
         case SYM_IMPORT_MODULE:
         case SYM_IMPORT_SYMBOL:
         case EXPR_LITERAL: break;

@@ -4,7 +4,7 @@
 #include <assert.h>
 #include "src_map.h"
 
-#define mk_prim(prim_kind, prim_name)                                          \
+#define mk_prim(prim_kind, prim_name, ctype_kind)                              \
     [prim_kind] = {                                                            \
         .sym = {.node = {.kind = SYM_PRIMITIVE,                                \
                          .pt_kind = prim_kind,                                 \
@@ -14,25 +14,25 @@
                          .srange = SRC_RANGE_INVALID},                         \
                 .name = prim_name,                                             \
                 .next = NULL},                                                 \
-    }
+        .ctype = (ast_elem*)&PRIMITIVES[ctype_kind]}
 primitive PRIMITIVES[] = {
-    mk_prim(PT_ERROR, "__error__"),
-    mk_prim(PT_FLUID_INT, "__fluid_int__"),
-    mk_prim(PT_VOID, "void"),
-    mk_prim(PT_GENERIC_TYPE, "type[]"),
-    mk_prim(PT_GENERIC_TRAIT, "trait[]"),
-    mk_prim(PT_UNREACHABLE, "unreachable"),
-    mk_prim(PT_UNDEFINED, "undefined"),
-    mk_prim(PT_DEFINED, "defined"),
-    mk_prim(PT_INT, "int"),
-    mk_prim(PT_UINT, "uint"),
-    mk_prim(PT_FLOAT, "float"),
-    mk_prim(PT_STRING, "string"),
-    mk_prim(PT_BINARY_STRING, "bstring"),
-    mk_prim(PT_VOID_PTR, "*void"),
-    mk_prim(PT_PASTED_EXPR, "Expr"),
-    mk_prim(PT_TYPE, "type"),
-    mk_prim(PT_TRAIT, "trait"),
+    mk_prim(PT_ERROR, "__error__", PT_ERROR),
+    mk_prim(PT_FLUID_INT, "__fluid_int__", PT_ERROR),
+    mk_prim(PT_VOID, "void", PT_TYPE),
+    mk_prim(PT_GENERIC_TYPE, "type[]", PT_ERROR),
+    mk_prim(PT_GENERIC_TRAIT, "trait[]", PT_ERROR),
+    mk_prim(PT_UNREACHABLE, "unreachable", PT_ERROR),
+    mk_prim(PT_UNDEFINED, "undefined", PT_ERROR),
+    mk_prim(PT_DEFINED, "defined", PT_ERROR),
+    mk_prim(PT_INT, "int", PT_TYPE),
+    mk_prim(PT_UINT, "uint", PT_TYPE),
+    mk_prim(PT_FLOAT, "float", PT_TYPE),
+    mk_prim(PT_STRING, "string", PT_TYPE),
+    mk_prim(PT_BINARY_STRING, "bstring", PT_TYPE),
+    mk_prim(PT_VOID_PTR, "*void", PT_TYPE),
+    mk_prim(PT_PASTED_EXPR, "Expr", PT_ERROR),
+    mk_prim(PT_TYPE, "type", PT_ERROR),
+    mk_prim(PT_TRAIT, "trait", PT_ERROR),
 };
 
 src_map* scope_get_smap(scope* s)

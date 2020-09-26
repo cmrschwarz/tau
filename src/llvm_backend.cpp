@@ -1452,6 +1452,33 @@ LLVMBackend::arrayToSlice(type_slice* ts, llvm::Constant* arr, ureg elem_count)
     return llvm::ConstantStruct::get(
         slice_type, (llvm::Constant*)start, (llvm::Constant*)end);
 }
+llvm_error LLVMBackend::genMemberAccess(
+    expr_member_access* ema, llvm::Value** vl, llvm::Value** vl_loaded)
+{
+    llvm::Value* lhs_val;
+    llvm_error lle = genAstNode(ema->lhs, &lhs_val, NULL);
+    if (lle) return lle;
+    auto st = (ast_elem*)ast_body_get_non_paste_parent(
+                  ema->target.sym->declaring_body)
+                  ->owning_node;
+    assert(ast_elem_is_struct(st));
+    ureg align;
+    ast_elem* rhs = (ast_elem*)ema->target.sym;
+    assert(ast_node_get_instance_member((ast_node*)rhs));
+    assert(rhs->kind == SYM_VAR || rhs->kind == SYM_VAR_INITIALIZED);
+    auto rhs_v = (sym_var*)rhs;
+    lle = lookupCType(rhs_v->ctype, NULL, &align, NULL);
+    if (lle) return lle;
+    ureg idx = rhs_v->var_id;
+    assert(vl || vl_loaded);
+    auto gep = _builder.CreateStructGEP(lhs_val, idx);
+    if (vl_loaded) {
+        *vl_loaded = _builder.CreateAlignedLoad(gep, align);
+        if (!*vl_loaded) return LLE_FATAL;
+    }
+    if (vl) *vl = gep;
+    return LLE_OK;
+}
 llvm_error
 LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
 {
@@ -1593,6 +1620,21 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             return LLE_OK;
         }
         case EXPR_IDENTIFIER: {
+            auto ei = (expr_identifier*)n;
+            if (ast_node_get_instance_member(n) &&
+                ei->value.sym->node.kind == SC_STRUCT) {
+                if (vl) *vl = _curr_this;
+                if (vl_loaded) {
+                    llvm::Type* t;
+                    ureg align;
+                    lle =
+                        lookupCType((ast_elem*)ei->value.sym, &t, &align, NULL);
+                    if (lle) return lle;
+                    *vl_loaded = _builder.CreateAlignedLoad(
+                        _curr_this, llvm::MaybeAlign(align));
+                }
+                return LLE_OK;
+            }
             return genAstNode(
                 (ast_node*)((expr_identifier*)n)->value.sym, vl, vl_loaded);
         }
@@ -1734,29 +1776,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         }
         case EXPR_MEMBER_ACCESS: {
             auto ema = (expr_member_access*)n;
-            llvm::Value* v;
-            lle = genAstNode(ema->lhs, &v, NULL);
-
-            if (lle) return lle;
-            auto st = (sc_struct*)ast_body_get_non_paste_parent(
-                          ema->target.sym->declaring_body)
-                          ->owning_node;
-            assert(ast_elem_is_struct((ast_elem*)st));
-            ureg align;
-            lle = lookupCType((ast_elem*)st, NULL, &align, NULL);
-            if (lle) return lle;
-            assert(
-                ema->target.sym->node.kind == SYM_VAR ||
-                ema->target.sym->node.kind == SYM_VAR_INITIALIZED);
-            ureg idx = ((sym_var*)ema->target.sym)->var_id;
-            assert(vl || vl_loaded);
-            auto gep = _builder.CreateStructGEP(v, idx);
-            if (vl_loaded) {
-                *vl_loaded = _builder.CreateAlignedLoad(gep, align);
-                if (!*vl_loaded) return LLE_FATAL;
-            }
-            if (vl) *vl = gep;
-            return LLE_OK;
+            return genMemberAccess(ema, vl, vl_loaded);
         }
         case SYM_IMPORT_PARENT:
         case ASTN_ANONYMOUS_MOD_IMPORT_GROUP:

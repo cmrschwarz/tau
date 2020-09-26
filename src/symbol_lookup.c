@@ -318,7 +318,7 @@ resolve_error symbol_lookup_level_run(
 resolve_error symbol_lookup_iterator_init(
     symbol_lookup_iterator* sli, resolver* r, ast_body* lookup_body,
     ast_elem* lhs_ctype, ast_body* looking_body, const char* tgt_name,
-    bool enable_shadowing, bool deref_aliases)
+    bool lhs_is_instance, bool enable_shadowing, bool deref_aliases)
 {
     bool indirect_lookup = (looking_body != lookup_body);
     sli->explore_parents = !indirect_lookup;
@@ -359,6 +359,7 @@ resolve_error symbol_lookup_iterator_init(
     sli->looking_body = looking_body;
     sli->looking_struct = looking_struct;
     sli->looking_mf_body = looking_mf_body;
+    sli->lhs_is_instance = lhs_is_instance;
     sli->looking_mod_body = looking_mod_body;
     sli->enable_shadowing = enable_shadowing;
     sli->deref_aliases = deref_aliases;

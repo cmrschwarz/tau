@@ -30,6 +30,8 @@ typedef enum PACK_ENUM token_kind_e {
     TK_KW_CONST,
     TK_KW_MUT,
     TK_KW_SELF,
+    TK_KW_SELF_UPPERCASE,
+    TK_KW_SUPER,
     TK_KW_LOCAL,
     TK_KW_INTERNAL,
     TK_KW_PUBLIC,

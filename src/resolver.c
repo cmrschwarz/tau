@@ -1318,8 +1318,9 @@ static inline resolve_error resolve_no_block_macro_call(
 // for ex. wth foo::bar() lookup_body is foo's st, looking_body is the body
 // containing the call, args are looked up there
 resolve_error resolve_func_call(
-    resolver* r, expr_call* c, ast_elem* lhs_ctype, ast_body* looking_body,
-    char* func_name, ast_body* lookup_body, ast_elem** ctype)
+    resolver* r, expr_call* c, ast_elem* lhs_ctype, bool lhs_is_instance,
+    ast_body* looking_body, const char* func_name, ast_body* lookup_body,
+    ast_elem** ctype)
 {
     ast_elem** call_arg_types =
         sbuffer_append(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
@@ -1332,7 +1333,8 @@ resolve_error resolve_func_call(
     scope* tgt;
     symbol_lookup_iterator sli;
     re = symbol_lookup_iterator_init(
-        &sli, r, lookup_body, lhs_ctype, looking_body, func_name, false, true);
+        &sli, r, lookup_body, lhs_ctype, looking_body, func_name,
+        lhs_is_instance, false, true);
     bool applicable = false;
     if (re) {
         sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
@@ -1409,8 +1411,8 @@ resolve_call(resolver* r, expr_call* c, ast_body* body, ast_elem** ctype)
 {
     if (c->lhs->kind == EXPR_IDENTIFIER) {
         return resolve_func_call(
-            r, c, NULL, body, ((expr_identifier*)c->lhs)->value.str, body,
-            ctype);
+            r, c, NULL, false, body, ((expr_identifier*)c->lhs)->value.str,
+            body, ctype);
     }
     if (c->lhs->kind == EXPR_SCOPE_ACCESS) {
         expr_scope_access* esa = (expr_scope_access*)c->lhs;
@@ -1428,11 +1430,11 @@ resolve_call(resolver* r, expr_call* c, ast_body* body, ast_elem** ctype)
             re = get_resolved_symbol_body(r, (symbol*)esa_lhs, &lhs_body);
             if (re) return re;
             return resolve_func_call(
-                r, c, NULL, body, esa->target.name, lhs_body, ctype);
+                r, c, NULL, false, body, esa->target.name, lhs_body, ctype);
         }
         else {
             return resolve_func_call(
-                r, c, esa_lhs, body, esa->target.name, body, ctype);
+                r, c, esa_lhs, false, body, esa->target.name, body, ctype);
         }
     }
     if (c->lhs->kind == EXPR_MEMBER_ACCESS) {
@@ -1448,7 +1450,7 @@ resolve_call(resolver* r, expr_call* c, ast_body* body, ast_elem** ctype)
         }
         ast_node_set_instance_member(&c->node);
         return resolve_func_call(
-            r, c, esa_lhs_ctype, body, esa->target.name, body, ctype);
+            r, c, esa_lhs_ctype, true, body, esa->target.name, body, ctype);
     }
     assert(false); // TODO
     return RE_OK;
@@ -1610,7 +1612,8 @@ resolve_error choose_binary_operator_overload(
     symbol* s;
     symbol_lookup_iterator sli;
     re = symbol_lookup_iterator_init(
-        &sli, r, body, NULL, body, op_to_str(ob->node.op_kind), false, true);
+        &sli, r, body, NULL, body, op_to_str(ob->node.op_kind), false, false,
+        true);
     if (re) return re;
     while (true) {
         re = symbol_lookup_iterator_next(&sli, &s);
@@ -1636,13 +1639,17 @@ resolve_error choose_binary_operator_overload(
         "found no valid overload for this operator");
     SET_THEN_RETURN_POISONED(r, RE_OK, ob, body, value, ctype, ob, ERROR_ELEM);
 }
-ast_elem* get_resolved_symbol_ctype(symbol* s)
+ast_elem* ast_elem_get_ctype(ast_elem* s)
 {
-    switch (s->node.kind) {
+    switch (s->kind) {
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
         case SYM_NAMED_USE: assert(false); return NULL; // TODO
-        case SYM_PRIMITIVE: assert(false); return NULL; // would be ctype "Type"
+        case SYM_PRIMITIVE: {
+            ast_elem* ctype = ((primitive*)s)->ctype;
+            assert(ctype != ERROR_ELEM);
+            return ctype;
+        }
         case SC_TRAIT:
         case SC_TRAIT_GENERIC_INST: return TRAIT_ELEM;
         case SC_TRAIT_GENERIC: return GENERIC_TRAIT_ELEM;
@@ -1750,12 +1757,13 @@ resolve_param(resolver* r, sym_param* p, bool generic, ast_elem** ctype)
     return RE_OK;
 }
 resolve_error resolver_lookup_single(
-    resolver* r, ast_body* body, sc_struct* struct_inst, ast_body* looking_body,
-    const char* tgt_name, symbol** res, symbol** ambiguity)
+    resolver* r, ast_body* body, ast_elem* lhs_ctype, bool lhs_is_instance,
+    ast_body* looking_body, const char* tgt_name, symbol** res,
+    symbol** ambiguity)
 {
     symbol_lookup_iterator sli;
     resolve_error re = symbol_lookup_iterator_init(
-        &sli, r, body, (ast_elem*)struct_inst, looking_body, tgt_name, true,
+        &sli, r, body, lhs_ctype, looking_body, tgt_name, lhs_is_instance, true,
         true);
     if (re) return re;
     re = symbol_lookup_iterator_next(&sli, res);
@@ -1777,7 +1785,7 @@ resolve_error resolve_scoped_identifier(
     symbol* idf;
     symbol* amb;
     re = resolver_lookup_single(
-        r, lhs_body, NULL, body, esa->target.name, &idf, &amb);
+        r, lhs_body, NULL, false, body, esa->target.name, &idf, &amb);
     if (re) return re;
     if (!idf) {
         if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
@@ -1804,27 +1812,23 @@ resolve_error resolve_expr_member_accesss(
     resolver* r, expr_member_access* ema, ast_body* body, ast_elem** value,
     ast_elem** ctype)
 {
-    ast_elem* lhs_type;
-    resolve_error re = resolve_ast_node(r, ema->lhs, body, NULL, &lhs_type);
+    ast_elem* lhs_ctype;
+    resolve_error re = resolve_ast_node(r, ema->lhs, body, NULL, &lhs_ctype);
     if (re) return re;
-    if (lhs_type == ERROR_ELEM) {
+    if (lhs_ctype == ERROR_ELEM) {
         SET_THEN_RETURN_POISONED(
             r, RE_OK, ema, body, value, ctype, ema, ERROR_ELEM);
     }
-    if (!ast_elem_is_struct(lhs_type)) { // TODO: pointers
-        // TODO: errror
-        assert(false);
-        return RE_FATAL;
-    }
+    // TODO:
+    assert(ast_elem_get_ctype(lhs_ctype) == TYPE_ELEM);
     symbol* mem;
     symbol* amb;
-    ast_body* struct_body = &((scope*)lhs_type)->body;
     re = resolver_lookup_single(
-        r, body, (sc_struct*)lhs_type, body, ema->target.name, &mem, &amb);
+        r, body, lhs_ctype, true, body, ema->target.name, &mem, &amb);
     if (re) return re;
     if (!mem) {
         if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
-        report_unknown_symbol(r, (ast_node*)ema, struct_body);
+        report_unknown_symbol(r, (ast_node*)ema, body);
         SET_THEN_RETURN_POISONED(
             r, RE_OK, ema, body, value, ctype, ema, ERROR_ELEM);
     }
@@ -2112,15 +2116,106 @@ resolve_break(resolver* r, ast_body* body, expr_break* b)
     }
     return RE_OK;
 }
-
+static inline resolve_error resolve_special_identifier(
+    resolver* r, ast_body* body, expr_identifier* e, ast_elem** value,
+    ast_elem** ctype)
+{
+    ast_node_kind kinds[7];
+    ureg kinds_count = 0;
+    token_kind sik = e->value.special_ident_kind;
+    switch (sik) {
+        case TK_KW_MODULE: kinds[kinds_count++] = ELEM_MDG_NODE; break;
+        case TK_KW_SUPER:
+            kinds[kinds_count++] = ELEM_MDG_NODE;
+            // fallthrough
+        case TK_KW_SELF_UPPERCASE:
+            kinds[kinds_count++] = SC_TRAIT;
+            kinds[kinds_count++] = SC_TRAIT_GENERIC_INST;
+            // fallthrough
+        case TK_KW_SELF:
+            kinds[kinds_count++] = SC_STRUCT;
+            kinds[kinds_count++] = SC_STRUCT_GENERIC_INST;
+            kinds[kinds_count++] = TRAIT_IMPL;
+            kinds[kinds_count++] = TRAIT_IMPL_GENERIC_INST;
+            break;
+        default: panic("compiler bug");
+    }
+    ast_body* tgt_body = NULL;
+    ast_body* b = body;
+    sc_func* fn = NULL;
+    do {
+        for (ureg i = 0; i < kinds_count; i++) {
+            if (b->owning_node->kind == kinds[i]) {
+                tgt_body = b;
+                break;
+            }
+        }
+        if (sik == TK_KW_SELF && !fn) {
+            if (ast_node_get_instance_member(b->owning_node)) {
+                fn = (sc_func*)b->owning_node;
+            }
+            else {
+                fn = (sc_func*)NULL_PTR_PTR;
+            }
+        }
+        if (tgt_body) break;
+        b = b->parent;
+    } while (b);
+    if (!tgt_body) {
+        src_range_large srl;
+        ast_node_get_src_range((ast_node*)e, body, &srl);
+        error_log_report_annotated(
+            r->tc->err_log, ES_RESOLVER, false, "unbound relative identifier",
+            srl.smap, srl.start, srl.end,
+            "no target for this relative identifer in the current scope");
+        SET_THEN_RETURN_POISONED(
+            r, RE_OK, e, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
+    }
+    symbol* tgt_sym;
+    ast_elem* tgt_ctype;
+    if (tgt_body->owning_node->kind == TRAIT_IMPL ||
+        tgt_body->owning_node->kind == TRAIT_IMPL_GENERIC_INST) {
+        trait_impl* ti = (trait_impl*)tgt_body->owning_node;
+        assert(ast_elem_is_symbol(ti->impl_for_ctype));
+        tgt_sym = (symbol*)ti->impl_for_ctype;
+    }
+    else {
+        tgt_sym = (symbol*)tgt_body->owning_node;
+    }
+    if (sik == TK_KW_SELF) {
+        if (!fn && fn != (sc_func*)NULL_PTR_PTR) {
+            src_range_large srl;
+            ast_node_get_src_range((ast_node*)e, body, &srl);
+            error_log_report_annotated(
+                r->tc->err_log, ES_RESOLVER, false,
+                "no struct instance 'self' accesible in the current scope",
+                srl.smap, srl.start, srl.end,
+                "self must be inside a member function");
+            SET_THEN_RETURN_POISONED(
+                r, RE_OK, e, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
+        }
+        ast_node_set_instance_member((ast_node*)e);
+        assert(!value);
+        tgt_ctype = (ast_elem*)tgt_sym;
+    }
+    else {
+        tgt_ctype = ast_elem_get_ctype((ast_elem*)tgt_sym);
+    }
+    e->node.kind = EXPR_IDENTIFIER;
+    e->value.sym = tgt_sym;
+    ast_node_set_resolved(&e->node);
+    if (value) *value = (ast_elem*)tgt_sym;
+    if (ctype) *ctype = tgt_ctype;
+    return RE_OK;
+}
 static inline resolve_error resolve_identifier(
     resolver* r, ast_body* body, expr_identifier* e, ast_elem** value,
     ast_elem** ctype)
 {
     symbol* sym;
     symbol* amb;
-    resolve_error re =
-        resolver_lookup_single(r, body, NULL, body, e->value.str, &sym, &amb);
+    resolve_error re = resolver_lookup_single(
+        r, body, NULL, false, body, e->value.str, &sym, &amb);
     if (re) return re;
     if (!sym) {
         bool notif_added = false;
@@ -2630,8 +2725,8 @@ resolve_import_symbol(resolver* r, sym_import_symbol* is, ast_body* body)
     symbol* sym;
     symbol* amb;
     re = resolver_lookup_single(
-        r, &im_data->imported_module->body, NULL, decl_body, is->target.name,
-        &sym, &amb);
+        r, &im_data->imported_module->body, NULL, false, decl_body,
+        is->target.name, &sym, &amb);
     if (re || !sym) ast_node_clear_resolving(node);
     if (re) return re;
     if (!sym) {
@@ -2718,7 +2813,8 @@ static inline resolve_error resolve_ast_node_raw(
             if (!resolved) ast_node_set_resolved(n);
             SET_THEN_RETURN(value, ctype, n, &PRIMITIVES[n->pt_kind]);
         }
-        case EXPR_IDENTIFIER: {
+        case EXPR_IDENTIFIER:
+        case EXPR_SPECIAL_IDENTIFIER: {
             expr_identifier* e = (expr_identifier*)n;
             if (resolved) {
                 if (ast_node_get_poisoned(n)) {
@@ -2728,9 +2824,14 @@ static inline resolve_error resolve_ast_node_raw(
                 }
                 SET_THEN_RETURN(
                     value, ctype, e->value.sym,
-                    get_resolved_symbol_ctype(e->value.sym));
+                    ast_elem_get_ctype((ast_elem*)e->value.sym));
             }
-            return resolve_identifier(r, body, e, value, ctype);
+            if (n->kind == EXPR_SPECIAL_IDENTIFIER) {
+                return resolve_special_identifier(r, body, e, value, ctype);
+            }
+            else {
+                return resolve_identifier(r, body, e, value, ctype);
+            }
         }
         case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
@@ -2798,7 +2899,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (resolved) {
                 SET_THEN_RETURN(
                     value, ctype, n,
-                    get_resolved_symbol_ctype(ema->target.sym));
+                    ast_elem_get_ctype((ast_elem*)ema->target.sym));
             }
             return resolve_expr_member_accesss(r, ema, body, value, ctype);
         }
@@ -2807,7 +2908,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (resolved) {
                 SET_THEN_RETURN(
                     value, ctype, n,
-                    get_resolved_symbol_ctype(esa->target.sym));
+                    ast_elem_get_ctype((ast_elem*)esa->target.sym));
             }
             return resolve_scoped_identifier(r, esa, body, value, ctype);
         }
@@ -4414,7 +4515,7 @@ resolve_error lookup_priv_module_symbol(
     symbol** result_1 = &res;
     symbol** result_2 = &ambiguity;
     resolve_error re = resolver_lookup_single(
-        r, &mod->body, NULL, &mod->body, name, result_1, result_2);
+        r, &mod->body, NULL, false, &mod->body, name, result_1, result_2);
     if (re) return re;
     if (!ambiguity) {
         aseglist_iterator it;
@@ -4426,7 +4527,7 @@ resolve_error lookup_priv_module_symbol(
                 result_2 = &ambiguity2;
             }
             resolver_lookup_single(
-                r, &mf->body, NULL, &mf->body, name, result_1, result_2);
+                r, &mf->body, NULL, false, &mf->body, name, result_1, result_2);
             if (re) return re;
             // since we check multiple frames we might hit the same main
             // twice
