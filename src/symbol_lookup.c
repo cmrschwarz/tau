@@ -156,8 +156,11 @@ resolve_error symbol_lookup_level_run(
     }
     if (sym != NULL) {
         access_modifier am = ast_node_get_access_mod(&sym->node);
-        bool vis_within = false;
-        if (symbol_is_open_symbol(sym)) {
+        bool vis_within;
+        if (sli->lhs_is_instance && !ast_node_get_instance_member(&sym->node)) {
+            vis_within = false;
+        }
+        else if (symbol_is_open_symbol(sym)) {
             open_symbol* osym = (open_symbol*)sym;
             re = update_ams(
                 sli->r, lookup_body, sli->looking_body, sli->looking_struct,

@@ -106,19 +106,41 @@ resolve_error add_resolve_error(resolve_error res, resolve_error add)
     if (add == RE_SUSPENDED) return add;
     return res;
 }
-static void report_unknown_symbol(resolver* r, ast_node* n, ast_body* body)
+static void report_unknown_symbol(
+    resolver* r, ast_node* n, ast_body* body, symbol* hidden_match, bool inst)
 {
-    src_range_large srl;
+    src_range_large srl, srl_hidden;
     if (n->kind == EXPR_SCOPE_ACCESS || n->kind == EXPR_MEMBER_ACCESS) {
         src_range_unpack(((expr_scope_access*)n)->target_srange, &srl);
     }
     else {
         src_range_unpack(n->srange, &srl);
     }
-    error_log_report_annotated(
-        r->tc->err_log, ES_RESOLVER, false, "unknown symbol",
-        ast_body_get_smap(body), srl.start, srl.end,
-        "use of an undefined symbol");
+    srl.smap = ast_body_get_smap(body);
+    const char* msg = "unknown symbol";
+    const char* annot = "use of an undefined symbol";
+    if (hidden_match) {
+        ast_node_get_src_range(
+            (ast_node*)hidden_match, hidden_match->declaring_body, &srl_hidden);
+        const char* hidden_msg;
+        if (inst && !ast_node_get_instance_member((ast_node*)hidden_match)) {
+            hidden_msg = "did you mean this? it's not available since it's not "
+                         "an instance member";
+        }
+        else {
+            hidden_msg =
+                "did you mean this? it's not accessible in the current context";
+        }
+        error_log_report_annotated_twice(
+            r->tc->err_log, ES_RESOLVER, false, msg, srl.smap, srl.start,
+            srl.end, annot, srl_hidden.smap, srl_hidden.start, srl_hidden.end,
+            hidden_msg);
+    }
+    else {
+        error_log_report_annotated(
+            r->tc->err_log, ES_RESOLVER, false, msg, srl.smap, srl.start,
+            srl.end, annot);
+    }
     r->error_occured = true;
 }
 void report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev)
@@ -1356,7 +1378,9 @@ resolve_error resolve_func_call(
             sbuffer_remove_back(
                 &r->temp_stack, c->arg_count * sizeof(ast_elem*));
             if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
-            report_unknown_symbol(r, c->lhs, looking_body);
+            report_unknown_symbol(
+                r, c->lhs, looking_body, sli.first_hidden_match,
+                sli.lhs_is_instance);
             SET_THEN_RETURN_POISONED(
                 r, RE_OK, c, looking_body, NULL, ctype, c, ERROR_ELEM);
         }
@@ -1756,10 +1780,13 @@ resolve_param(resolver* r, sym_param* p, bool generic, ast_elem** ctype)
     ast_node_set_resolved(&p->sym.node);
     return RE_OK;
 }
+// if no symbol is found, error symbol is set to the first hidden match
+// if multiple symbols are founnd, error symbol is set to the second one
+// to report an ambiguity
 resolve_error resolver_lookup_single(
     resolver* r, ast_body* body, ast_elem* lhs_ctype, bool lhs_is_instance,
     ast_body* looking_body, const char* tgt_name, symbol** res,
-    symbol** ambiguity)
+    symbol** error_symbol)
 {
     symbol_lookup_iterator sli;
     resolve_error re = symbol_lookup_iterator_init(
@@ -1768,7 +1795,11 @@ resolve_error resolver_lookup_single(
     if (re) return re;
     re = symbol_lookup_iterator_next(&sli, res);
     if (re) return re;
-    return symbol_lookup_iterator_next(&sli, ambiguity);
+    if (!*res) {
+        *error_symbol = sli.first_hidden_match;
+        return RE_OK;
+    }
+    return symbol_lookup_iterator_next(&sli, error_symbol);
 }
 resolve_error resolve_scoped_identifier(
     resolver* r, expr_scope_access* esa, ast_body* body, ast_elem** value,
@@ -1783,17 +1814,17 @@ resolve_error resolve_scoped_identifier(
     re = get_resolved_symbol_body(r, (symbol*)lhs_val, &lhs_body);
     if (re) return re;
     symbol* idf;
-    symbol* amb;
+    symbol* amb_err;
     re = resolver_lookup_single(
-        r, lhs_body, NULL, false, body, esa->target.name, &idf, &amb);
+        r, lhs_body, NULL, false, body, esa->target.name, &idf, &amb_err);
     if (re) return re;
     if (!idf) {
         if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
-        report_unknown_symbol(r, (ast_node*)esa, body);
+        report_unknown_symbol(r, (ast_node*)esa, body, amb_err, false);
         SET_THEN_RETURN_POISONED(
             r, RE_OK, esa, body, value, ctype, esa, ERROR_ELEM);
     }
-    if (amb) {
+    if (amb_err) {
         assert(false); // TODO report ambiguity error
     }
     ast_elem* idf_val;
@@ -1822,17 +1853,17 @@ resolve_error resolve_expr_member_accesss(
     // TODO:
     assert(ast_elem_get_ctype(lhs_ctype) == TYPE_ELEM);
     symbol* mem;
-    symbol* amb;
+    symbol* amb_err;
     re = resolver_lookup_single(
-        r, body, lhs_ctype, true, body, ema->target.name, &mem, &amb);
+        r, body, lhs_ctype, true, body, ema->target.name, &mem, &amb_err);
     if (re) return re;
     if (!mem) {
         if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
-        report_unknown_symbol(r, (ast_node*)ema, body);
+        report_unknown_symbol(r, (ast_node*)ema, body, amb_err, true);
         SET_THEN_RETURN_POISONED(
             r, RE_OK, ema, body, value, ctype, ema, ERROR_ELEM);
     }
-    if (amb) {
+    if (amb_err) {
         assert(false); // TODO: report ambiguity
     }
     ema->target.sym = mem;
@@ -2213,9 +2244,9 @@ static inline resolve_error resolve_identifier(
     ast_elem** ctype)
 {
     symbol* sym;
-    symbol* amb;
+    symbol* amb_err;
     resolve_error re = resolver_lookup_single(
-        r, body, NULL, false, body, e->value.str, &sym, &amb);
+        r, body, NULL, false, body, e->value.str, &sym, &amb_err);
     if (re) return re;
     if (!sym) {
         bool notif_added = false;
@@ -2223,11 +2254,11 @@ static inline resolve_error resolve_identifier(
             &r->ppdct, body, NULL, e->value.str, &notif_added);
         if (res) return RE_FATAL;
         if (notif_added) return RE_UNKNOWN_SYMBOL;
-        report_unknown_symbol(r, (ast_node*)e, body);
+        report_unknown_symbol(r, (ast_node*)e, body, amb_err, false);
         SET_THEN_RETURN_POISONED(
             r, RE_OK, e, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
     }
-    if (amb) {
+    if (amb_err) {
         assert(false); // TODO: report ambiguity
     }
     if (ppdct_use_symbol(&r->ppdct, sym, body, NULL, (ast_node*)e))
@@ -2723,15 +2754,15 @@ resolve_import_symbol(resolver* r, sym_import_symbol* is, ast_body* body)
     }
     if (ast_node_get_resolved(node)) return RE_OK;
     symbol* sym;
-    symbol* amb;
+    symbol* amb_err;
     re = resolver_lookup_single(
         r, &im_data->imported_module->body, NULL, false, decl_body,
-        is->target.name, &sym, &amb);
+        is->target.name, &sym, &amb_err);
     if (re || !sym) ast_node_clear_resolving(node);
     if (re) return re;
     if (!sym) {
         if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
-        report_unknown_symbol(r, (ast_node*)is, decl_body);
+        report_unknown_symbol(r, (ast_node*)is, decl_body, amb_err, false);
         is->target.sym = (symbol*)ERROR_ELEM;
         RETURN_POISONED(r, RE_OK, is, body);
     }
@@ -2739,7 +2770,7 @@ resolve_import_symbol(resolver* r, sym_import_symbol* is, ast_body* body)
         is->target_body = &im_data->imported_module->body;
     }
     else {
-        if (amb) {
+        if (amb_err) {
             assert(false); // TODO: report ambiguity
         }
         if (sym->node.kind == SYM_IMPORT_SYMBOL) {
