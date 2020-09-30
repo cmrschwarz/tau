@@ -3238,7 +3238,7 @@ parse_error parse_expr_stmt(parser* p, ast_node** tgt)
 }
 parse_error parse_import_with_parent(
     parser* p, modifier_status* mods, ureg kw_end, mdg_node* parent,
-    ureg* decl_cnt, ast_node** tgt, bool child);
+    ureg* decl_cnt, ureg* use_cnt, ast_node** tgt, bool child);
 parse_error parse_use(parser* p, modifier_status* mods, ast_node** tgt)
 {
     token* t = lx_aquire(&p->lx);
@@ -3293,13 +3293,13 @@ parse_error parse_use(parser* p, modifier_status* mods, ast_node** tgt)
 }
 parse_error parse_braced_imports(
     parser* p, modifier_status* mods, import_group_data* ig_data, ureg kw_end,
-    mdg_node* parent, ureg* end, ureg* decl_cnt)
+    mdg_node* parent, ureg* end, ureg* decl_cnt, ureg* use_cnt)
 {
     lx_void(&p->lx);
     while (true) {
         ast_node* tgt;
         parse_error pe = parse_import_with_parent(
-            p, mods, kw_end, parent, decl_cnt, &tgt, true);
+            p, mods, kw_end, parent, decl_cnt, use_cnt, &tgt, true);
         if (pe) return pe;
         list_append(&ig_data->children_ordered, &p->lx.tc->permmem, tgt);
         token* t;
@@ -3398,7 +3398,7 @@ parse_error parse_symbol_imports(
 }
 parse_error parse_import_with_parent(
     parser* p, modifier_status* mods, ureg kw_end, mdg_node* parent,
-    ureg* decl_cnt, ast_node** tgt, bool child)
+    ureg* decl_cnt, ureg* use_cnt, ast_node** tgt, bool child)
 {
     mdg_node* relative_to = parent;
     parse_error pe;
@@ -3415,7 +3415,7 @@ parse_error parse_import_with_parent(
         PEEK(p, t);
     }
     // TODO: maybe provide a special message in case child is true
-    if (t->kind == TK_KW_SELF && !child) {
+    if (t->kind == TK_KW_MODULE && !child) {
         parent = p->current_module;
         mods->data.relative_import_mod = true;
         if (t2->kind == TK_DOUBLE_COLON) {
@@ -3456,7 +3456,6 @@ parse_error parse_import_with_parent(
             im->osym.visible_within_body = NULL; // TODO
             if (name) {
                 im->osym.sym.name = name;
-                curr_scope_add_decls(p, mods->data.access_mod, 1);
             }
             else {
                 im->osym.sym.name = parent->name;
@@ -3465,7 +3464,8 @@ parse_error parse_import_with_parent(
                 return PE_FATAL;
             }
             *tgt = (ast_node*)im;
-            *decl_cnt = *decl_cnt + 1;
+            (*decl_cnt)++;
+            (*use_cnt)++;
             return PE_OK;
         }
     }
@@ -3535,7 +3535,7 @@ parse_error parse_import_with_parent(
         if (list_init(&ig_data->children_ordered)) return PE_FATAL;
         mods->data.relative_import_mod = false;
         pe = parse_braced_imports(
-            p, mods, ig_data, kw_end, parent, &end, decl_cnt);
+            p, mods, ig_data, kw_end, parent, &end, decl_cnt, use_cnt);
         if (pe) return pe;
     }
     else {
@@ -3558,10 +3558,13 @@ parse_error parse_import(parser* p, modifier_status* mods, ast_node** tgt)
     ureg kw_end = t->end;
     lx_void(&p->lx);
     ureg decl_cnt = 0;
+    ureg use_cnt = 0;
     parse_error pe = parse_import_with_parent(
-        p, mods, kw_end, p->lx.tc->t->mdg.root_node, &decl_cnt, tgt, false);
+        p, mods, kw_end, p->lx.tc->t->mdg.root_node, &decl_cnt, &use_cnt, tgt,
+        false);
     if (pe) return pe;
     curr_scope_add_decls(p, mods->data.access_mod, decl_cnt);
+    curr_scope_add_uses(p, mods->data.access_mod, use_cnt);
     return PE_OK;
 }
 parse_error parse_require(parser* p, modifier_status* mods)

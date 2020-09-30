@@ -1,0 +1,11 @@
+module collections;
+require "libc.tau";
+import libc;
+
+struct List[T]{
+    slice: []T;
+    mem_end: *T;
+    op construct(){
+                
+    }
+}

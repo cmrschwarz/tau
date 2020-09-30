@@ -912,7 +912,8 @@ static resolve_error add_ast_node_decls(
                     r, &sg->sb.sc.body, NULL, (symbol*)&sg->generic_params[i]);
                 if (re) return re;
             }
-        } // fallthrough
+            return add_symbol(r, body, shared_body, (symbol*)sg);
+        }
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
             // generic inst 'inherits' from struct
@@ -920,6 +921,7 @@ static resolve_error add_ast_node_decls(
             s->type_derivs.ptr_id = ptr_map_claim_id(&r->pm);
             s->type_derivs.slice_id = ptr_map_claim_id(&r->pm);
             re = add_symbol(r, body, shared_body, (symbol*)s);
+            if (re) return re;
             // bool members_public_st =
             // shared_body && !is_local_node((ast_elem*)n);
             s->backend_id = claim_symbol_id(r, (symbol*)s, public_st);
@@ -982,6 +984,9 @@ static resolve_error add_ast_node_decls(
             if (conflict) {
                 report_redeclaration_error(r, (symbol*)im, conflict);
             }
+            symbol_table_insert_use(
+                st, ast_node_get_access_mod(n), n,
+                &im->im_data.imported_module->body, true, false);
             return RE_OK;
         }
         // this gets here because anonymous modules delegate their members
@@ -1035,13 +1040,15 @@ static resolve_error add_ast_node_decls(
             return RE_OK;
         } break;
         case TRAIT_IMPL: {
+            trait_impl* ti = (trait_impl*)n;
             ast_body* tgt_body = get_decl_target_body(n, body, shared_body);
             assert(tgt_body->symtab->tt);
             if (ast_elem_has_unordered_body((ast_elem*)body->owning_node)) {
                 int res = trait_table_append_unresolved_impl(
-                    tgt_body->symtab->tt, (trait_impl*)n);
+                    tgt_body->symtab->tt, ti);
                 if (res) return RE_FATAL;
             }
+            ti->backend_id = ast_node_claim_id(r, n, public_st);
             return RE_OK;
         } break;
         default:
@@ -2207,6 +2214,7 @@ static inline resolve_error resolve_special_identifier(
     if (tgt_body->owning_node->kind == TRAIT_IMPL ||
         tgt_body->owning_node->kind == TRAIT_IMPL_GENERIC_INST) {
         trait_impl* ti = (trait_impl*)tgt_body->owning_node;
+        assert(ast_node_get_trait_resolved((ast_node*)ti));
         assert(ast_elem_is_symbol(ti->impl_for_ctype));
         tgt_sym = (symbol*)ti->impl_for_ctype;
     }
@@ -2343,14 +2351,15 @@ static inline resolve_error resolve_if(
     ast_node_set_resolved(&ei->node);
     SET_THEN_RETURN(value, ctype, ei, ei->ctype);
 }
-static inline bool is_body_public_st(ast_body* b)
+bool is_body_public_st(ast_body* b)
 {
     while (true) {
         ast_elem* owning_elem = (ast_elem*)b->owning_node;
         if (ast_elem_is_module_frame(owning_elem)) {
             return true;
         }
-        if (ast_elem_is_struct(owning_elem)) {
+        if (ast_elem_is_struct(owning_elem) ||
+            ast_elem_is_trait_impl(owning_elem)) {
             if (is_local_node(owning_elem)) {
                 return false;
                 break;
@@ -3806,6 +3815,12 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
         case SYM_VAR_INITIALIZED: {
             if (is_local_node((ast_elem*)n)) return;
             update_id(r, &((sym_var*)n)->var_id, id_space);
+        } break;
+        case TRAIT_IMPL:
+        case TRAIT_IMPL_GENERIC_INST: {
+            if (is_local_node((ast_elem*)n)) return;
+            update_id(r, &((trait_impl*)n)->backend_id, id_space);
+            adjust_body_ids(r, id_space, &((trait_impl*)n)->tib.body);
         } break;
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {

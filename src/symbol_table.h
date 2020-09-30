@@ -66,11 +66,14 @@ int symbol_table_amend(symbol_table** stp, ureg sym_count, ureg using_count);
 
 void symbol_table_insert_use(
     symbol_table* st, access_modifier am, ast_node* using_node,
-    ast_body* using_body);
+    ast_body* using_body, bool no_syms, bool no_impls);
 
 ast_body** symbol_table_get_uses_start(symbol_table* st, access_modifier am);
 ast_body** symbol_table_get_uses_end(symbol_table* st, access_modifier am);
 ast_node** symbol_table_get_use_node(symbol_table* st, ast_body** using_st);
+void symbol_table_unwrap_use(
+    ast_body* use_body_wrapped, ast_body** use_body, bool* no_syms,
+    bool* no_impls);
 
 typedef struct symtab_it {
     symbol** pos;

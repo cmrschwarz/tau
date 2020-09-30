@@ -65,6 +65,7 @@ extern "C" {
 #include <llvm/Transforms/Utils.h>
 #include <llvm/ADT/STLExtras.h>
 #include <unistd.h>
+#include <vector>
 
 class ArchiveSymbolsMaterializationUnit
     : public llvm::orc::MaterializationUnit {

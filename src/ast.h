@@ -322,6 +322,23 @@ typedef struct stmt_use_s {
     ast_node* target;
 } stmt_use;
 
+typedef struct use_exclusions_s {
+    bool impl_exclusion;
+    bool exclusion_in_parens; // for ast printing, \(foo) vs \ foo
+    // PERF: we could pack our two bools into the pointer
+    struct use_exclusions_s* next_exclusion;
+    union {
+        struct {
+            // NULL_PTR_PTR if not restricted, NULL if all excluded
+            sc_trait* trait_ctype;
+            // NULL_PTR_PTR if not restricted, NULL if all excluded
+            ast_elem* type_ctype;
+        } impls;
+        // NULL_PTR_PTR if not restricted, NULL if all excluded
+        char* symbol_name;
+    };
+} use_restrictions;
+
 typedef struct import_module_data_s {
     // not relative to what, but who actually imported
     mdg_node* importing_module;

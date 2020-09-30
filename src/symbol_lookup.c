@@ -1,5 +1,6 @@
 #include "symbol_lookup.h"
 #include "resolver.h"
+#include "utils/debug_utils.h"
 
 static inline symbol* ast_body_lookup(ast_body* b, ureg hash, const char* name)
 {
@@ -140,6 +141,21 @@ resolve_error push_symbol_lookup_level(
     sli->stack_height++;
     return RE_OK;
 }
+bool is_missmatching_using(
+    ast_body* use_body, ast_body** res_body, ast_elem* lhs_ctype,
+    bool look_for_members)
+{
+    bool no_syms;
+    bool no_impls;
+    ast_body* body_unwrapped;
+    symbol_table_unwrap_use(use_body, &body_unwrapped, &no_syms, &no_impls);
+    if (no_syms && !lhs_ctype) return true;
+    if (no_impls && (lhs_ctype && !look_for_members)) {
+        return true;
+    }
+    if (res_body) *res_body = body_unwrapped;
+    return false;
+}
 resolve_error symbol_lookup_level_run(
     symbol_lookup_iterator* sli, ast_body* lookup_body, bool look_for_members,
     symbol** res)
@@ -150,6 +166,7 @@ resolve_error symbol_lookup_level_run(
     resolve_error re;
     symbol* sym = NULL;
     list_rit impls;
+    list_rit_empty(&impls);
     int responsibility_count = 0;
     if (!sli->lhs_ctype || look_for_members) {
         sym = ast_body_lookup(lookup_body, sli->hash, sli->tgt_name);
@@ -237,9 +254,6 @@ resolve_error symbol_lookup_level_run(
             responsibility_count++;
             if (list_length(&il->impls) > 1) responsibility_count++;
         }
-        else {
-            list_rit_empty(&impls);
-        }
     }
     ast_body* extends_body = NULL;
     ast_body** usings_end = NULL;
@@ -272,6 +286,20 @@ resolve_error symbol_lookup_level_run(
             usings_start =
                 symbol_table_get_uses_start(lookup_body->symtab, am_start);
             usings_end = symbol_table_get_uses_end(lookup_body->symtab, am_end);
+        }
+        while (usings_start != usings_end) {
+            if (!is_missmatching_using(
+                    *usings_start, NULL, sli->lhs_ctype, look_for_members)) {
+                break;
+            }
+            usings_start++;
+        }
+        while (usings_start != usings_end) {
+            if (!is_missmatching_using(
+                    *usings_end, NULL, sli->lhs_ctype, look_for_members)) {
+                break;
+            }
+            usings_end--;
         }
         if (usings_start != usings_end) {
             responsibility_count++;
@@ -310,8 +338,12 @@ resolve_error symbol_lookup_level_run(
     if (usings_end != usings_start) {
         if (second_resp) sli->head->usings_head++;
         sli->last_match_loc = MATCH_LOCATION_USING;
-        return symbol_lookup_level_run(
-            sli, *usings_start, look_for_members, res);
+        ast_body* body;
+        bool mu = is_missmatching_using(
+            *usings_start, &body, sli->lhs_ctype, look_for_members);
+        UNUSED(mu);
+        assert(!mu);
+        return symbol_lookup_level_run(sli, body, look_for_members, res);
     }
     // otherwise some condition above would have fired
     assert(extends_body && !second_resp);
@@ -400,14 +432,17 @@ static inline resolve_error symbol_lookup_level_continue(
         }
     }
     while (sll->usings_head != sll->usings_end) {
-        ast_body* t = *sll->usings_head;
+        ast_body* body = *sll->usings_head;
         sll->usings_head++;
-        resolve_error re =
-            symbol_lookup_level_run(sli, t, sll->look_for_members, res);
-        if (re) return re;
-        if (*res) {
-            sli->last_match_loc = MATCH_LOCATION_USING;
-            return RE_OK;
+        if (!is_missmatching_using(
+                body, &body, sli->lhs_ctype, sll->look_for_members)) {
+            resolve_error re =
+                symbol_lookup_level_run(sli, body, sll->look_for_members, res);
+            if (re) return re;
+            if (*res) {
+                sli->last_match_loc = MATCH_LOCATION_USING;
+                return RE_OK;
+            }
         }
     }
     if (sll->extends_body) {

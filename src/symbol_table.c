@@ -25,7 +25,8 @@ ureg symbol_table_get_symbol_capacity(symbol_table* st)
 ureg symbol_table_get_using_capacity(symbol_table* st)
 {
     assert(symbol_table_has_usings(st));
-    return (st->table_offset - sizeof(usings_table)) / (2 * sizeof(void*));
+    return (st->table_offset * sizeof(void*) - sizeof(usings_table)) /
+           (2 * sizeof(void*));
 }
 ureg symbol_table_get_using_count(symbol_table* st)
 {
@@ -42,9 +43,10 @@ ureg symbol_table_get_symbol_count(symbol_table* st)
 
 void symbol_table_insert_use(
     symbol_table* st, access_modifier am, ast_node* using_node,
-    ast_body* using_body)
+    ast_body* using_body, bool no_syms, bool no_impls)
 {
-    am = AM_ENUM_ELEMENT_COUNT - am;
+    assert(((ureg)using_body & 0x3) == 0);
+    assert(!no_syms || !no_impls);
     usings_table* ut = (usings_table*)st;
     ureg usings_cap = symbol_table_get_using_capacity(st) * sizeof(ast_body*);
     assert(symbol_table_get_using_count(st) * sizeof(void*) < usings_cap);
@@ -54,7 +56,8 @@ void symbol_table_insert_use(
             *(ast_node**)ptradd(ut->using_ends[i - 1], usings_cap);
         ut->using_ends[i]++;
     }
-    *ut->using_ends[am] = using_body;
+    *ut->using_ends[am] =
+        (ast_body*)((ureg)using_body | (no_syms ? 2 : 0) | (no_impls ? 1 : 0));
     *(ast_node**)ptradd(ut->using_ends[am], usings_cap) = using_node;
     ut->using_ends[am]++;
 }
@@ -78,7 +81,14 @@ ast_node** symbol_table_get_use_node(symbol_table* st, ast_body** using_st)
     ureg usings_cap = symbol_table_get_using_capacity(st) * sizeof(ast_body*);
     return (ast_node**)ptradd(using_st, usings_cap * sizeof(ast_body*));
 }
-
+void symbol_table_unwrap_use(
+    ast_body* use_body_wrapped, ast_body** use_body, bool* no_syms,
+    bool* no_impls)
+{
+    *use_body = (ast_body*)((ureg)use_body_wrapped & ~((ureg)0x2));
+    *no_syms = (((ureg)use_body_wrapped) & 0x2) != 0;
+    *no_impls = (((ureg)use_body_wrapped) & 0x1) != 0;
+}
 symbol** symbol_table_calculate_position(symbol_table* st, ureg hash)
 {
     ureg sym_mask = (1 << st->sym_bitcount) - 1;
@@ -161,7 +171,7 @@ symbol_table* symbol_table_create(
     ureg size_ceiled;
     symbol_table* st;
     if (using_count) {
-        size += using_count * sizeof(ast_body**);
+        size += using_count * sizeof(void*) * 2;
         size += sizeof(usings_table);
         size_ceiled = ceil_to_pow2(size);
         ureg cap_space = (size_ceiled - size) / sizeof(void*);
@@ -175,7 +185,8 @@ symbol_table* symbol_table_create(
         usings_table* ut = tmalloc(size_ceiled);
         if (!ut) return NULL;
         st = (symbol_table*)ut;
-        ureg using_part_size = sizeof(usings_table) + using_cap;
+        ureg using_part_size =
+            sizeof(usings_table) + using_cap * sizeof(void*) * 2;
         st->table_offset = using_part_size / sizeof(void*);
         // if table size is not a multiple of sizeof(void*) everything breaks
         assert(st->table_offset * sizeof(void*) == using_part_size);
@@ -238,8 +249,14 @@ int symbol_table_amend(symbol_table** stp, ureg sym_count, ureg using_count)
             ast_body** start = symbol_table_get_uses_start(st, am);
             ast_body** end = symbol_table_get_uses_end(st, am);
             while (start != end) {
+                bool no_syms;
+                bool no_impls;
+                ast_body* body_unwrapped;
+                symbol_table_unwrap_use(
+                    *start, &body_unwrapped, &no_syms, &no_impls);
                 symbol_table_insert_use(
-                    st_new, am, *symbol_table_get_use_node(st, start), *start);
+                    st_new, am, *symbol_table_get_use_node(st, start),
+                    body_unwrapped, no_syms, no_impls);
                 start++;
             }
         }

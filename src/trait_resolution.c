@@ -83,6 +83,7 @@ resolve_error resolve_trait_impl(resolver* r, trait_impl* ti, ast_body* body)
         is->type = ti->impl_for_ctype;
         is->trait = ti->impl_of_trait;
         is->impl = ti;
+        ast_node_set_trait_resolved((ast_node*)ti);
     }
     impl_list_for_type* il = trait_table_get_impl_list_for_type(
         body->symtab->tt, ti->impl_for_ctype);
@@ -97,7 +98,8 @@ resolve_error resolve_trait_impl(resolver* r, trait_impl* ti, ast_body* body)
     }
     if (list_append(&il->impls, NULL, ti)) return RE_FATAL;
     return add_body_decls(
-        r, &ti->tib.body, NULL, ast_body_is_public(&ti->tib.body));
+        r, &ti->tib.body, NULL, is_body_public_st(&ti->tib.body));
+    // TODO: check if all traits are present
 }
 static inline resolve_error unordered_body_add_trait_decls_raw(
     resolver* r, ast_body* body, bool* progress, resolve_error* holdup)
@@ -148,11 +150,14 @@ resolve_error add_mf_trait_decls(resolver* r)
         holdup = RE_OK;
         progress = false;
         for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
+            resolve_error re = unordered_body_add_trait_decls_raw(
+                r, &(**i).body, &progress, &holdup);
+            if (re) return re;
             aseglist_iterator asi;
             aseglist_iterator_begin(&asi, &(**i).module_frames);
             for (module_frame* mf = aseglist_iterator_next(&asi); mf != NULL;
                  mf = aseglist_iterator_next(&asi)) {
-                resolve_error re = unordered_body_add_trait_decls_raw(
+                re = unordered_body_add_trait_decls_raw(
                     r, &mf->body, &progress, &holdup);
                 if (re) return re;
             }

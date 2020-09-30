@@ -1506,15 +1506,19 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             }
         }
         case SC_STRUCT_GENERIC: // TODO: emit instances somewhere somhow
-        case MF_MODULE:
-        case MF_EXTEND:
-        case TRAIT_IMPL:
-        case TRAIT_IMPL_GENERIC:
-        case SC_TRAIT:
         case SC_TRAIT_GENERIC:
-            // no codegen required
+        case TRAIT_IMPL_GENERIC:
+        case MF_MODULE:
+        case MF_EXTEND: return LLE_OK;
+        case SC_TRAIT:
+        case SC_TRAIT_GENERIC_INST:
+            // TODO: emit vtable
             assert(!vl && !vl_loaded);
             return LLE_OK;
+        case TRAIT_IMPL:
+        case TRAIT_IMPL_GENERIC_INST: {
+            return genStructuralAstBody(&((trait_impl*)n)->tib.body);
+        } break;
 
         case SC_STRUCT: {
             lle = lookupCType((ast_elem*)n, NULL, NULL, NULL);
@@ -1621,8 +1625,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
         }
         case EXPR_IDENTIFIER: {
             auto ei = (expr_identifier*)n;
-            if (ast_node_get_instance_member(n) &&
-                ei->value.sym->node.kind == SC_STRUCT) {
+            if (ast_node_get_instance_member(n)) {
                 if (vl) *vl = _curr_this;
                 if (vl_loaded) {
                     llvm::Type* t;

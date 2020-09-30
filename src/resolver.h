@@ -151,6 +151,7 @@ bool ctypes_unifiable(ast_elem* a, ast_elem* b);
 
 bool ast_body_pastes_done(resolver* r, ast_body* b);
 bool ast_body_is_public(ast_body* b);
+bool is_body_public_st(ast_body* b);
 int ast_body_propagate_error(resolver* r, ast_body* body);
 int curr_body_propagate_error(resolver* r, ast_body* body);
 
