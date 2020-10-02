@@ -168,6 +168,8 @@ resolve_error symbol_lookup_level_run(
     list_rit impls;
     list_rit_empty(&impls);
     int responsibility_count = 0;
+    sli->contains_poisoned_scopes |=
+        ast_node_get_poisoned(lookup_body->owning_node);
     if (!sli->lhs_ctype || look_for_members) {
         sym = ast_body_lookup(lookup_body, sli->hash, sli->tgt_name);
     }
@@ -404,6 +406,7 @@ resolve_error symbol_lookup_iterator_init(
     sli->lhs_ctype = lhs_ctype;
     sli->next_lookup_body = lookup_body;
     sli->exploring_members = false;
+    sli->contains_poisoned_scopes = false;
     return RE_OK;
 }
 static inline resolve_error symbol_lookup_level_continue(
@@ -516,4 +519,10 @@ void symbol_lookup_iterator_cut_off_shadowed(symbol_lookup_iterator* sli)
         case MATCH_LOCATION_POPPED: break;
     }
     sli->next_lookup_body = NULL;
+}
+
+symbol* symbol_lookup_iterator_get_hint_for_unknown(symbol_lookup_iterator* sli)
+{
+    if (sli->contains_poisoned_scopes) return (symbol*)NULL_PTR_PTR;
+    return sli->first_hidden_match;
 }

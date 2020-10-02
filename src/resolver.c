@@ -85,7 +85,7 @@ resolve_error resolve_unordered_body(
         ast_node* n = (ast_node*)(node);                                       \
         if (re != RE_FATAL) {                                                  \
             r->error_occured = true;                                           \
-            if (curr_body_propagate_error(r, body)) return RE_FATAL;           \
+            if (curr_pprn_propagate_error(r, body)) return RE_FATAL;           \
             ast_node_set_poisoned(n);                                          \
             ast_node_set_resolved(n);                                          \
         }                                                                      \
@@ -109,6 +109,9 @@ resolve_error add_resolve_error(resolve_error res, resolve_error add)
 static void report_unknown_symbol(
     resolver* r, ast_node* n, ast_body* body, symbol* hidden_match, bool inst)
 {
+    // returned from symbol_lookup_iterator_get_hint_for_unknown
+    // if the lookup traversed a poisoned scope
+    if (hidden_match == (symbol*)NULL_PTR_PTR) return;
     src_range_large srl, srl_hidden;
     if (n->kind == EXPR_SCOPE_ACCESS || n->kind == EXPR_MEMBER_ACCESS) {
         src_range_unpack(((expr_scope_access*)n)->target_srange, &srl);
@@ -208,6 +211,16 @@ int curr_body_propagate_error(resolver* r, ast_body* body)
     if (res) return res;
     if (!r->curr_pp_node) return RE_OK;
     return pprn_propagate_error(r, r->curr_pp_node);
+}
+int curr_pprn_propagate_error(resolver* r, ast_body* body)
+{
+    pp_resolve_node* pprn;
+    if (get_curr_pprn(r, body, &pprn)) return ERR;
+    if (pprn) {
+        int res = pprn_propagate_error(r, pprn);
+        if (res) return res;
+    }
+    return curr_body_propagate_error(r, body);
 }
 bool is_curr_resolution_for_pastes(resolver* r, ast_body* body)
 {
@@ -1386,7 +1399,8 @@ resolve_error resolve_func_call(
                 &r->temp_stack, c->arg_count * sizeof(ast_elem*));
             if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
             report_unknown_symbol(
-                r, c->lhs, looking_body, sli.first_hidden_match,
+                r, c->lhs, looking_body,
+                symbol_lookup_iterator_get_hint_for_unknown(&sli),
                 sli.lhs_is_instance);
             SET_THEN_RETURN_POISONED(
                 r, RE_OK, c, looking_body, NULL, ctype, c, ERROR_ELEM);
@@ -2600,9 +2614,10 @@ resolve_error resolve_importing_node(
     // otherwise wouldn't be resolving this which depends on it
     if (mdg->error_occured) {
         // TODO: some poisoning or error message idk
-        r->error_occured = true;
         rwlock_end_write(&mdg->lock);
-        return RE_ERROR;
+        r->error_occured = true;
+        SET_THEN_RETURN_POISONED(
+            r, RE_OK, node, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
     }
     switch (mdg->ppe_stage) {
         case PPES_UNNEEDED: mdg->ppe_stage = PPES_REQUESTED; break;
@@ -3853,6 +3868,7 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
 typedef struct unverified_module_frame_s {
     file_map_head* file;
     module_frame* frame;
+    mdg_node* node;
     struct unverified_module_frame_s* next_verified;
 } unverified_module_frame;
 
@@ -4021,6 +4037,7 @@ resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
             if (report_unrequired_extend(
                     r->tc, n, m->frame->smap, m->frame->node.srange))
                 return RE_FATAL;
+            ast_node_set_poisoned((ast_node*)n);
             if (aseglist_add(
                     &r->tc->t->mdg.invalid_node->module_frames, m->frame)) {
                 return RE_FATAL;

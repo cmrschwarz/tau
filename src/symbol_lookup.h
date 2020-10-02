@@ -47,6 +47,7 @@ typedef struct symbol_lookup_iterator {
     bool explore_type;
     bool exploring_members;
     bool lhs_is_instance;
+    bool contains_poisoned_scopes;
     last_match_location last_match_loc;
     ureg stack_height;
 } symbol_lookup_iterator;
@@ -65,3 +66,9 @@ void symbol_lookup_iterator_cut_off_shadowed(symbol_lookup_iterator* sli);
 // lookup body's parent: imports' imports level + 1, usings +2, imports +3 ...
 resolve_error
 symbol_lookup_iterator_next(symbol_lookup_iterator* sli, symbol** res);
+
+// returns the first matching name that's hidden because of it's visibility
+// modifier
+// if lookup traversed a poisoned scope, returns NULL_PTR_PTR
+symbol*
+symbol_lookup_iterator_get_hint_for_unknown(symbol_lookup_iterator* sli);
