@@ -9,7 +9,7 @@
         .sym = {.node = {.kind = SYM_PRIMITIVE,                                \
                          .pt_kind = prim_kind,                                 \
                          .flags =                                              \
-                             (NODE_STATUS_PUBLISHED << ASTF_STATUS_OFFSET |    \
+                             (NODE_STATUS_RESOLVED << ASTF_STATUS_OFFSET |     \
                               AM_PUBLIC << ASTF_ACCESS_MODIFIER_OFFSET),       \
                          .srange = SRC_RANGE_INVALID},                         \
                 .name = prim_name,                                             \

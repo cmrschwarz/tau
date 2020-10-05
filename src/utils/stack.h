@@ -162,9 +162,3 @@ static inline ureg stack_element_count(stack* s)
     space -= ptrdiff(s->curr_seg->end, s->head);
     return space / sizeof(void*);
 }
-
-static inline void stack_pop_til_iter(stack* s, stack_iter* it)
-{
-    s->curr_seg = it->curr_seg;
-    s->head = it->head;
-}

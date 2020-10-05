@@ -1,0 +1,9 @@
+func main() -> int{
+    return foo();
+}
+#main();
+#paste("func foo() -> int {return 0;}");
+
+func foo(x: int) -> int{
+    return 3;
+}

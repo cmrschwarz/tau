@@ -21,7 +21,6 @@ typedef enum ast_node_status_e {
     NODE_STATUS_TRAIT_RESOLVED,
     NODE_STATUS_RESOLVING,
     NODE_STATUS_RESOLVED,
-    NODE_STATUS_PUBLISHED,
 } ast_node_status;
 
 typedef enum dtor_kind_e {

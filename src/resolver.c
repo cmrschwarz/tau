@@ -1365,7 +1365,7 @@ resolve_error resolve_func_call(
     ast_elem** ctype)
 {
     ast_elem** call_arg_types =
-        sbuffer_append(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
+        sbuffer_append(&r->temp_buffer, c->arg_count * sizeof(ast_elem*));
     resolve_error re = RE_OK;
     for (ureg i = 0; i < c->arg_count; i++) {
         re = resolve_ast_node(
@@ -1379,7 +1379,7 @@ resolve_error resolve_func_call(
         lhs_is_instance, false, true);
     bool applicable = false;
     if (re) {
-        sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
+        sbuffer_remove_back(&r->temp_buffer, c->arg_count * sizeof(ast_elem*));
         return re;
     }
     bool overload_existant = false;
@@ -1388,7 +1388,7 @@ resolve_error resolve_func_call(
         re = symbol_lookup_iterator_next(&sli, &sym);
         if (re) {
             sbuffer_remove_back(
-                &r->temp_stack, c->arg_count * sizeof(ast_elem*));
+                &r->temp_buffer, c->arg_count * sizeof(ast_elem*));
             return re;
         }
         if (sym == NULL) {
@@ -1396,8 +1396,12 @@ resolve_error resolve_func_call(
             // we use st instead of func_st here because thats the scope
             // that the call is in
             sbuffer_remove_back(
-                &r->temp_stack, c->arg_count * sizeof(ast_elem*));
-            if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
+                &r->temp_buffer, c->arg_count * sizeof(ast_elem*));
+            bool notifier_added = false;
+            int res = ppdct_curr_pprn_require_symbol(
+                &r->ppdct, looking_body, lhs_ctype, func_name, &notifier_added);
+            if (res) return RE_FATAL;
+            if (notifier_added) return RE_UNKNOWN_SYMBOL;
             report_unknown_symbol(
                 r, c->lhs, looking_body,
                 symbol_lookup_iterator_get_hint_for_unknown(&sli),
@@ -1425,8 +1429,13 @@ resolve_error resolve_func_call(
             re = RE_FATAL;
         }
     }
-    sbuffer_remove_back(&r->temp_stack, c->arg_count * sizeof(ast_elem*));
+    sbuffer_remove_back(&r->temp_buffer, c->arg_count * sizeof(ast_elem*));
     if (!applicable) {
+        bool notifier_added = false;
+        int res = ppdct_curr_pprn_require_symbol(
+            &r->ppdct, looking_body, lhs_ctype, func_name, &notifier_added);
+        if (res) return RE_FATAL;
+        if (notifier_added) return RE_UNKNOWN_SYMBOL;
         src_range_large srl;
         ast_node_get_src_range(c->lhs, looking_body, &srl);
         error_log_report_annotated(
@@ -1656,9 +1665,9 @@ resolve_error choose_binary_operator_overload(
     }
     symbol* s;
     symbol_lookup_iterator sli;
+    const char* op_str = op_to_str(ob->node.op_kind);
     re = symbol_lookup_iterator_init(
-        &sli, r, body, NULL, body, op_to_str(ob->node.op_kind), false, false,
-        true);
+        &sli, r, body, NULL, body, op_str, false, false, true);
     if (re) return re;
     while (true) {
         re = symbol_lookup_iterator_next(&sli, &s);
@@ -1675,7 +1684,11 @@ resolve_error choose_binary_operator_overload(
             assert(false); // TODO: error
         }
     }
-    if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
+    bool notifier_added = false;
+    if (ppdct_curr_pprn_require_symbol(
+            &r->ppdct, body, lhs_ctype, op_str, &notifier_added))
+        return RE_FATAL;
+    if (notifier_added) return RE_UNKNOWN_SYMBOL;
     src_range_large srl;
     src_range_unpack(ob->node.srange, &srl);
     error_log_report_annotated(
@@ -1840,7 +1853,10 @@ resolve_error resolve_scoped_identifier(
         r, lhs_body, NULL, false, body, esa->target.name, &idf, &amb_err);
     if (re) return re;
     if (!idf) {
-        if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
+        bool notif_added = false;
+        ppdct_curr_pprn_require_symbol(
+            &r->ppdct, body, lhs_val, esa->target.name, &notif_added);
+        if (notif_added) return RE_UNKNOWN_SYMBOL;
         report_unknown_symbol(r, (ast_node*)esa, body, amb_err, false);
         SET_THEN_RETURN_POISONED(
             r, RE_OK, esa, body, value, ctype, esa, ERROR_ELEM);
@@ -1879,7 +1895,11 @@ resolve_error resolve_expr_member_accesss(
         r, body, lhs_ctype, true, body, ema->target.name, &mem, &amb_err);
     if (re) return re;
     if (!mem) {
-        if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
+        bool notif_added = false;
+        int res = ppdct_curr_pprn_require_symbol(
+            &r->ppdct, body, lhs_ctype, ema->target.name, &notif_added);
+        if (res) return RE_FATAL;
+        if (notif_added) return RE_UNKNOWN_SYMBOL;
         report_unknown_symbol(r, (ast_node*)ema, body, amb_err, true);
         SET_THEN_RETURN_POISONED(
             r, RE_OK, ema, body, value, ctype, ema, ERROR_ELEM);
@@ -2785,7 +2805,11 @@ resolve_import_symbol(resolver* r, sym_import_symbol* is, ast_body* body)
     if (re || !sym) ast_node_clear_resolving(node);
     if (re) return re;
     if (!sym) {
-        if (!r->report_unknown_symbols) return RE_UNKNOWN_SYMBOL;
+        bool notif_added = false;
+        int res = ppdct_curr_pprn_require_symbol(
+            &r->ppdct, decl_body, NULL, is->target.name, &notif_added);
+        if (res) return RE_FATAL;
+        if (notif_added) return RE_UNKNOWN_SYMBOL;
         report_unknown_symbol(r, (ast_node*)is, decl_body, amb_err, false);
         is->target.sym = (symbol*)ERROR_ELEM;
         RETURN_POISONED(r, RE_OK, is, body);
@@ -3743,6 +3767,7 @@ resolve_error resolve_func(
     r->generic_context = generic_parent;
     if (re == RE_UNREALIZED_COMPTIME || re == RE_UNKNOWN_SYMBOL) {
         assert(bpprn);
+        bpprn->needs_further_resolution = true;
         resolve_error re2 = pp_resolve_node_activate(
             r, requesting_body, &fnb->sc.body.pprn, false);
         if (re2) return re2;
@@ -3882,6 +3907,7 @@ resolve_error resolver_mark_required_module_fill_buffer(
 {
     aseglist_iterator it;
     aseglist_iterator_begin(&it, &n->module_frames);
+    sbuffer_iterator tb_begin = sbuffer_iterator_begin_at_end(&r->temp_buffer);
     assert(n->root || n == r->tc->t->mdg.root_node);
     ureg count = 0;
     for (module_frame* mf = aseglist_iterator_next(&it); mf != NULL;
@@ -3910,9 +3936,9 @@ resolve_error resolver_mark_required_module_fill_buffer(
             }
         }
         unverified_module_frame* f =
-            sbuffer_append(&r->temp_stack, sizeof(unverified_module_frame));
+            sbuffer_append(&r->temp_buffer, sizeof(unverified_module_frame));
         if (!f) {
-            sbuffer_clear(&r->temp_stack);
+            sbuffer_set_end(&r->temp_buffer, &tb_begin);
             return RE_FATAL;
         }
         f->frame = mf;
@@ -3923,11 +3949,11 @@ resolve_error resolver_mark_required_module_fill_buffer(
     ureg alloc_size = count * sizeof(unverified_module_frame);
     unverified_module_frame* frames = pool_alloc(&r->tc->tempmem, alloc_size);
     if (!frames) {
-        sbuffer_clear(&r->temp_stack);
+        sbuffer_set_end(&r->temp_buffer, &tb_begin);
         return RE_FATAL;
     }
-    sbuffer_memcpy(frames, sbuffer_iterator_begin(&r->temp_stack), alloc_size);
-    sbuffer_clear(&r->temp_stack);
+    sbuffer_memcpy(frames, tb_begin, alloc_size);
+    sbuffer_set_end(&r->temp_buffer, &tb_begin);
     unverified_module_frame_quick_sort(frames, count);
     *frames_buffer = frames;
     *buffer_end = frames + count;
@@ -4425,7 +4451,6 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
 resolve_error resolver_handle_post_pp(resolver* r)
 {
     r->mf_pastes_done = true;
-    r->report_unknown_symbols = true;
     resolve_error re;
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
         aseglist_iterator asi;
@@ -4497,7 +4522,6 @@ void resolver_reset_resolution_state(resolver* r)
     r->module_group_constructor = NULL;
     r->module_group_destructor = NULL;
     r->mf_pastes_done = false;
-    r->report_unknown_symbols = false;
 }
 static inline resolve_error resolver_resolve_raw(resolver* r)
 {
@@ -4703,7 +4727,6 @@ void resolver_setup_blank_resolve(resolver* r)
     r->public_sym_count = 0;
     r->private_sym_count = 0;
     r->mf_pastes_done = false;
-    r->report_unknown_symbols = false;
     r->id_space = PRIV_SYMBOL_OFFSET;
     r->deps_required_for_pp = false;
     r->committed_waiters = 0;
@@ -4736,7 +4759,6 @@ void resolver_unpack_partial_resolution_data(
     r->public_sym_count = prd->public_sym_count;
     r->private_sym_count = prd->private_sym_count;
     r->mf_pastes_done = false;
-    r->report_unknown_symbols = false;
 }
 resolve_error resolver_resolve_and_emit(
     resolver* r, mdg_node** start, mdg_node** end, partial_resolution_data* prd,
@@ -4851,7 +4873,7 @@ int resolver_partial_fin(resolver* r, int i, int res)
         case 5: ptrlist_fin(&r->pp_resolve_nodes_waiting); // fallthrough
         case 4: freelist_fin(&r->pp_resolve_nodes); // fallthrough
         case 3: pool_fin(&r->pprn_mem); // fallthrough
-        case 2: sbuffer_fin(&r->temp_stack); // fallthrough
+        case 2: sbuffer_fin(&r->temp_buffer); // fallthrough
         case 1: stack_fin(&r->error_stack); // fallthrough
         case 0: break;
     }
@@ -4866,7 +4888,7 @@ int resolver_init(resolver* r, thread_context* tc)
     r->tc = tc;
     int e = stack_init(&r->error_stack, &r->tc->tempmem);
     if (e) return resolver_partial_fin(r, 0, e);
-    e = sbuffer_init(&r->temp_stack, sizeof(ast_node*) * 32);
+    e = sbuffer_init(&r->temp_buffer, sizeof(ast_node*) * 32);
     if (e) return resolver_partial_fin(r, 1, e);
     e = pool_init(&r->pprn_mem);
     if (e) return resolver_partial_fin(r, 2, e);

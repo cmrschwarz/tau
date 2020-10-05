@@ -100,12 +100,12 @@ static inline resolve_error update_ams(
 void pop_symbol_lookup_level(symbol_lookup_iterator* sli)
 {
     if (sli->stack_height > 1) {
-        sbuffer_remove_back(&sli->r->temp_stack, sizeof(symbol_lookup_level));
+        sbuffer_remove_back(&sli->r->temp_buffer, sizeof(symbol_lookup_level));
     }
     sli->stack_height--;
     if (sli->stack_height > 1) {
         sli->head =
-            sbuffer_back(&sli->r->temp_stack, sizeof(symbol_lookup_level));
+            sbuffer_back(&sli->r->temp_buffer, sizeof(symbol_lookup_level));
     }
     else if (sli->stack_height == 1) {
         sli->head = &sli->sll_prealloc;
@@ -126,7 +126,7 @@ resolve_error push_symbol_lookup_level(
     }
     else {
         sll = (symbol_lookup_level*)sbuffer_append(
-            &sli->r->temp_stack, sizeof(symbol_lookup_level));
+            &sli->r->temp_buffer, sizeof(symbol_lookup_level));
         if (!sll) return RE_FATAL;
     }
     sll->trait_impls = trait_impls;

@@ -143,10 +143,9 @@ resolve_error unordered_body_add_trait_decls(resolver* r, ast_body* body)
 }
 resolve_error add_mf_trait_decls(resolver* r)
 {
-    assert(r->report_unknown_symbols == false);
     bool progress;
     resolve_error holdup;
-    while (true) {
+    do {
         holdup = RE_OK;
         progress = false;
         for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
@@ -166,14 +165,7 @@ resolve_error add_mf_trait_decls(resolver* r)
             resolve_error re = resolver_run_pp_resolve_nodes(r, &progress);
             if (re) return re;
         }
-        if (!progress || r->report_unknown_symbols) {
-            if (r->report_unknown_symbols) {
-                r->report_unknown_symbols = false;
-                break;
-            }
-            r->report_unknown_symbols = true;
-        }
-    }
+    } while (progress);
     return RE_OK;
 }
 

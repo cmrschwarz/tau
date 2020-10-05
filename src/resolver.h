@@ -88,13 +88,12 @@ typedef struct resolver_s {
     mdg_node** mdgs_begin;
     mdg_node** mdgs_end;
     // temporary memory space (used in overload resulution)
-    sbuffer temp_stack;
+    sbuffer temp_buffer;
     // dealing with type loops and type inference in expr blocks
     stack error_stack;
     ast_node* type_loop_start;
     bool allow_type_loops;
     bool mf_pastes_done;
-    bool report_unknown_symbols;
     bool retracing_type_loop;
     bool generic_context;
     bool resumed; // whether we come from a partial resolution
