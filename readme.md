@@ -1,6 +1,6 @@
 # The Tau Programming Language
 
-Tau is a statically compiled general-purpose programming language
+Tau is a statically compiled, general-purpose programming language
 in early stages of development.
 
 It's goal is to satisfy similar needs to C++ while providing:
@@ -19,8 +19,8 @@ backend for faster debug builds is planned.
 ```go
 struct List[T: Type] { 
     begin: *T;
-    func append(value: T){}
     //...
+    func append(value: T){}
 }
 func main(){
     l: List[T];
@@ -32,6 +32,7 @@ Unlike with C++ templates though, there is type checking for the generic
 type and no 'copy paste' SFINAE etc.
 
 ### Trait Oriented Programming
+```rust
 struct Car{
     //...
 }
@@ -39,7 +40,7 @@ trait Vehicle{
     func drive();
     func crash();
 }
-impl Vehicle for Car{
+impl Vehicle for Car{ //make the Vehicle "Interface" available for Cars
     func drive(){
         puts("wroom!");
     }
@@ -47,11 +48,18 @@ impl Vehicle for Car{
         puts("boom!");
     }
 }
-func main(){
+impl int{ //implement methods directly on types (structs, primitives, etc.)
+    func increment() -> int{
+        self += 1;
+        return self;
+    }
+}
+func main() -> int{
     c: Car;
     c.drive();
+    return -1.increment();
 }
-
+```
 
 ### Full Compile time evaluation
 
@@ -185,9 +193,17 @@ To build it, clone the git repository using
 ```
 git clone --recursive git@github.com:cmrschwarz/tau.git
 ```
+Afterwards enter the root project directory.
+```
+cd tau
+```
 
 Then, either place a precompiled version of LLVM in 
-```deps/llvm-project-prebuild```, or run ```./precompile-llvm.sh``` (slow!)
+```deps/llvm-project-prebuild```, or run 
+```
+./precompile-llvm.sh
+``` 
+(Precompiling yourself is quite slow since LLVM is a huge project)
 
 
 To build the compiler itself:
