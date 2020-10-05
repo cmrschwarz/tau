@@ -221,7 +221,9 @@ bool ast_node_get_resolved(ast_node* n)
 
 void ast_node_set_emitted_for_pp(ast_node* n)
 {
-    assert(ast_elem_is_symbol((ast_elem*)n) || n->kind == EXPR_PP);
+    assert(
+        ast_elem_is_symbol((ast_elem*)n) || n->kind == EXPR_PP ||
+        ast_elem_is_any_import(n));
     assert(!n->emitted_for_pp);
     n->emitted_for_pp = true;
 }

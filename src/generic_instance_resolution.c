@@ -70,6 +70,8 @@ resolve_error instantiate_body(
     tgt->elements = (ast_node**)list_builder_pop_list_zt(
         &r->tc->listb, body_elems, &r->tc->permmem);
     tgt->srange = src->srange;
+    tgt->owning_node = inst_owner;
+    tgt->parent = src->parent;
     return re;
 }
 // instance is the generic instance of the struct or function, inst_of is the
@@ -114,8 +116,11 @@ instantiate_ast_node(resolver* r, ast_node* n, ast_node** tgt, symbol_table* st)
             if (!fc->fnb.params) return RE_FATAL;
             memcpy(fc->fnb.params, f->fnb.params, param_size);
             for (ureg i = 0; i < fc->fnb.param_count; i++) {
+                sym_param* p = &fc->fnb.params[i];
+                ast_node_set_status((ast_node*)p, NODE_STATUS_PARSED);
+                p->sym.declaring_body = &fc->fnb.sc.body;
                 re = instantiate_ast_node(
-                    r, f->fnb.params[i].type, &fc->fnb.params[i].type, st);
+                    r, f->fnb.params[i].type, &p->type, st);
                 if (re) return re;
             }
             return instantiate_body(
@@ -195,6 +200,7 @@ resolve_error resolve_generic_struct(
     resolver* r, expr_access* ea, sc_struct_generic* sg, ast_body* parent_body,
     ast_elem** value, ast_elem** ctype)
 {
+    resolve_error re;
     if (ea->arg_count != sg->generic_param_count) {
         assert(false); // TODO: error / varargs
     }
@@ -204,7 +210,7 @@ resolve_error resolve_generic_struct(
     ast_elem** ctypes =
         sbuffer_append(&r->temp_buffer, sizeof(ast_elem*) * ea->arg_count);
     if (!ctypes) return RE_FATAL;
-    resolve_error re;
+
     for (ureg i = 0; i < ea->arg_count; i++) {
         re =
             resolve_ast_node(r, ea->args[i], parent_body, &args[i], &ctypes[i]);

@@ -19,8 +19,8 @@ primitive PRIMITIVES[] = {
     mk_prim(PT_ERROR, "__error__", PT_ERROR),
     mk_prim(PT_FLUID_INT, "__fluid_int__", PT_ERROR),
     mk_prim(PT_VOID, "void", PT_TYPE),
-    mk_prim(PT_GENERIC_TYPE, "type[]", PT_ERROR),
-    mk_prim(PT_GENERIC_TRAIT, "trait[]", PT_ERROR),
+    mk_prim(PT_GENERIC_TYPE, "Type[]", PT_ERROR),
+    mk_prim(PT_GENERIC_TRAIT, "Trait[]", PT_ERROR),
     mk_prim(PT_UNREACHABLE, "unreachable", PT_ERROR),
     mk_prim(PT_UNDEFINED, "undefined", PT_ERROR),
     mk_prim(PT_DEFINED, "defined", PT_ERROR),
@@ -31,8 +31,8 @@ primitive PRIMITIVES[] = {
     mk_prim(PT_BINARY_STRING, "bstring", PT_TYPE),
     mk_prim(PT_VOID_PTR, "*void", PT_TYPE),
     mk_prim(PT_PASTED_EXPR, "Expr", PT_ERROR),
-    mk_prim(PT_TYPE, "type", PT_ERROR),
-    mk_prim(PT_TRAIT, "trait", PT_ERROR),
+    mk_prim(PT_TYPE, "Type", PT_ERROR),
+    mk_prim(PT_TRAIT, "Trait", PT_ERROR),
 };
 
 src_map* scope_get_smap(scope* s)

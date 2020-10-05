@@ -2992,8 +2992,18 @@ static inline resolve_error resolve_ast_node_raw(
             return resolve_scoped_identifier(r, esa, body, value, ctype);
         }
         case SC_STRUCT_GENERIC: {
-            if (!resolved) ast_node_set_resolved(n);
-            // TODO: handle scope escaped pp exprs
+            if (!resolved) {
+                sc_struct_generic* sg = (sc_struct_generic*)n;
+                // TODO: handle scope escaped pp exprs
+                re = add_body_decls(
+                    r, &sg->sb.sc.body, NULL, !is_local_node((ast_elem*)sg));
+                if (re) return re;
+                for (ureg i = 0; i < sg->generic_param_count; i++) {
+                    re = resolve_param(r, &sg->generic_params[i], true, NULL);
+                    if (re) return re;
+                }
+                ast_node_set_resolved(n);
+            }
             SET_THEN_RETURN(value, ctype, n, GENERIC_TYPE_ELEM);
         }
         case SC_TRAIT_GENERIC: {

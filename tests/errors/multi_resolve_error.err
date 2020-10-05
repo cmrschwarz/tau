@@ -1,9 +1,9 @@
 resolver error: unknown symbol
  ==> ./tests/errors/multi_resolve_error.tau:3:8
-3 |    x: Type = []int;
-  |       ^^^^ use of an undefined symbol
+3 |    x: xxx = []int;
+  |       ^^^ use of an undefined symbol
 
-resolver error: variable of type 'type' is not allowed
+resolver error: variable of type 'Type' is not allowed
  ==> ./tests/errors/multi_resolve_error.tau:4:5
 4 |    y := int;
   |    ^ for this variable
