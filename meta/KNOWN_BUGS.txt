@@ -1,5 +1,0 @@
-@1  adding a stray token before a function in ./test/bigtest/baztest.t
-    causes a memory leak
-@2 func with same name as struct causes issues
-
-@3 require that adds unwanted extends is not reported
