@@ -6,5 +6,5 @@ resolver error: cannot shadow previously used symbol during the preprocessor
 1 |x := 3;
   |^ symbol that would be shadowed
 ...
-4 |    #if(x == 4) paste("foo:=3;") else paste("");
+4 |    #if(x == 4) paste("foo:=3;");
   |        ^ use of the to be shadowed symbol here

@@ -1,7 +1,7 @@
 x := 3;
 struct Foo{
     #paste("static x:= 4;");
-    #if(x == 4) paste("foo:=3;") else paste("");
+    #if(x == 4) paste("foo:=3;");
 }
 public func main() -> int{
     return 0;

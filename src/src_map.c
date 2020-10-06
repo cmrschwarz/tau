@@ -312,7 +312,8 @@ int src_map_open(src_map* smap)
     pasted_source* pe = (pasted_source*)smap->source;
     assert(pe->read_data.read_str == NULL);
     pe->read_data.read_str = pe->read_data.paste_str;
-    pe->read_data.read_pos = pe->read_data.paste_str->str;
+    pe->read_data.read_pos =
+        pe->read_data.paste_str ? pe->read_data.paste_str->str : NULL;
     return OK;
 }
 int paste_eval_read(pasted_source* ps, ureg size, ureg* read_size, char* tgt)
