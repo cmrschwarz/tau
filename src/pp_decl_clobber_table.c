@@ -316,7 +316,6 @@ int ppdct_add_symbol(
             "use of the to be shadowed symbol here");
         t->r->error_occured = true;
         if (curr_body_propagate_error(t->r, target_body)) return ERR;
-        ppdct_remove(t, ppdc);
         return RE_OK;
     }
     else {

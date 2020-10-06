@@ -513,10 +513,12 @@ curr_pprn_depend_on(resolver* r, ast_body* body, pp_resolve_node** dependency_p)
         re = pprn_set_used_in_pp(r, dependency);
         if (re) return re;
     }
+    if (ast_node_get_contains_error(dependency->node)) {
+        curr_pprn_propagate_error(r, body);
+    }
     if (dependency->notify_when_ready && dependency->state == PPRN_READY)
         return RE_OK;
     return pprn_depend_on_raw(dependency_p, depending);
-    return RE_OK;
 }
 static resolve_error
 pprn_add_child_raw(pp_resolve_node* block_parent, pp_resolve_node** child_p)
@@ -2248,7 +2250,6 @@ static inline resolve_error resolve_special_identifier(
     if (tgt_body->owning_node->kind == TRAIT_IMPL ||
         tgt_body->owning_node->kind == TRAIT_IMPL_GENERIC_INST) {
         trait_impl* ti = (trait_impl*)tgt_body->owning_node;
-        assert(ast_node_get_trait_resolved((ast_node*)ti));
         assert(ast_elem_is_symbol(ti->impl_for_ctype));
         tgt_sym = (symbol*)ti->impl_for_ctype;
     }
@@ -3471,7 +3472,7 @@ resolve_error resolve_expr_body(
     resolver* r, ast_body* parent_body, ast_node* expr, ast_body* b,
     bool* end_reachable)
 {
-    resolve_error re;
+    resolve_error re = RE_OK;
     ast_elem* stmt_ctype = NULL;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
     pp_resolve_node* pprn = b->pprn;
@@ -3626,8 +3627,11 @@ resolve_error resolve_unordered_body(
             }
             else {
                 b->pprn->pending_pastes = false;
-                re = ppdct_seal_body(&r->ppdct, b);
             }
+        }
+        if (!re && (!b->pprn || b->pprn->pending_pastes == false)) {
+            ast_node_set_pp_done(b->owning_node);
+            re = ppdct_seal_body(&r->ppdct, b);
         }
     }
     if (!re) {
@@ -4460,17 +4464,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
 }
 resolve_error resolver_handle_post_pp(resolver* r)
 {
-    r->mf_pastes_done = true;
     resolve_error re;
-    for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
-        aseglist_iterator asi;
-        aseglist_iterator_begin(&asi, &(**i).module_frames);
-        if (ppdct_seal_body(&r->ppdct, &(**i).body)) return RE_FATAL;
-        for (module_frame* mf = aseglist_iterator_next(&asi); mf != NULL;
-             mf = aseglist_iterator_next(&asi)) {
-            if (ppdct_seal_body(&r->ppdct, &mf->body)) return RE_FATAL;
-        }
-    }
     re = resolver_run_pp_resolve_nodes(r, NULL);
     if (re) return re;
     for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
@@ -4531,7 +4525,21 @@ void resolver_reset_resolution_state(resolver* r)
     r->retracing_type_loop = false;
     r->module_group_constructor = NULL;
     r->module_group_destructor = NULL;
-    r->mf_pastes_done = false;
+}
+static inline resolve_error mark_mf_pp_done(resolver* r)
+{
+    for (mdg_node** i = r->mdgs_begin; i != r->mdgs_end; i++) {
+        aseglist_iterator asi;
+        aseglist_iterator_begin(&asi, &(**i).module_frames);
+        ast_node_set_pp_done((ast_node*)*i);
+        if (ppdct_seal_body(&r->ppdct, &(**i).body)) return RE_FATAL;
+        for (module_frame* mf = aseglist_iterator_next(&asi); mf != NULL;
+             mf = aseglist_iterator_next(&asi)) {
+            ast_node_set_pp_done((ast_node*)mf);
+            if (ppdct_seal_body(&r->ppdct, &mf->body)) return RE_FATAL;
+        }
+    }
+    return RE_OK;
 }
 static inline resolve_error resolver_resolve_raw(resolver* r)
 {
@@ -4546,6 +4554,8 @@ static inline resolve_error resolver_resolve_raw(resolver* r)
     re = add_mf_trait_decls(r);
     if (re) return re;
     re = resolver_run_pp_resolve_nodes(r, NULL);
+    if (re) return re;
+    re = mark_mf_pp_done(r);
     if (re) return re;
     re = resolver_handle_post_pp(r);
     if (re) return re;
@@ -4736,7 +4746,6 @@ void resolver_setup_blank_resolve(resolver* r)
     // global ids of other modules it might use
     r->public_sym_count = 0;
     r->private_sym_count = 0;
-    r->mf_pastes_done = false;
     r->id_space = PRIV_SYMBOL_OFFSET;
     r->deps_required_for_pp = false;
     r->committed_waiters = 0;
@@ -4768,7 +4777,6 @@ void resolver_unpack_partial_resolution_data(
     r->committed_waiters = prd->committed_waiters;
     r->public_sym_count = prd->public_sym_count;
     r->private_sym_count = prd->private_sym_count;
-    r->mf_pastes_done = false;
 }
 resolve_error resolver_resolve_and_emit(
     resolver* r, mdg_node** start, mdg_node** end, partial_resolution_data* prd,
@@ -4934,12 +4942,6 @@ ast_elem* get_resolved_ast_node_ctype(ast_node* n)
 }
 bool ast_body_pastes_done(resolver* r, ast_body* b)
 {
-    b = ast_body_get_non_paste_parent(b);
-    if (ast_elem_is_from_module((ast_elem*)b->owning_node)) {
-        return r->mf_pastes_done;
-    }
     if (!ast_elem_has_unordered_body((ast_elem*)b->owning_node)) return true;
-    if (!b->pprn || b->pprn->dummy) return true;
-    if (b->pprn->pending_pastes) return false;
-    return true;
+    return ast_node_get_pp_done(b->owning_node);
 }

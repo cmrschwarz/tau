@@ -1,0 +1,10 @@
+resolver error: cannot shadow previously used symbol during the preprocessor
+ ==> <pasted: ./tests/errors/illegal_shadowing.tau:3:6>:1:1
+1 |static x:= 4;
+  |^^^^^^^^ illegal shadowing here
+ ==> ./tests/errors/illegal_shadowing.tau:1:1
+1 |x := 3;
+  |^ symbol that would be shadowed
+...
+4 |    #if(x == 4) paste("foo:=3;") else paste("");
+  |        ^ use of the to be shadowed symbol here

@@ -133,7 +133,7 @@ run_test_folder() {
         if $ok; then
             comptime="$(pretty_print_time $comp_time_before $comp_time_after)" 
             if $expect_err; then
-                if $output_file_exists || ! $epected_err; then
+                if $output_file_exists || ! $expect_err; then
                     printf "PASSED $taufile [$comptime]\033[0m\n"
                 else
                     printf "PASSED $taufile [$comptime] \033[0;33m(no $out_ext)\033\033[0m\n"

@@ -18,7 +18,6 @@ typedef enum access_modifier_e {
 typedef enum ast_node_status_e {
     NODE_STATUS_PARSED,
     NODE_STATUS_DECLARED,
-    NODE_STATUS_TRAIT_RESOLVED,
     NODE_STATUS_RESOLVING,
     NODE_STATUS_RESOLVED,
 } ast_node_status;
@@ -60,9 +59,11 @@ typedef enum dtor_kind_e {
 #define ASTF_IMPLICIT_OFFSET 8 // on ops / funcs
 #define ASTF_FUNC_IS_OP_OFFSET 9 // on funcs --> ops
 
-// needs 3 bits (10 - 12)
+// needs 2 bits (10 - 11)
 #define ASTF_STATUS_OFFSET 10 // on any node
-#define ASTF_STATUS_MASK (0x7 << ASTF_STATUS_OFFSET)
+#define ASTF_STATUS_MASK (0x3 << ASTF_STATUS_OFFSET)
+
+#define ASTF_PP_DONE 12
 
 // needs 3 bits (13 - 15)
 #define ASTF_ACCESS_MODIFIER_OFFSET 13 // on any symbol
@@ -130,8 +131,8 @@ void ast_node_set_resolving(ast_node* n);
 void ast_node_clear_resolving(ast_node* n);
 bool ast_node_get_resolving(ast_node* n);
 
-void ast_node_set_trait_resolved(ast_node* n);
-bool ast_node_get_trait_resolved(ast_node* n);
+void ast_node_set_pp_done(ast_node* n);
+bool ast_node_get_pp_done(ast_node* n);
 
 void ast_node_set_resolved(ast_node* n);
 bool ast_node_get_resolved(ast_node* n);

@@ -199,14 +199,13 @@ void ast_node_clear_resolving(ast_node* n)
     ast_node_set_status(n, NODE_STATUS_DECLARED);
 }
 
-void ast_node_set_trait_resolved(ast_node* n)
+bool ast_node_get_pp_done(ast_node* n)
 {
-    assert(ast_node_get_status(n) <= NODE_STATUS_RESOLVING);
-    ast_node_set_status(n, NODE_STATUS_TRAIT_RESOLVED);
+    return u16_get_bit(n->flags, ASTF_PP_DONE);
 }
-bool ast_node_get_trait_resolved(ast_node* n)
+void ast_node_set_pp_done(ast_node* n)
 {
-    return ast_node_get_status(n) >= NODE_STATUS_TRAIT_RESOLVED;
+    u16_set_bit(&n->flags, ASTF_PP_DONE);
 }
 
 void ast_node_set_resolved(ast_node* n)
@@ -223,7 +222,7 @@ void ast_node_set_emitted_for_pp(ast_node* n)
 {
     assert(
         ast_elem_is_symbol((ast_elem*)n) || n->kind == EXPR_PP ||
-        ast_elem_is_any_import(n));
+        ast_elem_is_any_import((ast_elem*)n));
     assert(!n->emitted_for_pp);
     n->emitted_for_pp = true;
 }

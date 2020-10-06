@@ -83,7 +83,6 @@ resolve_error resolve_trait_impl(resolver* r, trait_impl* ti, ast_body* body)
         is->type = ti->impl_for_ctype;
         is->trait = ti->impl_of_trait;
         is->impl = ti;
-        ast_node_set_trait_resolved((ast_node*)ti);
     }
     impl_list_for_type* il = trait_table_get_impl_list_for_type(
         body->symtab->tt, ti->impl_for_ctype);
@@ -113,7 +112,7 @@ static inline resolve_error unordered_body_add_trait_decls_raw(
     dbuffer_iterator_init(&it, ui);
     while (true) {
         trait_impl** ti = dbuffer_iterator_get(&it, sizeof(trait_impl*));
-        if (!ti) return RE_OK;
+        if (!ti) break;
         re = resolve_trait_impl(r, *ti, body);
         if (re == RE_UNKNOWN_SYMBOL || re == RE_UNREALIZED_COMPTIME) {
             if (*holdup != RE_UNREALIZED_COMPTIME) {
@@ -132,6 +131,7 @@ static inline resolve_error unordered_body_add_trait_decls_raw(
         it.end = new_end;
         *progress = true;
     }
+    return RE_OK;
 }
 resolve_error unordered_body_add_trait_decls(resolver* r, ast_body* body)
 {
@@ -172,10 +172,8 @@ resolve_error add_mf_trait_decls(resolver* r)
 resolve_error ast_node_add_trait_decls(resolver* r, ast_body* body, ast_node* n)
 {
     if (n->kind == TRAIT_IMPL) {
-        if (ast_node_get_trait_resolved(n)) return RE_OK;
         resolve_error re = resolve_trait_impl(r, (trait_impl*)n, body);
         if (re) return re;
-        ast_node_set_trait_resolved(n);
     }
     return RE_OK;
 }
