@@ -1716,7 +1716,7 @@ ast_elem* ast_elem_get_ctype(ast_elem* s)
         case SC_STRUCT_GENERIC: return GENERIC_TYPE_ELEM;
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: return TYPE_ELEM;
-        default: assert(false);
+        default: assert(false); return NULL;
     }
 }
 ast_elem** get_break_target_ctype(ast_elem* n)

@@ -2,6 +2,7 @@
 /precompile_llvm
 /.vscode
 /build
+/build2
 /temp
 /deps/llvm-project-prebuild*/**
 /tests/debug/**

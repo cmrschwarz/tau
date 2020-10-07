@@ -1517,14 +1517,16 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             return LLE_OK;
         case TRAIT_IMPL:
         case TRAIT_IMPL_GENERIC_INST: {
-            return genStructuralAstBody(&((trait_impl*)n)->tib.body);
-        } break;
-
-        case SC_STRUCT: {
             lle = lookupCType((ast_elem*)n, NULL, NULL, NULL);
             if (lle) return lle;
-            auto sb = (sc_struct_base*)n;
-            return genStructuralAstBody(&sb->sc.body);
+            return genStructuralAstBody(&((trait_impl*)n)->tib.body);
+        }
+        case SC_STRUCT:
+        case SC_STRUCT_GENERIC_INST: {
+            lle = lookupCType((ast_elem*)n, NULL, NULL, NULL);
+            if (lle) return lle;
+            auto sc = (scope*)n;
+            return genStructuralAstBody(&sc->body);
         }
         case SC_FUNC: return genFunction((sc_func*)n, vl);
         case EXPR_OP_BINARY:
@@ -2247,8 +2249,9 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
             assert(params[i]);
             i++;
         }
-        for (; i < fn->fnb.param_count; i++) {
-            lle = lookupCType(fn->fnb.params[i].ctype, &params[i], NULL, NULL);
+        for (; i < fn->fnb.param_count + mem_func; i++) {
+            lle = lookupCType(
+                fn->fnb.params[i - mem_func].ctype, &params[i], NULL, NULL);
             if (lle) return lle;
         }
         llvm::ArrayRef<llvm::Type*> params_array_ref(
