@@ -2137,13 +2137,26 @@ resolve_return(resolver* r, ast_body* body, expr_return* er)
         }
         ureg vstart, vend;
         ast_node_get_bounds(er->value, &vstart, &vend);
+        ureg len;
+        char* ret_type_str = ctype_to_string(
+            r->tc, &r->tc->tempmem, body, er->value_ctype, &len);
+        if (!ret_type_str) return RE_FATAL;
+        ret_type_str = error_log_cat_strings_3(
+            r->tc->err_log, "trying to return '", ret_type_str, "'");
+        if (!ret_type_str) return RE_FATAL;
+        pool_undo_last_alloc(&r->tc->tempmem, len);
+        char* tgt_type_str =
+            ctype_to_string(r->tc, &r->tc->tempmem, body, tgt_type, &len);
+        if (!tgt_type_str) return RE_FATAL;
+        tgt_type_str = error_log_cat_strings_3(
+            r->tc->err_log, "target expects '", tgt_type_str, "'");
+        pool_undo_last_alloc(&r->tc->tempmem, len);
+        if (!tgt_type) return RE_FATAL;
         error_log_report_annotated_twice(
             r->tc->err_log, ES_RESOLVER, false, "return type missmatch",
-            ast_body_get_smap(body), vstart, vend,
-            "the type returned from here doesn't match the target "
-            "scope's",
+            ast_body_get_smap(body), vstart, vend, ret_type_str,
             ast_body_get_smap(body), src_range_get_start(er->target->srange),
-            src_range_get_end(er->target->srange), "target scope here");
+            src_range_get_end(er->target->srange), tgt_type_str);
         RETURN_POISONED(r, RE_OK, er, body);
     }
     return RE_OK;

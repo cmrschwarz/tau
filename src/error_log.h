@@ -136,6 +136,12 @@ void print_critical_error_end(master_error_log* mel);
 char* error_log_cat_strings_2(error_log* e, const char* s1, const char* s2);
 char* error_log_cat_strings_3(
     error_log* e, const char* s1, const char* s2, const char* s3);
+char* error_log_cat_strings_4(
+    error_log* e, const char* s1, const char* s2, const char* s3,
+    const char* s4);
+char* error_log_cat_strings_5(
+    error_log* e, const char* s1, const char* s2, const char* s3,
+    const char* s4, const char* s5);
 char* error_log_cat_strings(error_log* e, ureg count, const char** strs);
 
 void error_log_report_allocation_failiure(error_log* el);

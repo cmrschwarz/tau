@@ -12,6 +12,6 @@ resolver error: orphaned return statement
 resolver error: return type missmatch
  ==> ./tests/errors/illegal_returns.tau:4:12
 3 |public func main(){
-  |^^^^^^^^^^^^^^^^ target scope here
+  |^^^^^^^^^^^^^^^^ target expects 'void'
 4 |    return 3;
-  |           ^ the type returned from here doesn't match the target scope's
+  |           ^ trying to return 'int'

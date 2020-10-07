@@ -970,6 +970,29 @@ char* error_log_cat_strings_3(
     strs[2] = s3;
     return error_log_cat_strings(e, 3, strs);
 }
+char* error_log_cat_strings_4(
+    error_log* e, const char* s1, const char* s2, const char* s3,
+    const char* s4)
+{
+    const char* strs[4];
+    strs[0] = s1;
+    strs[1] = s2;
+    strs[2] = s3;
+    strs[3] = s4;
+    return error_log_cat_strings(e, 4, strs);
+}
+char* error_log_cat_strings_5(
+    error_log* e, const char* s1, const char* s2, const char* s3,
+    const char* s4, const char* s5)
+{
+    const char* strs[5];
+    strs[0] = s1;
+    strs[1] = s2;
+    strs[2] = s3;
+    strs[3] = s4;
+    strs[4] = s5;
+    return error_log_cat_strings(e, 5, strs);
+}
 char* error_log_cat_strings(error_log* e, ureg count, const char** strs)
 {
     ureg len = 0;
