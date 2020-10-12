@@ -1861,7 +1861,7 @@ resolve_error resolve_scoped_identifier(
         if (notif_added) return RE_UNKNOWN_SYMBOL;
         report_unknown_symbol(r, (ast_node*)esa, body, amb_err, false);
         SET_THEN_RETURN_POISONED(
-            r, RE_OK, esa, body, value, ctype, esa, ERROR_ELEM);
+            r, RE_OK, esa, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
     }
     if (amb_err) {
         assert(false); // TODO report ambiguity error
@@ -2402,13 +2402,13 @@ static inline resolve_error resolve_if(
 bool is_body_public_st(ast_body* b)
 {
     while (true) {
-        ast_elem* owning_elem = (ast_elem*)b->owning_node;
-        if (ast_elem_is_module_frame(owning_elem)) {
+        ast_elem* oe = (ast_elem*)b->owning_node;
+        if (ast_elem_is_module_frame(oe)) {
             return true;
         }
-        if (ast_elem_is_struct(owning_elem) ||
-            ast_elem_is_trait_impl(owning_elem)) {
-            if (is_local_node(owning_elem)) {
+        if (ast_elem_is_struct(oe) || ast_elem_is_trait_impl(oe) ||
+            oe->kind == SC_STRUCT_GENERIC || oe->kind == SC_TRAIT_GENERIC) {
+            if (is_local_node(oe)) {
                 return false;
                 break;
             }
@@ -3000,7 +3000,7 @@ static inline resolve_error resolve_ast_node_raw(
             expr_scope_access* esa = (expr_scope_access*)n;
             if (resolved) {
                 SET_THEN_RETURN(
-                    value, ctype, n,
+                    value, ctype, (ast_elem*)esa->target.sym,
                     ast_elem_get_ctype((ast_elem*)esa->target.sym));
             }
             return resolve_scoped_identifier(r, esa, body, value, ctype);
@@ -3009,9 +3009,9 @@ static inline resolve_error resolve_ast_node_raw(
             if (!resolved) {
                 sc_struct_generic* sg = (sc_struct_generic*)n;
                 // TODO: handle scope escaped pp exprs
-                re = add_body_decls(
+                /*re = add_body_decls(
                     r, &sg->sb.sc.body, NULL, !is_local_node((ast_elem*)sg));
-                if (re) return re;
+                if (re) return re;*/
                 for (ureg i = 0; i < sg->generic_param_count; i++) {
                     re = resolve_param(r, &sg->generic_params[i], true, NULL);
                     if (re) return re;
@@ -3352,6 +3352,10 @@ static inline resolve_error resolve_ast_node_raw(
             if (lhs_val->kind == SC_STRUCT_GENERIC) {
                 return resolve_generic_struct(
                     r, ea, (sc_struct_generic*)lhs_val, body, value, ctype);
+            }
+            else if (lhs_val == ERROR_ELEM) {
+                SET_THEN_RETURN_POISONED(
+                    r, RE_OK, ea, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
             }
             assert(false); // TODO operator overloading / generics
             return RE_FATAL;
@@ -3852,7 +3856,7 @@ resolve_error resolve_module_frame(resolver* r, module_frame* mf, ast_body* b)
 
     return re;
 }
-static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n);
+void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n);
 static inline void adjust_body_ids(resolver* r, ureg* id_space, ast_body* b)
 {
     for (ast_node** i = b->elements; *i; i++) {
@@ -3868,7 +3872,7 @@ static inline void update_id(resolver* r, ureg* tgt, ureg* id_space)
 }
 
 // assign public symbol with the aquired ids from global id space
-static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
+void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
 {
     // we don't need to recurse into expressions because the contained
     // symbols can never be public
@@ -3889,18 +3893,23 @@ static void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
             update_id(r, &((trait_impl*)n)->backend_id, id_space);
             adjust_body_ids(r, id_space, &((trait_impl*)n)->tib.body);
         } break;
+        case SC_STRUCT_GENERIC: {
+            if (is_local_node((ast_elem*)n)) return;
+            sc_struct_generic* sg = (sc_struct_generic*)n;
+            // adjust_body_ids(r, id_space, &sg->sb.sc.body);
+            symbol** end =
+                sg->inst_map.instances + (1 << sg->inst_map.bitcount);
+            for (symbol** s = sg->inst_map.instances; s != end; s++) {
+                if (!*s) continue;
+                adjust_node_ids(r, id_space, (ast_node*)*s);
+            }
+            sg->sb.sc.osym.sym.node.emitted_for_pp = true;
+        } break;
         case SC_STRUCT:
         case SC_STRUCT_GENERIC_INST: {
             if (is_local_node((ast_elem*)n)) return;
             update_id(r, &((sc_struct*)n)->backend_id, id_space);
             adjust_body_ids(r, id_space, &((sc_struct*)n)->sb.sc.body);
-        } break;
-        case SC_STRUCT_GENERIC: {
-            sc_struct_generic* sg = (sc_struct_generic*)n;
-            for (sc_struct_generic_inst* sgi = sg->instances; sgi;
-                 sgi = (sc_struct_generic_inst*)sgi->st.sb.sc.osym.sym.next) {
-                adjust_node_ids(r, id_space, (ast_node*)sgi);
-            }
         } break;
         case EXPR_PP: {
             expr_pp* epp = (expr_pp*)n;

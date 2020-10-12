@@ -180,12 +180,15 @@ void free_astn_symtabs(ast_node* n)
     }
     if (ast_elem_is_scope((ast_elem*)n)) {
         if (n->kind == SC_STRUCT_GENERIC) {
-            for (sc_struct_generic_inst* sgi =
-                     ((sc_struct_generic*)n)->instances;
-                 sgi != NULL;
-                 sgi = (sc_struct_generic_inst*)sgi->st.sb.sc.osym.sym.next) {
-                free_astn_symtabs((ast_node*)sgi);
+            sc_struct_generic* sg = (sc_struct_generic*)n;
+            ureg count = 1 << sg->inst_map.bitcount;
+            for (ureg i = 0; i < count; i++) {
+                symbol* s = sg->inst_map.instances[i];
+                if (!s) continue;
+                assert(s->node.kind == SC_STRUCT_GENERIC_INST);
+                free_astn_symtabs((ast_node*)s);
             }
+            gim_fin(&sg->inst_map);
         }
         if (ast_elem_is_struct((ast_elem*)n)) {
             sc_struct* st = (sc_struct*)n;

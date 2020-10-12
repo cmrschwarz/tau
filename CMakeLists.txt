@@ -46,6 +46,7 @@ set(TAUC_C_SRCS
     ./src/utils/debug_utils.c
     ./src/utils/os/linux/plattform.c
     ./src/target_platform.c
+    ./src/generic_inst_map.c
 )
 set (TAUC_CPP_SRCS
     ./src/llvm_backend.cpp

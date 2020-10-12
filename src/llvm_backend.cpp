@@ -881,8 +881,10 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             sc_struct_base* sb = (sc_struct_base*)e;
             ureg id = ((sc_struct*)e)->backend_id;
             llvm::Type** tp = lookupTypeRaw(id);
+            bool first_attempt = true;
             if (*tp) {
                 if (t) *t = *tp;
+                first_attempt = false;
             }
             else {
                 if (isGlobalID(id)) {
@@ -943,6 +945,13 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             if (size) {
                 *size = _data_layout->getTypeAllocSize((llvm::StructType*)*tp);
             }
+            if (!first_attempt || e->kind != SC_STRUCT_GENERIC_INST) break;
+            auto sgi = (sc_struct_generic_inst*)e;
+            // TODO: make this atomic
+            if (((ast_node*)sgi)->emitted_for_pp) break;
+            lle = genStructuralAstBody(&sgi->st.sb.sc.body);
+            ((ast_node*)sgi)->emitted_for_pp = true;
+            return lle;
         } break;
         case TYPE_POINTER: {
             // this is the alignment requirement of the
@@ -1411,7 +1420,6 @@ llvm_error LLVMBackend::genFuncCall(
     llvm::Value** args = (llvm::Value**)pool_alloc(
         &_tc->permmem, sizeof(llvm::Value*) * (c->arg_count + mem_func));
     if (!args) return LLE_FATAL;
-    ureg i = 0;
     if (mem_func) {
         llvm::Value* v;
         auto ema = (expr_member_access*)c->lhs;
@@ -1419,10 +1427,9 @@ llvm_error LLVMBackend::genFuncCall(
         lle = genAstNode(ema->lhs, &v, NULL);
         if (lle) return lle;
         args[0] = v;
-        i++;
     }
-    for (; i < c->arg_count; i++) {
-        lle = genAstNode(c->args[i], NULL, &args[i]);
+    for (ureg i = 0; i < c->arg_count; i++) {
+        lle = genAstNode(c->args[i], NULL, &args[i + mem_func]);
         if (lle) return lle;
     }
     llvm::ArrayRef<llvm::Value*> args_arr_ref(
@@ -1617,9 +1624,11 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             auto state = *lookupValueState(f->id);
             assert(state == IMPL_ADDED || state == PP_IMPL_ADDED);
 #endif
+            bool is_member_fn = ast_node_get_instance_member((ast_node*)f);
             lle = genFunction(f, (llvm::Value**)&fn);
             if (lle) return lle;
-            llvm::Argument* a = fn->arg_begin() + param_nr;
+
+            llvm::Argument* a = fn->arg_begin() + is_member_fn + param_nr;
             if (!a) return LLE_FATAL;
             assert(!vl && vl_loaded);
             *vl_loaded = a;
@@ -2223,6 +2232,14 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     llvm::Type* ret_type;
     llvm_error lle = lookupCType(fn->fnb.return_ctype, &ret_type, NULL, NULL);
     if (lle) return lle;
+    ast_node* owner =
+        ast_body_get_non_paste_parent(fn->fnb.sc.osym.sym.declaring_body)
+            ->owning_node;
+    bool responsible = isIDInModule(fn->id);
+    if (!responsible && owner->kind == SC_STRUCT_GENERIC_INST &&
+        owner->emitted_for_pp == false) {
+        responsible = true;
+    }
     bool mem_func = ast_node_get_instance_member((ast_node*)fn);
     if (fn->fnb.param_count != 0 || mem_func) {
         llvm::Type** params = (llvm::Type**)pool_alloc(
@@ -2231,15 +2248,12 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
         if (!params) return LLE_FATAL;
         ureg i = 0;
         if (mem_func) {
-            ast_elem* owner = (ast_elem*)ast_body_get_non_paste_parent(
-                                  fn->fnb.sc.osym.sym.declaring_body)
-                                  ->owning_node;
             llvm::Type* instance_type;
-            if (ast_elem_is_struct_base(owner)) {
-                lle = lookupCType(owner, &instance_type, NULL, NULL);
+            if (ast_elem_is_struct_base(&owner->elem)) {
+                lle = lookupCType(&owner->elem, &instance_type, NULL, NULL);
             }
             else {
-                assert(ast_elem_is_trait_impl(owner));
+                assert(ast_elem_is_trait_impl(&owner->elem));
                 lle = lookupCType(
                     ((trait_impl*)owner)->impl_for_ctype, &instance_type, NULL,
                     NULL);
@@ -2269,7 +2283,7 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     bool extern_flag = ast_node_get_extern_func((ast_node*)fn);
     auto func_name_mangled = extern_flag ? std::string(fn->fnb.sc.osym.sym.name)
                                          : nameMangle(&fn->fnb);
-    if (fwd_decl || !isIDInModule(fn->id) || gen_stub) {
+    if (fwd_decl || !responsible || gen_stub) {
         func = (llvm::Function*)llvm::Function::Create(
             func_sig, llvm::GlobalVariable::ExternalLinkage,
             _data_layout->getProgramAddressSpace(), func_name_mangled);

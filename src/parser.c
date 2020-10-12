@@ -2915,7 +2915,8 @@ parse_error parse_struct_decl(parser* p, modifier_status* mods, ast_node** n)
     if (t->kind == TK_BRACKET_OPEN) {
         sg = alloc_perm(p, sizeof(sc_struct_generic));
         if (!sg) return PE_FATAL;
-        sg->instances = NULL;
+        int res = gim_init(&sg->inst_map, SC_STRUCT_GENERIC_INST);
+        if (res) return PE_FATAL;
         // TODO:  sg->pprn = NULL;
         s = (open_symbol*)sg;
         lx_void(&p->lx);

@@ -6,6 +6,7 @@
 #define PACK_ENUM __attribute__((__packed__))
 #define PACK_STRUCT __attribute__((__packed__))
 #else
+// TODO: msvc?
 #define PACK_ENUM
 #define PACK_STRUCT
 #endif

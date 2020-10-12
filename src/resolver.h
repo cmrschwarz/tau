@@ -146,12 +146,13 @@ get_curr_pprn(resolver* r, ast_body* body, pp_resolve_node** curr_pprn);
 void report_redeclaration_error(resolver* r, symbol* redecl, symbol* prev);
 ureg claim_symbol_id(resolver* r, symbol* s, bool public_st);
 bool ctypes_unifiable(ast_elem* a, ast_elem* b);
-
+void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n);
 bool ast_body_pastes_done(resolver* r, ast_body* b);
 bool ast_body_is_public(ast_body* b);
 bool is_body_public_st(ast_body* b);
 int ast_body_propagate_error(resolver* r, ast_body* body);
 int curr_body_propagate_error(resolver* r, ast_body* body);
+int curr_pprn_propagate_error(resolver* r, ast_body* body);
 
 resolve_error
 pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress);
