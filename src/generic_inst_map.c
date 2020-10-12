@@ -72,7 +72,11 @@ int gim_grow(generic_inst_map* g, ureg* cap_new_p)
         ureg arg_count;
         assert(g->instances_kind == s->node.kind);
         generic_inst_get_generic_args(s, &args, &arg_count);
-        ureg idx = fnv_fold(gim_hash(args, arg_count), bc_new, mask_new);
+        ureg hash = FNV_START_HASH;
+        for (sym_param_generic_inst* i = args; i != args + arg_count; i++) {
+            hash = fnv_hash_pointer(hash, i->value);
+        }
+        ureg idx = fnv_fold(hash, bc_new, mask_new);
         while (table_new[idx]) {
             idx++;
             if (idx == cap_new) idx = 0;

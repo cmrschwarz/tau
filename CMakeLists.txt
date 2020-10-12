@@ -97,7 +97,9 @@ target_include_directories(tauc PUBLIC
 )
 target_link_libraries(tauc LINK_PUBLIC
     ${TAU_DEPS_LIBS}
-    #TODO: handle TAU_DEPS_EXTERNAL_LIBS
 )
-
-add_dependencies(tauc ${TAU_DEPS_DEPS})
+string(COMPARE EQUAL "${TAU_DEPS_TARGETS}" "" result)
+if(NOT result)
+    add_dependencies(tauc ${TAU_DEPS_TARGETS})
+    message("${TAU_DEPS_TARGETS}")
+endif()
