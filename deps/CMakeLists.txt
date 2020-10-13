@@ -130,54 +130,63 @@ elseif(EXISTS "${TAU_LLVM_PRECOMPILE_DIR}")
     set(TAU_LLVM_DEFINITIONS "" 
         CACHE STRING "Preprocessor Definitions for the precompiled LLVM"
     )
-    execute_process(
-        COMMAND sh -c "${TAU_LLVM_CONFIG_EXE} --libfiles --link-static | tr '\\\\\\\\' '/' | xargs du | sed -e '/^0\\s*/d' -e 's/^[0-9]*\\s*//'"
-        OUTPUT_VARIABLE LLVM_LIBRARIES_SPACES
+
+ 	execute_process(
+        COMMAND "${TAU_LLVM_CONFIG_EXE}" --libdir --link-static 
+        OUTPUT_VARIABLE TAU_LLVM_LIBDIRS
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-    string(REPLACE "\n" ";" TAU_LLVM_LIBRARIES "${LLVM_LIBRARIES_SPACES}")
+
     execute_process(
-        COMMAND ${TAU_LLVM_CONFIG_EXE} --system-libs --link-static 
-        OUTPUT_VARIABLE LLVM_SYSTEM_LIBS_SPACES
+        COMMAND "${TAU_LLVM_CONFIG_EXE}" --libnames --link-static
+        OUTPUT_VARIABLE LLVM_CORE_LIBS
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-    string(REPLACE " " ";" TAU_LLVM_SYSTEM_LIBS "${LLVM_SYSTEM_LIBS_SPACES}")
+    STRING(REPLACE " " ";" LLVM_CORE_LIBS "${LLVM_CORE_LIBS}")
+
     execute_process(
-        COMMAND ${TAU_LLVM_CONFIG_EXE} --libdir --link-static 
-        OUTPUT_VARIABLE LLVM_LIBDIRS_SPACES
+        COMMAND "${TAU_LLVM_CONFIG_EXE}" --system-libs --link-static 
+        OUTPUT_VARIABLE LLVM_SYSTEM_LIBS
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )
-    string(REPLACE " " ";" TAU_LLVM_LIBDIRS "${LLVM_LIBDIRS_SPACES}")
-   
-    link_directories("${TAU_LLVM_LIBDIRS}")
-    macro(TAU_ADD_LLVM_LIB _libname_)
-        string(TOUPPER "LLVM_${_libname_}_LIB" _prettylibname_)
-        find_library(${_prettylibname_} NAMES ${_libname_}
-            PATHS ${TAU_LLVM_LIBDIRS}
+    STRING(REPLACE " " ";" LLVM_SYSTEM_LIBS "${LLVM_SYSTEM_LIBS}")
+
+    macro(TAU_ADD_LLVM_LIB libname)
+        string(TOUPPER "LLVM_${libname}_LIB" prettylibname)
+        find_library(${prettylibname} NAMES ${libname}
+            PATHS "${TAU_LLVM_LIBDIRS}"
         )
-        if(${_prettylibname_})
-            set(TAU_LLVM_LIBS ${TAU_LLVM_LIBS} ${${_prettylibname_}}
-        )
+        if(EXISTS "${${prettylibname}}")
+            file(STRINGS "${${prettylibname}}" FILE_TEXT LIMIT_INPUT 2)
+            if(NOT "${FILE_TEXT}" STREQUAL "")
+                set(TAU_LLVM_LIBS "${TAU_LLVM_LIBS}" "${${prettylibname}}")
+                message("included: ${${prettylibname}}")
+            else()
+                message("empty: ${libname}")
+            endif()
         else()
-            message(SEND_ERROR "lib not found: ${_libname_}")
+            message(SEND_ERROR "lib not found: ${libname} (in ${TAU_LLVM_LIBDIRS})")
         endif()
     endmacro()
     foreach(lib ${TAU_LLD_COMPONENTS})
-        TAU_ADD_LLVM_LIB(${lib})
+        TAU_ADD_LLVM_LIB("${lib}")
+    endforeach()
+    foreach(lib ${LLVM_CORE_LIBS})
+        TAU_ADD_LLVM_LIB("${lib}")
     endforeach()
     set(TAU_LLVM_LIBS
         ${TAU_LLVM_LIBS}
-        ${TAU_LLVM_LIBRARIES}
-        ${TAU_LLVM_SYSTEM_LIBS}
+        ${LLVM_SYSTEM_LIBS}
     )
     set(TAU_LLVM_TARGETS "")
 else()
     set (TAU_LLVM_COMPONENTS "${TAU_LLVM_COMPONENTS}" lto)
     include("${CMAKE_CURRENT_LIST_DIR}/cmake/findLLVM.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/cmake/findLLD.cmake")
+    link_directories("${TAU_LLVM_LIBDIRS}" "${TAU_LLD_LIBDIRS}")
     set(TAU_LLVM_INCLUDE_DIRS ${LLVM_INCLUDE_DIRS} ${LLD_INCLUDE_DIRS})
     set(TAU_LLVM_DEFINITIONS ${LLVM_DEFINITIONS} ${LLD_DEFINITIONS})
-    set(TAU_LLVM_LIBS ${LLD_LIBRARIES} ${LLVM_LIBRARIES})
+    set(TAU_LLVM_LIBS ${LLD_LIBS} ${LLVM_LIBS})
     set(TAU_LLVM_TARGETS "")
 endif()
 

@@ -24,30 +24,39 @@ execute_process(
 )
 string(TOLOWER ${LLVM_TARGETS} LLVM_TARGETS)
 string(REPLACE " " ";" LLVM_TARGETS "${LLVM_TARGETS}")
-execute_process(
-    COMMAND ${LLVM_CONFIG_EXE} --link-static --libfiles ${LLVM_TARGETS} ${TAU_LLVM_COMPONENTS}
-    OUTPUT_VARIABLE LLVM_CORE_LIBRARIES
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-string(REPLACE " " ";" LLVM_CORE_LIBRARIES "${LLVM_CORE_LIBRARIES}")
 
 execute_process(
-    COMMAND ${LLVM_CONFIG_EXE} --link-static --system-libs
-    OUTPUT_VARIABLE LLVM_SYSTEM_LIBRARIES
+    COMMAND "${TAU_LLVM_CONFIG_EXE}" --libdir --link-static 
+    OUTPUT_VARIABLE LLVM_LIBDIRS
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-string(REPLACE " " ";" LLVM_SYSTEM_LIBRARIES "${LLVM_SYSTEM_LIBRARIES}")
 
-foreach(libname ${LLVM_CORE_LIBRARIES})
-    if(EXISTS ${libname})
-        set(LLVM_LIBRARIES
-            ${LLVM_LIBRARIES}
-            ${libname}
-        )
+execute_process(
+    COMMAND "${LLVM_CONFIG_EXE}" --link-static --libnames ${LLVM_TARGETS} ${TAU_LLVM_COMPONENTS}
+    OUTPUT_VARIABLE LLVM_CORE_LIBS
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(REPLACE " " ";" LLVM_CORE_LIBS "${LLVM_CORE_LIBS}")
+
+execute_process(
+    COMMAND "${LLVM_CONFIG_EXE}" --link-static --system-libs
+    OUTPUT_VARIABLE LLVM_SYSTEM_LIBS
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+)
+string(REPLACE " " ";" LLVM_SYSTEM_LIBS "${LLVM_SYSTEM_LIBS}")
+
+foreach(libname ${LLVM_CORE_LIBS})
+    string(TOUPPER "LLVM_${libname}_LIB" prettylibname)
+    find_library(${prettylibname} 
+        NAMES "${libname}"
+        PATHS "${LLVM_LIBDIRS}"
+    )
+    if(EXISTS "${${prettylibname}}")
+        set(TAU_LLVM_LIBS "${TAU_LLVM_LIBS}" "${${prettylibname}}")
     endif()
 endforeach()
 
-set(LLVM_LIBRARIES
-    ${LLVM_LIBRARIES}
-    ${LLVM_SYSTEM_LIBRARIES}
+set(LLVM_LIBS
+    ${LLVM_LIBS}
+    ${LLVM_SYSTEM_LIBS}
 )

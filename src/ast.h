@@ -654,19 +654,6 @@ typedef struct module_frame_generic_s {
     ureg generic_param_count;
 } module_frame_generic;
 
-typedef enum ast_type_mod_s {
-    ATM_NONE = 0,
-    ATM_CONST = 1,
-    ATM_PTR = 2,
-    ATM_REF = 3,
-} ast_type_mod;
-
-#define ATM_BITS 2
-#define ATM_MASK 0x3
-#define ATM_PER_BYTE (8 / ATM_BITS)
-#define ATM_BYTES (sizeof(ast_elem*) - sizeof(ast_node_kind))
-#define ATM_MAX_COUNT (ATM_BYTES * ATM_PER_BYTE)
-
 typedef struct type_base_s {
     union {
         ast_node_kind kind;
