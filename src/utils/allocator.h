@@ -13,6 +13,5 @@ void* trealloc(void* mem, ureg size_used, ureg size_new);
 void* tmallocz(ureg size);
 void tfree(void* mem);
 
-#if HOST_OS_LINUX
-#define USE_LIBC_ALLOCATOR
-#endif
+//all we have for now
+#include "plattform/libc/allocator_libc.h"

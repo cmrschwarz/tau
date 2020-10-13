@@ -162,6 +162,7 @@ void pretty_print_timer_elapsed(timer* t)
     pretty_print_timespan(&ts);
 }
 
+#if HOST_OS_LINUX
 #include <unistd.h>
 void limit_mem(ureg max_bytes)
 {
@@ -170,3 +171,4 @@ void limit_mem(ureg max_bytes)
     sprintf(buf, "/usr/bin/prlimit --as=%zu --pid=%i", max_bytes, pid);
     system(buf);
 }
+#endif

@@ -31,12 +31,12 @@ void target_platform_get_host(target_platform* tp)
 #if HOST_OS_LINUX
     tp->os = OS_LINUX;
     tp->object_format = OBJECT_FORMAT_ELF;
-#elif OS_WINDOWS
+#elif HOST_OS_WINDOWS
     tp->os = OS_WIN32;
     tp->object_format = OBJECT_FORMAT_COFF;
 #else
 // TODO
-#error unsupported HOST OS
+#   error unsupported Host OS
 #endif
 
 #if HOST_ARCH_X86 && REG_WIDTH_64

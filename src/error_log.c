@@ -6,7 +6,6 @@
 #include "utils/math_utils.h"
 #include "utils/zero.h"
 #include <assert.h>
-#include <unistd.h>
 
 #define FAILURE_NONE ((error*)NULL)
 #define FAILURE_FIRST ((error*)UREG_MAX)
@@ -62,7 +61,7 @@ int master_error_log_init(master_error_log* mel, file_map* filemap)
     mel->global_error_count = 0;
     mel->tab_size = 4; // TODO: make configurablef
     mel->tab_spaces = "    ";
-    mel->err_tty = isatty(fileno(stderr));
+    mel->err_tty = is_stderr_tty();
     mel->max_err_line_length = 80;
     mel->sane_err_line_length = 80;
     mel->alloc_failiure = false;

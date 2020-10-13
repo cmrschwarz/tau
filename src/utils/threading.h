@@ -5,19 +5,25 @@
 #include "atomics.h"
 
 typedef void (*thread_function_ptr)(void* context);
-#if HOST_OS_LINUX
-#include "os/linux/threading_linux.h"
+#if HOST_OS_LINUX || HOST_OS_OSX
+#include "plattform/pthreads/threading_pthreads.h"
+#elif HOST_OS_WINDOWS
+#include "plattform/windows/threading_windows.h"
 #else
-#error no threading backend for configured plattform
+#error tauc has no threading backend for configured plattform
 #endif
 
 #if __cplusplus
 #define THREAD_LOCAL thread_local
+#elif CMPLR_GCC || CMPLR_CLANG
+#define THREAD_LOCAL __thread
+#elif CMPLR_MSVC
+#define THREAD_LOCAL __declspec( thread )
 #elif !defined(__STDC_NO_THREADS__)
 #include <threads.h>
 #define THREAD_LOCAL thread_local
-#elif CMPLR_GCC || CMPLR_CLANG
-#define THREAD_LOCAL __thread
+#else
+#error tauc has no TLS configuration on this plattform
 #endif
 
 int thread_yield();

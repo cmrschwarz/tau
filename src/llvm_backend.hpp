@@ -64,7 +64,6 @@ extern "C" {
 #include <llvm/Transforms/Scalar.h>
 #include <llvm/Transforms/Utils.h>
 #include <llvm/ADT/STLExtras.h>
-#include <unistd.h>
 #include <vector>
 
 class ArchiveSymbolsMaterializationUnit
@@ -117,7 +116,7 @@ struct LLVMModule {
 
 struct ControlFlowContext {
     llvm::Value* value;
-    ureg value_align;
+    unsigned int value_align;
     llvm::BasicBlock* first_block;
     llvm::BasicBlock* following_block;
     bool continues_afterwards;

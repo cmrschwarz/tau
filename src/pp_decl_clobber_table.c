@@ -13,7 +13,7 @@ int ppdct_init(pp_decl_clobber_table* t, resolver* r)
     if (res) return ERR;
     t->clobber_count = 0;
     t->hash_bits = 4;
-    ureg cap = 1 << t->hash_bits;
+    ureg cap = (ureg)1 << t->hash_bits;
     t->table = tmallocz(cap * sizeof(pp_decl_clobber));
     if (!t->table) {
         freelist_fin(&t->waiting_users_mem);

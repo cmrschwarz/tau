@@ -1,10 +1,15 @@
 #pragma once
-#define USE_LIBC_ATOMICS
+#include "../../plattform.h"
 #include "../../types.h"
-#ifdef __clang__
-#define ATOMIC_PREFIX _Atomic
-#elif __GNUC__
-#define ATOMIC_PREFIX volatile
+
+#define USE_LIBC_ATOMICS
+
+#if CMPLR_CLANG
+#   define ATOMIC_PREFIX _Atomic
+#elif CMPLR_GCC 
+#   define ATOMIC_PREFIX volatile
+#else
+#   error tauc has no libc atomics implementation on this plattform
 #endif
 
 typedef struct atomic_ureg_s {

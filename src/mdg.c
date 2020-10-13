@@ -181,7 +181,7 @@ void free_astn_symtabs(ast_node* n)
     if (ast_elem_is_scope((ast_elem*)n)) {
         if (n->kind == SC_STRUCT_GENERIC) {
             sc_struct_generic* sg = (sc_struct_generic*)n;
-            ureg count = 1 << sg->inst_map.bitcount;
+            ureg count = (ureg)1 << sg->inst_map.bitcount;
             for (ureg i = 0; i < count; i++) {
                 symbol* s = sg->inst_map.instances[i];
                 if (!s) continue;
@@ -750,5 +750,5 @@ int mdg_final_sanity_check(module_dependency_graph* m, thread_context* tc)
         rwlock_end_read(&n->lock);
     }
     mdg_end_write(m);
-    return res | atomic_sreg_load(&tc->t->error_code);
+    return res | (0xFF & atomic_sreg_load(&tc->t->error_code));
 }

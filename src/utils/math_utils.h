@@ -11,10 +11,10 @@
 // ulog2(4) = 3
 static inline ureg ulog2(ureg v)
 {
-#if HOST_ARCH_X86 && REG_WIDTH_64
+#if HOST_ARCH_X86 && REG_WIDTH_64 && (CMPLR_GCC || CMPLR_CLANG)
     __asm__("bsrq %0, %0" : "=r"(v) : "0"(v));
     return v;
-#elif HOST_ARCH_X86 && REG_WIDTH_32
+#elif HOST_ARCH_X86 && REG_WIDTH_32 && (CMPLR_GCC || CMPLR_CLANG)
     __asm__("bsrl %0, %0" : "=r"(v) : "0"(v));
     return v;
 #else

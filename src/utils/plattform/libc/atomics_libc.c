@@ -1,4 +1,4 @@
-#include "../../threading.h"
+#include "../../atomics.h"
 #ifdef USE_LIBC_ATOMICS
 #include <stdatomic.h>
 // ptr
@@ -116,7 +116,7 @@ void atomic_sreg_store(atomic_sreg* a, sreg value)
 {
     atomic_store(&a->val, value);
 }
-void atomic_sreg_store__flat(atomic_sreg* a, sreg value)
+void atomic_sreg_store_flat(atomic_sreg* a, sreg value)
 {
     a->val = value;
 }

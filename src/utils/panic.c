@@ -2,7 +2,11 @@
 #include "stdio.h"
 #include "stdlib.h"
 #include <assert.h>
-#include <signal.h>
+#if HOST_OS_LINUX
+#   include <signal.h>
+#elif HOST_OS_WINDOWS
+#   include "plattform/windows/sane_windows.h"
+#endif
 void panic(const char* message)
 {
     // exit with an error to indicate something went horribly wrong
@@ -18,5 +22,11 @@ void panic(const char* message)
 
 void debugbreak()
 {
+#   if HOST_OS_LINUX
     raise(SIGTRAP);
+#   elif HOST_OS_WINDOWS
+    DebugBreak();
+#   else
+#   error tauc has no implementation for debugbreak on the current plattform
+#   endif   
 }

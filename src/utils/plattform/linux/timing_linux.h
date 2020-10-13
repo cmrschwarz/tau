@@ -1,8 +1,5 @@
 #pragma once
-
 #include <time.h>
-
-// TODO: make this work with all the kinds of different architectures
 
 typedef struct timer_s {
     struct timespec start;

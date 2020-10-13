@@ -7,7 +7,7 @@
 int gim_init(generic_inst_map* g, ast_node_kind instances_kind)
 {
     g->bitcount = 2;
-    ureg initial_cap = 1 << g->bitcount;
+    ureg initial_cap = (ureg)1 << g->bitcount;
     g->instances = tmallocz(sizeof(symbol*) * initial_cap);
     if (!g->instances) return ERR;
     if (mutex_init(&g->lock)) {
@@ -59,12 +59,12 @@ static inline void generic_inst_get_generic_args(
 
 int gim_grow(generic_inst_map* g, ureg* cap_new_p)
 {
-    ureg bc_new = g->bitcount + 1;
-    ureg cap_new = 1 << bc_new;
+    u8 bc_new = g->bitcount + 1;
+    ureg cap_new = (ureg)1 << bc_new;
     ureg mask_new = cap_new - 1;
     symbol** table_new = tmallocz(cap_new * sizeof(symbol*));
     if (!table_new) return ERR;
-    ureg cap_old = 1 << g->bitcount;
+    ureg cap_old = (ureg)1 << g->bitcount;
     for (ureg i = 0; i < cap_old; i++) {
         symbol* s = g->instances[i];
         if (!s) continue;
@@ -93,7 +93,7 @@ int gim_grow(generic_inst_map* g, ureg* cap_new_p)
 symbol** gim_get_element(generic_inst_map* g, ast_elem** args, ureg arg_count)
 {
     ureg hash = gim_hash(args, arg_count);
-    ureg cap = 1 << g->bitcount;
+    ureg cap = (ureg)1 << g->bitcount;
     ureg idx = fnv_fold(hash, g->bitcount, cap - 1);
     while (true) {
         symbol** s = &g->instances[idx];

@@ -47,4 +47,8 @@ void platttform_override_virt_core_count(ureg count)
 {
     _virt_core_count = count;
 }
+
+bool is_stderr_tty(){
+   return isatty(fileno(stderr));
+}
 #endif

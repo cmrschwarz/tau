@@ -3,7 +3,9 @@
 #include "plattform.h"
 #include "types.h"
 #if HOST_OS_LINUX
-#include "os/linux/timing_linux.h"
+#include "plattform/linux/timing_linux.h"
+#elif HOST_OS_WINDOWS 
+#include "plattform/windows/timing_windows.h"
 #else
 #error no timing backend for configured plattform
 #endif

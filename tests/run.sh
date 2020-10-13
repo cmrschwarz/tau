@@ -3,10 +3,10 @@ set -euo pipefail
 
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 cd "$SCRIPT_DIR/../"
-export ROOT_DIR="$(pwd -P)"
-export TAUC="$ROOT_DIR/build/tauc"
-export skip_tests=()
-export only_tests=("")
+ROOT_DIR="$(pwd -P)"
+TAUC="$ROOT_DIR/build/tauc"
+skip_tests=("__unreachable__")
+only_tests=("")
 
 pretty_print_time() {
     local before=$1
@@ -184,9 +184,9 @@ while true; do
         -o|--only)
             shift
             if [[ "${only_tests[@]}" == "" ]]; then
-                export only_tests=()
+                only_tests=()
             fi
-            export only_tests=("${only_tests[@]}" $1)
+            only_tests=("${only_tests[@]}" $1)
             shift
             run_all=false
             run_regular=true
@@ -194,7 +194,7 @@ while true; do
         ;;
         -s|--skip)
             shift
-            export skip_tests=("${skip_tests[@]}" $1)
+            skip_tests=("${skip_tests[@]}" $1)
             shift
         ;;
         --|*) 
@@ -204,12 +204,12 @@ while true; do
 done
 export TAUC_ARGS="$@"
 
-export errors=0
-export successes=0
-export tmp_file="$(mktemp)"
+errors=0
+successes=0
+tmp_file="$(mktemp)"
 if $use_valgrind; then
-    export TAUC_ARGS=("-q" "$TAUC" "${TAUC_ARGS[@]}")
-    export TAUC="valgrind"
+    TAUC_ARGS=("-q" "$TAUC" "${TAUC_ARGS[@]}")
+    TAUC="valgrind"
 fi
 TAUC_ARGS="$TAUC_ARGS $@"
 

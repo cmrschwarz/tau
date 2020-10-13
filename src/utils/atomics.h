@@ -2,8 +2,12 @@
 
 #include "plattform.h"
 
-#if USE_LIBC
-#include "os/libc/atomics_libc.h"
+#if CMPLR_GCC || CMPLR_CLANG
+#   include "plattform/libc/atomics_libc.h"
+#elif CMPLR_MSVC
+#   include "plattform/windows/atomics_windows.h"
+#else
+#   error tauc has no atomics implementation for this plattform
 #endif
 
 // Atomics
