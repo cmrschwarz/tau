@@ -53,7 +53,7 @@ set (TAU_LLD_COMPONENTS
 )
 
 
-if(${TAU_LLVM_PRECOMPILE})
+if(${TAU_COMPILE_LLVM})
     set(TAU_LLVM_TARGETS_TO_BUILD "X86;" CACHE BOOL 
         "Semicolon separated list of target architectures to build and link" 
     FORCE)
@@ -112,19 +112,21 @@ if(${TAU_LLVM_PRECOMPILE})
 elseif(EXISTS "${TAU_LLVM_PRECOMPILE_DIR}")
     message("found precompiled llvm!")
     
-    set(TAU_LLVM_CONFIG_DIR "${TAU_LLVM_PRECOMPILE_DIR}/llvm/bin" CACHE STRING 
-        "directory of the llvm-config utility"
+    set(TAU_LLVM_CONFIG_DIRS "${TAU_LLVM_PRECOMPILE_DIR}/bin"
+        CACHE STRING "locations to search for llvm-config"
     )
     find_program(TAU_LLVM_CONFIG_EXE
         NAMES llvm-config
-        PATHS ${TAU_LLVM_CONFIG_DIR}
+        PATHS ${TAU_LLVM_CONFIG_DIRS}
     )
-    link_directories(${TAU_LLVM_PRECOMPILED_LIBS_FOLDER})
+    if(NOT EXISTS "${TAU_LLVM_CONFIG_EXE}")
+        message(FATAL_ERROR "failed to find llvm-config in precompiled llvm build")
+    endif()
+    
     set(TAU_LLVM_INCLUDE_DIRS 
         "${CMAKE_CURRENT_LIST_DIR}/llvm-project/llvm/include"
         "${CMAKE_CURRENT_LIST_DIR}/llvm-project/lld/include"
-        "${TAU_LLVM_PRECOMPILE_DIR}/llvm/include"
-        "${TAU_LLVM_PRECOMPILE_DIR}/llvm/tools/lld/include"
+        "${TAU_LLVM_PRECOMPILE_DIR}/include"
         CACHE STRING "Include Directories for LLVM Headers"
     )
     set(TAU_LLVM_DEFINITIONS "" 
