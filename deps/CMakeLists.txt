@@ -131,7 +131,7 @@ elseif(EXISTS "${TAU_LLVM_PRECOMPILE_DIR}")
         CACHE STRING "Preprocessor Definitions for the precompiled LLVM"
     )
     execute_process(
-        COMMAND sh -c "${TAU_LLVM_CONFIG_EXE} --libfiles --link-static | xargs du | sed -e '/^0\\s*/d' -e 's/^[0-9]*\\s*//'"
+        COMMAND sh -c "${TAU_LLVM_CONFIG_EXE} --libfiles --link-static | tr '\\\\\\\\' '/' | xargs du | sed -e '/^0\\s*/d' -e 's/^[0-9]*\\s*//'"
         OUTPUT_VARIABLE LLVM_LIBRARIES_SPACES
         OUTPUT_STRIP_TRAILING_WHITESPACE
     )

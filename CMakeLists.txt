@@ -11,11 +11,18 @@ set(TAUC_C_SRCS
     ./src/symbol_table.c
     ./src/utils/dbuffer.c
     ./src/utils/panic.c
-    ./src/utils/os/libc/atomics_libc.c
-    ./src/utils/os/libc/allocator_libc.c
-    ./src/utils/os/linux/threading_linux.c
-    ./src/utils/os/libc/allocator_libc.c
-    ./src/utils/os/linux/timing_linux.c
+    ./src/utils/plattform/libc/allocator_libc.c
+    ./src/utils/plattform/libc/atomics_libc.c
+    ./src/utils/plattform/libc/allocator_libc.c
+    ./src/utils/plattform/linux/threading_linux.c
+    ./src/utils/plattform/linux/timing_linux.c
+    ./src/utils/plattform/linux/threading_linux.c
+    ./src/utils/plattform/linux/plattform_linux.c
+    ./src/utils/plattform/windows/threading_windows.c
+    ./src/utils/plattform/windows/timing_windows.c
+    ./src/utils/plattform/windows/threading_windows.c
+    ./src/utils/plattform/windows/atomics_windows.c
+    ./src/utils/plattform/windows/plattform_windows.c
     ./src/utils/timing_common.c
     ./src/utils/pool.c
     ./src/utils/hms.c
@@ -44,7 +51,6 @@ set(TAUC_C_SRCS
     ./src/file_map.c
     ./src/job_queue.c
     ./src/utils/debug_utils.c
-    ./src/utils/os/linux/plattform.c
     ./src/target_platform.c
     ./src/generic_inst_map.c
 )
