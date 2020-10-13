@@ -1,5 +1,5 @@
 #include "../../atomics.h"
-#ifdef HOST_OS_WINDOWS
+#if HOST_OS_WINDOWS
 #include "../../c_extensions.h"
 #include "sane_windows.h"
 

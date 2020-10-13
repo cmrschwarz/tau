@@ -101,10 +101,10 @@ void llvm_backend_run_paste(LLVMBackend* llvmb, pasted_source* ps, char* str)
     // TODO: proper allocation
     auto pstr = (pasted_str*)pool_alloc(
         &llvmb->_tc->t->filemap.string_mem_pool, sizeof(pasted_str));
-    ureg pastelen = strlen(str);
-    auto paste_str = (char*)pool_alloc(
-        &llvmb->_tc->t->filemap.string_mem_pool, pastelen + 1);
-    strcpy_s(paste_str, pastelen, str);
+    ureg pastelen = strlen(str) + 1;
+    auto paste_str =
+        (char*)pool_alloc(&llvmb->_tc->t->filemap.string_mem_pool, pastelen);
+    memcpy(paste_str, str, pastelen);
     pstr->str = paste_str;
     *ps->paste_data.last_next = pstr;
     ps->paste_data.last_next = &pstr->next;
@@ -479,7 +479,9 @@ void LLVMBackend::setupPrimitives()
             case PT_INT:
             // llvm expects bits, we store bytes (for
             // now)
-            case PT_UINT: t = _builder.getIntNTy((unsigned int)PRIMITIVES[i].size * 8); break;
+            case PT_UINT:
+                t = _builder.getIntNTy((unsigned int)PRIMITIVES[i].size * 8);
+                break;
             case PT_BINARY_STRING:
             case PT_STRING: t = _builder.getInt8PtrTy(); break;
             case PT_FLOAT: {
@@ -1125,7 +1127,7 @@ llvm_error LLVMBackend::genScopeValue(ast_elem* ctype, ControlFlowContext& ctx)
         llvm::Type* t;
         ureg align;
         llvm_error lle = lookupCType(ctype, &t, &align, NULL);
-        ctx.value_align = (unsigned int)align; //TODO: MaybeAlign?
+        ctx.value_align = (unsigned int)align; // TODO: MaybeAlign?
         if (lle) return lle;
         auto all = new llvm::AllocaInst(
             t, _data_layout->getProgramAddressSpace(), nullptr,
@@ -1228,9 +1230,10 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
     if (lle) return lle;
     if (instance_member) {
         assert(vl || vl_loaded);
-        auto gep = _builder.CreateStructGEP(_curr_this, (unsigned int)var->var_id);
+        auto gep =
+            _builder.CreateStructGEP(_curr_this, (unsigned int)var->var_id);
         if (vl_loaded) {
-            *vl_loaded = _builder.CreateAlignedLoad(gep,  (unsigned int)align);
+            *vl_loaded = _builder.CreateAlignedLoad(gep, (unsigned int)align);
             if (!*vl_loaded) return LLE_FATAL;
         }
         if (vl) *vl = gep;
@@ -1401,14 +1404,15 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     ((sym_var_initialized*)n)->initial_value, NULL, &init_val);
                 if (lle) return lle;
                 if (!_builder.CreateAlignedStore(
-                        init_val, var_val,  llvm::MaybeAlign(align), false))
+                        init_val, var_val, llvm::MaybeAlign(align), false))
                     return LLE_FATAL;
             }
         }
         *llvar = var_val;
     }
     if (vl_loaded) {
-        *vl_loaded = _builder.CreateAlignedLoad(*llvar,  llvm::MaybeAlign(align));
+        *vl_loaded =
+            _builder.CreateAlignedLoad(*llvar, llvm::MaybeAlign(align));
         if (!*vl_loaded) return LLE_FATAL;
     }
     if (vl) *vl = *llvar;
@@ -1846,7 +1850,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             assert(val);
             if (vl) *vl = val;
             if (vl_loaded) {
-                *vl_loaded = _builder.CreateAlignedLoad(val, llvm::MaybeAlign(align));
+                *vl_loaded =
+                    _builder.CreateAlignedLoad(val, llvm::MaybeAlign(align));
                 if (!*vl_loaded) return LLE_FATAL;
             }
             return LLE_OK;
@@ -1956,7 +1961,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                 auto res = _builder.CreateGEP(arr, index);
                 if (vl) *vl = res;
                 if (vl_loaded) {
-                    *vl_loaded = _builder.CreateAlignedLoad(res, llvm::MaybeAlign(elem_align));
+                    *vl_loaded = _builder.CreateAlignedLoad(
+                        res, llvm::MaybeAlign(elem_align));
                     if (!*vl_loaded) return LLE_FATAL;
                 }
             }
@@ -2117,9 +2123,12 @@ llvm_error LLVMBackend::genBinaryOp(
                 get_resolved_ast_node_ctype(b->lhs), NULL, &align, NULL);
             v = _builder.CreateNSWAdd(lhs, rhs);
             if (!v) return LLE_FATAL;
-            if (!_builder.CreateAlignedStore(v, lhs_flat, llvm::MaybeAlign(align)))
+            if (!_builder.CreateAlignedStore(
+                    v, lhs_flat, llvm::MaybeAlign(align)))
                 return LLE_FATAL;
-            if (vl_loaded) v = _builder.CreateAlignedLoad(lhs_flat, llvm::MaybeAlign(align));
+            if (vl_loaded)
+                v = _builder.CreateAlignedLoad(
+                    lhs_flat, llvm::MaybeAlign(align));
         } break;
         case OP_MUL_ASSIGN: {
             ureg align;
@@ -2127,9 +2136,12 @@ llvm_error LLVMBackend::genBinaryOp(
                 get_resolved_ast_node_ctype(b->lhs), NULL, &align, NULL);
             v = _builder.CreateNSWMul(lhs, rhs);
             if (!v) return LLE_FATAL;
-            if (!_builder.CreateAlignedStore(v, lhs_flat, llvm::MaybeAlign(align)))
+            if (!_builder.CreateAlignedStore(
+                    v, lhs_flat, llvm::MaybeAlign(align)))
                 return LLE_FATAL;
-            if (vl_loaded) v = _builder.CreateAlignedLoad(lhs_flat, llvm::MaybeAlign(align));
+            if (vl_loaded)
+                v = _builder.CreateAlignedLoad(
+                    lhs_flat, llvm::MaybeAlign(align));
         } break;
         default: assert(false); return LLE_FATAL;
     }
@@ -2731,7 +2743,7 @@ llvm_error linkLLVMModules(
 llvm_error removeObjs(LLVMModule** start, LLVMModule** end)
 {
     for (LLVMModule** i = start; i != end; i++) {
-        _unlink((**i).module_obj.c_str());
+        delete_file((**i).module_obj.c_str());
     }
     return LLE_OK;
 }

@@ -66,19 +66,14 @@ set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "")
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/deps")
 
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    message("Creating Debug Buildfiles")
-    set(TAUC_C_TESTS
-        ./src/test/unit_tests.c
-    )
-    set(TAUC_CPP_TESTS)
-    set(TAUC_C_SRCS ${TAUC_C_SRCS} ${TAUC_C_TESTS})
-    set(TAUC_CPP_SRCS ${TAUC_CPP_SRCS} ${TAUC_CPP_TESTS})
-    set(TAUC_PP_DIRECTIVES ${TAUC_PP_DIRECTIVES} TAUC_DEBUG)
-else()
-    message("Creating Release Buildfiles")
-endif()
-
+set(TAUC_C_TESTS
+    ./src/test/unit_tests.c
+)
+set(TAUC_CPP_TESTS "")
+set(TAUC_DEBUG_DEFINITIONS "TAUC_DEBUG")
+set(TAUC_C_SRCS "${TAUC_C_SRCS}" "$<$<CONFIG:Debug>:${TAUC_C_TESTS}>")
+set(TAUC_CPP_SRCS "${TAUC_CPP_SRCS}" "$<$<CONFIG:Debug>:${TAUC_CPP_TESTS}>")
+set(TAUC_PP_DIRECTIVES "${TAUC_PP_DIRECTIVES}" "$<$<CONFIG:Debug>:${TAUC_DEBUG_DEFINITIONS}>")
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR
     "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"

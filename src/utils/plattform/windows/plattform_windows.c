@@ -5,7 +5,7 @@
 static bool sys_info_aquired = false;
 static bool proc_info_aquired = false;
 static SYSTEM_INFO system_info;
-static SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX  proc_info;
+static SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX proc_info;
 ureg plattform_get_page_size()
 {
     if (!sys_info_aquired) GetSystemInfo(&system_info);
@@ -16,7 +16,8 @@ ureg plattform_get_cache_line_size()
 {
     if (!proc_info_aquired) {
         DWORD size = sizeof(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX);
-        bool res = GetLogicalProcessorInformationEx(RelationProcessorCore, &proc_info, &size);
+        bool res = GetLogicalProcessorInformationEx(
+            RelationProcessorCore, &proc_info, &size);
         if (!res) panic("failed to query cache line size");
     }
     return proc_info.Cache.LineSize;
@@ -32,7 +33,13 @@ void platttform_override_virt_core_count(ureg count)
     system_info.dwNumberOfProcessors = (DWORD)count;
 }
 
-bool is_stderr_tty(){
-    return false; //TODO: proper implementation?
+bool is_stderr_tty()
+{
+    return false; // TODO: proper implementation?
+}
+
+int delete_file(const char* path)
+{
+    return _unlink(path);
 }
 #endif

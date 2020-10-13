@@ -6,7 +6,7 @@
 
 typedef void (*thread_function_ptr)(void* context);
 #if HOST_OS_LINUX || HOST_OS_OSX
-#include "plattform/pthreads/threading_pthreads.h"
+#include "plattform/linux/threading_linux.h"
 #elif HOST_OS_WINDOWS
 #include "plattform/windows/threading_windows.h"
 #else

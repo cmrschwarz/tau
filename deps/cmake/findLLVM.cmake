@@ -18,7 +18,7 @@ endif()
 
 
 execute_process(
-    COMMAND ${LLVM_CONFIG_EXE} --targets-built
+    COMMAND "${LLVM_CONFIG_EXE}" --targets-built
     OUTPUT_VARIABLE LLVM_TARGETS
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
@@ -26,7 +26,7 @@ string(TOLOWER ${LLVM_TARGETS} LLVM_TARGETS)
 string(REPLACE " " ";" LLVM_TARGETS "${LLVM_TARGETS}")
 
 execute_process(
-    COMMAND "${TAU_LLVM_CONFIG_EXE}" --libdir --link-static 
+    COMMAND "${LLVM_CONFIG_EXE}" --libdir --link-static 
     OUTPUT_VARIABLE LLVM_LIBDIRS
     OUTPUT_STRIP_TRAILING_WHITESPACE
 )
@@ -52,7 +52,7 @@ foreach(libname ${LLVM_CORE_LIBS})
         PATHS "${LLVM_LIBDIRS}"
     )
     if(EXISTS "${${prettylibname}}")
-        set(TAU_LLVM_LIBS "${TAU_LLVM_LIBS}" "${${prettylibname}}")
+        set(LLVM_LIBS "${LLVM_LIBS}" "${${prettylibname}}")
     endif()
 endforeach()
 

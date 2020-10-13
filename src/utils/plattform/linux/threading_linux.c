@@ -103,7 +103,7 @@ static void* thread_wrapper(void* ctx)
 int thread_launch(thread* t, thread_function_ptr thread_fn, void* context)
 {
     t->context = context;
-    t->thread_fn = context;
+    t->thread_fn = thread_fn;
     return pthread_create(&t->pthread, NULL, thread_wrapper, (void*)t);
 }
 int thread_join(thread* t)
