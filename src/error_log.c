@@ -162,8 +162,9 @@ error* error_log_create_error(
         return (error*)e;
     }
     error_multi_annotated* e = (error_multi_annotated*)error_log_alloc(
-        el, sizeof(error_multi_annotated) +
-                sizeof(error_annotation) * extra_annot_count);
+        el,
+        sizeof(error_multi_annotated) +
+            sizeof(error_annotation) * extra_annot_count);
     if (!e) return NULL; // TODO: report this
     error_fill(
         &e->err_annot.err, stage, warn, ET_MULTI_ANNOT, message, smap, start);
@@ -179,8 +180,9 @@ void error_add_annotation(
     assert(e->kind == ET_MULTI_ANNOT);
     error_multi_annotated* ema = (error_multi_annotated*)e;
     error_annotation* ea = (error_annotation*)ptradd(
-        e, sizeof(error_multi_annotated) +
-               sizeof(error_annotation) * ema->annot_count);
+        e,
+        sizeof(error_multi_annotated) +
+            sizeof(error_annotation) * ema->annot_count);
     ea->smap = smap;
     ea->start = start;
     ea->end = end;
@@ -256,7 +258,7 @@ ureg get_line_nr_offset(ureg max_line)
 {
     max_line++; // because lines are displayed starting from 1, not 0
     if (max_line >= 10) { // this is to avoid line zero
-        return (ureg)floor(log10(max_line)) +
+        return floor_doble_to_ureg(log10(max_line)) +
                1; //+1 because log(10, 10) is 1, not 2
     }
     return 1;
@@ -531,7 +533,8 @@ int print_src_line(
             ureg after_tab = bpos;
             print_until(mel, &bpos, &next, buffer, &after_tab, &length_diff);
             switch (mode) {
-                case 3: (ep_pos + 1)->length_diff_start = length_diff;
+                case 3:
+                    (ep_pos + 1)->length_diff_start = length_diff;
                 // fallthrough
                 case 0:
                     ep_pos->length_diff_start = length_diff;
@@ -727,7 +730,8 @@ int report_error(master_error_log* mel, error* e, bool last_err)
     static err_point err_points[ERR_POINT_BUFFER_SIZE];
     pec(mel, ANSICOLOR_BOLD);
     switch (e->stage) {
-        case ES_LINKER: break; // already part of the message
+        case ES_LINKER:
+            break; // already part of the message
         case ES_TOKENIZER: pect(mel, ANSICOLOR_GREEN, "lexer "); break;
         case ES_PARSER: pect(mel, ANSICOLOR_CYAN, "parser "); break;
         case ES_RESOLVER: pect(mel, ANSICOLOR_MAGENTA, "resolver "); break;

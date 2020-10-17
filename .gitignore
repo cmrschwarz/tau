@@ -12,5 +12,6 @@ a.out
 *.asm
 /core
 /env
-/leaks.txt
+/leaks.tx
+/test.ps1
 /meta

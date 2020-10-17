@@ -688,8 +688,10 @@ typedef struct type_tuple_s {
 
 typedef struct primitive_s {
     symbol sym;
-    ureg size; // size is different from alignment e.g. for void, string, etc.
-    ureg alignment;
+    // size in bytes. this may be different from alignment e.g. for void,
+    // string, etc.
+    ureg size;
+    ureg alignment; // in bytes
     type_derivatives type_derivs;
     ast_elem* ctype;
 } primitive;

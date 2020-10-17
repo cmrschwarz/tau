@@ -47,8 +47,7 @@ int llvm_backend_init_globals(tauc* t)
             print_critical_error_end(mel);
         },
         &t->mel);
-    llvm::install_out_of_memory_new_handler();
-    llvm::install_bad_alloc_error_handler(
+    /*llvm::install_bad_alloc_error_handler(
         [](void* user_data, const std::string& reason, bool gen_crash_diag) {
             print_critical_error(
                 (master_error_log*)user_data,
@@ -57,7 +56,7 @@ int llvm_backend_init_globals(tauc* t)
             fflush(stderr);
             std::exit(1); // llvm segfaults it up if we let it handle this
         },
-        &t->mel);
+        &t->mel);*/
     return OK;
 }
 void llvm_backend_fin_globals()
@@ -71,6 +70,7 @@ int llvm_initialize_primitive_information()
 {
     // TODO: properly figure out the plattform information
     const ureg reg_size = 8;
+    PRIMITIVES[PT_VOID_PTR].size = reg_size;
     PRIMITIVES[PT_UINT].size = reg_size;
     PRIMITIVES[PT_INT].size = reg_size;
     PRIMITIVES[PT_FLOAT].size = reg_size;
@@ -371,7 +371,8 @@ LLVMBackend::LLVMBackend(thread_context* tc)
     : _tc(tc), _context(), _builder(_context)
 {
     std::string err;
-    auto target_triple = "x86_64-pc-linux-gnu"; // LLVMGetDefaultTargetTriple();
+
+    auto target_triple = LLVMGetDefaultTargetTriple(); //"x86_64-pc-linux-gnu";
     auto target = llvm::TargetRegistry::lookupTarget(target_triple, err);
     if (err.length() > 0) { // TODO: properly
         llvm::errs() << err << "\n";
@@ -399,16 +400,16 @@ LLVMBackend::~LLVMBackend()
 {
     ureg f = 0;
     std::sort(_globals_not_to_free.begin(), _globals_not_to_free.end());
-    ureg* i = &_globals_not_to_free[0];
-    ureg* end = &_globals_not_to_free.back() + 1;
+    auto ntf_it = _globals_not_to_free.begin();
+    auto ntf_end = _globals_not_to_free.end();
     while (true) {
         ureg skip;
-        if (i == end) {
+        if (ntf_it == ntf_end) {
             skip = _global_value_state.size();
         }
         else {
-            skip = *i;
-            i++;
+            skip = *ntf_it;
+            ntf_it++;
         }
         while (f != skip) {
             auto val = (llvm::Value*)_global_value_store[f];
@@ -424,7 +425,7 @@ LLVMBackend::~LLVMBackend()
             }
             f++;
         }
-        if (i == end) break;
+        if (ntf_it == ntf_end) break;
         f++; // skip the one we're not supposed to free
     }
     delete _data_layout;
@@ -441,10 +442,11 @@ void LLVMBackend::setupPasteHelpers()
     llvm::ArrayRef<llvm::Type*> params_array_ref(params, params + 3);
     auto func_type = llvm::FunctionType::get(
         _primitive_types[PT_VOID], params_array_ref, false);
-    auto func_ptr = llvm::ConstantInt::get(
-        _primitive_types[PT_UINT], (size_t)llvm_backend_run_paste);
-    _paste_func_ptr =
-        llvm::ConstantExpr::getBitCast(func_ptr, func_type->getPointerTo());
+    _paste_func_ptr = llvm::ConstantData::getIntegerValue(
+        func_type->getPointerTo(),
+        llvm::APInt(
+            (unsigned int)PRIMITIVES[PT_VOID_PTR].size * BYTE_BITS,
+            (size_t)llvm_backend_run_paste, false));
 }
 int LLVMBackend::Initialize(LLVMBackend* llvmb, thread_context* tc)
 {
@@ -499,7 +501,7 @@ void LLVMBackend::setupPrimitives()
                     return;
                 }
             } break;
-            case PT_VOID_PTR: t = _builder.getVoidTy()->getPointerTo(); break;
+            case PT_VOID_PTR: t = _builder.getInt8PtrTy(); break;
             case PT_VOID: t = _builder.getVoidTy(); break;
             case PT_TYPE:
             case PT_PASTED_EXPR:
@@ -1019,9 +1021,8 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
         }
         default: {
             assert(false); // TODO
-            if (t)
-                *t = NULL; // to silcence
-                           // -Wmaybe-uninitialized :(
+            if (t) *t = NULL; // to silcence
+            // -Wmaybe-uninitialized :(
         }
     }
     return LLE_OK;
@@ -1980,8 +1981,9 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     arr_type = ((llvm::PointerType*)arr_type)->getElementType();
                     assert(llvm::isa<llvm::ArrayType>(arr_type));
                     *vl_loaded = _builder.CreateAlignedLoad(
-                        res, _data_layout->getPrefTypeAlignment(
-                                 arr_type->getArrayElementType()));
+                        res,
+                        _data_layout->getPrefTypeAlignment(
+                            arr_type->getArrayElementType()));
                     if (!*vl_loaded) return LLE_FATAL;
                 }
             }
@@ -2628,7 +2630,7 @@ llvm_error LLVMBackend::generateEntrypoint(
         if (!call) return LLE_FATAL;
         target_platform t = _tc->t->target;
         if (t.arch == ARCH_X86_64) {
-            if (t.os == OS_LINUX) {
+            if (t.os == OS_LINUX || t.os == OS_WIN32) {
                 if (mainfn->fnb.return_ctype ==
                     (ast_elem*)&PRIMITIVES[PT_INT]) {
                     auto params = llvm::ArrayRef<llvm::Type*>{
@@ -2678,6 +2680,7 @@ llvm_error linkLLVMModules(
     // TODO: do this properly
     bool dynamic = false;
     ureg libs_size = sbuffer_get_used_size(link_libs);
+    libs_size += sizeof(void*); // for malloced linker args
     char** libs = (char**)tmalloc(libs_size);
     char** libs_head = libs;
     if (!libs) return LLE_FATAL;
@@ -2691,24 +2694,53 @@ llvm_error linkLLVMModules(
         }
         libs_head++;
     }
-    if (dynamic) args.push_back("--dynamic-linker");
-    for (char** i = libs; i != libs_head; i++) {
-        args.push_back(*i);
+    switch (tc->t->target.object_format) {
+        case OBJECT_FORMAT_ELF: {
+            if (dynamic) args.push_back("--dynamic-linker");
+            for (char** i = libs; i != libs_head; i++) {
+                args.push_back(*i);
+            }
+            args.push_back("-o");
+            args.push_back(output_path);
+        } break;
+        case OBJECT_FORMAT_COFF: {
+            char* pref = "/OUT:'";
+            ureg pref_len = strlen(pref);
+            ureg out_len = strlen(output_path);
+            char* out_str = (char*)tmalloc(out_len + pref_len + 2);
+            if (!out_str) panic("TODO: handle alloc failiure");
+            memcpy(out_str, pref, pref_len);
+            memcpy(out_str + pref_len, output_path, out_len);
+            memcpy(out_str + pref_len + out_len, "'\0", 2);
+            args.push_back(out_str);
+            for (char** i = libs; i != libs_head; i++) {
+                args.push_back(*i);
+            }
+            *libs_head++ = out_str;
+        } break;
+        default: panic("compiler bug");
     }
-
-    args.push_back("-o");
-    args.push_back(output_path);
-    /*  tprintf("linker args:");
-      for (auto v : args) {
-          tprintf(" %s", v);
-      }
-      tputs("\n");
-      tflush();
-      */
+    if (tc->t->verbosity_flags & VERBOSITY_FLAGS_LINKER_ARGS) {
+        tprintf("linker args:");
+        for (auto v : args) {
+            tprintf(" %s", v);
+        }
+        tputs("\n");
+        tflush();
+    }
     llvm::ArrayRef<const char*> arr_ref(&args[0], args.size());
     llvm::SmallVector<char, 128> errs_sv;
     llvm::raw_svector_ostream errs_sv_stream{errs_sv};
-    bool res = lld::elf::link(arr_ref, false, llvm::nulls(), errs_sv_stream);
+    bool res;
+    switch (tc->t->target.object_format) {
+        case OBJECT_FORMAT_ELF:
+            res = lld::elf::link(arr_ref, false, llvm::nulls(), errs_sv_stream);
+            break;
+        case OBJECT_FORMAT_COFF:
+            res =
+                lld::coff::link(arr_ref, false, llvm::nulls(), errs_sv_stream);
+            break;
+    }
     for (char** i = libs; i != libs_head; i++) {
         tfree(*i);
     }

@@ -36,7 +36,7 @@ void target_platform_get_host(target_platform* tp)
     tp->object_format = OBJECT_FORMAT_COFF;
 #else
 // TODO
-#   error unsupported Host OS
+#error unsupported Host OS
 #endif
 
 #if HOST_ARCH_X86 && REG_WIDTH_64
@@ -63,4 +63,12 @@ void target_platform_fill_gaps(target_platform* tgt, target_platform* src)
         tgt->object_format = src->object_format;
     }
     if (tgt->os == OS_UNKNOWN) tgt->os = src->os;
+}
+
+char* target_plattform_get_default_output_path(target_platform* tgt)
+{
+    switch (tgt->object_format) {
+        case OBJECT_FORMAT_COFF: return "a.exe";
+        default: return "a.out";
+    }
 }

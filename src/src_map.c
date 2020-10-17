@@ -348,7 +348,7 @@ int src_map_seek_set(src_map* smap, ureg pos)
     if (smap->source->kind == ELEM_SRC_FILE) {
         src_file* f = (src_file*)smap->source;
         assert(f->file_stream);
-        return fseek(f->file_stream, pos, SEEK_SET);
+        return fseek(f->file_stream, pos, SEEK_SET) ? ERR : OK;
     }
     assert(smap->source->kind == ELEM_PASTED_SRC);
     pasted_source* ps = (pasted_source*)smap->source;

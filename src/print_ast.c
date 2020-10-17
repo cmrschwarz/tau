@@ -735,7 +735,7 @@ int ctype_to_string_raw(sbuffer* buff, ast_body* ctx, ast_elem* ctype)
                 len = 1;
             }
             else {
-                len = floor(log10(ta->length)) + 1;
+                len = floor_doble_to_ureg(log10(ta->length)) + 1;
             }
             len += 2;
             char* v = sbuffer_append(buff, len);

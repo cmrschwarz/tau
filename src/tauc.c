@@ -62,19 +62,29 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
 {
     switch (i) {
         case -1:
-        case 10: mdg_fin(&t->mdg); // fallthrough
-        case 9: global_scope_fin(&t->global_scope); // fallthrough
+        case 10:
+            mdg_fin(&t->mdg); // fallthrough
+        case 9:
+            global_scope_fin(&t->global_scope); // fallthrough
         case -2: // skip mdg and global scope because we freed it already
-                 // during free_thread_intertwined_globals
-                 // when we still had all threads and their permmem
-        case 8: list_fin(&t->required_files, false); // fallthrough
-        case 7: aseglist_fin(&t->module_dtors); // fallthrough
-        case 6: aseglist_fin(&t->module_ctors); // fallthrough
-        case 5: thread_context_fin(&t->main_thread_context); // fallthrough
-        case 4: global_ptr_map_fin(&t->gpm); // fallthrough
-        case 3: aseglist_fin(&t->worker_threads); // fallthrough
-        case 2: job_queue_fin(&t->jobqueue); // fallthrough
-        case 1: llvm_backend_fin_globals(); // fallthrough
+        // during free_thread_intertwined_globals
+        // when we still had all threads and their permmem
+        case 8:
+            list_fin(&t->required_files, false); // fallthrough
+        case 7:
+            aseglist_fin(&t->module_dtors); // fallthrough
+        case 6:
+            aseglist_fin(&t->module_ctors); // fallthrough
+        case 5:
+            thread_context_fin(&t->main_thread_context); // fallthrough
+        case 4:
+            global_ptr_map_fin(&t->gpm); // fallthrough
+        case 3:
+            aseglist_fin(&t->worker_threads); // fallthrough
+        case 2:
+            job_queue_fin(&t->jobqueue); // fallthrough
+        case 1:
+            llvm_backend_fin_globals(); // fallthrough
         case 0: break;
     }
     return r;
@@ -123,6 +133,7 @@ int tauc_core_init(tauc* t)
     t->explicit_debug_symbols = false;
     t->ok_on_error = false;
     t->verbosity_flags = 0;
+    t->output_path = NULL;
     target_platform_get_host(&t->host_target);
     target_platform_set_unknown(&t->target);
     return OK;
@@ -285,6 +296,21 @@ int handle_cmd_args(
             }
             i++;
         }
+        else if (!strcmp(arg, "-o") || !strcmp(arg, "--output")) {
+            if (i == argc - 1) {
+                char* msg = error_log_cat_strings_2(
+                    el, arg, " requires an output path to follow");
+                master_error_log_report(&t->mel, msg);
+                return ERR;
+            }
+            if (t->output_path != NULL) {
+                master_error_log_report(
+                    &t->mel, "output path mustn't be given twice");
+                return ERR;
+            }
+            t->output_path = argv[i + 1];
+            i++;
+        }
         else if (!strcmp(arg, "--ast")) {
             t->emit_ast = true;
             if (!t->explicit_exe) t->emit_exe = false;
@@ -354,9 +380,13 @@ int handle_cmd_args(
         else if (!strcmp(arg, "--files")) {
             t->verbosity_flags |= VERBOSITY_FLAGS_FILES;
         }
+        else if (!strcmp(arg, "--linker-args")) {
+            t->verbosity_flags |= VERBOSITY_FLAGS_LINKER_ARGS;
+        }
         else if (!strcmp(arg, "--ok-on-error")) {
             t->ok_on_error = true;
         }
+
         else if (!strcmp(arg, "--run-unit-tests")) {
 #if DEBUG
             r = run_unit_tests(argc, argv);
@@ -386,6 +416,9 @@ int handle_cmd_args(
     target_platform_fill_gaps(&t->target, &t->host_target);
     if (t->opt_strat == OPT_STRAT_UNSPECIFIED) {
         t->opt_strat = OPT_STRAT_O0;
+    }
+    if (!t->output_path) {
+        t->output_path = target_plattform_get_default_output_path(&t->target);
     }
     return r;
 }
@@ -646,7 +679,8 @@ int tauc_link(tauc* t)
     int r = 0;
 
     if (t->emit_exe) {
-        r = llvm_link_modules(tc, mods, i, &t->filemap.rt_src_libs, "a.out");
+        r = llvm_link_modules(
+            tc, mods, i, &t->filemap.rt_src_libs, t->output_path);
         if (!t->emit_objs) {
             r |= llvm_delete_objs(mods, i);
         }

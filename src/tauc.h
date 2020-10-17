@@ -25,6 +25,7 @@ typedef enum optimization_strategy_e {
 #define VERBOSITY_FLAG_PASTES 0x40
 #define VERBOSITY_FLAGS_USED_IN_PP 0x80
 #define VERBOSITY_FLAGS_FILES 0x100
+#define VERBOSITY_FLAGS_LINKER_ARGS 0x200
 
 typedef struct tauc_s {
     // these two are still needed for error reporting after
@@ -52,6 +53,7 @@ typedef struct tauc_s {
     ureg verbosity_flags;
     timer total_time;
     list required_files; // used to get 'roots of trust' for the root module
+    const char* output_path;
     bool emit_ll;
     bool emit_asm;
     bool emit_exe;

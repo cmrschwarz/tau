@@ -126,3 +126,4 @@ void target_platform_get_host(target_platform* tp);
 void target_platform_set_unknown(target_platform* tp);
 void target_platform_fill_gaps(
     target_platform* target, target_platform* source);
+char* target_plattform_get_default_output_path(target_platform* tgt);

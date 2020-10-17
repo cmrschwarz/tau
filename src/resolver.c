@@ -1704,7 +1704,9 @@ ast_elem* ast_elem_get_ctype(ast_elem* s)
     switch (s->kind) {
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
-        case SYM_NAMED_USE: assert(false); return NULL; // TODO
+        case SYM_NAMED_USE:
+            assert(false);
+            return NULL; // TODO
         case SYM_PRIMITIVE: {
             ast_elem* ctype = ((primitive*)s)->ctype;
             assert(ctype != ERROR_ELEM);
@@ -2214,11 +2216,11 @@ static inline resolve_error resolve_special_identifier(
         case TK_KW_MODULE: kinds[kinds_count++] = ELEM_MDG_NODE; break;
         case TK_KW_SUPER:
             kinds[kinds_count++] = ELEM_MDG_NODE;
-            // fallthrough
+        // fallthrough
         case TK_KW_SELF_UPPERCASE:
             kinds[kinds_count++] = SC_TRAIT;
             kinds[kinds_count++] = SC_TRAIT_GENERIC_INST;
-            // fallthrough
+        // fallthrough
         case TK_KW_SELF:
             kinds[kinds_count++] = SC_STRUCT;
             kinds[kinds_count++] = SC_STRUCT_GENERIC_INST;
@@ -3898,7 +3900,7 @@ void adjust_node_ids(resolver* r, ureg* id_space, ast_node* n)
             sc_struct_generic* sg = (sc_struct_generic*)n;
             // adjust_body_ids(r, id_space, &sg->sb.sc.body);
             symbol** end =
-                sg->inst_map.instances + (1 << sg->inst_map.bitcount);
+                sg->inst_map.instances + ((ureg)1 << sg->inst_map.bitcount);
             for (symbol** s = sg->inst_map.instances; s != end; s++) {
                 if (!*s) continue;
                 adjust_node_ids(r, id_space, (ast_node*)*s);
@@ -4903,18 +4905,30 @@ int resolver_partial_fin(resolver* r, int i, int res)
 {
     switch (i) {
         case -1:
-        case 12: llvm_backend_delete(r->backend); // fallthrough
-        case 11: ppdct_fin(&r->ppdct); // fallthrough
-        case 10: ptr_map_fin(&r->pm); // fallthrough
-        case 9: prp_fin(&r->prp); // fallthrough
-        case 8: ptrlist_fin(&r->import_module_data_nodes); // fallthrough
-        case 7: ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
-        case 6: ptrlist_fin(&r->pp_resolve_nodes_pending); // fallthrough
-        case 5: ptrlist_fin(&r->pp_resolve_nodes_waiting); // fallthrough
-        case 4: freelist_fin(&r->pp_resolve_nodes); // fallthrough
-        case 3: pool_fin(&r->pprn_mem); // fallthrough
-        case 2: sbuffer_fin(&r->temp_buffer); // fallthrough
-        case 1: stack_fin(&r->error_stack); // fallthrough
+        case 12:
+            llvm_backend_delete(r->backend); // fallthrough
+        case 11:
+            ppdct_fin(&r->ppdct); // fallthrough
+        case 10:
+            ptr_map_fin(&r->pm); // fallthrough
+        case 9:
+            prp_fin(&r->prp); // fallthrough
+        case 8:
+            ptrlist_fin(&r->import_module_data_nodes); // fallthrough
+        case 7:
+            ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
+        case 6:
+            ptrlist_fin(&r->pp_resolve_nodes_pending); // fallthrough
+        case 5:
+            ptrlist_fin(&r->pp_resolve_nodes_waiting); // fallthrough
+        case 4:
+            freelist_fin(&r->pp_resolve_nodes); // fallthrough
+        case 3:
+            pool_fin(&r->pprn_mem); // fallthrough
+        case 2:
+            sbuffer_fin(&r->temp_buffer); // fallthrough
+        case 1:
+            stack_fin(&r->error_stack); // fallthrough
         case 0: break;
     }
     return res;

@@ -3,6 +3,13 @@
 #include "plattform.h"
 #include "types.h"
 #include "math.h"
+#include <assert.h>
+
+static inline ureg floor_doble_to_ureg(double d)
+{
+    assert(d < UREG_MAX && d >= 0);
+    return (ureg)d;
+}
 
 // ulog2(0) = 0
 // ulog2(1) = 1

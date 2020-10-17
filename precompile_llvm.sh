@@ -66,7 +66,7 @@ cd ..
 # create empty files for the libs we don't need to stop llvm-config from complaining
 # we later check for these during linking and ignore them
 #since we are using the error output here we expect to get an error so we ignore the status code
-./llvm-project-prebuild/bin/llvm-config --libs 2>&1 1>/dev/null | sed -n "s/.*error: missing: //p" | xargs -r touch || : 
+./deps/llvm-project-prebuild/bin/llvm-config --libs 2>&1 1>/dev/null | sed -n "s/.*error: missing: //p" | xargs -r touch || : 
 
 # done
 exit 0

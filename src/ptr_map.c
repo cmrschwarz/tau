@@ -25,9 +25,12 @@ int global_ptr_map_partial_fin(global_ptr_map* gpm, int i, int r)
 {
     switch (i) {
         case -1: // fallthrough
-        case 3: pool_fin(&gpm->segment_mem); // fallthrough
-        case 2: tfree(gpm->segments); // fallthrough
-        case 1: rwlock_fin(&gpm->lock); // fallthrough
+        case 3:
+            pool_fin(&gpm->segment_mem); // fallthrough
+        case 2:
+            tfree(gpm->segments); // fallthrough
+        case 1:
+            rwlock_fin(&gpm->lock); // fallthrough
         case 0: break;
     }
     return r;
@@ -214,7 +217,7 @@ int ptr_map_get_elem(
     *tgt = NULL;
     *pos_tgt = get_segment_offset(seg_ref->segment, seg_entry_idx);
     *seg_ref_tgt = seg_ref;
-    *fill_bit = 1 << seg_entry_idx;
+    *fill_bit = (ureg)1 << seg_entry_idx;
     return OK;
 }
 type_pointer* ptr_map_get_pointer(

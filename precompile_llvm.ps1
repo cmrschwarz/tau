@@ -1,5 +1,5 @@
 #!powershell
-$Config = "Release"
+$Config = "Debug"
 $Arch = "x64"
 $ScriptDir = Split-Path $script:MyInvocation.MyCommand.Path
 cd $ScriptDir
@@ -41,7 +41,7 @@ cd ../..
 
 # create empty files for the libs we don't need to stop llvm-config from complaining
 # we later check for these during linking and ignore them
-[string]$Output = Invoke-Expression "./precompile_llvm/deps/llvm-project/llvm/$Config/bin/llvm-config.exe --libs 2>&1"
+[string]$Output = Invoke-Expression "./deps/llvm-project-prebuild/bin/llvm-config.exe --libs 2>&1"
 
 $Output.Split([Environment]::NewLine, [StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object {
     if ("$_" -match ".*?error:\s*missing:\s*(.*lib)\s*$") {
