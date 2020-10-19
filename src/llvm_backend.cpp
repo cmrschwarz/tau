@@ -165,7 +165,7 @@ void llvm_free_module(llvm_module* mod)
 }
 int llvm_link_modules(
     thread_context* tc, llvm_module** start, llvm_module** end,
-    ptrlist* link_libs, char* output_path)
+    ptrlist* link_libs, const char* output_path)
 {
     llvm_error lle;
     TAU_TIME_STAGE_CTX(
@@ -1981,9 +1981,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                     arr_type = ((llvm::PointerType*)arr_type)->getElementType();
                     assert(llvm::isa<llvm::ArrayType>(arr_type));
                     *vl_loaded = _builder.CreateAlignedLoad(
-                        res,
-                        _data_layout->getPrefTypeAlignment(
-                            arr_type->getArrayElementType()));
+                        res, _data_layout->getPrefTypeAlignment(
+                                 arr_type->getArrayElementType()));
                     if (!*vl_loaded) return LLE_FATAL;
                 }
             }
@@ -2669,7 +2668,7 @@ llvm_error LLVMBackend::generateEntrypoint(
 }
 llvm_error linkLLVMModules(
     thread_context* tc, LLVMModule** start, LLVMModule** end,
-    ptrlist* link_libs, char* output_path)
+    ptrlist* link_libs, const char* output_path)
 {
     // ureg args_count = 10 + (end - start);
     std::vector<const char*> args;
@@ -2704,7 +2703,7 @@ llvm_error linkLLVMModules(
             args.push_back(output_path);
         } break;
         case OBJECT_FORMAT_COFF: {
-            char* pref = "/OUT:'";
+            const char* pref = "/OUT:'";
             ureg pref_len = strlen(pref);
             ureg out_len = strlen(output_path);
             char* out_str = (char*)tmalloc(out_len + pref_len + 2);
@@ -2732,6 +2731,7 @@ llvm_error linkLLVMModules(
     llvm::SmallVector<char, 128> errs_sv;
     llvm::raw_svector_ostream errs_sv_stream{errs_sv};
     bool res;
+    llvm_error lle;
     switch (tc->t->target.object_format) {
         case OBJECT_FORMAT_ELF:
             res = lld::elf::link(arr_ref, false, llvm::nulls(), errs_sv_stream);
@@ -2739,6 +2739,13 @@ llvm_error linkLLVMModules(
         case OBJECT_FORMAT_COFF:
             res =
                 lld::coff::link(arr_ref, false, llvm::nulls(), errs_sv_stream);
+            break;
+        default:
+            error_log_report_general(
+                tc->err_log, ES_LINKER, false,
+                "linker error: linking not implemented for target object "
+                "format");
+            lle = LLE_ERROR;
             break;
     }
     for (char** i = libs; i != libs_head; i++) {
@@ -2761,15 +2768,15 @@ llvm_error linkLLVMModules(
         char* msg = error_log_cat_strings(tc->err_log, 1, &begin);
         if (!msg) return LLE_FATAL;
         error_log_report_general(tc->err_log, ES_LINKER, false, msg);
-        return LLE_ERROR;
+        lle = LLE_ERROR;
     }
     else if (!res) {
         error_log_report_general(
             tc->err_log, ES_LINKER, false,
             "linker error: fatal error inside lld");
-        return LLE_ERROR;
+        lle = LLE_ERROR;
     }
-    return LLE_OK;
+    return lle;
 }
 
 llvm_error removeObjs(LLVMModule** start, LLVMModule** end)

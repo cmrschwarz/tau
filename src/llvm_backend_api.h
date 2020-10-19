@@ -49,7 +49,7 @@ void llvm_free_module(llvm_module* mod);
 
 int llvm_link_modules(
     thread_context* tc, llvm_module** start, llvm_module** end,
-    ptrlist* link_libs, char* output_path);
+    ptrlist* link_libs, const char* output_path);
 
 llvm_error llvm_backend_generate_entrypoint(
     llvm_backend* llvmb, sc_func* mainfn, sc_func* startfn, aseglist* ctors,

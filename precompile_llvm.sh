@@ -47,13 +47,14 @@ cd ..
 # move the resulting llvm libs to ./deps/llvm-project-prebuild and delete the rest
 src="./precompile_llvm/deps/llvm-project/llvm/"
 dest="./deps/llvm-project-prebuild"
+mkdir -p "$dest" "$dest/lib"
 if $keep_build; then
-    cmd = "cp -r"
+    cmd="cp -r"
 else
-    cmd = "mv"
+    cmd="mv"
 fi
 mkdir -p $src/lib
-$cmd "$src/lib/*.a" "$dest/lib/"
+$cmd "$src/lib/"*.a "$dest/lib/"
 $cmd "$src/bin" "$dest/bin"
 $cmd "$src/include" "$dest/include"
 
@@ -61,12 +62,11 @@ $cmd "$src/include" "$dest/include"
 #store the llvm commit id
 cd ./deps/llvm-project
 git rev-parse HEAD > ../llvm-project-prebuild/prebuild_commit_id.txt
-cd ..
+cd ../../
 
 # create empty files for the libs we don't need to stop llvm-config from complaining
 # we later check for these during linking and ignore them
 #since we are using the error output here we expect to get an error so we ignore the status code
-./deps/llvm-project-prebuild/bin/llvm-config --libs 2>&1 1>/dev/null | sed -n "s/.*error: missing: //p" | xargs -r touch || : 
-
+(./deps/llvm-project-prebuild/bin/llvm-config --libs 2>&1 1>/dev/null || : ) | sed -n "s/.*error: missing: //p" | xargs -r touch || : 
 # done
 exit 0
