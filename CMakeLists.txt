@@ -54,6 +54,7 @@ set(TAUC_C_SRCS
     ./src/target_platform.c
     ./src/generic_inst_map.c
     ./src/name_mangle.c
+    ./src/utils/base64.c
 )
 set (TAUC_CPP_SRCS
     ./src/llvm_backend.cpp
@@ -66,7 +67,7 @@ set(TAU_LLVM_PRECOMPILED ON CACHE BOOL "")
 
 add_subdirectory("${CMAKE_CURRENT_LIST_DIR}/deps")
 
-if (CMAKE_BUILD_TYPE MATCHES DEBUG)
+if (CMAKE_BUILD_TYPE MATCHES "[Dd][Ee][Bb][Uu][Gg].*")
     set(TAUC_C_TESTS
         ./src/test/unit_tests.c
     )

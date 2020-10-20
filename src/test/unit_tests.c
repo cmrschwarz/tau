@@ -5,7 +5,7 @@
 #include "../utils/stack.h"
 #include "../utils/debug_utils.h"
 #include "../utils/list.h"
-
+#include "../utils/base64.h"
 static void print_dash_padded(char* msg, bool err)
 {
     ureg len = strlen(msg);
@@ -393,6 +393,39 @@ err:
     return res;
 }
 
+int base64_test()
+{
+    u8 res[16];
+    char* a = "a";
+    if (decode_base64("a", 1, '+', '/', (u8*)&res) != a + 1) return ERR;
+    res[0] = '$';
+    if (decode_base64((char*)res, 10, '+', '/', (u8*)&res) != (char*)res) {
+        return ERR;
+    }
+#define BAS64_TEST_COUNT 4
+    char* tests[BAS64_TEST_COUNT][2] = {{"%&)(&§$)2~\xFF", "JSYpKCbCpyQpMn7/"},
+                                        {"", ""},
+                                        {"a", "YQ" /*==*/},
+                                        {"ab", "YWI" /*=*/}};
+
+    for (int i = 0; i < BAS64_TEST_COUNT; i++) {
+        u8* dec = (u8*)tests[i][0];
+        ureg dec_len = strlen((char*)dec);
+        char* enc = tests[i][1];
+        ureg enc_len = strlen(enc);
+        res[enc_len] = 0xFF;
+        encode_base64(dec, dec_len, '+', '/', (char*)&res);
+        if (memcmp(res, enc, enc_len)) return ERR;
+        if (res[enc_len] != 0xFF) return ERR;
+        u8 dec_end = res[dec_len];
+        if (decode_base64((char*)res, strlen(enc), '+', '/', res)) return ERR;
+        if (memcmp(res, dec, dec_len)) return ERR;
+        if (res[dec_len] != dec_end) return ERR;
+    }
+
+    return OK;
+}
+
 #include <utils/debug_utils.h>
 int run_unit_tests(int argc, char** argv)
 {
@@ -409,6 +442,7 @@ int run_unit_tests(int argc, char** argv)
     TEST(res, list_remove_test);
     TEST(res, ptrlist_test);
     TEST(res, ptrlist_remove_test);
+    TEST(res, base64_test);
     /*
     if (res) {
         print_dash_padded("FAILED", false);
