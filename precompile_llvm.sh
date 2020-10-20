@@ -16,6 +16,9 @@ while [ $# -gt 0 ]; do
     elif  [ "$1" = "-r" ] || [ "$1" = "--full" ]; then
         full_rerun=true
         shift
+    else
+        echo "unkwnown option $1" >&2
+        exit -1
     fi
 done
 

@@ -9,14 +9,17 @@ cmake_minimum_required(VERSION 3.4.3)
 # LLVM
 ###############################################################################
 
+option(TAU_COMPILE_LLVM
+    "compile custom version of llvm" 
+    OFF
+)
+option(TAU_LLVM_DYNAMIC
+    "link llvm dynamically (linux only)" 
+    OFF
+)
 set(TAU_LLVM_DIR "${CMAKE_CURRENT_LIST_DIR}/llvm-project"
     CACHE STRING 
     "location of llvm"
-)
-
-option(TAU_LLVM_PRECOMPILE
-    "compile custom version of llvm" 
-    OFF
 )
 set(TAU_LLVM_PRECOMPILE_DIR "${CMAKE_CURRENT_LIST_DIR}/llvm-project-prebuild"
     CACHE STRING 
@@ -37,6 +40,11 @@ set (TAU_LLVM_COMPONENTS
     ExecutionEngine
     OrcJIT
     "option"
+    lto
+    debuginfopdb
+    debuginfodwarf
+    windowsmanifest
+    libdriver
 )
 
 set (TAU_LLD_COMPONENTS      
@@ -52,6 +60,7 @@ set (TAU_LLD_COMPONENTS
     lldCommon
 )
 
+set (TAU_CLANG_COMPONENTS)
 
 if(${TAU_COMPILE_LLVM})
     set(TAU_LLVM_TARGETS_TO_BUILD "X86;" CACHE BOOL 
@@ -71,11 +80,12 @@ if(${TAU_COMPILE_LLVM})
     #set(LLVM_ENABLE_RTTI ON CACHE BOOL "" FORCE)
     
 
-    #enable LLD, disable other projects
-    set(LLVM_ENABLE_PROJECTS lld CACHE STRING "" FORCE)
+    # enable LLD disable other projects
+    # (clang disabled for now)
+    set(LLVM_ENABLE_PROJECTS "lld" CACHE STRING "" FORCE)
 
     #disable DLL build
-    set(LLVM_BUILD_LLVM_DYLIB OFF CACHE BOOL "" FORCE)
+    set(LLVM_BUILD_LLVM_DYLIB ${TAU_LLVM_DYNAMIC} CACHE BOOL "" FORCE)
 
     #makes things go faster apparently, docs unclear
     #set(LLVM_OPTIMIZED_TABLEGEN ON CACHE BOOL "" FORCE)
@@ -85,7 +95,7 @@ if(${TAU_COMPILE_LLVM})
     set(CMAKE_BUILD_TYPE Release CACHE STRING "" FORCE)
     #include llvm
     add_subdirectory(
-        "${CMAKE_CURRENT_LIST_DIR}/llvm-project/llvm"
+        "${TAU_LLVM_DIR}/llvm"
         EXCLUDE_FROM_ALL
     )
     # restore build type, this is a veru ugly hack
@@ -93,100 +103,49 @@ if(${TAU_COMPILE_LLVM})
     set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_SAVED})
     set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_SAVED} PARENT_SCOPE)
     set(TAU_LLVM_INCLUDE_DIRS 
-        "${CMAKE_CURRENT_LIST_DIR}/llvm-project/llvm/include"
-        "${CMAKE_CURRENT_LIST_DIR}/llvm-project/lld/include"
+        "${TAU_LLVM_DIR}/llvm/include"
+        "${TAU_LLVM_DIR}/lld/include"
+        "${TAU_LLVM_DIR}/clang/include"
         "${LLVM_BINARY_DIR}/include"
     )
     set(TAU_LLVM_DEFINITIONS ${LLVM_DEFINITIONS})
     llvm_map_components_to_libnames(TAU_LLVM_CORE_LIBS
        ${TAU_LLVM_COMPONENTS}
     )
-    set(TAU_LLVM_LLD_LIBS ${TAU_LLD_COMPONENTS})
     set(TAU_LLVM_LIBS
         ${TAU_LLVM_CORE_LIBS}
-        ${TAU_LLVM_LLD_LIBS}
+        ${TAU_LLD_COMPONENTS}
+        ${TAU_CLANG_COMPONENTS}
     )
     set(TAU_LLVM_TARGETS
         llvm-config
     )
-elseif(EXISTS "${TAU_LLVM_PRECOMPILE_DIR}")
-    message("found precompiled llvm!")
-    
-    set(TAU_LLVM_CONFIG_DIRS "${TAU_LLVM_PRECOMPILE_DIR}/bin"
-        CACHE STRING "locations to search for llvm-config"
-    )
-    find_program(TAU_LLVM_CONFIG_EXE
-        NAMES llvm-config
-        PATHS ${TAU_LLVM_CONFIG_DIRS}
-    )
-    if(NOT EXISTS "${TAU_LLVM_CONFIG_EXE}")
-        message(FATAL_ERROR "failed to find llvm-config in precompiled llvm build")
-    endif()
-    
-    set(TAU_LLVM_INCLUDE_DIRS 
-        "${CMAKE_CURRENT_LIST_DIR}/llvm-project/llvm/include"
-        "${CMAKE_CURRENT_LIST_DIR}/llvm-project/lld/include"
-        "${TAU_LLVM_PRECOMPILE_DIR}/include"
-        CACHE STRING "Include Directories for LLVM Headers"
-    )
-    set(TAU_LLVM_DEFINITIONS "" 
-        CACHE STRING "Preprocessor Definitions for the precompiled LLVM"
-    )
-
- 	execute_process(
-        COMMAND "${TAU_LLVM_CONFIG_EXE}" --libdir --link-static 
-        OUTPUT_VARIABLE TAU_LLVM_LIBDIRS
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-
-    execute_process(
-        COMMAND "${TAU_LLVM_CONFIG_EXE}" --libnames --link-static
-        OUTPUT_VARIABLE LLVM_CORE_LIBS
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-    STRING(REPLACE " " ";" LLVM_CORE_LIBS "${LLVM_CORE_LIBS}")
-
-    execute_process(
-        COMMAND "${TAU_LLVM_CONFIG_EXE}" --system-libs --link-static 
-        OUTPUT_VARIABLE LLVM_SYSTEM_LIBS
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-    )
-    STRING(REPLACE " " ";" LLVM_SYSTEM_LIBS "${LLVM_SYSTEM_LIBS}")
-
-    macro(TAU_ADD_LLVM_LIB libname)
-        string(TOUPPER "LLVM_${libname}_LIB" prettylibname)
-        find_library(${prettylibname} NAMES ${libname}
-            PATHS "${TAU_LLVM_LIBDIRS}"
-        )
-        if(EXISTS "${${prettylibname}}")
-            file(STRINGS "${${prettylibname}}" FILE_TEXT LIMIT_INPUT 2)
-            if(NOT "${FILE_TEXT}" STREQUAL "")
-                set(TAU_LLVM_LIBS "${TAU_LLVM_LIBS}" "${${prettylibname}}")
-            endif()
-        else()
-            message(SEND_ERROR "lib not found: ${libname} (in ${TAU_LLVM_LIBDIRS})")
-        endif()
-    endmacro()
-    foreach(lib ${TAU_LLD_COMPONENTS})
-        TAU_ADD_LLVM_LIB("${lib}")
-    endforeach()
-    foreach(lib ${LLVM_CORE_LIBS})
-        TAU_ADD_LLVM_LIB("${lib}")
-    endforeach()
-    set(TAU_LLVM_LIBS
-        ${TAU_LLVM_LIBS}
-        ${LLVM_SYSTEM_LIBS}
-    )
-    set(TAU_LLVM_TARGETS "")
 else()
-    set (TAU_LLVM_COMPONENTS "${TAU_LLVM_COMPONENTS}" lto)
+    if(EXISTS "${TAU_LLVM_PRECOMPILE_DIR}")
+        message("found precompiled llvm!")
+        set(TAU_LLVM_PRECOMPILED ON)
+    else()
+        set(TAU_LLVM_PRECOMPILED OFF)
+    endif()
+
     include("${CMAKE_CURRENT_LIST_DIR}/cmake/findLLVM.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/cmake/findLLD.cmake")
-    link_directories("${TAU_LLVM_LIBDIRS}" "${TAU_LLD_LIBDIRS}")
-    set(TAU_LLVM_INCLUDE_DIRS ${LLVM_INCLUDE_DIRS} ${LLD_INCLUDE_DIRS})
-    set(TAU_LLVM_DEFINITIONS ${LLVM_DEFINITIONS} ${LLD_DEFINITIONS})
-    set(TAU_LLVM_LIBS ${LLD_LIBS} ${LLVM_LIBS})
-    set(TAU_LLVM_TARGETS "")
+    #include("${CMAKE_CURRENT_LIST_DIR}/cmake/findClang.cmake")
+    set(TAU_LLVM_INCLUDE_DIRS 
+        ${LLVM_INCLUDE_DIRS}
+        ${LLD_INCLUDE_DIRS}
+        ${CLANG_INCLUDE_DIRS}
+    )
+    set(TAU_LLVM_DEFINITIONS
+        ${LLVM_DEFINITIONS}
+        ${LLD_DEFINITIONS}
+        ${CLANG_DEFINITIONS}
+    )
+    set(TAU_LLVM_LIBS 
+        ${CLANG_LIBS} 
+        ${LLD_LIBS} 
+        ${LLVM_LIBS}
+    )
 endif()
 
 # SORT_H
@@ -229,7 +188,4 @@ set(TAU_DEPS_LIBS
     ${TAU_MATH_LIBS}
     PARENT_SCOPE
 )
-set(TAU_DEPS_TARGETS
-    ${TAU_LLVM_TARGETS}
-    PARENT_SCOPE
-)
+set(TAU_DEPS_TARGETS ${TAU_LLVM_TARGETS} PARENT_SCOPE)

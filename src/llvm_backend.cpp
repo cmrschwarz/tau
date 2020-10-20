@@ -1472,10 +1472,9 @@ llvm_error LLVMBackend::genMemberAccess(
     llvm::Value* lhs_val;
     llvm_error lle = genAstNode(ema->lhs, &lhs_val, NULL);
     if (lle) return lle;
-    auto st = (ast_elem*)ast_body_get_non_paste_parent(
-                  ema->target.sym->declaring_body)
-                  ->owning_node;
-    assert(ast_elem_is_struct(st));
+    assert(ast_elem_is_struct((ast_elem*)ast_body_get_non_paste_parent(
+                                  ema->target.sym->declaring_body)
+                                  ->owning_node));
     ureg align;
     ast_elem* rhs = (ast_elem*)ema->target.sym;
     assert(ast_node_get_instance_member((ast_node*)rhs));
@@ -2730,7 +2729,7 @@ llvm_error linkLLVMModules(
     llvm::ArrayRef<const char*> arr_ref(&args[0], args.size());
     llvm::SmallVector<char, 128> errs_sv;
     llvm::raw_svector_ostream errs_sv_stream{errs_sv};
-    bool res;
+    bool res = OK;
     llvm_error lle;
     switch (tc->t->target.object_format) {
         case OBJECT_FORMAT_ELF:

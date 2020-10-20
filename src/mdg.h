@@ -99,6 +99,7 @@ typedef struct mdg_node_s {
     ast_body body;
     struct mdg_node_s* parent;
     char* name;
+    char* name_mangled;
     atomic_ureg unparsed_files;
     // relevant for mdgs in the MS_AWAITING_PP_DEPENDENCIES state
     // used to wake them up when the deps are ready

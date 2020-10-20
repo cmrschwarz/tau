@@ -190,6 +190,8 @@ resolve_error create_generic_struct_inst(
         gpi->value = args[i];
         gpi->ctype = ctypes[i];
     }
+    int res = type_map_init(&sgi->st.type_derivs.tm);
+    if (res) return RE_FATAL;
     *tgt = sgi;
     return RE_OK;
 }
@@ -197,6 +199,7 @@ resolve_error instantiate_generic_struct(
     resolver* r, sc_struct_generic_inst* sgi, expr_access* ea, ast_elem** args,
     ast_elem** ctypes, sc_struct_generic* sg, ast_body* parent_body)
 {
+    ast_node_set_status((ast_node*)sgi, NODE_STATUS_PARSED);
     resolve_error re;
     // if this is from a foreign module (reached through an import)
     // we need a final id immediately since others could need it

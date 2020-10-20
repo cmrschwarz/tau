@@ -40,7 +40,7 @@ typedef enum PACK_ENUM ast_node_kind_e {
     SC_MACRO,
     SC_FUNC_GENERIC,
     SC_FUNC_GENERIC_INST,
-    SC_LAST_ID = SC_FUNC_GENERIC,
+    SC_LAST_ID = SC_FUNC_GENERIC_INST,
 
     SYM_PRIMITIVE,
     SYM_PARAM,

@@ -62,29 +62,19 @@ static inline int tauc_core_partial_fin(tauc* t, int r, int i)
 {
     switch (i) {
         case -1:
-        case 10:
-            mdg_fin(&t->mdg); // fallthrough
-        case 9:
-            global_scope_fin(&t->global_scope); // fallthrough
+        case 10: mdg_fin(&t->mdg); // fallthrough
+        case 9: global_scope_fin(&t->global_scope); // fallthrough
         case -2: // skip mdg and global scope because we freed it already
         // during free_thread_intertwined_globals
         // when we still had all threads and their permmem
-        case 8:
-            list_fin(&t->required_files, false); // fallthrough
-        case 7:
-            aseglist_fin(&t->module_dtors); // fallthrough
-        case 6:
-            aseglist_fin(&t->module_ctors); // fallthrough
-        case 5:
-            thread_context_fin(&t->main_thread_context); // fallthrough
-        case 4:
-            global_ptr_map_fin(&t->gpm); // fallthrough
-        case 3:
-            aseglist_fin(&t->worker_threads); // fallthrough
-        case 2:
-            job_queue_fin(&t->jobqueue); // fallthrough
-        case 1:
-            llvm_backend_fin_globals(); // fallthrough
+        case 8: list_fin(&t->required_files, false); // fallthrough
+        case 7: aseglist_fin(&t->module_dtors); // fallthrough
+        case 6: aseglist_fin(&t->module_ctors); // fallthrough
+        case 5: thread_context_fin(&t->main_thread_context); // fallthrough
+        case 4: global_ptr_map_fin(&t->gpm); // fallthrough
+        case 3: aseglist_fin(&t->worker_threads); // fallthrough
+        case 2: job_queue_fin(&t->jobqueue); // fallthrough
+        case 1: llvm_backend_fin_globals(); // fallthrough
         case 0: break;
     }
     return r;

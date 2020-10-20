@@ -53,6 +53,7 @@ set(TAUC_C_SRCS
     ./src/utils/debug_utils.c
     ./src/target_platform.c
     ./src/generic_inst_map.c
+    ./src/name_mangle.c
 )
 set (TAUC_CPP_SRCS
     ./src/llvm_backend.cpp

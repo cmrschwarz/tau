@@ -218,6 +218,7 @@ typedef struct sym_import_symbol_s {
 typedef struct expr_block_base_s {
     ast_node node;
     char* name;
+    ureg block_id; // for name mangling purposes
     ast_elem* ctype;
     ast_body body;
 } expr_block_base;
@@ -395,6 +396,7 @@ typedef struct sc_func_base_s {
     ureg param_count;
     ast_node* return_type;
     ast_elem* return_ctype;
+    char* name_mangled;
 } sc_func_base;
 
 typedef struct sc_func_s {
@@ -427,6 +429,7 @@ typedef struct sc_struct_base_s {
     scope sc;
     sc_struct* extends;
     ast_node* extends_spec;
+    char* name_mangled;
 } sc_struct_base;
 
 typedef struct sc_struct_s {
@@ -502,6 +505,7 @@ typedef struct sym_var_s {
         prp_var_node* prpvn;
     };
     ureg var_id;
+    char* name_mangled;
 } sym_var;
 
 // TODO: remove this, maybe create member variable opt instead (no open_symbol
@@ -646,6 +650,7 @@ typedef struct module_frame_s {
     // TODO: take out all smap annotations from src_range and rely solely on
     // these (put some in paste stmt/expr aswell)
     src_map* smap;
+    ureg frame_id;
 } module_frame;
 
 typedef struct module_frame_generic_s {

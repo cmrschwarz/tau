@@ -940,6 +940,7 @@ static resolve_error add_ast_node_decls(
             // bool members_public_st =
             // shared_body && !is_local_node((ast_elem*)n);
             s->backend_id = claim_symbol_id(r, (symbol*)s, public_st);
+
             return RE_OK;
         }
         case SC_MACRO:
@@ -1704,9 +1705,7 @@ ast_elem* ast_elem_get_ctype(ast_elem* s)
     switch (s->kind) {
         case SYM_VAR:
         case SYM_VAR_INITIALIZED: return ((sym_var*)s)->ctype; break;
-        case SYM_NAMED_USE:
-            assert(false);
-            return NULL; // TODO
+        case SYM_NAMED_USE: assert(false); return NULL; // TODO
         case SYM_PRIMITIVE: {
             ast_elem* ctype = ((primitive*)s)->ctype;
             assert(ctype != ERROR_ELEM);
@@ -1848,6 +1847,10 @@ resolve_error resolve_scoped_identifier(
     ast_elem* lhs_val;
     re = resolve_ast_node(r, esa->lhs, body, &lhs_val, NULL);
     if (re) return re;
+    if (lhs_val == ERROR_ELEM) {
+        SET_THEN_RETURN_POISONED(
+            r, re, esa, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
+    }
     assert(lhs_val != NULL && ast_elem_is_symbol(lhs_val)); // TODO: log error
     re = get_resolved_symbol_body(r, (symbol*)lhs_val, &lhs_body);
     if (re) return re;
@@ -2214,8 +2217,7 @@ static inline resolve_error resolve_special_identifier(
     token_kind sik = e->value.special_ident_kind;
     switch (sik) {
         case TK_KW_MODULE: kinds[kinds_count++] = ELEM_MDG_NODE; break;
-        case TK_KW_SUPER:
-            kinds[kinds_count++] = ELEM_MDG_NODE;
+        case TK_KW_SUPER: kinds[kinds_count++] = ELEM_MDG_NODE;
         // fallthrough
         case TK_KW_SELF_UPPERCASE:
             kinds[kinds_count++] = SC_TRAIT;
@@ -3001,6 +3003,9 @@ static inline resolve_error resolve_ast_node_raw(
         case EXPR_SCOPE_ACCESS: {
             expr_scope_access* esa = (expr_scope_access*)n;
             if (resolved) {
+                if (ast_node_get_poisoned(n)) {
+                    SET_THEN_RETURN(value, ctype, ERROR_ELEM, ERROR_ELEM);
+                }
                 SET_THEN_RETURN(
                     value, ctype, (ast_elem*)esa->target.sym,
                     ast_elem_get_ctype((ast_elem*)esa->target.sym));
@@ -4905,30 +4910,18 @@ int resolver_partial_fin(resolver* r, int i, int res)
 {
     switch (i) {
         case -1:
-        case 12:
-            llvm_backend_delete(r->backend); // fallthrough
-        case 11:
-            ppdct_fin(&r->ppdct); // fallthrough
-        case 10:
-            ptr_map_fin(&r->pm); // fallthrough
-        case 9:
-            prp_fin(&r->prp); // fallthrough
-        case 8:
-            ptrlist_fin(&r->import_module_data_nodes); // fallthrough
-        case 7:
-            ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
-        case 6:
-            ptrlist_fin(&r->pp_resolve_nodes_pending); // fallthrough
-        case 5:
-            ptrlist_fin(&r->pp_resolve_nodes_waiting); // fallthrough
-        case 4:
-            freelist_fin(&r->pp_resolve_nodes); // fallthrough
-        case 3:
-            pool_fin(&r->pprn_mem); // fallthrough
-        case 2:
-            sbuffer_fin(&r->temp_buffer); // fallthrough
-        case 1:
-            stack_fin(&r->error_stack); // fallthrough
+        case 12: llvm_backend_delete(r->backend); // fallthrough
+        case 11: ppdct_fin(&r->ppdct); // fallthrough
+        case 10: ptr_map_fin(&r->pm); // fallthrough
+        case 9: prp_fin(&r->prp); // fallthrough
+        case 8: ptrlist_fin(&r->import_module_data_nodes); // fallthrough
+        case 7: ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
+        case 6: ptrlist_fin(&r->pp_resolve_nodes_pending); // fallthrough
+        case 5: ptrlist_fin(&r->pp_resolve_nodes_waiting); // fallthrough
+        case 4: freelist_fin(&r->pp_resolve_nodes); // fallthrough
+        case 3: pool_fin(&r->pprn_mem); // fallthrough
+        case 2: sbuffer_fin(&r->temp_buffer); // fallthrough
+        case 1: stack_fin(&r->error_stack); // fallthrough
         case 0: break;
     }
     return res;
