@@ -30,7 +30,7 @@ int delete_file(const char* path);
 // deduce debug mode
 #undef DEBUG
 #undef RELEASE
-#if TAUC_DEBUG
+#ifdef TAUC_DEBUG
 #define DEBUG 1
 #define RELEASE 0
 #else

@@ -397,9 +397,9 @@ int base64_test()
 {
     u8 res[16];
     char* a = "a";
-    if (decode_base64("a", 1, '+', '/', (u8*)&res) != a + 1) return ERR;
+    if (decode_base64("a", 1, '+', '/', (u8*)&res) != UREG_MAX) return ERR;
     res[0] = '$';
-    if (decode_base64((char*)res, 10, '+', '/', (u8*)&res) != (char*)res) {
+    if (decode_base64((char*)res, 10, '+', '/', (u8*)&res) != UREG_MAX) {
         return ERR;
     }
 #define BAS64_TEST_COUNT 4
@@ -414,11 +414,15 @@ int base64_test()
         char* enc = tests[i][1];
         ureg enc_len = strlen(enc);
         res[enc_len] = 0xFF;
-        encode_base64(dec, dec_len, '+', '/', (char*)&res);
+        if (encode_base64(dec, dec_len, '+', '/', (char*)&res) != enc_len) {
+            return ERR;
+        }
         if (memcmp(res, enc, enc_len)) return ERR;
         if (res[enc_len] != 0xFF) return ERR;
         u8 dec_end = res[dec_len];
-        if (decode_base64((char*)res, strlen(enc), '+', '/', res)) return ERR;
+        if (decode_base64((char*)res, strlen(enc), '+', '/', res) != dec_len) {
+            return ERR;
+        }
         if (memcmp(res, dec, dec_len)) return ERR;
         if (res[dec_len] != dec_end) return ERR;
     }

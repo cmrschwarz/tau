@@ -164,7 +164,10 @@ void thread_context_run(thread_context* tc)
             break;
         }
         r = thread_context_do_job(tc, &j);
-        if (r) break;
+        if (r) {
+            error_log_report_allocation_failiure(tc->err_log);
+            break;
+        }
     }
     ureg atc = atomic_ureg_dec(&tc->t->active_thread_count) - 1;
     job_queue_check_waiters(&tc->t->jobqueue, atc);

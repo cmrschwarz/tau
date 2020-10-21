@@ -130,11 +130,6 @@ llvm_error llvm_backend_run_pp(
     return ((LLVMBackend*)llvmb)->runPP(private_sym_count, resolve_nodes);
 }
 
-const char* llvm_backend_name_mangle(llvm_backend* llvmb, sc_func_base* f)
-{
-    return ((LLVMBackend*)llvmb)->nameMangle(f);
-}
-
 llvm_error llvm_backend_reserve_symbols(
     llvm_backend* llvmb, ureg private_sym_count, ureg public_sym_count)
 {
@@ -930,12 +925,12 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
                     }
                     llvm::ArrayRef<llvm::Type*> member_types{members, memcnt};
                     strct = llvm::StructType::create(
-                        _context, member_types, "", false);
+                        _context, member_types, sb->name_mangled, false);
                 }
                 else {
                     llvm::ArrayRef<llvm::Type*> member_types{NULL, 0};
                     strct = llvm::StructType::create(
-                        _context, member_types, "", false);
+                        _context, member_types, sb->name_mangled, false);
                 }
                 if (!strct) return LLE_FATAL;
                 *tp = strct;
@@ -1379,7 +1374,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
                 init = llvm::UndefValue::get(t);
             }
             auto gv = new llvm::GlobalVariable(
-                *_module, t, false, lt, init, var->osym.sym.name, NULL,
+                *_module, t, false, lt, init, var->name_mangled, NULL,
                 llvm::GlobalValue::NotThreadLocal, 0, false);
             if (!gv) return LLE_FATAL;
             auto maybe_al = llvm::MaybeAlign(align);
@@ -1395,7 +1390,7 @@ LLVMBackend::genVariable(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             assert(k != SC_STRUCT);
             auto all = new llvm::AllocaInst(
                 t, _data_layout->getProgramAddressSpace(), nullptr,
-                llvm::MaybeAlign(align), "" /* var->sym.name*/);
+                llvm::MaybeAlign(align), var->name_mangled);
             if (!all) return LLE_FATAL;
             var_val = all;
             _builder.Insert(all);
@@ -1945,7 +1940,8 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             llvm::Value *arr, *index;
             lle = genAstNode(ea->lhs, &arr, NULL);
             if (lle) return lle;
-            lle = genAstNode(ea->args[0], NULL, &index);
+            // HACK: cheat ast_elem to node
+            lle = genAstNode((ast_node*)ea->args[0], NULL, &index);
             if (lle) return lle;
             ast_elem* lhst = get_resolved_ast_node_ctype(ea->lhs);
             if (lhst->kind == TYPE_SLICE) {
@@ -2150,34 +2146,6 @@ llvm_error LLVMBackend::genBinaryOp(
     return LLE_OK;
 }
 
-// TODO: do this properly
-const char* LLVMBackend::nameMangle(sc_func_base* fn)
-{
-    std::string name = fn->sc.osym.sym.name;
-    ast_body* bd = &fn->sc.body;
-    while (bd->owning_node->kind != ELEM_MDG_NODE) bd = bd->parent;
-    mdg_node* n = (mdg_node*)bd->owning_node;
-    while (n->parent != NULL) {
-        name = n->name + ("_" + name);
-        n = n->parent;
-    }
-    if (name != "main") { // HACK: we should handle the main function properly
-        name = name + "_" + std::to_string(fn->param_count);
-    }
-    std::string MangledName;
-    {
-        llvm::raw_string_ostream MangledNameStream(MangledName);
-        llvm::Mangler::getNameWithPrefix(
-            MangledNameStream, name, *_data_layout);
-    }
-    ureg size = MangledName.size();
-    char* str = (char*)pool_alloc(&_tc->permmem, size + 1);
-    if (!str) return NULL;
-    memcpy(str, MangledName.c_str(), size);
-    str[size] = '\0';
-    return str;
-}
-
 llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
 {
     auto res = (llvm::Value**)lookupAstElem(fn->id);
@@ -2295,8 +2263,8 @@ llvm_error LLVMBackend::genFunction(sc_func* fn, llvm::Value** llfn)
     // ast node
     bool fwd_decl = (fn->fnb.sc.body.srange == SRC_RANGE_INVALID);
     bool extern_flag = ast_node_get_extern_func((ast_node*)fn);
-    auto func_name_mangled = extern_flag ? std::string(fn->fnb.sc.osym.sym.name)
-                                         : nameMangle(&fn->fnb);
+    auto func_name_mangled =
+        extern_flag ? fn->fnb.sc.osym.sym.name : fn->fnb.name_mangled;
     if (fwd_decl || !responsible || gen_stub) {
         func = (llvm::Function*)llvm::Function::Create(
             func_sig, llvm::GlobalVariable::ExternalLinkage,
@@ -2571,9 +2539,6 @@ llvm_error LLVMBackend::genSpecialCall(sc_func* fn)
 {
     auto func_sig = llvm::FunctionType::get(_primitive_types[PT_VOID], false);
     if (!func_sig) return LLE_FATAL;
-    const char* name = nameMangle(&fn->fnb);
-    if (!name) return LLE_FATAL;
-    // TODO: make sure this holds?
     llvm::Value* func;
     auto lle = genFunction(fn, &func);
     if (lle) return lle;

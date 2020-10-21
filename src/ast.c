@@ -43,6 +43,12 @@ src_map* module_frame_get_smap(module_frame* mf)
 {
     return src_range_get_smap(mf->node.srange);
 }
+mdg_node* module_frame_get_module(module_frame* mf)
+{
+    ast_body* b = mf->body.parent;
+    while (b->owning_node->kind != ELEM_MDG_NODE) b = b->parent;
+    return (mdg_node*)b->owning_node;
+}
 void ast_node_get_full_src_range(
     ast_node* n, ast_body* body, src_range_large* srl)
 {
@@ -300,6 +306,7 @@ ast_body* ast_elem_get_body(ast_elem* s)
 type_derivatives* ast_elem_get_type_derivs(ast_elem* e)
 {
     switch (e->kind) {
+        case SC_STRUCT_GENERIC_INST:
         case SC_STRUCT: {
             return &((sc_struct*)e)->type_derivs;
         } break;

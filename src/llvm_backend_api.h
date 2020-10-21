@@ -57,8 +57,6 @@ llvm_error llvm_backend_generate_entrypoint(
 
 int llvm_delete_objs(llvm_module** start, llvm_module** end);
 
-const char* llvm_backend_name_mangle(llvm_backend* llvmb, sc_func_base* f);
-
 int llvm_initialize_primitive_information();
 
 #ifdef __cplusplus

@@ -201,7 +201,6 @@ struct LLVMBackend {
         sc_func* mainfn, sc_func* startfn, aseglist* ctors, aseglist* dtors,
         ureg startid, ureg endid, ureg private_sym_count);
     pp_resolve_node* lookupPPResolveNode(ureg id);
-    const char* nameMangle(sc_func_base* func);
 
     void setPPResolveNode(ureg id, pp_resolve_node* pprn);
 

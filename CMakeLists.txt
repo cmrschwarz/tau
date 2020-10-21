@@ -55,6 +55,7 @@ set(TAUC_C_SRCS
     ./src/generic_inst_map.c
     ./src/name_mangle.c
     ./src/utils/base64.c
+    ./src/utils/int_string_conversions.c
 )
 set (TAUC_CPP_SRCS
     ./src/llvm_backend.cpp

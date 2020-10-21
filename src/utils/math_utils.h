@@ -5,7 +5,7 @@
 #include "math.h"
 #include <assert.h>
 
-static inline ureg floor_doble_to_ureg(double d)
+static inline ureg floor_double_to_ureg(double d)
 {
     assert(d < UREG_MAX && d >= 0);
     return (ureg)d;

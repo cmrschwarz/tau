@@ -12,6 +12,7 @@
 #include <assert.h>
 #include "symbol_lookup.h"
 #include "trait_resolution.h"
+#include "name_mangle.h"
 
 typedef enum type_cast_result_e {
     TYPE_CAST_SUCCESS = 0,
@@ -49,8 +50,8 @@ resolve_error resolver_suspend(resolver* r);
 void print_pprns(resolver* r, char* msg, bool verbose);
 void free_pprns(resolver* r, bool error_occured);
 void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident);
-static resolve_error add_ast_node_decls(
-    resolver* r, ast_body* body, ast_body* shared_body, ast_node* n,
+static resolve_error declare_ast_node(
+    resolver* r, ast_body* body, ast_body* shared_body, ast_node* n, ureg id,
     bool public_st);
 resolve_error handle_resolve_error(
     resolver* r, ast_node* n, ast_body* body, resolve_error re,
@@ -835,16 +836,23 @@ static inline resolve_error add_anonymous_import_group_decls(
     list_it_begin(&it, l);
     ast_node* el;
     resolve_error re;
+    ureg el_id = 0;
     while ((el = list_it_next(&it, l))) {
-        re = add_ast_node_decls(r, body, shared_body, el, public_st);
+        re = declare_ast_node(r, body, shared_body, el, el_id++, public_st);
         if (re) return re;
     }
     return RE_OK;
 }
+static resolve_error resolver_mangle(resolver* r, ast_node* n, ureg id)
+{
+    int res = name_mangle(r->tc->t, n, id, &r->temp_buffer, &r->tc->permmem);
+    if (res) return RE_FATAL;
+    return RE_OK;
+}
 // public st needs to be a seperate parameter since even when there's no shared
 // st a public structs public members are public
-static resolve_error add_ast_node_decls(
-    resolver* r, ast_body* body, ast_body* shared_body, ast_node* n,
+static resolve_error declare_ast_node(
+    resolver* r, ast_body* body, ast_body* shared_body, ast_node* n, ureg id,
     bool public_st)
 {
     if (n == NULL) return RE_OK;
@@ -860,11 +868,13 @@ static resolve_error add_ast_node_decls(
             // where they appear in source
             return RE_OK;
         }
+        case EXPR_BLOCK:
+        case EXPR_LOOP: {
+            return resolver_mangle(r, n, id);
+        }
         case EXPR_RETURN:
         case EXPR_BREAK:
-        case EXPR_BLOCK:
         case EXPR_IF:
-        case EXPR_LOOP:
         case EXPR_MACRO_CALL:
         case EXPR_MATCH:
         case EXPR_OP_BINARY:
@@ -914,8 +924,8 @@ static resolve_error add_ast_node_decls(
                 if (re) return RE_FATAL;
                 r->curr_pp_node = pprn;
             }
-            re = add_ast_node_decls(
-                r, body, shared_body, epp->pp_expr, public_st);
+            re = declare_ast_node(
+                r, body, shared_body, epp->pp_expr, 0, public_st);
             if (create_pp) r->curr_pp_node = prevcurr;
             if (re) return re;
             return RE_OK;
@@ -940,7 +950,6 @@ static resolve_error add_ast_node_decls(
             // bool members_public_st =
             // shared_body && !is_local_node((ast_elem*)n);
             s->backend_id = claim_symbol_id(r, (symbol*)s, public_st);
-
             return RE_OK;
         }
         case SC_MACRO:
@@ -954,13 +963,16 @@ static resolve_error add_ast_node_decls(
             if (re) return re;
             sym_var* v = (sym_var*)n;
             v->var_id = claim_symbol_id(r, (symbol*)v, public_st);
+            re = resolver_mangle(r, n, id);
+            if (re) return re;
             return RE_OK;
         }
         case STMT_PASTE_EVALUATION: {
             paste_evaluation* pe = (paste_evaluation*)n;
             for (ast_node** e = pe->body.elements; *e; e++) {
-                re = add_ast_node_decls(
-                    r, &pe->body, shared_body, *e, public_st);
+                re = declare_ast_node(
+                    r, &pe->body, shared_body, *e, e - pe->body.elements,
+                    public_st);
                 if (re) return re;
             }
             return RE_OK;
@@ -1221,8 +1233,8 @@ resolve_error add_body_decls(
         return RE_OK;
     }
     for (ast_node** n = body->elements; *n; n++) {
-        resolve_error re =
-            add_ast_node_decls(r, body, shared_body, *n, public_st);
+        resolve_error re = declare_ast_node(
+            r, body, shared_body, *n, n - body->elements, public_st);
         assert(r->curr_pp_node == NULL);
         if (re) return re;
     }
@@ -2452,8 +2464,8 @@ static inline resolve_error handle_expr_pp_paste(
         if (!pe) {
             bool public_st = is_body_public_st(npp_body);
             ast_node* ev = (ast_node*)ppe->result_buffer.paste_eval;
-            re = add_ast_node_decls(
-                r, &ppe->result_buffer.paste_eval->body, shared_body, ev,
+            re = declare_ast_node(
+                r, &ppe->result_buffer.paste_eval->body, shared_body, ev, 0,
                 public_st);
             if (!re) {
                 re = resolve_ast_node(r, ev, body, value, &ppe->ctype);
@@ -2854,6 +2866,25 @@ resolve_import_symbol(resolver* r, sym_import_symbol* is, ast_body* body)
     ast_node_set_resolved(node);
     return RE_OK;
 }
+static inline resolve_error resolve_generic_args(
+    resolver* r, ast_body* body, ast_body* ctx, sym_param_generic_inst* args,
+    ureg arg_count)
+{
+    for (ureg i = 0; i < arg_count; i++) {
+        if (ast_elem_is_node(args[i].value)) {
+            resolve_error re = resolve_ast_node(
+                r, (ast_node*)args[i].value, ctx, NULL, &args[i].ctype);
+            if (re) return re;
+        }
+        else {
+            assert(false); // TODO: handle  type arguments and stuff
+        }
+        if (args[i].ctype == ERROR_ELEM) {
+            if (curr_pprn_propagate_error(r, body)) return RE_FATAL;
+        }
+    }
+    return RE_OK;
+}
 static inline resolve_error resolve_ast_node_raw(
     resolver* r, ast_node* n, ast_body* body, ast_elem** value,
     ast_elem** ctype)
@@ -3027,17 +3058,60 @@ static inline resolve_error resolve_ast_node_raw(
             }
             SET_THEN_RETURN(value, ctype, n, GENERIC_TYPE_ELEM);
         }
-        case SC_TRAIT_GENERIC: {
-            if (!resolved) ast_node_set_resolved(n);
-            // TODO: handle scope escaped pp exprs
-            SET_THEN_RETURN(value, ctype, n, GENERIC_TRAIT_ELEM);
+        case SC_STRUCT_GENERIC_INST: {
+            sc_struct_generic_inst* si = (sc_struct_generic_inst*)n;
+            if (resolved) SET_THEN_RETURN(value, ctype, n, TYPE_ELEM);
+            re = resolve_generic_args(
+                r, &si->base->sb.sc.body, body, si->generic_args,
+                si->generic_arg_count);
+            if (re) return re;
+            re = resolver_mangle(r, n, 0);
+            if (re) return re;
+            return resolve_unordered_body(
+                r, body, ast_elem_get_body((ast_elem*)n), n, value, ctype);
         }
-        case TRAIT_IMPL_GENERIC_INST:
-        case TRAIT_IMPL_GENERIC:
+        case SC_TRAIT_GENERIC: {
+            if (!resolved) {
+                sc_trait_generic* tg = (sc_trait_generic*)n;
+                for (ureg i = 0; i < tg->generic_param_count; i++) {
+                    re = resolve_param(r, &tg->generic_params[i], true, NULL);
+                    if (re) return re;
+                }
+                ast_node_set_resolved(n);
+            }
+            SET_THEN_RETURN(value, ctype, n, GENERIC_TYPE_ELEM);
+        }
+        case SC_TRAIT_GENERIC_INST: {
+            sc_trait_generic_inst* ti = (sc_trait_generic_inst*)n;
+            if (resolved) SET_THEN_RETURN(value, ctype, n, TYPE_ELEM);
+            re = resolve_generic_args(
+                r, &ti->base->sb.sc.body, body, ti->generic_args,
+                ti->generic_arg_count);
+            if (re) return re;
+            re = resolver_mangle(r, n, 0);
+            if (re) return re;
+            return resolve_unordered_body(
+                r, body, ast_elem_get_body((ast_elem*)n), n, value, ctype);
+        }
+        case TRAIT_IMPL_GENERIC: {
+            assert(false); // TODO
+        }
+        case TRAIT_IMPL_GENERIC_INST: {
+            trait_impl_generic_inst* ti = (trait_impl_generic_inst*)n;
+            if (resolved) SET_THEN_RETURN(value, ctype, n, TYPE_ELEM);
+            re = resolve_generic_args(
+                r, &ti->base->tib.body, body, ti->generic_args,
+                ti->generic_arg_count);
+            if (re) return re;
+            re = resolver_mangle(r, n, 0);
+            if (re) return re;
+            return resolve_unordered_body(
+                r, body, ast_elem_get_body((ast_elem*)n), n, value, ctype);
+        }
+
         case TRAIT_IMPL:
         case SC_TRAIT:
-        case SC_STRUCT:
-        case SC_STRUCT_GENERIC_INST: {
+        case SC_STRUCT: {
             if (resolved) SET_THEN_RETURN(value, ctype, n, TYPE_ELEM);
             return resolve_unordered_body(
                 r, body, ast_elem_get_body((ast_elem*)n), n, value, ctype);
@@ -3516,7 +3590,7 @@ resolve_error resolve_expr_body(
     }
     ast_node** n = continue_at;
     for (; *n != NULL; n++) {
-        re = add_ast_node_decls(r, b, NULL, *n, false);
+        re = declare_ast_node(r, b, NULL, *n, n - b->elements, false);
         if (re) break;
         re = ast_node_add_trait_decls(r, b, *n);
         if (re) break;
@@ -3758,6 +3832,8 @@ resolve_error resolve_func(
             }
             return RE_OK;
         }
+        re = resolver_mangle(r, (ast_node*)fnb, 0);
+        if (re) return re;
     }
     ast_elem* stmt_ctype;
     ast_elem** stmt_ctype_ptr = &stmt_ctype;
@@ -3782,7 +3858,8 @@ resolve_error resolve_func(
             re = RE_TYPE_MISSMATCH;
             break;
         }
-        re = add_ast_node_decls(r, &fnb->sc.body, NULL, *n, false);
+        re = declare_ast_node(
+            r, &fnb->sc.body, NULL, *n, n - fnb->sc.body.elements, false);
         if (re) break;
         re = ast_node_add_trait_decls(r, &fnb->sc.body, *n);
         if (re) break;
@@ -4003,7 +4080,7 @@ resolve_error resolver_mark_required_module_fill_buffer(
     // assert(count > 0 || root);
     return RE_OK;
 }
-static inline void resolver_mark_required_frame(
+static inline int resolver_mark_required_frame(
     resolver* r, file_map_head* file, unverified_module_frame* frames,
     unverified_module_frame* frames_end, unverified_module_frame** verified,
     ureg* unverified_count)
@@ -4024,7 +4101,7 @@ static inline void resolver_mark_required_frame(
         else {
             break;
         }
-        if (left > right) return;
+        if (left > right) return OK;
     }
     while (center < frames_end - 1) {
         if ((center + 1)->file == file)
@@ -4037,14 +4114,22 @@ static inline void resolver_mark_required_frame(
             center->next_verified = *verified;
             *verified = center;
             (*unverified_count)--;
+            ureg id = (frames_end - frames) - *unverified_count;
+            int res = name_mangle(
+                r->tc->t, (ast_node*)center->frame, id, &r->temp_buffer,
+                &r->tc->permmem);
+            if (res) return ERR;
         }
         if (center == frames) break;
         center--;
     }
-    return;
+    return OK;
 }
 resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
 {
+    int res = name_mangle(
+        r->tc->t, (ast_node*)n, 0, &r->temp_buffer, &r->tc->permmem);
+    if (res) return RE_FATAL;
     unverified_module_frame* frames;
     unverified_module_frame* end;
     unverified_module_frame* verified = (unverified_module_frame*)NULL_PTR_PTR;
@@ -4054,6 +4139,11 @@ resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
     ureg unverified_count = end - frames;
 
     module_frame* curr = n->root;
+    if (curr) {
+        int res = name_mangle(
+            r->tc->t, (ast_node*)curr, 0, &r->temp_buffer, &r->tc->permmem);
+        if (res) return RE_FATAL;
+    }
     if (!curr && unverified_count != 0) {
         assert(n == r->tc->t->mdg.root_node);
         list_it it;
@@ -4073,8 +4163,9 @@ resolve_error resolver_mark_required_modules(resolver* r, mdg_node* n)
     while (curr && unverified_count != 0) {
         for (file_require* req = curr->requires; req->fmh != NULL; req++) {
             if (req->is_extern) continue;
-            resolver_mark_required_frame(
+            int res = resolver_mark_required_frame(
                 r, req->fmh, frames, end, &verified, &unverified_count);
+            if (res) return RE_FATAL;
             if (!unverified_count) break;
         }
         if (verified == (unverified_module_frame*)NULL_PTR_PTR) break;

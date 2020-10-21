@@ -218,7 +218,7 @@ typedef struct sym_import_symbol_s {
 typedef struct expr_block_base_s {
     ast_node node;
     char* name;
-    ureg block_id; // for name mangling purposes
+    char* name_mangled_unscoped;
     ast_elem* ctype;
     ast_body body;
 } expr_block_base;
@@ -397,6 +397,7 @@ typedef struct sc_func_base_s {
     ast_node* return_type;
     ast_elem* return_ctype;
     char* name_mangled;
+    char* name_mangled_unscoped;
 } sc_func_base;
 
 typedef struct sc_func_s {
@@ -430,6 +431,7 @@ typedef struct sc_struct_base_s {
     sc_struct* extends;
     ast_node* extends_spec;
     char* name_mangled;
+    char* name_mangled_unscoped;
 } sc_struct_base;
 
 typedef struct sc_struct_s {
@@ -465,6 +467,14 @@ typedef struct sc_trait_generic_s {
     sym_param* generic_params;
     ureg generic_param_count;
 } sc_trait_generic;
+
+typedef struct sc_trait_generic_inst_s {
+    sc_trait tr;
+    sym_param_generic_inst* generic_args;
+    ureg generic_arg_count;
+    sc_trait_generic* base;
+    char* name_mangled_unscoped;
+} sc_trait_generic_inst;
 
 typedef struct trait_impl_base_s {
     ast_node node;
@@ -594,7 +604,7 @@ typedef struct expr_call_s {
 typedef struct expr_access_s {
     ast_node node;
     ast_node* lhs;
-    ast_node** args;
+    ast_elem** args;
     ast_elem* ctype;
     ureg arg_count;
 } expr_access;
@@ -650,7 +660,8 @@ typedef struct module_frame_s {
     // TODO: take out all smap annotations from src_range and rely solely on
     // these (put some in paste stmt/expr aswell)
     src_map* smap;
-    ureg frame_id;
+    char* name_mangled;
+    char* name_mangled_unscoped;
 } module_frame;
 
 typedef struct module_frame_generic_s {
@@ -730,6 +741,7 @@ ast_body* ast_body_get_non_paste_parent(ast_body* b);
 char* ast_elem_get_label(ast_elem* n, bool* lbl);
 src_map* scope_get_smap(scope* s);
 src_map* module_frame_get_smap(module_frame* mf);
+mdg_node* module_frame_get_module(module_frame* mf);
 void ast_node_get_src_range(ast_node* n, ast_body* body, src_range_large* srl);
 void ast_node_get_full_src_range(
     ast_node* n, ast_body* body, src_range_large* srl);

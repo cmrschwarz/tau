@@ -9,6 +9,7 @@
 #include "utils/debug_utils.h"
 #include "utils/math_utils.h"
 #include "utils/panic.h"
+#include "utils/int_string_conversions.h"
 #include <assert.h>
 
 void pc(char c)
@@ -730,19 +731,15 @@ int ctype_to_string_raw(sbuffer* buff, ast_body* ctx, ast_elem* ctype)
         } break;
         case TYPE_ARRAY: {
             type_array* ta = (type_array*)ctype;
-            ureg len;
-            if (ta->length < 10) {
-                len = 1;
-            }
-            else {
-                len = floor_doble_to_ureg(log10(ta->length)) + 1;
-            }
+            ureg len = ureg_get_decimal_digits_count(ta->length);
             len += 2;
             char* v = sbuffer_append(buff, len);
             if (!v) return ERR;
-            ureg l = snprintf(v, len, "[%zu]", ta->length);
-            UNUSED(l);
-            assert(l == len);
+            *v = '[';
+            v[len + 1] = ']';
+            ureg res = ureg_to_decimal_string(ta->length, v + 1);
+            UNUSED(res);
+            assert(res == len);
             return ctype_to_string_raw(buff, ctx, ta->slice_type.ctype_members);
         } break;
         default: assert("false"); panic("compiler error");

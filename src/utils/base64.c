@@ -44,10 +44,11 @@ static inline u8 decode_byte_base64(char src, char c_62, char c_63)
     return U8_MAX;
 }
 
-void encode_base64(
+ureg encode_base64(
     const u8* restrict src, ureg src_size, char c_62, char c_63,
     char* restrict tgt)
 {
+    char* tgt_start = tgt;
     ureg src_size_whole = (src_size / 3) * 3;
     const u8* end = src + src_size_whole;
     while (src != end) {
@@ -62,31 +63,33 @@ void encode_base64(
     switch (src_size_rem) {
         case 0: break;
         case 1: {
-            *tgt = encode_6bits_base64(*src >> 2, c_62, c_63);
-            *++tgt = encode_6bits_base64((*src & 0x3) << 4, c_62, c_63);
+            *tgt++ = encode_6bits_base64(*src >> 2, c_62, c_63);
+            *tgt++ = encode_6bits_base64((*src & 0x3) << 4, c_62, c_63);
             break;
         }
         case 2: {
             u8 s0 = src[0];
             u8 s1 = src[1];
-            *tgt = encode_6bits_base64(s0 >> 2, c_62, c_63);
-            *++tgt = encode_6bits_base64((s0 & 0x3) << 4 | s1 >> 4, c_62, c_63);
-            *++tgt = encode_6bits_base64((s1 & 0xF) << 2, c_62, c_63);
+            *tgt++ = encode_6bits_base64(s0 >> 2, c_62, c_63);
+            *tgt++ = encode_6bits_base64((s0 & 0x3) << 4 | s1 >> 4, c_62, c_63);
+            *tgt++ = encode_6bits_base64((s1 & 0xF) << 2, c_62, c_63);
             break;
         }
         default: assert(false);
     }
+    return tgt - tgt_start;
 }
-const char*
-decode_base64(const char* src, ureg src_size, char c_62, char c_63, u8* tgt)
+ureg decode_base64(
+    const char* src, ureg src_size, char c_62, char c_63, u8* tgt)
 {
+    u8* tgt_start = tgt;
     ureg src_size_whole = (src_size / 4) * 4;
     const char* end = src + src_size_whole;
     while (src != end) {
         u32 data = 0;
         for (int i = 0; i < 4; i++) {
             u8 dec = decode_byte_base64(*src, c_62, c_63);
-            if (dec == U8_MAX) return src;
+            if (dec == U8_MAX) return UREG_MAX;
             data = data << 6 | dec;
             src++;
         }
@@ -99,29 +102,30 @@ decode_base64(const char* src, ureg src_size, char c_62, char c_63, u8* tgt)
     switch (src_size_rem) {
         case 0: break;
         case 1: {
-            return src + 1;
+            return UREG_MAX;
             break;
         }
         case 2: {
             u8 s0 = decode_byte_base64(src[0], c_62, c_63);
-            if (s0 == U8_MAX) return src;
+            if (s0 == U8_MAX) return UREG_MAX;
             u8 s1 = decode_byte_base64(src[1], c_62, c_63);
-            if (s1 == U8_MAX || s1 & 0xF) return src + 1;
-            *tgt = (s0 << 2) | (s1 >> 4);
+            if (s1 == U8_MAX || s1 & 0xF) return UREG_MAX;
+            *tgt++ = (s0 << 2) | (s1 >> 4);
             break;
         }
         case 3: {
             u8 s0 = decode_byte_base64(src[0], c_62, c_63);
-            if (s0 == U8_MAX) return src;
+            if (s0 == U8_MAX) return UREG_MAX;
             u8 s1 = decode_byte_base64(src[1], c_62, c_63);
-            if (s0 == U8_MAX) return src + 1;
+            if (s0 == U8_MAX) return UREG_MAX;
             u8 s2 = decode_byte_base64(src[2], c_62, c_63);
             if (s0 == U8_MAX || s0 & 0x03) return src + 2;
-            *tgt = s0 << 2 | s1 >> 4;
-            *++tgt = (s1 & 0xF) << 4 | s2 >> 2;
+            *tgt++ = s0 << 2 | s1 >> 4;
+            *tgt++ = (s1 & 0xF) << 4 | s2 >> 2;
             break;
         }
         default: assert(false);
     }
+    return tgt - tgt_start;
     return NULL;
 }

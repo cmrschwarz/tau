@@ -163,6 +163,21 @@ resolve_error instantiate_ast_node(
             return instantiate_ast_node(
                 r, c->target_type, &c->target_type, body, instance);
         }
+        case EXPR_ACCESS: {
+            expr_access* a = (expr_access*)n;
+            expr_access* ac;
+            COPY_INST(r, n, expr_access, ac, tgt);
+            ac->args = alloc_perm(r, a->arg_count * sizeof(ast_elem*));
+            if (!ac->args) return RE_FATAL;
+            re = instantiate_ast_node(r, ac->lhs, &ac->lhs, body, instance);
+            if (re) return re;
+            for (ureg i = 0; i < ac->arg_count; i++) {
+                re = instantiate_ast_node(
+                    r, a->args[i], &ac->args[i], body, instance);
+                if (re) return re;
+            }
+            return RE_OK;
+        }
         default:
             assert(false);
             *tgt = n; // for the common case we can share it... i think :)
@@ -279,7 +294,9 @@ resolve_error resolve_generic_struct(
     }
     if (*st) {
         // HACK: this is not threadsafe.
-        assert(ast_node_get_resolved((ast_node*)*st));
+        // this assertion doesn't hold if the type needs itself
+        // (e.g as a function parameter)
+        // assert(ast_node_get_resolved((ast_node*)*st));
         gim_unlock(&sg->inst_map);
         if (value) *value = (ast_elem*)*st;
         if (ctype) *ctype = TYPE_ELEM;
@@ -292,13 +309,14 @@ resolve_error resolve_generic_struct(
     if (!re) {
         *st = sgi;
         // TODO: unlock here, do syncronization with waiter list etc.
+        gim_unlock(&sg->inst_map);
         re = instantiate_generic_struct(
             r, sgi, ea, args, ctypes, sg, parent_body);
     }
     if (!re) {
         re = resolve_ast_node(r, (ast_node*)sgi, parent_body, value, ctype);
     }
-    gim_unlock(&sg->inst_map);
+
     sbuffer_remove_back(&r->temp_buffer, sizeof(ast_elem*) * ea->arg_count);
     sbuffer_remove_back(&r->temp_buffer, sizeof(ast_elem*) * ea->arg_count);
     return re;
