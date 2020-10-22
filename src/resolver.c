@@ -939,7 +939,10 @@ static resolve_error declare_ast_node(
             }
             return add_symbol(r, body, shared_body, (symbol*)sg);
         }
-        case SC_STRUCT:
+        case SC_STRUCT: {
+            re = resolver_mangle(r, n, id);
+            if (re) return re;
+        } // fallthrough
         case SC_STRUCT_GENERIC_INST: {
             // generic inst 'inherits' from struct
             sc_struct* s = (sc_struct*)n;
@@ -1051,6 +1054,8 @@ static resolve_error declare_ast_node(
             }
         } // fallthrough
         case SC_TRAIT: {
+            re = resolver_mangle(r, n, 0);
+            if (re) return re;
             sc_struct_base* t = (sc_struct_base*)n;
             re = add_symbol(r, body, shared_body, (symbol*)n);
             bool members_public_st =
@@ -1068,6 +1073,8 @@ static resolve_error declare_ast_node(
             return RE_OK;
         } break;
         case TRAIT_IMPL: {
+            re = resolver_mangle(r, n, 0);
+            if (re) return re;
             trait_impl* ti = (trait_impl*)n;
             ast_body* tgt_body = get_decl_target_body(n, body, shared_body);
             assert(tgt_body->symtab->tt);
@@ -3055,6 +3062,8 @@ static inline resolve_error resolve_ast_node_raw(
                     if (re) return re;
                 }
                 ast_node_set_resolved(n);
+                re = resolver_mangle(r, n, 0);
+                if (re) return re;
             }
             SET_THEN_RETURN(value, ctype, n, GENERIC_TYPE_ELEM);
         }
@@ -3077,6 +3086,8 @@ static inline resolve_error resolve_ast_node_raw(
                     re = resolve_param(r, &tg->generic_params[i], true, NULL);
                     if (re) return re;
                 }
+                re = resolver_mangle(r, n, 0);
+                if (re) return re;
                 ast_node_set_resolved(n);
             }
             SET_THEN_RETURN(value, ctype, n, GENERIC_TYPE_ELEM);

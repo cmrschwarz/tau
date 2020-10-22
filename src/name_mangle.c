@@ -43,9 +43,12 @@ static inline int push_name_mangle_node_raw(
         n->str_len = strlen(str);
         *size += n->str_len;
     }
+    if (k == NMNK_IDENT_LEN_STR || k == NMNK_LEN_STR) {
+        *size += ureg_get_decimal_digits_count(n->str_len);
+    }
     if (k == NMNK_IDENT_ID) {
         n->content.id = id;
-        n->str_len = ureg_get_decimal_digits_count(n->str_len);
+        n->str_len = ureg_get_decimal_digits_count(id);
         *size += n->str_len;
     }
     return OK;

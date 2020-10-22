@@ -2694,7 +2694,7 @@ llvm_error linkLLVMModules(
     llvm::SmallVector<char, 128> errs_sv;
     llvm::raw_svector_ostream errs_sv_stream{errs_sv};
     bool res = OK;
-    llvm_error lle;
+    llvm_error lle = LLE_OK;
     switch (tc->t->target.object_format) {
         case OBJECT_FORMAT_ELF:
             res = lld::elf::link(arr_ref, false, llvm::nulls(), errs_sv_stream);

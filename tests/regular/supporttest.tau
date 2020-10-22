@@ -9,14 +9,14 @@ public func foo() -> int{
     x := malloc(16) as *[2]int;
     printf("malloced array\n");
     (*x)[0] = 42;
-    (*x)[1] = 17;  
+    (*x)[1] = 17;
     printf("filled mallloced array: {%i, %i}\n", (*x)[0], (*x)[1]);
     res := (*x)[0] - 42 + (*x)[1] - 17;
     free(x as *void);
     return res;
 }
 
-public func main() -> int{
+public extern func main() -> int{
     foo();
     #debug_silence_stdout();
     return #foo();
