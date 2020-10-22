@@ -396,7 +396,6 @@ err:
 int base64_test()
 {
     u8 res[16];
-    char* a = "a";
     if (decode_base64("a", 1, '+', '/', (u8*)&res) != UREG_MAX) return ERR;
     res[0] = '$';
     if (decode_base64((char*)res, 10, '+', '/', (u8*)&res) != UREG_MAX) {

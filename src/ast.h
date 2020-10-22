@@ -604,7 +604,9 @@ typedef struct expr_call_s {
 typedef struct expr_access_s {
     ast_node node;
     ast_node* lhs;
-    ast_elem** args;
+    //args can be types in case of generic args, but
+    //that would leave identifiers here which are still ast_nodes
+    ast_node** args;
     ast_elem* ctype;
     ureg arg_count;
 } expr_access;

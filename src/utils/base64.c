@@ -119,7 +119,7 @@ ureg decode_base64(
             u8 s1 = decode_byte_base64(src[1], c_62, c_63);
             if (s0 == U8_MAX) return UREG_MAX;
             u8 s2 = decode_byte_base64(src[2], c_62, c_63);
-            if (s0 == U8_MAX || s0 & 0x03) return src + 2;
+            if (s0 == U8_MAX || s0 & 0x03) return UREG_MAX;
             *tgt++ = s0 << 2 | s1 >> 4;
             *tgt++ = (s1 & 0xF) << 4 | s2 >> 2;
             break;
@@ -127,5 +127,4 @@ ureg decode_base64(
         default: assert(false);
     }
     return tgt - tgt_start;
-    return NULL;
 }

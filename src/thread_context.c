@@ -70,7 +70,10 @@ int thread_context_do_job(thread_context* tc, job* j)
             });
 
         if (pe) tauc_error_occured(tc->t, pe);
-        if (pe == PE_FATAL) return ERR;
+        if (pe == PE_FATAL) {
+            error_log_report_allocation_failiure(tc->err_log);
+            return ERR;
+        }
         return OK;
     }
     if (j->kind == JOB_RESOLVE) {
@@ -91,7 +94,10 @@ int thread_context_do_job(thread_context* tc, job* j)
             &tc->r, start, end, j->concrete.resolve.partial_res_data, &mod);
         if (re == RE_SUSPENDED) return RE_OK;
         if (re) tauc_error_occured(tc->t, re);
-        if (re == RE_FATAL) r = ERR;
+        if (re == RE_FATAL) {
+            error_log_report_allocation_failiure(tc->err_log);
+            r = ERR;
+        }
         // don't bother creating objs if we had any error somewhere
         // since we can't create the final exe anyways
         // (this needs to change this later once we can reuse objs)
@@ -164,10 +170,7 @@ void thread_context_run(thread_context* tc)
             break;
         }
         r = thread_context_do_job(tc, &j);
-        if (r) {
-            error_log_report_allocation_failiure(tc->err_log);
-            break;
-        }
+        if (r) break;
     }
     ureg atc = atomic_ureg_dec(&tc->t->active_thread_count) - 1;
     job_queue_check_waiters(&tc->t->jobqueue, atc);

@@ -1940,8 +1940,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             llvm::Value *arr, *index;
             lle = genAstNode(ea->lhs, &arr, NULL);
             if (lle) return lle;
-            // HACK: cheat ast_elem to node
-            lle = genAstNode((ast_node*)ea->args[0], NULL, &index);
+            lle = genAstNode(ea->args[0], NULL, &index);
             if (lle) return lle;
             ast_elem* lhst = get_resolved_ast_node_ctype(ea->lhs);
             if (lhst->kind == TYPE_SLICE) {
