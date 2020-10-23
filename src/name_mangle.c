@@ -146,9 +146,12 @@ int push_scope_name(
 }
 
 int push_ctype(
-    tauc* t, ast_elem* ctype, ast_body* ctx, sbuffer* buff, ureg* size)
+    tauc* t, ast_elem* ctype, ast_body* ctx, sbuffer* buff, ureg* size,
+    bool put_sep_after, bool* sep_required_before)
 {
+    *sep_required_before = false;
     int r;
+    bool no_sep = false;
     while (true) {
         switch (ctype->kind) {
             case SYM_PRIMITIVE: {
@@ -171,6 +174,7 @@ int push_ctype(
                 break;
             }
             case TYPE_POINTER: {
+                no_sep = true;
                 type_pointer* tp = (type_pointer*)ctype;
                 r = push_name_mangle_ident_node(
                     tp->tb.is_const ? "P" : "p", buff, size);
@@ -184,6 +188,9 @@ int push_ctype(
         break;
     }
     assert(ast_elem_is_symbol(ctype));
+    if (put_sep_after && !no_sep) {
+        if (push_name_mangle_ident_node("N", buff, size)) return ERR;
+    }
     symbol* s = (symbol*)ctype;
     if (push_name_mangle_len_str_node(s->name, buff, size)) return ERR;
     ureg cb_level = 0;
@@ -196,7 +203,10 @@ int push_ctype(
         cb = cb->parent;
         cb_level--;
     }
-    if (cb == ctx) return OK;
+    if (cb == ctx) {
+        *sep_required_before = true;
+        return OK;
+    }
     ast_body* ctxb = ctx;
     ureg escape_count = 0;
     while (ctx_level > cb_level) {
@@ -224,14 +234,9 @@ int push_ctype(
             }
         }
     }
-    return OK;
-}
-int push_generic_arg(
-    tauc* t, sym_param_generic_inst* generic_arg, ast_body* ctx, sbuffer* buff,
-    ureg* size)
-{
-    assert(generic_arg->value->kind != EXPR_PASTE_EVALUATION); // TODO
-    if (push_ctype(t, generic_arg->value, ctx, buff, size)) return ERR;
+    else {
+        *sep_required_before = true;
+    }
     return OK;
 }
 int push_generic_args(
@@ -240,13 +245,14 @@ int push_generic_args(
 {
     if (generic_args_count == 0) return OK;
     if (push_name_mangle_ident_node("q", buff, size)) return ERR;
-    for (ureg i = 0; i < generic_args_count - 1; i++) {
-        if (push_generic_arg(t, &generic_args[i], ctx, buff, size)) return ERR;
-        if (push_name_mangle_ident_node("N", buff, size)) return ERR;
-    }
-    if (push_generic_arg(
-            t, &generic_args[generic_args_count - 1], ctx, buff, size)) {
-        return ERR;
+    bool sep_after = false;
+    for (ureg i = generic_args_count; i != 0; i--) {
+        assert(
+            generic_args[i - 1].value->kind != EXPR_PASTE_EVALUATION); // TODO
+        if (push_ctype(
+                t, generic_args[i - 1].value, ctx, buff, size, sep_after,
+                &sep_after))
+            return ERR;
     }
     if (push_name_mangle_ident_node("Q", buff, size)) return ERR;
     return OK; // TODO
@@ -257,12 +263,13 @@ int push_params(
 {
     if (param_count == 0) return OK;
     if (push_name_mangle_ident_node("q", buff, size)) return ERR;
-    for (ureg i = 0; i < param_count - 1; i++) {
-        if (push_ctype(t, params[i].ctype, ctx, buff, size)) return ERR;
-        if (push_name_mangle_ident_node("N", buff, size)) return ERR;
-    }
-    if (push_ctype(t, params[param_count - 1].ctype, ctx, buff, size)) {
-        return ERR;
+    bool sep_after = false;
+    for (ureg i = param_count; i != 0; i--) {
+        if (push_ctype(
+                t, params[i - 1].ctype, ctx, buff, size, sep_after,
+                &sep_after)) {
+            return ERR;
+        }
     }
     if (push_name_mangle_ident_node("Q", buff, size)) return ERR;
     return OK; // TODO
