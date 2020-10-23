@@ -3448,7 +3448,7 @@ parse_error parse_import_with_parent(
         else {
             sym_import_module* im = alloc_perm(p, sizeof(sym_import_module));
             if (!im) return PE_FATAL;
-            im->im_data.pprn = NULL;
+            im->im_data.waiting_pprn.pprn = NULL;
             ast_node_init_with_mods(
                 (ast_node*)im, SYM_IMPORT_MODULE, &mods->data);
             ast_node_fill_srange(p, (ast_node*)im, istart, end);
@@ -3510,7 +3510,7 @@ parse_error parse_import_with_parent(
         if (pe) return pe;
         im_data->imported_module = parent;
         im_data->importing_module = p->current_module;
-        im_data->pprn = NULL;
+        im_data->waiting_pprn.pprn = NULL;
     }
     else if (t->kind == TK_BRACE_OPEN) {
         if (name) {

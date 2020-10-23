@@ -1,7 +1,7 @@
 #pragma once
 
 #include "atomic_pool.h"
-#include "utils/error.h"
+#include "error.h"
 #include "math_utils.h"
 #include "threading.h"
 

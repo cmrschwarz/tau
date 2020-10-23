@@ -10,19 +10,19 @@ cmake_minimum_required(VERSION 3.4.3)
 ###############################################################################
 
 option(TAU_COMPILE_LLVM
-    "compile custom version of llvm" 
+    "compile custom version of llvm"
     OFF
 )
 option(TAU_LLVM_DYNAMIC
-    "link llvm dynamically (linux only)" 
+    "link llvm dynamically (linux only)"
     OFF
 )
 set(TAU_LLVM_DIR "${CMAKE_CURRENT_LIST_DIR}/llvm-project"
-    CACHE STRING 
+    CACHE STRING
     "location of llvm"
 )
 set(TAU_LLVM_PRECOMPILE_DIR "${CMAKE_CURRENT_LIST_DIR}/llvm-project-prebuild"
-    CACHE STRING 
+    CACHE STRING
     "location for custom llvm precompile"
 )
 
@@ -47,7 +47,7 @@ set (TAU_LLVM_COMPONENTS
     libdriver
 )
 
-set (TAU_LLD_COMPONENTS      
+set (TAU_LLD_COMPONENTS
     lldDriver
     lldMinGW
     lldELF
@@ -63,8 +63,8 @@ set (TAU_LLD_COMPONENTS
 set (TAU_CLANG_COMPONENTS)
 
 if(${TAU_COMPILE_LLVM})
-    set(TAU_LLVM_TARGETS_TO_BUILD "X86;" CACHE BOOL 
-        "Semicolon separated list of target architectures to build and link" 
+    set(TAU_LLVM_TARGETS_TO_BUILD "X86;" CACHE BOOL
+        "Semicolon separated list of target architectures to build and link"
     FORCE)
     set(LLVM_TARGETS_TO_BUILD ${TAU_LLVM_TARGETS_TO_BUILD} CACHE BOOL "" FORCE)
     #disable unneeded LLVM parts
@@ -78,7 +78,7 @@ if(${TAU_COMPILE_LLVM})
     #enable exception handling (disabled, can't catch alloc anyways)
     #set(LLVM_ENABLE_EH ON CACHE BOOL "" FORCE)
     #set(LLVM_ENABLE_RTTI ON CACHE BOOL "" FORCE)
-    
+
 
     # enable LLD disable other projects
     # (clang disabled for now)
@@ -99,10 +99,10 @@ if(${TAU_COMPILE_LLVM})
         EXCLUDE_FROM_ALL
     )
     # restore build type, this is a veru ugly hack
-    # TODO: find a better way to do this 
+    # TODO: find a better way to do this
     set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_SAVED})
     set(CMAKE_BUILD_TYPE ${CMAKE_BUILD_TYPE_SAVED} PARENT_SCOPE)
-    set(TAU_LLVM_INCLUDE_DIRS 
+    set(TAU_LLVM_INCLUDE_DIRS
         "${TAU_LLVM_DIR}/llvm/include"
         "${TAU_LLVM_DIR}/lld/include"
         "${TAU_LLVM_DIR}/clang/include"
@@ -131,7 +131,7 @@ else()
     include("${CMAKE_CURRENT_LIST_DIR}/cmake/findLLVM.cmake")
     include("${CMAKE_CURRENT_LIST_DIR}/cmake/findLLD.cmake")
     #include("${CMAKE_CURRENT_LIST_DIR}/cmake/findClang.cmake")
-    set(TAU_LLVM_INCLUDE_DIRS 
+    set(TAU_LLVM_INCLUDE_DIRS
         ${LLVM_INCLUDE_DIRS}
         ${LLD_INCLUDE_DIRS}
         ${CLANG_INCLUDE_DIRS}
@@ -141,9 +141,9 @@ else()
         ${LLD_DEFINITIONS}
         ${CLANG_DEFINITIONS}
     )
-    set(TAU_LLVM_LIBS 
-        ${CLANG_LIBS} 
-        ${LLD_LIBS} 
+    set(TAU_LLVM_LIBS
+        ${CLANG_LIBS}
+        ${LLD_LIBS}
         ${LLVM_LIBS}
     )
 endif()
@@ -163,7 +163,7 @@ set(TAU_THREADS_LIBS "${CMAKE_THREAD_LIBS_INIT}")
 
 # Math
 ###############################################################################
-if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR 
+if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang" OR
     "${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU"
 )
     set(TAU_MATH_LIBS "m")
@@ -173,9 +173,9 @@ endif ()
 # Exports
 ###############################################################################
 
-set(TAU_DEPS_INCLUDE_DIRS 
+set(TAU_DEPS_INCLUDE_DIRS
     ${TAU_LLVM_INCLUDE_DIRS}
-    ${TAU_SORT_H_INCLUDE_DIRS}    
+    ${TAU_SORT_H_INCLUDE_DIRS}
     PARENT_SCOPE
 )
 set(TAU_DEPS_DEFINITIONS

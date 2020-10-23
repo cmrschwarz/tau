@@ -1,5 +1,5 @@
 #pragma once
 
-#include "utils/plattform.h"
+#include "plattform.h"
 void panic(const char* message);
 void debugbreak();

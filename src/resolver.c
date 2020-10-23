@@ -340,7 +340,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
     freelist_free(&r->pp_resolve_nodes, pprn);
     // print_pprns(r, "", true);
 }
-static pp_resolve_node* pp_resolve_node_create(
+pp_resolve_node* pp_resolve_node_create(
     resolver* r, ast_node* n, ast_body* declaring_body, bool run_individually,
     bool sequential_block, bool dummy, bool notify_when_ready)
 {
@@ -502,7 +502,7 @@ pprn_depend_on_raw(pp_resolve_node** dependency_p, pp_resolve_node* depending)
     depending->dep_count++;
     return RE_OK;
 }
-static inline resolve_error
+resolve_error
 curr_pprn_depend_on(resolver* r, ast_body* body, pp_resolve_node** dependency_p)
 {
     pp_resolve_node* dependency = *dependency_p;
@@ -2637,9 +2637,9 @@ resolve_error resolve_importing_node(
         previously_used_in_pp = false;
         used_in_pp = true;
     }
-    else if (im_data->pprn) {
+    else if (im_data->waiting_pprn.pprn) {
         previously_used_in_pp = ast_node_get_used_in_pp(node);
-        re = curr_pprn_depend_on(r, body, &im_data->pprn);
+        re = curr_pprn_depend_on(r, body, &im_data->waiting_pprn.pprn);
         if (re) return re;
         used_in_pp = ast_node_get_used_in_pp(node);
         if (!used_in_pp) {
@@ -2662,7 +2662,7 @@ resolve_error resolve_importing_node(
     mdg_node* mdg = im_data->imported_module;
     mdg_node* im_mdg = NULL; // only set this when incrementing dep count!
     if (used_in_pp && !previously_used_in_pp) {
-        atomic_boolean_init(&im_data->done, false);
+        atomic_boolean_init(&im_data->waiting_pprn.done, false);
         im_mdg = im_data->importing_module;
         atomic_ureg_inc(&im_mdg->ungenerated_pp_deps);
     }
@@ -2696,23 +2696,24 @@ resolve_error resolve_importing_node(
     if (request_pp) {
         if (tauc_request_pp_module(r->tc->t, mdg)) return RE_FATAL;
     }
-    if (im_data->pprn) {
+    if (im_data->waiting_pprn.pprn) {
         if (available) {
-            re = pp_resolve_node_ready(r, im_data->pprn);
+            re = pp_resolve_node_ready(r, im_data->waiting_pprn.pprn);
             if (re) return re;
         }
     }
     else if (!available) {
-        im_data->pprn =
+        im_data->waiting_pprn.pprn =
             pp_resolve_node_create(r, node, body, false, false, true, true);
-        if (!im_data->pprn) return re;
-        if (ptrlist_append(&r->import_module_data_nodes, im_data)) {
-            pprn_fin(r, im_data->pprn, true);
+        if (!im_data->waiting_pprn.pprn) return re;
+        if (ptrlist_append(&r->thread_waiting_pprns, &im_data->waiting_pprn)) {
+            pprn_fin(r, im_data->waiting_pprn.pprn, true);
             return RE_FATAL;
         }
-        re = curr_pprn_depend_on(r, body, &im_data->pprn);
+        re = curr_pprn_depend_on(r, body, &im_data->waiting_pprn.pprn);
         if (re) return re;
-        re = pp_resolve_node_activate(r, body, &im_data->pprn, false);
+        re = pp_resolve_node_activate(
+            r, body, &im_data->waiting_pprn.pprn, false);
         if (re) return re;
     }
     if (available && used_in_pp) {
@@ -2873,24 +2874,53 @@ resolve_import_symbol(resolver* r, sym_import_symbol* is, ast_body* body)
     ast_node_set_resolved(node);
     return RE_OK;
 }
-static inline resolve_error resolve_generic_args(
-    resolver* r, ast_body* body, ast_body* ctx, sym_param_generic_inst* args,
-    ureg arg_count)
+static inline resolve_error resolve_expr_access(
+    resolver* r, expr_access* ea, ast_body* body, ast_elem** value,
+    ast_elem** ctype)
 {
-    for (ureg i = 0; i < arg_count; i++) {
-        if (ast_elem_is_node(args[i].value)) {
-            resolve_error re = resolve_ast_node(
-                r, (ast_node*)args[i].value, ctx, NULL, &args[i].ctype);
-            if (re) return re;
+    ast_elem* lhs_ctype;
+    ast_elem* lhs_val;
+    resolve_error re = resolve_ast_node(r, ea->lhs, body, &lhs_val, &lhs_ctype);
+    if (re) return re;
+    if (ast_elem_is_type_slice(lhs_ctype)) {
+        assert(ea->arg_count == 1); // TODO: error
+        ast_elem* rhs_ctype;
+        re = resolve_ast_node(r, ea->args[0], body, NULL, &rhs_ctype);
+        type_cast_result tcr =
+            type_cast((ast_elem*)&PRIMITIVES[PT_INT], rhs_ctype, &ea->args[0]);
+        if (tcr) {
+            if (tcr == TYPE_CAST_INCOMPATIBLE) {
+                src_range_large array_srl;
+                src_range_large index_srl;
+                ast_node_get_src_range(ea->lhs, body, &array_srl);
+                ast_node_get_src_range(ea->args[0], body, &index_srl);
+                // TODO: different error for negative values
+                error_log_report_annotated_twice(
+                    r->tc->err_log, ES_RESOLVER, false,
+                    "invalid array index type", index_srl.smap, index_srl.start,
+                    index_srl.end, "index type is not convertible to integer",
+                    array_srl.smap, array_srl.start, array_srl.end,
+                    "in the element access of this array");
+                r->error_occured = true;
+            }
+            SET_THEN_RETURN_POISONED(
+                r, RE_OK, ea, body, value, ctype, ea, ERROR_ELEM);
         }
-        else {
-            assert(false); // TODO: handle  type arguments and stuff
-        }
-        if (args[i].ctype == ERROR_ELEM) {
-            if (curr_pprn_propagate_error(r, body)) return RE_FATAL;
-        }
+        ea->node.op_kind = OP_ARRAY_ACCESS;
+        ast_node_set_resolved(&ea->node);
+        ea->ctype = ((type_slice*)lhs_ctype)->ctype_members;
+        SET_THEN_RETURN(value, ctype, NULL, ea->ctype);
     }
-    return RE_OK;
+    if (lhs_val->kind == SC_STRUCT_GENERIC) {
+        return resolve_generic_struct_access(
+            r, ea, body, (sc_struct_generic*)lhs_val, value, ctype);
+    }
+    else if (lhs_val == ERROR_ELEM) {
+        SET_THEN_RETURN_POISONED(
+            r, RE_OK, ea, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
+    }
+    assert(false); // TODO operator overloading / generics
+    return RE_FATAL;
 }
 static inline resolve_error resolve_ast_node_raw(
     resolver* r, ast_node* n, ast_body* body, ast_elem** value,
@@ -3070,10 +3100,6 @@ static inline resolve_error resolve_ast_node_raw(
         case SC_STRUCT_GENERIC_INST: {
             sc_struct_generic_inst* si = (sc_struct_generic_inst*)n;
             if (resolved) SET_THEN_RETURN(value, ctype, n, TYPE_ELEM);
-            re = resolve_generic_args(
-                r, &si->base->sb.sc.body, body, si->generic_args,
-                si->generic_arg_count);
-            if (re) return re;
             re = resolver_mangle(r, n, 0);
             if (re) return re;
             return resolve_unordered_body(
@@ -3095,10 +3121,6 @@ static inline resolve_error resolve_ast_node_raw(
         case SC_TRAIT_GENERIC_INST: {
             sc_trait_generic_inst* ti = (sc_trait_generic_inst*)n;
             if (resolved) SET_THEN_RETURN(value, ctype, n, TYPE_ELEM);
-            re = resolve_generic_args(
-                r, &ti->base->sb.sc.body, body, ti->generic_args,
-                ti->generic_arg_count);
-            if (re) return re;
             re = resolver_mangle(r, n, 0);
             if (re) return re;
             return resolve_unordered_body(
@@ -3110,10 +3132,6 @@ static inline resolve_error resolve_ast_node_raw(
         case TRAIT_IMPL_GENERIC_INST: {
             trait_impl_generic_inst* ti = (trait_impl_generic_inst*)n;
             if (resolved) SET_THEN_RETURN(value, ctype, n, TYPE_ELEM);
-            re = resolve_generic_args(
-                r, &ti->base->tib.body, body, ti->generic_args,
-                ti->generic_arg_count);
-            if (re) return re;
             re = resolver_mangle(r, n, 0);
             if (re) return re;
             return resolve_unordered_body(
@@ -3147,9 +3165,9 @@ static inline resolve_error resolve_ast_node_raw(
                 im_data = &((astn_anonymous_sym_import_group*)n)->im_data;
             }
             if (resolved) {
-                if (im_data->pprn) {
-                    resolve_error re =
-                        curr_pprn_depend_on(r, body, &im_data->pprn);
+                if (im_data->waiting_pprn.pprn) {
+                    resolve_error re = curr_pprn_depend_on(
+                        r, body, &im_data->waiting_pprn.pprn);
                     if (re) return re;
                 }
                 SET_THEN_RETURN(value, ctype, n, NULL);
@@ -3408,49 +3426,7 @@ static inline resolve_error resolve_ast_node_raw(
             if (resolved) {
                 SET_THEN_RETURN(value, ctype, NULL, ea->ctype);
             }
-            ast_elem* lhs_ctype;
-            ast_elem* lhs_val;
-            re = resolve_ast_node(r, ea->lhs, body, &lhs_val, &lhs_ctype);
-            if (re) return re;
-            if (ea->arg_count == 1 && ast_elem_is_type_slice(lhs_ctype)) {
-                ast_elem* rhs_ctype;
-                re = resolve_ast_node(r, ea->args[0], body, NULL, &rhs_ctype);
-                type_cast_result tcr = type_cast(
-                    (ast_elem*)&PRIMITIVES[PT_INT], rhs_ctype, &ea->args[0]);
-                if (tcr) {
-                    if (tcr == TYPE_CAST_INCOMPATIBLE) {
-                        src_range_large array_srl;
-                        src_range_large index_srl;
-                        ast_node_get_src_range(ea->lhs, body, &array_srl);
-                        ast_node_get_src_range(ea->args[0], body, &index_srl);
-                        // TODO: different error for negative values
-                        error_log_report_annotated_twice(
-                            r->tc->err_log, ES_RESOLVER, false,
-                            "invalid array index type", index_srl.smap,
-                            index_srl.start, index_srl.end,
-                            "index type is not convertible to integer",
-                            array_srl.smap, array_srl.start, array_srl.end,
-                            "in the element access of this array");
-                        r->error_occured = true;
-                    }
-                    SET_THEN_RETURN_POISONED(
-                        r, RE_OK, ea, body, value, ctype, ea, ERROR_ELEM);
-                }
-                ea->node.op_kind = OP_ARRAY_ACCESS;
-                ast_node_set_resolved(&ea->node);
-                ea->ctype = ((type_slice*)lhs_ctype)->ctype_members;
-                SET_THEN_RETURN(value, ctype, NULL, ea->ctype);
-            }
-            if (lhs_val->kind == SC_STRUCT_GENERIC) {
-                return resolve_generic_struct(
-                    r, ea, (sc_struct_generic*)lhs_val, body, value, ctype);
-            }
-            else if (lhs_val == ERROR_ELEM) {
-                SET_THEN_RETURN_POISONED(
-                    r, RE_OK, ea, body, value, ctype, ERROR_ELEM, ERROR_ELEM);
-            }
-            assert(false); // TODO operator overloading / generics
-            return RE_FATAL;
+            return resolve_expr_access(r, ea, body, value, ctype);
         }
         case EXPR_MACRO_STR_CALL: {
             // TODO: implement this properly
@@ -3790,8 +3766,6 @@ resolve_error resolve_func(
     ast_node** continue_block)
 {
     bool generic = (fnb->sc.osym.sym.node.kind == SC_FUNC_GENERIC);
-    bool generic_parent = r->generic_context;
-    r->generic_context = generic || generic_parent;
     resolve_error re = RE_OK;
     if (!continue_block) {
         if (!ast_node_get_static((ast_node*)fnb)) {
@@ -3806,25 +3780,18 @@ resolve_error resolve_func(
             sc_func_generic* fng = (sc_func_generic*)fnb;
             for (ureg i = 0; i < fng->generic_param_count; i++) {
                 re = resolve_param(r, &fng->generic_params[i], false, NULL);
-                if (re) {
-                    r->generic_context = generic_parent;
-                    return re;
-                }
+                if (re) return re;
             }
         }
         for (ureg i = 0; i < fnb->param_count; i++) {
             re = resolve_param(r, &fnb->params[i], false, NULL);
-            if (re) {
-                r->generic_context = generic_parent;
-                return re;
-            }
+            if (re) return re;
         }
         if (fnb->return_type) {
             re = resolve_ast_node(
                 r, fnb->return_type, fnb->sc.osym.sym.declaring_body,
                 &fnb->return_ctype, NULL);
             if (re) {
-                r->generic_context = generic_parent;
                 fnb->return_ctype = ERROR_ELEM;
                 if (re == RE_UNREALIZED_COMPTIME || re == RE_FATAL) return re;
                 ast_node_set_poisoned((ast_node*)fnb);
@@ -3836,7 +3803,6 @@ resolve_error resolve_func(
         // handle function declarations
         if (fnb->sc.body.srange == SRC_RANGE_INVALID) {
             ast_node_set_resolved((ast_node*)fnb);
-            r->generic_context = generic_parent;
             if (fnb->sc.body.pprn) {
                 return pp_resolve_node_activate(
                     r, requesting_body, &fnb->sc.body.pprn, true);
@@ -3890,7 +3856,6 @@ resolve_error resolve_func(
     r->curr_pp_node = prev_pprn;
     // this must be reset before we call add dependency
     pp_resolve_node* bpprn = fnb->sc.body.pprn;
-    r->generic_context = generic_parent;
     if (re == RE_UNREALIZED_COMPTIME || re == RE_UNKNOWN_SYMBOL) {
         assert(bpprn);
         bpprn->needs_further_resolution = true;
@@ -4542,23 +4507,31 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
         re = handle_pending_pprns(r, &progress);
         if (re) return re;
         if (!progress && r->committed_waiters != 0) {
-            pli it = pli_rbegin(&r->import_module_data_nodes);
+            pli it = pli_rbegin(&r->thread_waiting_pprns);
             bool awaiting = false;
             for (ast_node* n = pli_prev(&it); n; n = pli_prev(&it)) {
-                import_module_data* im_data = (import_module_data*)n;
-                if (im_data->pprn) {
-                    if (ast_node_get_used_in_pp(im_data->pprn->node)) {
+                thread_waiting_pprn* twp = (thread_waiting_pprn*)n;
+                ast_node* n = NULL;
+                if (twp->pprn) {
+                    n = twp->pprn->node;
+                    if (ast_node_get_used_in_pp(twp->pprn->node)) {
                         awaiting = true;
-                        if (atomic_boolean_load(&im_data->done)) {
-                            re = pp_resolve_node_ready(r, im_data->pprn);
+                        if (atomic_boolean_load(&twp->done)) {
+                            re = pp_resolve_node_ready(r, twp->pprn);
                             if (re) return re;
                             progress = true;
                         }
                     }
                 }
-                if (!im_data->pprn) {
+                if (!twp->pprn) {
                     progress = true;
-                    ptrlist_remove_next(&r->import_module_data_nodes, &it);
+                    ptrlist_remove_next(&r->thread_waiting_pprns, &it);
+                    // TODO: improve this...
+                    // we currently have dangling pointers
+                    // from pprn->notified_by's into this
+                    if (n && n->kind == SC_STRUCT_GENERIC_INST) {
+                        tfree(twp);
+                    }
                 }
             }
             if (!progress && awaiting) {
@@ -4633,11 +4606,11 @@ void free_pprnlist(resolver* r, sbuffer* buff, bool error_occured)
 }
 void free_pprns(resolver* r, bool error_occured)
 {
-    pli it = pli_rbegin(&r->import_module_data_nodes);
+    pli it = pli_rbegin(&r->thread_waiting_pprns);
     for (ast_node* n = pli_prev(&it); n; n = pli_prev(&it)) {
-        import_module_data* im_data = (import_module_data*)n;
-        if (im_data->pprn) {
-            pprn_fin(r, im_data->pprn, error_occured);
+        thread_waiting_pprn* twp = (thread_waiting_pprn*)n;
+        if (twp->pprn) {
+            pprn_fin(r, twp->pprn, error_occured);
         }
     }
     free_pprnlist(r, &r->pp_resolve_nodes_pending, error_occured);
@@ -4651,7 +4624,6 @@ void free_pprns(resolver* r, bool error_occured)
 }
 void resolver_reset_resolution_state(resolver* r)
 {
-    r->generic_context = false;
     r->curr_pp_node = NULL;
     r->retracing_type_loop = false;
     r->module_group_constructor = NULL;
@@ -4897,7 +4869,7 @@ void resolver_unpack_partial_resolution_data(
     sbuffer_take_and_invalidate(
         &r->pp_resolve_nodes_waiting, &prd->pprns_waiting);
     sbuffer_take_and_invalidate(
-        &r->import_module_data_nodes, &prd->import_module_data_nodes);
+        &r->thread_waiting_pprns, &prd->thread_waiting_pprns);
 #if DEBUG
     assert(r->pp_resolve_nodes.alloc_count == 0);
     r->pp_resolve_nodes.alloc_count = prd->pprn_count;
@@ -4944,7 +4916,7 @@ resolve_error resolver_suspend(resolver* r)
         return RE_FATAL;
     }
     res = sbuffer_steal_used(
-        &p->import_module_data_nodes, &r->import_module_data_nodes, false);
+        &p->thread_waiting_pprns, &r->thread_waiting_pprns, false);
     if (res) {
         sbuffer_take_and_invalidate(
             &r->pp_resolve_nodes_waiting, &p->pprns_waiting);
@@ -5016,7 +4988,7 @@ int resolver_partial_fin(resolver* r, int i, int res)
         case 11: ppdct_fin(&r->ppdct); // fallthrough
         case 10: ptr_map_fin(&r->pm); // fallthrough
         case 9: prp_fin(&r->prp); // fallthrough
-        case 8: ptrlist_fin(&r->import_module_data_nodes); // fallthrough
+        case 8: ptrlist_fin(&r->thread_waiting_pprns); // fallthrough
         case 7: ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
         case 6: ptrlist_fin(&r->pp_resolve_nodes_pending); // fallthrough
         case 5: ptrlist_fin(&r->pp_resolve_nodes_waiting); // fallthrough
@@ -5050,7 +5022,7 @@ int resolver_init(resolver* r, thread_context* tc)
     if (e) return resolver_partial_fin(r, 5, e);
     e = ptrlist_init(&r->pp_resolve_nodes_ready, 16);
     if (e) return resolver_partial_fin(r, 6, e);
-    e = ptrlist_init(&r->import_module_data_nodes, 16);
+    e = ptrlist_init(&r->thread_waiting_pprns, 16);
     if (e) return resolver_partial_fin(r, 7, e);
     e = prp_init(&r->prp, r->tc);
     if (e) return resolver_partial_fin(r, 8, e);

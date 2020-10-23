@@ -374,7 +374,7 @@ void mdg_node_fin(mdg_node* n)
         n->body.symtab = NULL;
     }
     if (n->partial_res_data) {
-        ptrlist_fin(&n->partial_res_data->import_module_data_nodes);
+        ptrlist_fin(&n->partial_res_data->thread_waiting_pprns);
         ptrlist_fin(&n->partial_res_data->pprns_pending);
         ptrlist_fin(&n->partial_res_data->pprns_waiting);
         pool_fin(&n->partial_res_data->pprn_mem);
@@ -576,7 +576,7 @@ int mdg_nodes_generated(
         while (ok) {
             import_module_data* im_data = list_it_next(&it, l);
             if (!im_data) break;
-            atomic_boolean_store(&im_data->done, true);
+            atomic_boolean_store(&im_data->waiting_pprn.done, true);
             mdg_node* dep_mdg = im_data->importing_module;
             if (sccd_run(
                     &tc->sccd, (mdg_node*)dep_mdg, SCCD_PP_DEP_GENERATED)) {

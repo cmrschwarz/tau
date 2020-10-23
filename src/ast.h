@@ -139,17 +139,25 @@ typedef struct use_exclusions_s {
     };
 } use_restrictions;
 
-typedef struct pending_generic_s {
-    atomic_boolean progress;
+typedef struct thread_waiting_pprn_s {
+    atomic_boolean done;
     pp_resolve_node* pprn;
-} pending_generic;
+} thread_waiting_pprn;
+
+typedef struct generic_resolution_ctx_s {
+    thread_context* responsible_tc;
+    // when the responsible tc has to abort because of unmet deps
+    // this gets set
+    bool instantiated;
+    thread_waiting_pprn* current_thread_waiting_pprn;
+    list waiters; // list of pending pprns
+} generic_resolution_ctx;
 
 typedef struct import_module_data_s {
+    thread_waiting_pprn waiting_pprn;
     // not relative to what, but who actually imported
     mdg_node* importing_module;
     mdg_node* imported_module;
-    atomic_boolean done;
-    pp_resolve_node* pprn;
 } import_module_data;
 
 typedef struct sym_import_module_s {
@@ -455,7 +463,7 @@ typedef struct sc_struct_generic_inst_s {
     sym_param_generic_inst* generic_args;
     ureg generic_arg_count;
     sc_struct_generic* base;
-    list waiters;
+    generic_resolution_ctx* res_ctx;
 } sc_struct_generic_inst;
 
 typedef struct sc_trait_s {
@@ -604,8 +612,8 @@ typedef struct expr_call_s {
 typedef struct expr_access_s {
     ast_node node;
     ast_node* lhs;
-    //args can be types in case of generic args, but
-    //that would leave identifiers here which are still ast_nodes
+    // args can be types in case of generic args, but
+    // that would leave identifiers here which are still ast_nodes
     ast_node** args;
     ast_elem* ctype;
     ureg arg_count;

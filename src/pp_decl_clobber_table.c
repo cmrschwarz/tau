@@ -95,13 +95,12 @@ waiting_users_sym_found(pp_decl_clobber_table* t, ppdct_waiting_users* wu_node)
     wu_it = sbuffer_iterator_begin_at_end(waiting_users);
     bool root_alive;
     while (true) {
-        if (wu_it.pos == wu_begin.pos) {
-            wu = wu_node;
+        wup = sbuffer_iterator_previous_until(&wu_it, sizeof(void*), &wu_begin);
+        if (wup) {
+            wu = *wup;
         }
         else {
-            wup = sbuffer_iterator_previous(&wu_it, sizeof(void*));
-            assert(wup);
-            wu = *wup;
+            wu = wu_node;
         }
         assert(wu->has_parent || wu == wu_node);
         list_it_begin(&it, &wu->waiting_users);
@@ -131,13 +130,12 @@ waiting_users_sym_found(pp_decl_clobber_table* t, ppdct_waiting_users* wu_node)
     wu_it = sbuffer_iterator_begin_at_end(waiting_users);
     wu = NULL;
     while (true) {
-        if (wu_it.pos == wu_begin.pos) {
+        wup = sbuffer_iterator_previous_until(&wu_it, sizeof(void*), &wu_begin);
+        if (!wup) {
             if (wu == wu_node || root_alive) break;
             wu = wu_node;
         }
         else {
-            wup = sbuffer_iterator_previous(&wu_it, sizeof(void*));
-            assert(wup);
             wu = *wup;
         }
         if (!wu->has_parent && !wu->owner) {

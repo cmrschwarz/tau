@@ -489,9 +489,11 @@ int name_mangle(
     char* name = pool_alloc(output_mem, size + 1);
     char* tgt = name;
     sbuffer_iterator it = sbuffer_iterator_begin_at_end((ptrlist*)buff);
-    while (it.pos != begin.pos) {
-        name_mangle_node* n = (name_mangle_node*)sbuffer_iterator_previous(
-            &it, sizeof(name_mangle_node));
+    while (true) {
+        name_mangle_node* n =
+            (name_mangle_node*)sbuffer_iterator_previous_until(
+                &it, sizeof(name_mangle_node), &begin);
+        if (!n) break;
         if (n->kind != NMNK_LEN_STR && n->kind != NMNK_STR) {
             for (char* c = n->ident; *c; c++) *tgt++ = *c;
         }

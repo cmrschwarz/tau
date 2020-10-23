@@ -65,7 +65,7 @@ typedef struct partial_resolution_data_s {
     ureg id_space;
     ptrlist pprns_pending;
     ptrlist pprns_waiting;
-    ptrlist import_module_data_nodes;
+    ptrlist thread_waiting_pprns;
     bool deps_required_for_pp;
     bool error_occured;
     ureg committed_waiters;
@@ -94,7 +94,6 @@ typedef struct resolver_s {
     ast_node* type_loop_start;
     bool allow_type_loops;
     bool retracing_type_loop;
-    bool generic_context;
     bool resumed; // whether we come from a partial resolution
     bool error_occured;
     // ids distributed during declaration adding starting from PRIV_SYM_OFFSET
@@ -119,7 +118,7 @@ typedef struct resolver_s {
     ptrlist pp_resolve_nodes_ready;
 
     // imports of modules not yet (known to be) generated
-    ptrlist import_module_data_nodes;
+    ptrlist thread_waiting_pprns;
 
     pp_resolve_node* curr_pp_node;
     sc_func* module_group_constructor;
@@ -158,3 +157,9 @@ resolve_error
 pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress);
 
 resolve_error add_resolve_error(resolve_error res, resolve_error add);
+pp_resolve_node* pp_resolve_node_create(
+    resolver* r, ast_node* n, ast_body* declaring_body, bool run_individually,
+    bool sequential_block, bool dummy, bool notify_when_ready);
+void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured);
+resolve_error curr_pprn_depend_on(
+    resolver* r, ast_body* body, pp_resolve_node** dependency_p);

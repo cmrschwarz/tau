@@ -96,6 +96,48 @@ static inline void* sbuffer_iterator_previous(sbuffer_iterator* sbi, ureg size)
         sbi->pos = sbi->seg->tail;
     }
 }
+static inline void* sbuffer_iterator_next_until(
+    sbuffer_iterator* sbi, ureg size, sbuffer_iterator* stop_at)
+{
+    while (true) {
+        if (ptrdiff(sbi->seg->tail, sbi->pos) != 0) {
+            assert(ptrdiff(sbi->seg->tail, sbi->pos) >= size);
+            if (sbi->seg == stop_at->seg &&
+                ptradd(sbi->pos, size) > stop_at->pos) {
+                return NULL;
+            }
+            void* res = sbi->pos;
+            sbi->pos = ptradd(sbi->pos, size);
+            return res;
+        }
+        if (sbi->seg->next == NULL) return NULL;
+        if (sbi->seg == stop_at->seg) return NULL;
+        sbi->seg = sbi->seg->next;
+        sbi->pos = (u8*)(sbi->seg + 1);
+        // there are no empty segments in the middle, so we can return without
+        // checking trailing segments
+        if (sbi->seg->tail == ptradd(sbi->seg, sizeof(sbuffer_segment))) {
+            return NULL;
+        }
+    }
+}
+static inline void* sbuffer_iterator_previous_until(
+    sbuffer_iterator* sbi, ureg size, sbuffer_iterator* stop_at)
+{
+    while (true) {
+        if (ptrdiff(sbi->pos, sbi->seg + 1) >= size) {
+            if (sbi->seg == stop_at->seg) {
+                if (ptrsub(sbi->pos, size) < stop_at->pos) return NULL;
+            }
+            sbi->pos = ptrsub(sbi->pos, size);
+            return sbi->pos;
+        }
+        if (sbi->seg->prev == NULL) return NULL;
+        if (sbi->seg == stop_at->seg) return NULL;
+        sbi->seg = sbi->seg->prev;
+        sbi->pos = sbi->seg->tail;
+    }
+}
 static inline void* sbuffer_iterator_get(sbuffer_iterator* sbi, ureg size)
 {
     ureg rem_size = ptrdiff(sbi->seg->tail, sbi->pos);
