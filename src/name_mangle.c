@@ -24,10 +24,13 @@ typedef struct name_mangle_node_s {
 
 static inline int push_name_mangle_node_raw(
     name_mangle_node_kind k, const char* ident, const char* str, ureg id,
-    sbuffer* buff, ureg* size)
+    sbuffer* buff, ureg* size, name_mangle_node* insert)
 {
-    name_mangle_node* n = sbuffer_append(buff, sizeof(name_mangle_node));
-    if (!n) return ERR;
+    name_mangle_node* n = insert;
+    if (!n) {
+        n = sbuffer_append(buff, sizeof(name_mangle_node));
+        if (!n) return ERR;
+    }
     n->kind = k;
     if (k == NMNK_IDENT || k == NMNK_IDENT_ID || k == NMNK_IDENT_STR ||
         k == NMNK_IDENT_LEN_STR) {
@@ -58,19 +61,21 @@ int push_name_mangle_id_node(
     const char* ident, ureg id, sbuffer* buff, ureg* size)
 {
     return push_name_mangle_node_raw(
-        NMNK_IDENT_ID, ident, NULL, id, buff, size);
+        NMNK_IDENT_ID, ident, NULL, id, buff, size, NULL);
 }
 int push_name_mangle_str_node(const char* str, sbuffer* buff, ureg* size)
 {
-    return push_name_mangle_node_raw(NMNK_STR, NULL, str, 0, buff, size);
+    return push_name_mangle_node_raw(NMNK_STR, NULL, str, 0, buff, size, NULL);
 }
 int push_name_mangle_len_str_node(const char* str, sbuffer* buff, ureg* size)
 {
-    return push_name_mangle_node_raw(NMNK_LEN_STR, NULL, str, 0, buff, size);
+    return push_name_mangle_node_raw(
+        NMNK_LEN_STR, NULL, str, 0, buff, size, NULL);
 }
 int push_name_mangle_ident_node(const char* ident, sbuffer* buff, ureg* size)
 {
-    return push_name_mangle_node_raw(NMNK_IDENT, ident, NULL, 0, buff, size);
+    return push_name_mangle_node_raw(
+        NMNK_IDENT, ident, NULL, 0, buff, size, NULL);
 }
 int push_scope_name(
     ast_node* node, ast_body* b, bool scoped, sbuffer* buff, ureg* size)
@@ -149,9 +154,9 @@ int push_ctype(
     tauc* t, ast_elem* ctype, ast_body* ctx, sbuffer* buff, ureg* size,
     bool put_sep_after, bool* sep_required_before)
 {
-    *sep_required_before = false;
     int r;
-    bool no_sep = false;
+    ureg prefix_counter = 0;
+    ast_elem* ctype_begin = ctype;
     while (true) {
         switch (ctype->kind) {
             case SYM_PRIMITIVE: {
@@ -168,31 +173,43 @@ int push_ctype(
                     char id[2];
                     id[0] = c;
                     id[1] = '\0';
+                    *sep_required_before = false;
                     return push_name_mangle_node_raw(
-                        NMNK_IDENT, (char*)&id, NULL, 0, buff, size);
+                        NMNK_IDENT, (char*)&id, NULL, 0, buff, size, NULL);
                 }
                 break;
             }
             case TYPE_POINTER: {
-                no_sep = true;
                 type_pointer* tp = (type_pointer*)ctype;
-                r = push_name_mangle_ident_node(
-                    tp->tb.is_const ? "P" : "p", buff, size);
-                if (r) return r;
+                prefix_counter++;
                 ctype = tp->base_type;
                 continue;
             }
-            // TODO: arrays, tuples, ...
+            case TYPE_SLICE: {
+                type_slice* ts = (type_slice*)ctype;
+                prefix_counter++;
+                ctype = ts->ctype_members;
+                continue;
+            }
+            // TODO: tuples, ...
             default: break;
         }
         break;
     }
-    assert(ast_elem_is_symbol(ctype));
-    if (put_sep_after && !no_sep) {
+    if (put_sep_after) {
         if (push_name_mangle_ident_node("N", buff, size)) return ERR;
     }
+    assert(ast_elem_is_symbol(ctype));
     symbol* s = (symbol*)ctype;
-    if (push_name_mangle_len_str_node(s->name, buff, size)) return ERR;
+    if (ast_elem_is_scope(ctype)) {
+        r = push_scope_name(
+            (ast_node*)s, &((scope*)s)->body, false, buff, size);
+        if (r) return r;
+    }
+    else {
+        if (push_name_mangle_len_str_node(s->name, buff, size)) return ERR;
+    }
+
     ureg cb_level = 0;
     for (ast_body* cb = s->declaring_body; cb; cb = cb->parent) cb_level++;
     ureg ctx_level = 0;
@@ -220,7 +237,9 @@ int push_ctype(
         cb = cb->parent;
         ctxb = ctxb->parent;
     }
+    bool sym_needs_esc = true;
     if (cb != &t->mdg.root_node->body) {
+        sym_needs_esc = false;
         if (escape_count < 3) {
             if (push_name_mangle_ident_node(
                     (escape_count == 1) ? "e" : "ee", buff, size)) {
@@ -234,9 +253,46 @@ int push_ctype(
             }
         }
     }
-    else {
-        *sep_required_before = true;
+    if (prefix_counter) {
+        for (ureg i = 0; i < prefix_counter; i++) {
+            if (!sbuffer_append(buff, sizeof(name_mangle_node))) return ERR;
+        }
+        sbuffer_iterator it = sbuffer_iterator_begin_at_end(buff);
+        ast_elem* t = ctype_begin;
+        while (t != ctype) {
+            name_mangle_node* n =
+                sbuffer_iterator_previous(&it, sizeof(name_mangle_node));
+            assert(n);
+            switch (t->kind) {
+                case TYPE_POINTER: {
+                    type_pointer* tp = (type_pointer*)t;
+                    t = tp->base_type;
+                    r = push_name_mangle_node_raw(
+                        NMNK_IDENT, tp->tb.is_const ? "cp" : "p", NULL, 0, buff,
+                        size, n);
+                    if (r) return r;
+                } break;
+                case TYPE_SLICE: {
+                    type_slice* ts = (type_slice*)t;
+                    t = ts->ctype_members;
+                    r = push_name_mangle_node_raw(
+                        NMNK_IDENT, ts->tb.is_const ? "cs" : "s", NULL, 0, buff,
+                        size, n);
+                    if (r) return r;
+                } break;
+                case TYPE_ARRAY: {
+                    type_array* ta = (type_array*)t;
+                    t = ta->slice_type.ctype_members;
+                    r = push_name_mangle_node_raw(
+                        NMNK_IDENT_ID, ta->slice_type.tb.is_const ? "ca" : "a",
+                        NULL, ta->length, buff, size, n);
+                    if (r) return r;
+                } break;
+                default: assert(false); break;
+            }
+        }
     }
+    *sep_required_before = !prefix_counter && sym_needs_esc;
     return OK;
 }
 int push_generic_args(
@@ -438,7 +494,7 @@ int name_mangle_raw(
         case MF_MODULE:
         case MF_EXTEND: {
             module_frame* mf = (module_frame*)n;
-            if (push_name_mangle_ident_node("a", buff, size)) return ERR;
+            if (push_name_mangle_ident_node("A", buff, size)) return ERR;
             if (push_name_mangle_id_node("A", id, buff, size)) return ERR;
             *unscoped_size = *size;
             *unscoped_storage = &mf->name_mangled_unscoped;
@@ -449,7 +505,7 @@ int name_mangle_raw(
         case EXPR_BLOCK:
         case EXPR_LOOP: {
             expr_block_base* ebb = (expr_block_base*)n;
-            if (push_name_mangle_ident_node("a", buff, size)) return ERR;
+            if (push_name_mangle_ident_node("A", buff, size)) return ERR;
             if (push_name_mangle_id_node("A", id, buff, size)) return ERR;
             *storage = &ebb->name_mangled_unscoped;
             return OK; // since we only store unscoped we cheat a little
