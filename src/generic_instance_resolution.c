@@ -180,10 +180,7 @@ resolve_error instantiate_ast_node(
             }
             return RE_OK;
         }
-        default:
-            assert(false);
-            *tgt = n; // for the common case we can share it... i think :)
-            break;
+        default: assert(false); return RE_FATAL;
     }
     return RE_OK;
 }
@@ -281,8 +278,8 @@ create_waiter(resolver* r, sc_struct_generic_inst* sgi)
     thread_waiting_pprn* twp = tmalloc(sizeof(thread_waiting_pprn));
     if (!twp) return NULL;
     twp->pprn = pp_resolve_node_create(
-        r, sgi, sgi->st.sb.sc.osym.sym.declaring_body, false, false, false,
-        false);
+        r, (ast_node*)sgi, sgi->st.sb.sc.osym.sym.declaring_body, false, false,
+        false, false);
     if (!twp->pprn) {
         tfree(twp);
         return NULL;
@@ -352,7 +349,6 @@ static inline resolve_error handle_existing_struct_instance(
         gim_unlock(&sg->inst_map);
         return RE_OK;
     }
-    resolve_error re;
     if (c->responsible_tc == r->tc) {
         // TODO: do we need to prevent loops?
         gim_unlock(&sg->inst_map);
@@ -362,7 +358,7 @@ static inline resolve_error handle_existing_struct_instance(
         c->responsible_tc = r->tc;
         bool inst = c->instantiated;
         gim_unlock(&sg->inst_map);
-        return resolve_generic_struct_instance_raw(r, body, sgi, !inst, waiter);
+        return resolve_generic_struct_instance_raw(r, sgi, body, !inst, waiter);
     }
     // TODO: cycle prevention strat: lock all generics from this
     // thread in order and only place the waiter

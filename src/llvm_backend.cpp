@@ -78,6 +78,14 @@ int llvm_initialize_primitive_information()
     PRIMITIVES[PT_STRING].size = reg_size;
     PRIMITIVES[PT_BINARY_STRING].size = reg_size;
     PRIMITIVES[PT_VOID].size = 0;
+    PRIMITIVES[PT_U8].size = 1;
+    PRIMITIVES[PT_S8].size = 1;
+    PRIMITIVES[PT_U16].size = 2;
+    PRIMITIVES[PT_S16].size = 2;
+    PRIMITIVES[PT_U32].size = 3;
+    PRIMITIVES[PT_S32].size = 3;
+    PRIMITIVES[PT_U64].size = 4;
+    PRIMITIVES[PT_S64].size = 4;
 
     for (ureg i = 0; i < PRIMITIVE_COUNT; i++) {
         PRIMITIVES[i].alignment = PRIMITIVES[i].size;
@@ -473,11 +481,19 @@ void LLVMBackend::setupPrimitives()
     for (ureg i = 0; i < PRIMITIVE_COUNT; i++) {
         llvm::Type* t;
         switch (i) {
+            case PT_U8:
+            case PT_U16:
+            case PT_U32:
+            case PT_U64:
+            case PT_S8:
+            case PT_S16:
+            case PT_S32:
+            case PT_S64:
             case PT_INT:
-            // llvm expects bits, we store bytes (for
-            // now)
             case PT_UINT:
-                t = _builder.getIntNTy((unsigned int)PRIMITIVES[i].size * 8);
+                // llvm expects bits, we store bytes (for now)
+                t = _builder.getIntNTy(
+                    (unsigned int)PRIMITIVES[i].size * BYTE_BITS);
                 break;
             case PT_BINARY_STRING:
             case PT_STRING: t = _builder.getInt8PtrTy(); break;
