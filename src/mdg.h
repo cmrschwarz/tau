@@ -119,6 +119,8 @@ typedef struct mdg_node_s {
     pp_emission_stage ppe_stage;
 
     // list of mdg_nodes that want to be informed if this changes stage
+    // after resolution, this contains a list of cross_mdg_waiters
+    // that need this emitted for generics or for their pp
     list notify;
     // list of mdg_nodes that this node imports (directly)
     list dependencies;

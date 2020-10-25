@@ -418,7 +418,7 @@ static inline int ppdct_block_symbol(
                     if (re) return re;
                 }
                 assert(!*notifier_added);
-                dependency->dep_count++;
+                dependency->resolve_dep_count++;
                 void* dep_mangled = (void*)((ureg)dependency | 1);
                 r = list_append(
                     &ppdc->waiting_users->waiting_users, NULL, dep_mangled);
@@ -468,7 +468,7 @@ int ppdct_require_symbol(
     pp_decl_clobber_table* t, ast_body* body, ast_elem* associated_type,
     const char* name, pp_resolve_node* dep, bool* notifier_added)
 {
-    dep->dep_count++;
+    dep->resolve_dep_count++;
     return ppdct_block_symbol(
         t, body, NULL, associated_type, name, NULL, NULL, dep, notifier_added);
 }

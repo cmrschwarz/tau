@@ -139,27 +139,29 @@ typedef struct use_exclusions_s {
     };
 } use_restrictions;
 
-typedef struct thread_waiting_pprn_s {
+typedef struct cross_mdg_waiter_s {
     atomic_boolean done;
-    pp_resolve_node* pprn;
     mdg_node* requiring_module;
-} thread_waiting_pprn;
+} cross_mdg_waiter;
+
+typedef struct generic_inst_waiter_s {
+    cross_mdg_waiter cmw;
+    ast_node* generic_inst;
+    list requiring_pprns;
+} generic_inst_waiter;
 
 typedef struct generic_resolution_ctx_s {
     thread_context* responsible_tc;
     mdg_node* emission_group_member;
-    // when the responsible tc has to abort because of unmet deps
-    // this gets set
     bool instantiated;
     bool resolved;
-    thread_waiting_pprn* current_thread_waiting_pprn;
-    list waiters; // list of pending pprns
-    ureg refcount; // last referrer cleans this
+    list generic_inst_waiters; // list of generic_inst_waiter's
 } generic_resolution_ctx;
 
 typedef struct import_module_data_s {
-    thread_waiting_pprn waiting_pprn;
+    cross_mdg_waiter cmw;
     mdg_node* imported_module;
+    pp_resolve_node* pprn;
 } import_module_data;
 
 typedef struct sym_import_module_s {

@@ -28,9 +28,9 @@ typedef struct thread_context_s thread_context;
 
 typedef enum PACK_ENUM pprn_state_e {
     PPRN_INFANT,
-    PPRN_WAITING, // dep_count > 0, uncommitted waiter
-    PPRN_PENDING, // dep count == 0, resolved=false
-    PPRN_READY, //
+    PPRN_WAITING, // resolve_dep_count > 0 || run_dep_count > 0
+    PPRN_PENDING, // resolve_dep_count == 0, resolved=false
+    PPRN_READY, // run_dep_count == 0
 } pprn_state;
 
 typedef struct pp_resolve_node_s {
@@ -41,7 +41,8 @@ typedef struct pp_resolve_node_s {
     // this way if the notifying node's pprn gets fin'd we notice that
     list notified_by;
     ast_node** continue_block;
-    ureg dep_count;
+    ureg resolve_dep_count;
+    ureg run_dep_count;
     bool needs_further_resolution;
     bool pending_pastes;
     bool considered_committed; // incremented committed_waiters
@@ -65,7 +66,7 @@ typedef struct partial_resolution_data_s {
     ureg id_space;
     ptrlist pprns_pending;
     ptrlist pprns_waiting;
-    ptrlist thread_waiting_pprns;
+    ptrlist waiting_module_imports;
     bool deps_required_for_pp;
     bool error_occured;
     ureg committed_waiters;
@@ -117,8 +118,9 @@ typedef struct resolver_s {
     // resolved and ready to run. cleared after every run
     ptrlist pp_resolve_nodes_ready;
 
-    // imports of modules not yet (known to be) generated
-    ptrlist thread_waiting_pprns;
+    // list of import_module_data's for modules not yet (known to be)
+    // generated
+    ptrlist waiting_module_imports;
 
     pp_resolve_node* curr_pp_node;
     sc_func* module_group_constructor;

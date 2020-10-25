@@ -249,7 +249,7 @@ resolve_error create_generic_struct_inst(
     assert(sgi->res_ctx);
     sgi->res_ctx->responsible_tc = r->tc;
     sgi->res_ctx->instantiated = false;
-    int res = list_init(&sgi->res_ctx->waiters);
+    int res = list_init(&sgi->res_ctx->generic_inst_waiters);
     assert(!res);
     UNUSED(res);
     return RE_OK;
@@ -307,32 +307,29 @@ instantiate_generic_struct(resolver* r, sc_struct_generic_inst* sgi)
     }
     return RE_OK;
 }
-static inline thread_waiting_pprn*
+static inline generic_inst_waiter*
 create_waiter(resolver* r, sc_struct_generic_inst* sgi)
 {
-    thread_waiting_pprn* twp = tmalloc(sizeof(thread_waiting_pprn));
-    if (!twp) return NULL;
-    twp->pprn = pp_resolve_node_create(
-        r, (ast_node*)sgi, sgi->st.sb.sc.osym.sym.declaring_body, false, false,
-        true, true);
-    if (!twp->pprn) {
-        tfree(twp);
+    generic_inst_waiter* giw = tmalloc(sizeof(generic_inst_waiter));
+    if (!giw) return NULL;
+    if (list_init(&giw->requiring_pprns)) {
+        tfree(giw);
         return NULL;
     }
-    atomic_boolean_init(&twp->done, false);
+    atomic_boolean_init(&giw->cmw.done, false);
     // any of those does it reallly.
-    twp->requiring_module = *r->mdgs_begin;
-    atomic_ureg_inc(&twp->requiring_module->ungenerated_pp_deps);
-    if (ptrlist_append(&r->thread_waiting_pprns, twp)) {
-        pprn_fin(r, twp->pprn, true);
-        tfree(twp);
+    giw->cmw.requiring_module = *r->mdgs_begin;
+    atomic_ureg_inc(&giw->cmw.requiring_module->ungenerated_pp_deps);
+    if (false) { // TODO: append this to a waiter list
+        list_fin(&giw->requiring_pprns, true);
+        tfree(giw);
         return NULL;
     }
-    return twp;
+    return giw;
 }
 static inline resolve_error resolve_generic_struct_instance_raw(
     resolver* r, sc_struct_generic_inst* sgi, ast_body* body, bool instantiate,
-    thread_waiting_pprn* ex_waiter)
+    generic_inst_waiter* waiter)
 {
     resolve_error re;
     if (instantiate) {
@@ -347,32 +344,34 @@ static inline resolve_error resolve_generic_struct_instance_raw(
     gim_lock(&sgi->base->inst_map);
     if (instantiate) sgi->res_ctx->instantiated = true;
     list_it it;
-    list_it_begin(&it, &sgi->res_ctx->waiters);
-    thread_waiting_pprn* twp;
-    while ((twp = list_it_next(&it, &sgi->res_ctx->waiters))) {
-        atomic_boolean_store(&twp->done, true);
+    list_it_begin(&it, &sgi->res_ctx->generic_inst_waiters);
+    generic_inst_waiter* giw;
+    while ((giw = list_it_next(&it, &sgi->res_ctx->generic_inst_waiters))) {
+        atomic_boolean_store(&giw->cmw.done, true);
         ureg prev =
-            atomic_ureg_dec(&twp->requiring_module->ungenerated_pp_deps);
+            atomic_ureg_dec(&giw->cmw.requiring_module->ungenerated_pp_deps);
         UNUSED(prev);
         assert(prev > 0);
     }
     if (!re) {
-        list_fin(&sgi->res_ctx->waiters, true);
+        list_fin(&sgi->res_ctx->generic_inst_waiters, true);
         tfree(sgi->res_ctx);
         sgi->res_ctx = NULL;
-        if (ex_waiter) tfree(ex_waiter);
+        if (waiter) tfree(waiter);
     }
     else {
+        // we have to wait on somebody else. we place a waiter
         assert(sgi->res_ctx->responsible_tc == r->tc);
         sgi->res_ctx->responsible_tc = NULL;
-        list_clear(&sgi->res_ctx->waiters);
+        list_clear(&sgi->res_ctx->generic_inst_waiters);
         if (re != RE_FATAL) {
-            if (!ex_waiter) {
-                ex_waiter = create_waiter(r, sgi);
-                if (!ex_waiter) re = RE_FATAL;
+            if (!waiter) {
+                waiter = create_waiter(r, sgi);
+                if (!waiter) re = RE_FATAL;
             }
-            if (ex_waiter) {
-                if (list_append(&sgi->res_ctx->waiters, NULL, ex_waiter)) {
+            if (waiter) {
+                if (list_append(
+                        &sgi->res_ctx->generic_inst_waiters, NULL, waiter)) {
                     re = RE_FATAL;
                 }
             }
@@ -380,14 +379,13 @@ static inline resolve_error resolve_generic_struct_instance_raw(
     }
     gim_unlock(&sgi->base->inst_map);
     if (re && re != RE_FATAL) {
-        assert(ex_waiter);
-        ex_waiter->pprn->needs_further_resolution = true;
+        assert(waiter);
     }
     return re;
 }
 static inline resolve_error handle_existing_struct_instance(
     resolver* r, sc_struct_generic_inst* sgi, ast_body* body,
-    thread_waiting_pprn* waiter)
+    generic_inst_waiter* waiter)
 {
     sc_struct_generic* sg = sgi->base;
     generic_resolution_ctx* c = sgi->res_ctx;
@@ -417,12 +415,14 @@ static inline resolve_error handle_existing_struct_instance(
         }
     }
     else {
-        atomic_boolean_store_flat(&waiter->done, false);
+        atomic_boolean_store_flat(&waiter->cmw.done, false);
     }
     gim_unlock(&sg->inst_map);
-    if (curr_pprn_depend_on(r, body, &waiter->pprn)) return RE_FATAL;
-    resolve_error re = pp_resolve_node_activate(r, body, &waiter->pprn, false);
-    if (re) return re;
+    pp_resolve_node* pprn;
+    if (get_curr_pprn(r, body, &pprn)) return RE_FATAL;
+    assert(pprn); // we don't just resolve generic instances for fun.
+    if (list_append(&waiter->requiring_pprns, NULL, pprn)) return RE_FATAL;
+    pprn->resolve_dep_count++;
     return RE_UNREALIZED_COMPTIME;
 }
 
@@ -485,7 +485,7 @@ resolve_error resolve_generic_struct_access(
 
 resolve_error resolve_generic_struct_instance(
     resolver* r, sc_struct_generic_inst* sgi, ast_body* body,
-    thread_waiting_pprn* waiter)
+    generic_inst_waiter* waiter)
 {
     // TODO: some kind of per thread cache to avoid
     // locks on already resolved structs my be in order

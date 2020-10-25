@@ -325,7 +325,9 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
     ast_node* n = pprn->node;
     assert(n);
     assert(
-        error_occured || pprn->dep_count == 0 || !ast_node_get_used_in_pp(n) ||
+        error_occured ||
+        (pprn->resolve_dep_count == 0 &&
+         (pprn->run_dep_count == 0 || !ast_node_get_used_in_pp(n))) ||
         ast_node_get_contains_error(n));
     for (pp_resolve_node* rn = pprn->first_unresolved_child; rn;
          rn = rn->next) {
@@ -339,12 +341,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
     if (pprn->pprn_list_entry) {
         remove_pprn_from_list(r, pprn);
     }
-    if (!ast_elem_is_generic_inst((ast_elem*)n)) {
-        *ast_node_get_pprn_ptr(n) = NULL;
-    }
-    else {
-        assert(*ast_node_get_pprn_ptr(n) == NULL);
-    }
+    *ast_node_get_pprn_ptr(n) = NULL;
     list_fin(&pprn->notified_by, true);
     list_fin(&pprn->notify, true);
     freelist_free(&r->pp_resolve_nodes, pprn);
@@ -365,7 +362,8 @@ pp_resolve_node* pp_resolve_node_create(
         freelist_free(&r->pp_resolve_nodes, pprn);
         return NULL;
     }
-    pprn->dep_count = 0;
+    pprn->resolve_dep_count = 0;
+    pprn->run_dep_count = 0;
     pprn->activated = false;
     pprn->needs_further_resolution = false;
     pprn->notify_when_ready = notify_when_ready;
@@ -509,7 +507,7 @@ pprn_depend_on_raw(pp_resolve_node** dependency_p, pp_resolve_node* depending)
     if (list_append(&(**dependency_p).notify, NULL, depending)) return RE_FATAL;
     if (list_append(&depending->notified_by, NULL, dependency_p))
         return RE_FATAL;
-    depending->dep_count++;
+    depending->resolve_dep_count++;
     return RE_OK;
 }
 resolve_error
@@ -545,7 +543,7 @@ pprn_add_child_raw(pp_resolve_node* block_parent, pp_resolve_node** child_p)
         block_parent->last_unresolved_child->next = child;
         block_parent->last_unresolved_child = child;
     }
-    if (child->dep_count) {
+    if (child->resolve_dep_count) {
         if (pprn_depend_on_raw(child_p, block_parent)) return RE_FATAL;
     }
     return RE_OK;
@@ -576,12 +574,12 @@ resolve_error pp_resolve_node_activate(
     pp_resolve_node* pprn = *pprn_p;
     pprn->activated = true;
     assert(!resolved || ast_node_get_resolved(pprn->node));
-    if (pprn->dep_count == 0 && r->module_group_constructor) {
+    if (pprn->resolve_dep_count == 0 && r->module_group_constructor) {
         // HACK: make sure the module group ctor runs first
         // TODO: implement this properly
         resolve_func_from_call(r, body, r->module_group_constructor, NULL);
     }
-    if (pprn->dep_count == 0) {
+    if (pprn->resolve_dep_count == 0) {
         if (resolved || ast_node_get_contains_error(pprn->node)) {
             pprn->needs_further_resolution = false;
             return pp_resolve_node_ready(r, pprn);
@@ -998,7 +996,7 @@ static resolve_error declare_ast_node(
             im->osym.sym.declaring_body = body;
             mdg_node* rel_to;
             if (ast_node_get_relative_import(n)) {
-                rel_to = im->im_data.waiting_pprn.requiring_module;
+                rel_to = im->im_data.cmw.requiring_module;
             }
             else {
                 rel_to = r->tc->t->mdg.root_node;
@@ -2647,9 +2645,9 @@ resolve_error resolve_importing_node(
         previously_used_in_pp = false;
         used_in_pp = true;
     }
-    else if (im_data->waiting_pprn.pprn) {
+    else if (im_data->pprn) {
         previously_used_in_pp = ast_node_get_used_in_pp(node);
-        re = curr_pprn_depend_on(r, body, &im_data->waiting_pprn.pprn);
+        re = curr_pprn_depend_on(r, body, &im_data->pprn);
         if (re) return re;
         used_in_pp = ast_node_get_used_in_pp(node);
         if (!used_in_pp) {
@@ -2672,8 +2670,8 @@ resolve_error resolve_importing_node(
     mdg_node* mdg = im_data->imported_module;
     mdg_node* im_mdg = NULL; // only set this when incrementing dep count!
     if (used_in_pp && !previously_used_in_pp) {
-        atomic_boolean_init(&im_data->waiting_pprn.done, false);
-        im_mdg = im_data->waiting_pprn.requiring_module;
+        atomic_boolean_init(&im_data->cmw.done, false);
+        im_mdg = im_data->cmw.requiring_module;
         atomic_ureg_inc(&im_mdg->ungenerated_pp_deps);
     }
     rwlock_write(&mdg->lock);
@@ -2706,24 +2704,23 @@ resolve_error resolve_importing_node(
     if (request_pp) {
         if (tauc_request_pp_module(r->tc->t, mdg)) return RE_FATAL;
     }
-    if (im_data->waiting_pprn.pprn) {
+    if (im_data->pprn) {
         if (available) {
-            re = pp_resolve_node_ready(r, im_data->waiting_pprn.pprn);
+            re = pp_resolve_node_ready(r, im_data->pprn);
             if (re) return re;
         }
     }
     else if (!available) {
-        im_data->waiting_pprn.pprn =
+        im_data->pprn =
             pp_resolve_node_create(r, node, body, false, false, true, true);
-        if (!im_data->waiting_pprn.pprn) return re;
-        if (ptrlist_append(&r->thread_waiting_pprns, &im_data->waiting_pprn)) {
-            pprn_fin(r, im_data->waiting_pprn.pprn, true);
+        if (!im_data->pprn) return re;
+        if (ptrlist_append(&r->waiting_module_imports, im_data)) {
+            pprn_fin(r, im_data->pprn, true);
             return RE_FATAL;
         }
-        re = curr_pprn_depend_on(r, body, &im_data->waiting_pprn.pprn);
+        re = curr_pprn_depend_on(r, body, &im_data->pprn);
         if (re) return re;
-        re = pp_resolve_node_activate(
-            r, body, &im_data->waiting_pprn.pprn, false);
+        re = pp_resolve_node_activate(r, body, &im_data->pprn, false);
         if (re) return re;
     }
     if (available && used_in_pp) {
@@ -3172,9 +3169,9 @@ static inline resolve_error resolve_ast_node_raw(
                 im_data = &((astn_anonymous_sym_import_group*)n)->im_data;
             }
             if (resolved) {
-                if (im_data->waiting_pprn.pprn) {
-                    resolve_error re = curr_pprn_depend_on(
-                        r, body, &im_data->waiting_pprn.pprn);
+                if (im_data->pprn) {
+                    resolve_error re =
+                        curr_pprn_depend_on(r, body, &im_data->pprn);
                     if (re) return re;
                 }
                 SET_THEN_RETURN(value, ctype, n, NULL);
@@ -3713,7 +3710,7 @@ resolve_error resolve_unordered_body(
     if (!re) {
         re = resolver_run_pp_resolve_nodes(r, NULL);
         if (!re && b->pprn) {
-            if (b->pprn->dep_count) {
+            if (b->pprn->resolve_dep_count) {
                 b->pprn->needs_further_resolution = true;
                 re = RE_UNREALIZED_COMPTIME;
             }
@@ -4245,7 +4242,9 @@ void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident)
     if (verbose) {
         list_it it;
         print_indent(ident, NULL);
-        tprintf("dependencies: %zu\n", pprn->dep_count);
+        tprintf(
+            "dependencies: res: %zu; run; %zu\n", pprn->resolve_dep_count,
+            pprn->run_dep_count);
         list_it_begin(&it, &pprn->notified_by);
         for (pp_resolve_node** p =
                  (pp_resolve_node**)list_it_next(&it, &pprn->notified_by);
@@ -4332,8 +4331,8 @@ resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn)
 }
 resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn)
 {
-    pprn->dep_count--;
-    if (pprn->dep_count == 0) {
+    pprn->resolve_dep_count--;
+    if (pprn->resolve_dep_count == 0) {
         resolve_error re = pp_resolve_node_ready(r, pprn);
         if (re) return re;
     }
@@ -4378,10 +4377,10 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
 resolve_error
 pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
 {
-    assert(pprn->dep_count);
+    assert(pprn->resolve_dep_count);
     assert(pprn->node);
-    pprn->dep_count--;
-    if (pprn->dep_count == 0) {
+    pprn->resolve_dep_count--;
+    if (pprn->resolve_dep_count == 0) {
         if (progress) *progress = true;
         resolve_error re = pp_resolve_node_ready(r, pprn);
         if (re) return re;
@@ -4406,8 +4405,7 @@ resolve_error report_cyclic_pp_deps(resolver* r)
     resolve_error re = RE_OK;
     it = pli_begin(&r->pp_resolve_nodes_waiting);
     for (pp_resolve_node* pprn = pli_next(&it); pprn; pprn = pli_next(&it)) {
-        if (!ast_elem_is_any_import((ast_elem*)pprn->node) &&
-            !ast_elem_is_generic_inst((ast_elem*)pprn->node)) {
+        if (!ast_elem_is_any_import((ast_elem*)pprn->node)) {
             if (err == false) {
                 err = true;
                 print_pprns(r, "error: \n", true);
@@ -4510,32 +4508,25 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
         re = handle_pending_pprns(r, &progress);
         if (re) return re;
         if (!progress && r->committed_waiters != 0) {
-            pli it = pli_rbegin(&r->thread_waiting_pprns);
+            pli it = pli_rbegin(&r->waiting_module_imports);
             bool awaiting = false;
             for (ast_node* n = pli_prev(&it); n; n = pli_prev(&it)) {
-                thread_waiting_pprn* twp = (thread_waiting_pprn*)n;
+                import_module_data* im_data = (import_module_data*)n;
                 ast_node* n = NULL;
-                if (twp->pprn) {
-                    n = twp->pprn->node;
-                    if (ast_node_get_used_in_pp(n) ||
-                        ast_elem_is_generic_inst((ast_elem*)n)) {
+                if (im_data->pprn) {
+                    n = im_data->pprn->node;
+                    if (ast_node_get_used_in_pp(n)) {
                         awaiting = true;
-                        if (atomic_boolean_load(&twp->done)) {
-                            re = pp_resolve_node_ready(r, twp->pprn);
+                        if (atomic_boolean_load(&im_data->cmw.done)) {
+                            re = pp_resolve_node_ready(r, im_data->pprn);
                             if (re) return re;
                             progress = true;
                         }
                     }
                 }
-                if (!twp->pprn) {
+                if (!im_data->pprn) {
                     progress = true;
-                    ptrlist_remove_next(&r->thread_waiting_pprns, &it);
-                    // TODO: improve this...
-                    // we currently have dangling pointers
-                    // from pprn->notified_by's into this
-                    if (n && ast_elem_is_generic_inst((ast_elem*)n)) {
-                        tfree(twp);
-                    }
+                    ptrlist_remove_next(&r->waiting_module_imports, &it);
                 }
             }
             if (!progress && awaiting) {
@@ -4610,11 +4601,11 @@ void free_pprnlist(resolver* r, sbuffer* buff, bool error_occured)
 }
 void free_pprns(resolver* r, bool error_occured)
 {
-    pli it = pli_rbegin(&r->thread_waiting_pprns);
+    pli it = pli_rbegin(&r->waiting_module_imports);
     for (ast_node* n = pli_prev(&it); n; n = pli_prev(&it)) {
-        thread_waiting_pprn* twp = (thread_waiting_pprn*)n;
-        if (twp->pprn) {
-            pprn_fin(r, twp->pprn, error_occured);
+        import_module_data* im_data = (import_module_data*)n;
+        if (im_data->pprn) {
+            pprn_fin(r, im_data->pprn, error_occured);
         }
     }
     free_pprnlist(r, &r->pp_resolve_nodes_pending, error_occured);
@@ -4873,7 +4864,7 @@ void resolver_unpack_partial_resolution_data(
     sbuffer_take_and_invalidate(
         &r->pp_resolve_nodes_waiting, &prd->pprns_waiting);
     sbuffer_take_and_invalidate(
-        &r->thread_waiting_pprns, &prd->thread_waiting_pprns);
+        &r->waiting_module_imports, &prd->waiting_module_imports);
 #if DEBUG
     assert(r->pp_resolve_nodes.alloc_count == 0);
     r->pp_resolve_nodes.alloc_count = prd->pprn_count;
@@ -4920,7 +4911,7 @@ resolve_error resolver_suspend(resolver* r)
         return RE_FATAL;
     }
     res = sbuffer_steal_used(
-        &p->thread_waiting_pprns, &r->thread_waiting_pprns, false);
+        &p->waiting_module_imports, &r->waiting_module_imports, false);
     if (res) {
         sbuffer_take_and_invalidate(
             &r->pp_resolve_nodes_waiting, &p->pprns_waiting);
@@ -4992,7 +4983,7 @@ int resolver_partial_fin(resolver* r, int i, int res)
         case 11: ppdct_fin(&r->ppdct); // fallthrough
         case 10: ptr_map_fin(&r->pm); // fallthrough
         case 9: prp_fin(&r->prp); // fallthrough
-        case 8: ptrlist_fin(&r->thread_waiting_pprns); // fallthrough
+        case 8: ptrlist_fin(&r->waiting_module_imports); // fallthrough
         case 7: ptrlist_fin(&r->pp_resolve_nodes_ready); // fallthrough
         case 6: ptrlist_fin(&r->pp_resolve_nodes_pending); // fallthrough
         case 5: ptrlist_fin(&r->pp_resolve_nodes_waiting); // fallthrough
@@ -5026,7 +5017,7 @@ int resolver_init(resolver* r, thread_context* tc)
     if (e) return resolver_partial_fin(r, 5, e);
     e = ptrlist_init(&r->pp_resolve_nodes_ready, 16);
     if (e) return resolver_partial_fin(r, 6, e);
-    e = ptrlist_init(&r->thread_waiting_pprns, 16);
+    e = ptrlist_init(&r->waiting_module_imports, 16);
     if (e) return resolver_partial_fin(r, 7, e);
     e = prp_init(&r->prp, r->tc);
     if (e) return resolver_partial_fin(r, 8, e);

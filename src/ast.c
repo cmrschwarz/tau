@@ -450,12 +450,10 @@ pp_resolve_node** ast_node_try_get_pprn_ptr(ast_node* n)
         case SC_STRUCT_GENERIC_INST:
         case SC_STRUCT: return &((sc_struct*)n)->sb.sc.body.pprn;
         case SYM_NAMED_SYM_IMPORT_GROUP:
-            return &((sym_named_sym_import_group*)n)->im_data.waiting_pprn.pprn;
+            return &((sym_named_sym_import_group*)n)->im_data.pprn;
         case ASTN_ANONYMOUS_SYM_IMPORT_GROUP:
-            return &((astn_anonymous_sym_import_group*)n)
-                        ->im_data.waiting_pprn.pprn;
-        case SYM_IMPORT_MODULE:
-            return &((sym_import_module*)n)->im_data.waiting_pprn.pprn;
+            return &((astn_anonymous_sym_import_group*)n)->im_data.pprn;
+        case SYM_IMPORT_MODULE: return &((sym_import_module*)n)->im_data.pprn;
         case EXPR_PP: return &((expr_pp*)n)->pprn;
         case EXPR_PASTE_EVALUATION:
         case STMT_PASTE_EVALUATION:
