@@ -29,6 +29,7 @@ typedef struct thread_context_s thread_context;
 typedef enum PACK_ENUM pprn_state_e {
     PPRN_INFANT,
     PPRN_WAITING, // resolve_dep_count > 0 || run_dep_count > 0
+    PPRN_WAITING_UNCOMMITTED,
     PPRN_PENDING, // resolve_dep_count == 0, resolved=false
     PPRN_READY, // run_dep_count == 0
 } pprn_state;
@@ -43,16 +44,17 @@ typedef struct pp_resolve_node_s {
     ast_node** continue_block;
     ureg resolve_dep_count;
     ureg run_dep_count;
+    // put in pending instead of ready when resolve_dep_count == 0
     bool needs_further_resolution;
+    // used by expr_pp to decide on setting needs_further_resolution
     bool pending_pastes;
-    bool considered_committed; // incremented committed_waiters
-    bool activated; // prevent early ready
+    bool activated; // prevent ready before resolve (-> dep adding)
+    // if this is false we don't change its state on ready
     // false for exprs in functions (true in structs and mf)
     bool run_individually;
     bool block_pos_reachable; // for continuing blocks
-    bool sequential_block;
     bool notify_when_ready; // by default we notify when done
-    bool dummy; // clean once ready messages sent, no running required
+    bool dummy; // no running required. set this to done once ready
     pprn_state state;
     struct pp_resolve_node_s** pprn_list_entry;
     struct pp_resolve_node_s* first_unresolved_child;
@@ -161,7 +163,7 @@ pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress);
 resolve_error add_resolve_error(resolve_error res, resolve_error add);
 pp_resolve_node* pp_resolve_node_create(
     resolver* r, ast_node* n, ast_body* declaring_body, bool run_individually,
-    bool sequential_block, bool dummy, bool notify_when_ready);
+    bool dummy, bool notify_when_ready);
 void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured);
 resolve_error curr_pprn_depend_on(
     resolver* r, ast_body* body, pp_resolve_node** dependency_p);
