@@ -31,6 +31,17 @@ static inline void* alloc_perm(resolver* r, ureg size)
         ast_node_set_status((ast_node*)(COPY_PTR), NODE_STATUS_PARSED);        \
         *(TGT_PTR_PTR) = (ast_node*)(COPY_PTR);                                \
     } while (false)
+
+resolve_error
+setup_type_ids(resolver* r, type_derivatives* td, ureg* backend_id)
+{
+    int res = type_map_init(&td->tm);
+    if (res) return RE_FATAL;
+    *backend_id = ptr_map_claim_backend_id(&r->pm);
+    td->ptr_id = ptr_map_claim_id(&r->pm);
+    td->slice_id = ptr_map_claim_id(&r->pm);
+    return RE_OK;
+}
 // inst indicates whether we are in a generic instance, or if we are currently
 // copying a nested generic. in that case we don't want to claim var ids
 resolve_error instantiate_body(
@@ -192,10 +203,21 @@ resolve_error instantiate_ast_node(
             return instantiate_ast_node(
                 r, epsc->value, &epsc->value, body, instance);
         }
+        case SC_STRUCT: {
+            sc_struct* st = (sc_struct*)n;
+            sc_struct* stc;
+            COPY_INST(r, n, sc_struct, stc, tgt);
+            re = setup_type_ids(r, &stc->type_derivs, &stc->backend_id);
+            if (re) return re;
+            return instantiate_body(
+                r, &st->sb.sc.body, &stc->sb.sc.body, body, (ast_node*)stc,
+                instance);
+        } break;
         default: assert(false); return RE_FATAL;
     }
     return RE_OK;
 }
+
 // sufficiently setup struct instance so we can leave the gim lock
 resolve_error create_generic_struct_inst(
     resolver* r, expr_access* ea, ast_elem** args, ast_elem** ctypes,
@@ -218,15 +240,16 @@ resolve_error create_generic_struct_inst(
         gpi->value = args[i];
         gpi->ctype = ctypes[i];
     }
-    int res = type_map_init(&sgi->st.type_derivs.tm);
-    if (res) return RE_FATAL;
+    resolve_error re =
+        setup_type_ids(r, &sgi->st.type_derivs, &sgi->st.backend_id);
+    if (re) return re;
     *tgt = sgi;
     // TODO: alloc these somewhere else, maybe a freelist ore smth.
     sgi->res_ctx = tmalloc(sizeof(generic_resolution_ctx));
     assert(sgi->res_ctx);
     sgi->res_ctx->responsible_tc = r->tc;
     sgi->res_ctx->instantiated = false;
-    res = list_init(&sgi->res_ctx->waiters);
+    int res = list_init(&sgi->res_ctx->waiters);
     assert(!res);
     UNUSED(res);
     return RE_OK;
@@ -262,10 +285,10 @@ instantiate_generic_struct(resolver* r, sc_struct_generic_inst* sgi)
             symbol_table_insert(sgi->st.sb.sc.body.symtab, (symbol*)gpi);
         if (c) {
             report_redeclaration_error(r, c, (symbol*)&sgi->generic_args[i]);
-            r->error_occured = true;
-            ast_node_set_poisoned((ast_node*)sgi);
-            if (curr_pprn_propagate_error(r, &sgi->st.sb.sc.body))
+            if (curr_context_raise_error(
+                    r, &sgi->st.sb.sc.body, (ast_node*)sgi)) {
                 return RE_FATAL;
+            }
         }
     }
     if (!re) {
@@ -291,12 +314,15 @@ create_waiter(resolver* r, sc_struct_generic_inst* sgi)
     if (!twp) return NULL;
     twp->pprn = pp_resolve_node_create(
         r, (ast_node*)sgi, sgi->st.sb.sc.osym.sym.declaring_body, false, false,
-        false, false);
+        true, true);
     if (!twp->pprn) {
         tfree(twp);
         return NULL;
     }
     atomic_boolean_init(&twp->done, false);
+    // any of those does it reallly.
+    twp->requiring_module = *r->mdgs_begin;
+    atomic_ureg_inc(&twp->requiring_module->ungenerated_pp_deps);
     if (ptrlist_append(&r->thread_waiting_pprns, twp)) {
         pprn_fin(r, twp->pprn, true);
         tfree(twp);
@@ -313,7 +339,10 @@ static inline resolve_error resolve_generic_struct_instance_raw(
         re = instantiate_generic_struct(r, sgi);
         if (re) return re;
     }
-    re = resolve_ast_node(r, (ast_node*)sgi, body, NULL, NULL);
+    // we need a body that will not cause pprns to get added
+    // to thread dependant nodes
+    ast_body* dummy_body = &(**r->mdgs_begin).body;
+    re = resolve_ast_node(r, (ast_node*)sgi, dummy_body, NULL, NULL);
     assert(!sgi->st.sb.sc.body.pprn);
     gim_lock(&sgi->base->inst_map);
     if (instantiate) sgi->res_ctx->instantiated = true;
@@ -322,6 +351,10 @@ static inline resolve_error resolve_generic_struct_instance_raw(
     thread_waiting_pprn* twp;
     while ((twp = list_it_next(&it, &sgi->res_ctx->waiters))) {
         atomic_boolean_store(&twp->done, true);
+        ureg prev =
+            atomic_ureg_dec(&twp->requiring_module->ungenerated_pp_deps);
+        UNUSED(prev);
+        assert(prev > 0);
     }
     if (!re) {
         list_fin(&sgi->res_ctx->waiters, true);
@@ -388,6 +421,8 @@ static inline resolve_error handle_existing_struct_instance(
     }
     gim_unlock(&sg->inst_map);
     if (curr_pprn_depend_on(r, body, &waiter->pprn)) return RE_FATAL;
+    resolve_error re = pp_resolve_node_activate(r, body, &waiter->pprn, false);
+    if (re) return re;
     return RE_UNREALIZED_COMPTIME;
 }
 
@@ -405,9 +440,19 @@ resolve_error resolve_generic_struct_access(
     ast_elem** ctypes =
         sbuffer_append(&r->temp_buffer, sizeof(ast_elem*) * ea->arg_count);
     if (!ctypes) return RE_FATAL;
+    bool err = false;
     for (ureg i = 0; i < ea->arg_count; i++) {
         re = resolve_ast_node(r, ea->args[i], body, &args[i], &ctypes[i]);
         if (re) return re;
+        if (args[i] == ERROR_ELEM) err = true;
+    }
+    if (err) {
+        if (curr_context_raise_error(r, body, (ast_node*)ea)) {
+            return RE_FATAL;
+        }
+        if (value) *value = ERROR_ELEM;
+        if (ctype) *ctype = ERROR_ELEM;
+        return RE_OK;
     }
     gim_lock(&sg->inst_map);
     sc_struct_generic_inst** st =

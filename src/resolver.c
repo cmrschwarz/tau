@@ -83,12 +83,9 @@ resolve_error resolve_unordered_body(
 
 #define RETURN_POISONED(r, re, node, body)                                     \
     do {                                                                       \
-        ast_node* n = (ast_node*)(node);                                       \
         if (re != RE_FATAL) {                                                  \
-            r->error_occured = true;                                           \
-            if (curr_pprn_propagate_error(r, body)) return RE_FATAL;           \
-            ast_node_set_poisoned(n);                                          \
-            ast_node_set_resolved(n);                                          \
+            if (curr_context_raise_error(r, body, (ast_node*)(node)))          \
+                return RE_FATAL;                                               \
         }                                                                      \
         return re;                                                             \
     } while (false)
@@ -222,6 +219,14 @@ int curr_pprn_propagate_error(resolver* r, ast_body* body)
         if (res) return res;
     }
     return curr_body_propagate_error(r, body);
+}
+int curr_context_raise_error(resolver* r, ast_body* body, ast_node* node)
+{
+    r->error_occured = true;
+    if (curr_pprn_propagate_error(r, body)) return RE_FATAL;
+    ast_node_set_poisoned(node);
+    ast_node_set_resolved(node);
+    return RE_OK;
 }
 bool is_curr_resolution_for_pastes(resolver* r, ast_body* body)
 {
@@ -993,7 +998,7 @@ static resolve_error declare_ast_node(
             im->osym.sym.declaring_body = body;
             mdg_node* rel_to;
             if (ast_node_get_relative_import(n)) {
-                rel_to = im->im_data.importing_module;
+                rel_to = im->im_data.waiting_pprn.requiring_module;
             }
             else {
                 rel_to = r->tc->t->mdg.root_node;
@@ -2168,14 +2173,14 @@ resolve_return(resolver* r, ast_body* body, expr_return* er)
         ast_node_get_bounds(er->value, &vstart, &vend);
         ureg len;
         char* ret_type_str = ast_elem_to_string(
-            r->tc, &r->tc->tempmem, er->value_ctype, body, PM_DECL, &len);
+            r->tc, &r->tc->tempmem, er->value_ctype, body, PM_TYPE, &len);
         if (!ret_type_str) return RE_FATAL;
         ret_type_str = error_log_cat_strings_3(
             r->tc->err_log, "trying to return '", ret_type_str, "'");
         if (!ret_type_str) return RE_FATAL;
         pool_undo_last_alloc(&r->tc->tempmem, len);
         char* tgt_type_str = ast_elem_to_string(
-            r->tc, &r->tc->tempmem, tgt_type, body, PM_DECL, &len);
+            r->tc, &r->tc->tempmem, tgt_type, body, PM_TYPE, &len);
         if (!tgt_type_str) return RE_FATAL;
         tgt_type_str = error_log_cat_strings_3(
             r->tc->err_log, "target expects '", tgt_type_str, "'");
@@ -2668,7 +2673,7 @@ resolve_error resolve_importing_node(
     mdg_node* im_mdg = NULL; // only set this when incrementing dep count!
     if (used_in_pp && !previously_used_in_pp) {
         atomic_boolean_init(&im_data->waiting_pprn.done, false);
-        im_mdg = im_data->importing_module;
+        im_mdg = im_data->waiting_pprn.requiring_module;
         atomic_ureg_inc(&im_mdg->ungenerated_pp_deps);
     }
     rwlock_write(&mdg->lock);
@@ -3103,7 +3108,6 @@ static inline resolve_error resolve_ast_node_raw(
             SET_THEN_RETURN(value, ctype, n, GENERIC_TYPE_ELEM);
         }
         case SC_STRUCT_GENERIC_INST: {
-            sc_struct_generic_inst* si = (sc_struct_generic_inst*)n;
             if (resolved) SET_THEN_RETURN(value, ctype, n, TYPE_ELEM);
             re = resolver_mangle(r, n, 0);
             if (re) return re;
@@ -3124,7 +3128,6 @@ static inline resolve_error resolve_ast_node_raw(
             SET_THEN_RETURN(value, ctype, n, GENERIC_TYPE_ELEM);
         }
         case SC_TRAIT_GENERIC_INST: {
-            sc_trait_generic_inst* ti = (sc_trait_generic_inst*)n;
             if (resolved) SET_THEN_RETURN(value, ctype, n, TYPE_ELEM);
             re = resolver_mangle(r, n, 0);
             if (re) return re;
@@ -3135,7 +3138,6 @@ static inline resolve_error resolve_ast_node_raw(
             assert(false); // TODO
         }
         case TRAIT_IMPL_GENERIC_INST: {
-            trait_impl_generic_inst* ti = (trait_impl_generic_inst*)n;
             if (resolved) SET_THEN_RETURN(value, ctype, n, TYPE_ELEM);
             re = resolver_mangle(r, n, 0);
             if (re) return re;
@@ -4404,7 +4406,8 @@ resolve_error report_cyclic_pp_deps(resolver* r)
     resolve_error re = RE_OK;
     it = pli_begin(&r->pp_resolve_nodes_waiting);
     for (pp_resolve_node* pprn = pli_next(&it); pprn; pprn = pli_next(&it)) {
-        if (!ast_elem_is_any_import((ast_elem*)pprn->node)) {
+        if (!ast_elem_is_any_import((ast_elem*)pprn->node) &&
+            !ast_elem_is_generic_inst((ast_elem*)pprn->node)) {
             if (err == false) {
                 err = true;
                 print_pprns(r, "error: \n", true);
@@ -4514,7 +4517,8 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
                 ast_node* n = NULL;
                 if (twp->pprn) {
                     n = twp->pprn->node;
-                    if (ast_node_get_used_in_pp(twp->pprn->node)) {
+                    if (ast_node_get_used_in_pp(n) ||
+                        ast_elem_is_generic_inst((ast_elem*)n)) {
                         awaiting = true;
                         if (atomic_boolean_load(&twp->done)) {
                             re = pp_resolve_node_ready(r, twp->pprn);

@@ -142,21 +142,23 @@ typedef struct use_exclusions_s {
 typedef struct thread_waiting_pprn_s {
     atomic_boolean done;
     pp_resolve_node* pprn;
+    mdg_node* requiring_module;
 } thread_waiting_pprn;
 
 typedef struct generic_resolution_ctx_s {
     thread_context* responsible_tc;
+    mdg_node* emission_group_member;
     // when the responsible tc has to abort because of unmet deps
     // this gets set
     bool instantiated;
+    bool resolved;
     thread_waiting_pprn* current_thread_waiting_pprn;
     list waiters; // list of pending pprns
+    ureg refcount; // last referrer cleans this
 } generic_resolution_ctx;
 
 typedef struct import_module_data_s {
     thread_waiting_pprn waiting_pprn;
-    // not relative to what, but who actually imported
-    mdg_node* importing_module;
     mdg_node* imported_module;
 } import_module_data;
 

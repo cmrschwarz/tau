@@ -325,11 +325,13 @@ int print_import_module(ast_node* n, mdg_node* group_parent, sbuffer* buff)
     }
     int r;
     if (ast_node_get_relative_import(n)) {
-        assert(!group_parent || group_parent == im->im_data.importing_module);
+        assert(
+            !group_parent ||
+            group_parent == im->im_data.waiting_pprn.requiring_module);
         p("self::");
         r = print_mdg_node_until(
-            im->im_data.importing_module, im->im_data.imported_module, 1, NULL,
-            buff);
+            im->im_data.waiting_pprn.requiring_module,
+            im->im_data.imported_module, 1, NULL, buff);
         if (r) return r;
     }
     else {

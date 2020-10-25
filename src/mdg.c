@@ -577,7 +577,7 @@ int mdg_nodes_generated(
             import_module_data* im_data = list_it_next(&it, l);
             if (!im_data) break;
             atomic_boolean_store(&im_data->waiting_pprn.done, true);
-            mdg_node* dep_mdg = im_data->importing_module;
+            mdg_node* dep_mdg = im_data->waiting_pprn.requiring_module;
             if (sccd_run(
                     &tc->sccd, (mdg_node*)dep_mdg, SCCD_PP_DEP_GENERATED)) {
                 ok = false;

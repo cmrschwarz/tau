@@ -163,3 +163,4 @@ pp_resolve_node* pp_resolve_node_create(
 void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured);
 resolve_error curr_pprn_depend_on(
     resolver* r, ast_body* body, pp_resolve_node** dependency_p);
+int curr_context_raise_error(resolver* r, ast_body* body, ast_node* node);

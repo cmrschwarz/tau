@@ -3453,7 +3453,7 @@ parse_error parse_import_with_parent(
                 (ast_node*)im, SYM_IMPORT_MODULE, &mods->data);
             ast_node_fill_srange(p, (ast_node*)im, istart, end);
             im->im_data.imported_module = parent;
-            im->im_data.importing_module = p->current_module;
+            im->im_data.waiting_pprn.requiring_module = p->current_module;
             im->osym.visible_within_body = NULL; // TODO
             if (name) {
                 im->osym.sym.name = name;
@@ -3509,7 +3509,7 @@ parse_error parse_import_with_parent(
             p, *tgt, ig_data, mods, kw_end, &end, decl_cnt);
         if (pe) return pe;
         im_data->imported_module = parent;
-        im_data->importing_module = p->current_module;
+        im_data->waiting_pprn.requiring_module = p->current_module;
         im_data->waiting_pprn.pprn = NULL;
     }
     else if (t->kind == TK_BRACE_OPEN) {
