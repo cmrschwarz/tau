@@ -128,7 +128,7 @@ int thread_context_do_job(thread_context* tc, job* j)
         job_queue_stop(&tc->t->jobqueue);
         // DEBUG:
         if (tc->t->emit_ast) {
-            print_mdg_node(tc->t->mdg.root_node, 0);
+            print_mdg_node(tc->t->mdg.root_node, 0, NULL);
             tputs("");
         }
         int r = mdg_final_sanity_check(&tc->t->mdg, tc);

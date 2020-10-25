@@ -334,7 +334,12 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
     if (pprn->pprn_list_entry) {
         remove_pprn_from_list(r, pprn);
     }
-    *ast_node_get_pprn_ptr(n) = NULL;
+    if (!ast_elem_is_generic_inst((ast_elem*)n)) {
+        *ast_node_get_pprn_ptr(n) = NULL;
+    }
+    else {
+        assert(*ast_node_get_pprn_ptr(n) == NULL);
+    }
     list_fin(&pprn->notified_by, true);
     list_fin(&pprn->notify, true);
     freelist_free(&r->pp_resolve_nodes, pprn);
@@ -427,7 +432,7 @@ void resolver_set_ast_node_used_in_pp(resolver* r, ast_node* n)
     ast_node_set_used_in_pp(n);
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_USED_IN_PP) {
         tprintf("used in pp: ");
-        print_ast_node(n, NULL, 0);
+        print_ast_node(n, NULL, PM_DECL, 0, NULL);
         tputs("");
         tflush();
     }
@@ -2042,9 +2047,9 @@ static inline resolve_error resolve_var(
         ast_node_set_resolved((ast_node*)v);
         if (!is_legal_type_for_var(v->ctype)) {
             ureg len;
-            char* tgt_type = ctype_to_string(
-                r->tc, &r->tc->tempmem, v->osym.sym.declaring_body, v->ctype,
-                &len);
+            char* tgt_type = ast_elem_to_string(
+                r->tc, &r->tc->tempmem, v->ctype, v->osym.sym.declaring_body,
+                PM_TYPE, &len);
             if (!tgt_type) return RE_FATAL;
             char* msg = error_log_cat_strings_3(
                 r->tc->err_log, "variable of type '", tgt_type,
@@ -2162,15 +2167,15 @@ resolve_return(resolver* r, ast_body* body, expr_return* er)
         ureg vstart, vend;
         ast_node_get_bounds(er->value, &vstart, &vend);
         ureg len;
-        char* ret_type_str = ctype_to_string(
-            r->tc, &r->tc->tempmem, body, er->value_ctype, &len);
+        char* ret_type_str = ast_elem_to_string(
+            r->tc, &r->tc->tempmem, er->value_ctype, body, PM_DECL, &len);
         if (!ret_type_str) return RE_FATAL;
         ret_type_str = error_log_cat_strings_3(
             r->tc->err_log, "trying to return '", ret_type_str, "'");
         if (!ret_type_str) return RE_FATAL;
         pool_undo_last_alloc(&r->tc->tempmem, len);
-        char* tgt_type_str =
-            ctype_to_string(r->tc, &r->tc->tempmem, body, tgt_type, &len);
+        char* tgt_type_str = ast_elem_to_string(
+            r->tc, &r->tc->tempmem, tgt_type, body, PM_DECL, &len);
         if (!tgt_type_str) return RE_FATAL;
         tgt_type_str = error_log_cat_strings_3(
             r->tc->err_log, "target expects '", tgt_type_str, "'");
@@ -4232,17 +4237,12 @@ void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident)
     assert(pprn->node != NULL);
 
     pp_resolve_node* child = pprn->first_unresolved_child;
-    print_indent(ident);
-    if (ast_elem_is_func_base((ast_elem*)pprn->node)) {
-        tprintf("func %s", ((sc_func_base*)pprn->node)->sc.osym.sym.name);
-    }
-    else {
-        print_ast_node(pprn->node, NULL, ident);
-    }
+    print_indent(ident, NULL);
+    print_ast_node(pprn->node, NULL, PM_DECL, ident, NULL);
     tputs("");
     if (verbose) {
         list_it it;
-        print_indent(ident);
+        print_indent(ident, NULL);
         tprintf("dependencies: %zu\n", pprn->dep_count);
         list_it_begin(&it, &pprn->notified_by);
         for (pp_resolve_node** p =
@@ -4252,7 +4252,7 @@ void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident)
         }
         list_it_begin(&it, &pprn->notify);
         ureg nots = list_length(&pprn->notify);
-        print_indent(ident);
+        print_indent(ident, NULL);
         tprintf(
             "nofify when %s: %zu\n", pprn->notify_when_ready ? "ready" : "done",
             nots);
@@ -4262,11 +4262,11 @@ void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident)
             print_pprn(r, p, false, ident + 1);
         }
         if (child) {
-            print_indent(ident);
+            print_indent(ident, NULL);
             tputs("children:");
             while (child) {
-                print_indent(ident + 1);
-                print_ast_node(child->node, NULL, ident + 1);
+                print_indent(ident + 1, NULL);
+                print_ast_node(child->node, NULL, PM_DECL, ident + 1, NULL);
                 tputs("");
                 child = child->next;
             }
@@ -4284,7 +4284,7 @@ void print_pprnlist(resolver* r, sbuffer* buff, char* msg, bool verbose)
              sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
          rn; rn = sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*))) {
         if (!first) {
-            print_indent(1);
+            print_indent(1, NULL);
             tputs("----------");
         }
         first = false;
@@ -4529,7 +4529,7 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
                     // TODO: improve this...
                     // we currently have dangling pointers
                     // from pprn->notified_by's into this
-                    if (n && n->kind == SC_STRUCT_GENERIC_INST) {
+                    if (n && ast_elem_is_generic_inst((ast_elem*)n)) {
                         tfree(twp);
                     }
                 }

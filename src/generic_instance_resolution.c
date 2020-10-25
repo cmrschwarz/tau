@@ -180,6 +180,18 @@ resolve_error instantiate_ast_node(
             }
             return RE_OK;
         }
+        case EXPR_PP: {
+            expr_pp* eppc;
+            COPY_INST(r, n, expr_pp, eppc, tgt);
+            return instantiate_ast_node(
+                r, eppc->pp_expr, &eppc->pp_expr, body, instance);
+        }
+        case EXPR_PASTE_STR: {
+            expr_paste_str* epsc;
+            COPY_INST(r, n, expr_paste_str, epsc, tgt);
+            return instantiate_ast_node(
+                r, epsc->value, &epsc->value, body, instance);
+        }
         default: assert(false); return RE_FATAL;
     }
     return RE_OK;
@@ -302,6 +314,7 @@ static inline resolve_error resolve_generic_struct_instance_raw(
         if (re) return re;
     }
     re = resolve_ast_node(r, (ast_node*)sgi, body, NULL, NULL);
+    assert(!sgi->st.sb.sc.body.pprn);
     gim_lock(&sgi->base->inst_map);
     if (instantiate) sgi->res_ctx->instantiated = true;
     list_it it;

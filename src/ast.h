@@ -741,6 +741,7 @@ bool ast_elem_is_expr(ast_elem* s);
 bool ast_elem_is_type_slice(ast_elem* s);
 bool ast_elem_is_stmt(ast_elem* s);
 bool ast_elem_is_node(ast_elem* e);
+bool ast_elem_is_generic_inst(ast_elem* e);
 bool ast_elem_is_expr_block_base(ast_elem* n);
 bool ast_elem_is_paste_evaluation(ast_elem* s);
 bool assignment_is_meta_assignment(expr_op_binary* ob, bool* defined);

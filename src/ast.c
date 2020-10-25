@@ -447,6 +447,7 @@ pp_resolve_node** ast_node_try_get_pprn_ptr(ast_node* n)
         case SYM_VAR_INITIALIZED: return &((sym_var*)n)->pprn;
         case EXPR_BLOCK: return &((expr_block*)n)->ebb.body.pprn;
         case EXPR_LOOP: return &((expr_loop*)n)->ebb.body.pprn;
+        case SC_STRUCT_GENERIC_INST:
         case SC_STRUCT: return &((sc_struct*)n)->sb.sc.body.pprn;
         case SYM_NAMED_SYM_IMPORT_GROUP:
             return &((sym_named_sym_import_group*)n)->im_data.waiting_pprn.pprn;
@@ -468,4 +469,15 @@ pp_resolve_node** ast_node_get_pprn_ptr(ast_node* n)
     pp_resolve_node** pprnp = ast_node_try_get_pprn_ptr(n);
     if (!pprnp) panic("invalid pprn node type");
     return pprnp;
+}
+
+bool ast_elem_is_generic_inst(ast_elem* e)
+{
+    switch (e->kind) {
+        case SC_STRUCT_GENERIC_INST:
+        case TRAIT_IMPL_GENERIC_INST:
+        case SC_TRAIT_GENERIC_INST:
+        case SC_FUNC_GENERIC_INST: return true;
+        default: return false;
+    }
 }

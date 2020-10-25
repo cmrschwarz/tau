@@ -12,119 +12,209 @@
 #include "utils/int_string_conversions.h"
 #include <assert.h>
 
-void pc(char c)
+int p_raw(const char* str, sbuffer* buff)
 {
-    tputchar(c);
-}
-void p(const char* c)
-{
-    tput(c);
-}
-void pu(const char* c)
-{
-    if (c == NULL) {
-        c = "unknown";
+    if (buff) {
+        ureg len = strlen(str);
+        char* s = sbuffer_append(buff, len);
+        if (!s) return ERR;
+        memcpy(s, str, len);
     }
-    tput(c);
+    else {
+        tput(str);
+    }
+    return OK;
 }
-void ps(const char* c)
+int pc_raw(char c, sbuffer* buff)
 {
-    pu(c);
-    pc(' ');
+    if (buff) {
+        char* cp = sbuffer_append(buff, 1);
+        if (!cp) return ERR;
+        *cp = c;
+    }
+    else {
+        tputchar(c);
+    }
+    return OK;
 }
-void pinn(char* c)
+int pu_raw(const char* str, sbuffer* buff)
 {
-    if (c) p(c);
+    if (str == NULL) str = "unknown";
+    return p_raw(str, buff);
 }
-void print_indent(ureg indent)
+int pinn_raw(const char* str, sbuffer* buff)
+{
+    if (str == NULL) return OK;
+    return p_raw(str, buff);
+}
+int p_ureg(ureg i, sbuffer* buff)
+{
+    ureg len = ureg_get_decimal_digits_count(i);
+    char* s;
+    if (buff) {
+        s = sbuffer_append(buff, len);
+        if (!s) return ERR;
+    }
+    else {
+        s = alloca(len);
+    }
+    ureg_to_decimal_string(i, s);
+    if (!buff) tput(s);
+    return OK;
+}
+int p_sreg(sreg i, sbuffer* buff)
+{
+    ureg len = sreg_get_decimal_digits_count(i);
+    char* s;
+    if (buff) {
+        s = sbuffer_append(buff, len);
+        if (!s) return ERR;
+    }
+    else {
+        s = alloca(len);
+    }
+    sreg_to_decimal_string(i, s);
+    if (!buff) tput(s);
+    return OK;
+}
+#define p(str)                                                                 \
+    do {                                                                       \
+        if (p_raw(str, buff)) return ERR;                                      \
+    } while (false)
+
+#define pc(c)                                                                  \
+    do {                                                                       \
+        if (pc_raw(c, buff)) return ERR;                                       \
+    } while (false)
+
+#define pu(str)                                                                \
+    do {                                                                       \
+        if (pu_raw(str, buff)) return ERR;                                     \
+    } while (false)
+
+#define pinn(str)                                                              \
+    do {                                                                       \
+        if (pinn_raw(str, buff)) return ERR;                                   \
+    } while (false)
+
+#define attempt(exp)                                                           \
+    do {                                                                       \
+        if (exp) return ERR;                                                   \
+    } while (false)
+
+int print_indent(ureg indent, sbuffer* buff)
 {
     for (ureg i = 0; i < indent; i++) {
         p("    ");
     }
+    return OK;
 }
-void print_requires(file_require* r, ureg indent)
+int print_requires(file_require* r, ureg indent, sbuffer* buff)
 {
     while (*(void**)r != NULL) {
-        print_indent(indent);
+        if (print_indent(indent, buff)) return ERR;
         p("require \"");
         file_map_head_print_path(r->fmh, false);
         p("\";\n");
         r++;
     }
+    return OK;
 }
-void print_body_elements(ast_body* body, mdg_node* cmdg, ureg indent)
+int print_body_elements(
+    ast_body* body, ast_body* ctx, ureg indent, sbuffer* buff)
 {
     for (ast_node** n = body->elements; *n; n++) {
-        print_indent(indent);
-        print_ast_node(*n, cmdg, indent);
+        attempt(print_indent(indent, buff));
+        attempt(print_ast_node(*n, ctx, PM_FULL, indent, buff));
         if (!ast_node_may_drop_semicolon(*n)) pc(';');
         pc('\n');
     }
+    return OK;
 }
-void print_module_frame_body(module_frame* mf, mdg_node* cmdg, ureg indent)
+int print_module_frame_body(
+    module_frame* mf, ast_body* ctx, ureg indent, sbuffer* buff)
 {
     p("{\n");
     indent++;
-    print_requires(mf->requires, indent);
-    print_body_elements(&mf->body, cmdg, indent);
+    attempt(print_requires(mf->requires, indent, buff));
+    attempt(print_body_elements(&mf->body, ctx, indent, buff));
     indent--;
-    print_indent(indent);
+    attempt(print_indent(indent, buff));
     p("}");
+    return OK;
 }
-void print_body_braced(ast_body* body, mdg_node* cmdg, ureg indent)
+int print_body_braced(ast_body* body, ast_body* ctx, ureg indent, sbuffer* buff)
 {
     p("{\n");
-    print_body_elements(body, cmdg, indent + 1);
-    print_indent(indent);
+    attempt(print_body_elements(body, ctx, indent + 1, buff));
+    attempt(print_indent(indent, buff));
     p("}");
+    return OK;
 }
-void print_body(ast_body* body, mdg_node* cmdg, ureg indent)
+int print_body(ast_body* body, ast_body* ctx, ureg indent, sbuffer* buff)
 {
     if (!ast_body_is_braced(body) && body->elements[0] && !body->elements[1]) {
-        print_ast_node(body->elements[0], cmdg, indent);
+        attempt(print_ast_node(body->elements[0], ctx, PM_FULL, indent, buff));
     }
     else {
-        print_body_braced(body, cmdg, indent);
+        attempt(print_body_braced(body, ctx, indent, buff));
     }
+    return OK;
 }
-void print_namable_braced_body(
-    ast_body* body, char* name, mdg_node* cmdg, ureg indent)
+int print_namable_braced_body(
+    ast_body* body, char* name, ast_body* ctx, ureg indent, sbuffer* buff)
 {
     if (name) {
         pc('@');
         p(name);
     }
-    print_body_braced(body, cmdg, indent);
+    attempt(print_body_braced(body, ctx, indent, buff));
+    return OK;
 }
-void print_sym_params(
-    sym_param* params, ureg param_count, mdg_node* cmdg, ureg indent)
+int print_generic_args(
+    sym_param_generic_inst* args, ureg arg_count, ast_body* ctx, ureg indent,
+    sbuffer* buff)
+{
+    for (ureg i = 0; i < arg_count; i++) {
+        attempt(print_ast_elem(args[i].value, ctx, PM_TYPE, indent, buff));
+        if (i < arg_count - 1) p(", ");
+    }
+    return OK;
+}
+int print_sym_params(
+    sym_param* params, ureg param_count, ast_body* ctx, ureg indent,
+    sbuffer* buff)
 {
     for (ureg i = 0; i < param_count; i++) {
         pu(params[i].sym.name);
         pc(':');
         if (params[i].type != NULL) {
             pc(' ');
-            print_ast_node(params[i].type, cmdg, indent);
+            attempt(print_ast_node(params[i].type, ctx, PM_FULL, indent, buff));
             if (params[i].default_value != NULL) pc(' ');
         }
         if (params[i].default_value != NULL) {
             p("= ");
-            print_ast_node(params[i].default_value, cmdg, indent);
+            attempt(print_ast_node(
+                params[i].default_value, ctx, PM_FULL, indent, buff));
         }
         if (i < param_count - 1) p(", ");
     }
+    return OK;
 }
-void print_expr_list(ast_node** el, ureg count, mdg_node* cmdg, ureg indent)
+int print_expr_list(
+    ast_node** el, ureg count, ast_body* ctx, ureg indent, sbuffer* buff)
 {
-    if (!el) return;
+    if (!el) return OK;
     for (ureg i = 0; i < count; i++) {
-        print_ast_node(*el, cmdg, indent);
+        attempt(print_ast_node(*el, ctx, PM_FULL, indent, buff));
         el++;
         if (i < count - 1) p(", ");
     }
+    return OK;
 }
-void print_compound_decl_list(
-    ast_node** el, ureg elem_count, mdg_node* cmdg, ureg indent)
+int print_compound_decl_list(
+    ast_node** el, ureg elem_count, ast_body* ctx, ureg indent, sbuffer* buff)
 {
     for (ureg i = 0; i < elem_count; i++) {
         if ((**el).kind == SYM_VAR) {
@@ -133,47 +223,58 @@ void print_compound_decl_list(
             pu(v->osym.sym.name);
             if (v->type != NULL) {
                 p(": ");
-                print_ast_node(v->type, cmdg, indent);
+                attempt(print_ast_node(v->type, ctx, PM_FULL, indent, buff));
             }
         }
         else if ((**el).kind == EXPR_TUPLE) {
             expr_tuple* t = (expr_tuple*)(*el);
             pc('(');
-            print_compound_decl_list(t->elements, t->elem_count, cmdg, indent);
+            attempt(print_compound_decl_list(
+                t->elements, t->elem_count, ctx, indent, buff));
             if (t->elements && !t->elements[1]) {
                 pc(',');
             }
             pc(')');
         }
         else {
-            print_ast_node(*el, cmdg, indent);
+            attempt(print_ast_node(*el, ctx, PM_FULL, indent, buff));
         }
         el++;
         if (*el) p(", ");
     }
+    return OK;
 }
-void print_ast_node_nl(ast_node* n, mdg_node* cmdg, ureg indent)
+int print_ast_node_nl(
+    ast_node* n, ast_body* ctx, print_mode pm, ureg indent, sbuffer* buff)
 {
-    print_ast_node(n, cmdg, indent);
+    attempt(print_ast_node(n, ctx, pm, indent, buff));
     pc('\n');
+    return OK;
 }
 // skipping zero means printing including the start
-ureg print_mdg_node_until(mdg_node* start, mdg_node* m, ureg skip_levels)
+int print_mdg_node_until(
+    mdg_node* start, mdg_node* m, ureg skip_levels, ureg* lvl_done,
+    sbuffer* buff)
 {
     if (m == start) {
         if (skip_levels == 0) p(m->name);
-        return 1;
+        if (lvl_done) *lvl_done = 1;
+        return OK;
     }
-    ureg lvl = print_mdg_node_until(start, m->parent, skip_levels);
+    ureg lvl;
+    attempt(print_mdg_node_until(start, m->parent, skip_levels, &lvl, buff));
     if (lvl > skip_levels) p("::");
     if (lvl >= skip_levels) p(m->name);
-    return lvl + 1;
+    if (lvl_done) *lvl_done = lvl + 1;
+    return OK;
 }
-void print_expr_in_parens(ast_node* ex, mdg_node* cmdg, ureg indent)
+int print_expr_in_parens(
+    ast_node* ex, ast_body* ctx, print_mode pm, ureg indent, sbuffer* buff)
 {
     pc('(');
-    print_ast_node(ex, cmdg, indent);
+    attempt(print_ast_node(ex, ctx, pm, indent, buff));
     pc(')');
+    return OK;
 }
 char* get_expr_name(ast_node* n)
 {
@@ -185,7 +286,7 @@ char* get_expr_name(ast_node* n)
         default: assert(false); return NULL;
     }
 }
-void print_ast_elem_name(ast_elem* n)
+int print_ast_elem_name(ast_elem* n, sbuffer* buff)
 {
     if (ast_elem_is_symbol(n)) {
         pu(((symbol*)n)->name);
@@ -196,8 +297,9 @@ void print_ast_elem_name(ast_elem* n)
     else {
         pu("<unknown node>");
     }
+    return OK;
 }
-void print_import_symbol(ast_node* n)
+int print_import_symbol(ast_node* n, sbuffer* buff)
 {
     sym_import_symbol* is = (sym_import_symbol*)n;
     char* tgt_name = is->target_body ? is->target.name : is->target.name;
@@ -211,8 +313,9 @@ void print_import_symbol(ast_node* n)
         p(" = ");
     }
     p(tgt_name);
+    return OK;
 }
-void print_import_module(ast_node* n, mdg_node* group_parent)
+int print_import_module(ast_node* n, mdg_node* group_parent, sbuffer* buff)
 {
     if (!group_parent) p("import ");
     sym_import_module* im = (sym_import_module*)n;
@@ -220,19 +323,25 @@ void print_import_module(ast_node* n, mdg_node* group_parent)
         p(im->osym.sym.name);
         p(" = ");
     }
+    int r;
     if (ast_node_get_relative_import(n)) {
         assert(!group_parent || group_parent == im->im_data.importing_module);
         p("self::");
-        print_mdg_node_until(
-            im->im_data.importing_module, im->im_data.imported_module, 1);
+        r = print_mdg_node_until(
+            im->im_data.importing_module, im->im_data.imported_module, 1, NULL,
+            buff);
+        if (r) return r;
     }
     else {
-        print_mdg_node_until(
-            group_parent, im->im_data.imported_module, group_parent ? 1 : 2);
+        r = print_mdg_node_until(
+            group_parent, im->im_data.imported_module, group_parent ? 1 : 2,
+            NULL, buff);
+        if (r) return r;
     }
     if (!group_parent) p(";");
+    return OK;
 }
-void print_import_group(ast_node* node, bool child, ureg indent)
+int print_import_group(ast_node* node, bool child, ureg indent, sbuffer* buff)
 {
     if (!child) p("import ");
     import_group_data* ig_data;
@@ -248,7 +357,10 @@ void print_import_group(ast_node* node, bool child, ureg indent)
         assert(!child);
         p("self::");
     }
-    if (print_mdg_node_until(ig_data->relative_to, group_parent, 1) >= 2) {
+    ureg lvl;
+    attempt(print_mdg_node_until(
+        ig_data->relative_to, group_parent, 1, &lvl, buff));
+    if (lvl >= 2) {
         p("::");
     }
     list_it it;
@@ -260,21 +372,24 @@ void print_import_group(ast_node* node, bool child, ureg indent)
         if (!first) p(", ");
         first = false;
         if (ast_elem_is_import_group((ast_elem*)n)) {
-            print_import_group(n, true, indent + 1);
+            attempt(print_import_group(n, true, indent + 1, buff));
         }
         else if (n->kind == SYM_IMPORT_SYMBOL) {
-            print_import_symbol(n);
+            attempt(print_import_symbol(n, buff));
         }
         else {
             assert(n->kind == SYM_IMPORT_MODULE);
-            print_import_module(n, group_parent);
+            attempt(print_import_module(n, group_parent, buff));
         }
     }
     p(im_data ? ")" : "}");
     if (!child) p(";");
+    return OK;
 }
-void print_ast_node_modifiers(ast_node* n)
+int print_ast_node_modifiers(ast_elem* e, sbuffer* buff)
 {
+    assert(ast_elem_is_node(e));
+    ast_node* n = (ast_node*)e;
     access_modifier am = ast_node_get_access_mod(n);
     switch (am) {
         // TODO: properly check for the default in this context
@@ -290,32 +405,35 @@ void print_ast_node_modifiers(ast_node* n)
         p(token_strings[TK_KW_CONST]);
         pc(' ');
     }
+    return OK;
 }
-// TODO: we can fully get rid of cmdg by using importing_module in
+// TODO: we can fully get rid of ctx by using importing_module in
 // import_module
-void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
+int print_ast_elem(
+    ast_elem* n, ast_body* ctx, print_mode pm, ureg indent, sbuffer* buff)
 {
     // TODO: print access modifiers
     switch (n->kind) {
         case SYM_IMPORT_MODULE: {
-            print_import_module(n, NULL);
+            attempt(print_import_module((ast_node*)n, NULL, buff));
         } break;
         case SYM_NAMED_MOD_IMPORT_GROUP:
         case SYM_NAMED_SYM_IMPORT_GROUP:
         case ASTN_ANONYMOUS_MOD_IMPORT_GROUP:
         case ASTN_ANONYMOUS_SYM_IMPORT_GROUP: {
-            print_import_group(n, false, indent);
+            attempt(print_import_group((ast_node*)n, false, indent, buff));
         } break;
         case STMT_COMPOUND_ASSIGN: {
             stmt_compound_assignment* ca = (stmt_compound_assignment*)n;
             pc('(');
             bool colon = ast_node_get_compound_decl(&ca->node);
             if (colon) {
-                print_compound_decl_list(
-                    ca->elements, ca->elem_count, cmdg, indent);
+                attempt(print_compound_decl_list(
+                    ca->elements, ca->elem_count, ctx, indent, buff));
             }
             else {
-                print_expr_list(ca->elements, ca->elem_count, cmdg, indent);
+                attempt(print_expr_list(
+                    ca->elements, ca->elem_count, ctx, indent, buff));
             }
             if (ca->elements && !ca->elements[1]) {
                 pc(',');
@@ -323,7 +441,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             p(") ");
             if (colon) pc(':');
             p("= ");
-            print_ast_node(ca->value, cmdg, indent);
+            attempt(print_ast_node(ca->value, ctx, pm, indent, buff));
         } break;
         case SC_FUNC:
         case SC_FUNC_GENERIC: {
@@ -331,106 +449,136 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             sc_func_generic* fng =
                 (n->kind == SC_FUNC) ? NULL : (sc_func_generic*)n;
 
-            print_ast_node_modifiers(n);
+            attempt(print_ast_node_modifiers(n, buff));
             p("func ");
             pu(fnb->sc.osym.sym.name);
             if (fng) {
                 p("[");
-                print_sym_params(
-                    fng->generic_params, fng->generic_param_count, cmdg,
-                    indent);
+                attempt(print_sym_params(
+                    fng->generic_params, fng->generic_param_count, ctx, indent,
+                    buff));
                 pc(']');
             }
             p("(");
-            print_sym_params(fnb->params, fnb->param_count, cmdg, indent);
+            attempt(print_sym_params(
+                fnb->params, fnb->param_count, ctx, indent, buff));
             pc(')');
             if (fnb->return_type) {
                 p(" -> ");
-                print_ast_node(fnb->return_type, cmdg, indent + 1);
+                attempt(print_ast_node(
+                    fnb->return_type, ctx, pm, indent + 1, buff));
                 pc(' ');
             }
-            print_body_braced(&fnb->sc.body, cmdg, indent);
+            if (pm == PM_FULL) {
+                attempt(print_body_braced(&fnb->sc.body, ctx, indent, buff));
+            }
         } break;
         case SC_STRUCT: {
             sc_struct* s = (sc_struct*)n;
-            p("struct ");
+            if (pm != PM_TYPE) p("struct ");
             pinn(s->sb.sc.osym.sym.name);
-            print_body_braced(&s->sb.sc.body, cmdg, indent);
+            if (pm == PM_FULL) {
+                attempt(print_body_braced(&s->sb.sc.body, ctx, indent, buff));
+            }
         } break;
         case SC_STRUCT_GENERIC: {
             sc_struct_generic* s = (sc_struct_generic*)n;
-            p("struct ");
+            if (pm != PM_TYPE) p("struct ");
             pinn(s->sb.sc.osym.sym.name);
             p("[");
-            print_sym_params(
-                s->generic_params, s->generic_param_count, cmdg, indent);
+            attempt(print_sym_params(
+                s->generic_params, s->generic_param_count, ctx, indent, buff));
             pc(']');
-            print_body_braced(&s->sb.sc.body, cmdg, indent);
+            if (pm == PM_FULL) {
+                attempt(print_body_braced(&s->sb.sc.body, ctx, indent, buff));
+            }
+        } break;
+        case SC_STRUCT_GENERIC_INST: {
+            sc_struct_generic_inst* s = (sc_struct_generic_inst*)n;
+            if (pm != PM_TYPE) p("struct ");
+            pinn(s->st.sb.sc.osym.sym.name);
+            p("[");
+            attempt(print_generic_args(
+                s->generic_args, s->generic_arg_count, ctx, indent, buff));
+            pc(']');
+            if (pm == PM_FULL) {
+                attempt(
+                    print_body_braced(&s->st.sb.sc.body, ctx, indent, buff));
+            }
         } break;
         case SC_TRAIT: {
             sc_trait* t = (sc_trait*)n;
-            p("trait ");
+            if (pm != PM_TYPE) p("trait ");
             pinn(t->sb.sc.osym.sym.name);
-            print_body_braced(&t->sb.sc.body, cmdg, indent);
+            if (pm == PM_FULL) {
+                attempt(print_body_braced(&t->sb.sc.body, ctx, indent, buff));
+            }
         } break;
         case SC_TRAIT_GENERIC: {
             sc_trait_generic* t = (sc_trait_generic*)n;
-            p("trait ");
+            if (pm != PM_TYPE) p("trait ");
             pinn(t->sb.sc.osym.sym.name);
             p("[");
-            print_sym_params(
-                t->generic_params, t->generic_param_count, cmdg, indent);
+            attempt(print_sym_params(
+                t->generic_params, t->generic_param_count, ctx, indent, buff));
             pc(']');
-            print_body_braced(&t->sb.sc.body, cmdg, indent);
+            if (pm) {
+                attempt(print_body_braced(&t->sb.sc.body, ctx, indent, buff));
+            }
         } break;
         case MF_MODULE:
         case MF_EXTEND: {
             module_frame* mf = (module_frame*)n;
-            p(n->kind == MF_EXTEND ? "extend " : "module ");
-            // pinn(mf->oscope.sc.osym.sym.name); //TODO: get name here?
-            pinn("?");
-            print_module_frame_body(mf, cmdg, indent);
+            if (pm != PM_TYPE) p(n->kind == MF_EXTEND ? "extend " : "module ");
+            p(module_frame_get_module(mf)->name);
+            if (pm == PM_FULL) {
+                attempt(print_module_frame_body(mf, ctx, indent, buff));
+            }
         } break;
         case MF_MODULE_GENERIC:
         case MF_EXTEND_GENERIC: {
             module_frame_generic* mf = (module_frame_generic*)n;
             p(n->kind == MF_EXTEND_GENERIC ? "extend " : "module ");
-            // pinn(mf->frame.oscope.sc.osym.sym.name); //TODO: get name
-            // here?
-            pinn("?");
+            p(module_frame_get_module(&mf->frame)->name);
             p("[");
-            print_sym_params(
-                mf->generic_params, mf->generic_param_count, cmdg, indent);
+            attempt(print_sym_params(
+                mf->generic_params, mf->generic_param_count, ctx, indent,
+                buff));
             pc(']');
-            print_module_frame_body(&mf->frame, cmdg, indent);
+            if (pm == PM_FULL) {
+                attempt(print_module_frame_body(&mf->frame, ctx, indent, buff));
+            }
         } break;
         case EXPR_PP: {
             pc('#');
-            print_ast_node(((expr_pp*)n)->pp_expr, cmdg, indent);
+            attempt(
+                print_ast_node(((expr_pp*)n)->pp_expr, ctx, pm, indent, buff));
         } break;
         case EXPR_PASTE_STR: {
             p("paste(");
-            print_ast_node(((expr_paste_str*)n)->value, cmdg, indent);
+            attempt(print_ast_node(
+                ((expr_paste_str*)n)->value, ctx, pm, indent, buff));
             pc(')');
         } break;
         case SYM_NAMED_USE: {
             sym_named_use* nu = (sym_named_use*)n;
-            print_ast_node_modifiers(n);
+            attempt(print_ast_node_modifiers(n, buff));
             p("using ");
             p(nu->osym.sym.name);
             p(" = ");
-            print_ast_node(nu->target, cmdg, indent);
+            attempt(print_ast_node(nu->target, ctx, pm, indent, buff));
         } break;
         case STMT_USE: {
             stmt_use* u = (stmt_use*)n;
-            print_ast_node_modifiers(n);
+            attempt(print_ast_node_modifiers(n, buff));
             p("using ");
-            print_ast_node(u->target, cmdg, indent);
+            attempt(print_ast_node(u->target, ctx, pm, indent, buff));
         } break;
         case EXPR_IDENTIFIER: {
             expr_identifier* i = (expr_identifier*)n;
-            if (ast_node_get_resolved(n) && !ast_node_get_poisoned(n)) {
-                print_ast_elem_name((ast_elem*)i->value.sym);
+            if (ast_node_get_resolved((ast_node*)n) &&
+                !ast_node_get_poisoned((ast_node*)n)) {
+                attempt(print_ast_elem_name((ast_elem*)i->value.sym, buff));
             }
             else {
                 pu(i->value.str);
@@ -438,7 +586,7 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case EXPR_LITERAL: {
             expr_literal* l = (expr_literal*)n;
-            switch (n->pt_kind) {
+            switch (l->node.pt_kind) {
                 case PT_BINARY_STRING:
                     pc('\'');
                     pu(l->value.str);
@@ -450,31 +598,37 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
                     pc('"');
                     break;
                 case PT_FLUID_INT: pu(l->value.str); break;
-                case PT_UINT: tprintf("%zu", l->value.val_ureg); break;
-                case PT_INT: tprintf("%zi", l->value.val_ureg); break;
+                case PT_UINT: attempt(p_ureg(l->value.val_ureg, buff)); break;
+                case PT_INT: attempt(p_sreg(l->value.val_ureg, buff)); break;
                 default: assert(false); break;
             }
         } break;
         case EXPR_BLOCK: {
             expr_block* b = (expr_block*)n;
-            print_namable_braced_body(&b->ebb.body, b->ebb.name, cmdg, indent);
+            if (pm) {
+                attempt(print_namable_braced_body(
+                    &b->ebb.body, b->ebb.name, ctx, indent, buff));
+            }
+            else {
+                p("{...}");
+            }
         } break;
         case SYM_VAR: {
             sym_var* v = (sym_var*)n;
-            print_ast_node_modifiers(n);
+            attempt(print_ast_node_modifiers(n, buff));
             pu(v->osym.sym.name);
             if (v->type != NULL) {
                 p(": ");
-                print_ast_node(v->type, cmdg, indent);
+                attempt(print_ast_node(v->type, ctx, pm, indent, buff));
             }
         } break;
         case SYM_VAR_INITIALIZED: {
             sym_var_initialized* v = (sym_var_initialized*)n;
-            print_ast_node_modifiers(n);
+            attempt(print_ast_node_modifiers(n, buff));
             pu(v->var.osym.sym.name);
             if (v->var.type != NULL) {
                 p(": ");
-                print_ast_node(v->var.type, cmdg, indent);
+                attempt(print_ast_node(v->var.type, ctx, pm, indent, buff));
                 if (v->initial_value != NULL) pc(' ');
             }
             else {
@@ -482,56 +636,60 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             }
             if (v->initial_value != NULL) {
                 p("= ");
-                print_ast_node(v->initial_value, cmdg, indent);
+                attempt(
+                    print_ast_node(v->initial_value, ctx, pm, indent, buff));
             }
         } break;
         case EXPR_OP_BINARY: {
             expr_op_binary* b = (expr_op_binary*)n;
-            print_ast_node(b->lhs, cmdg, indent);
+            attempt(print_ast_node(b->lhs, ctx, pm, indent, buff));
             pc(' ');
             p(op_to_str(b->node.op_kind));
             pc(' ');
-            print_ast_node(b->rhs, cmdg, indent);
+            attempt(print_ast_node(b->rhs, ctx, pm, indent, buff));
             break;
         }
         case EXPR_CAST: {
             expr_cast* ec = (expr_cast*)n;
             pc('(');
-            print_ast_node(ec->value, cmdg, indent);
+            attempt(print_ast_node(ec->value, ctx, pm, indent, buff));
             p(" as ");
-            print_ast_node(ec->target_type, cmdg, indent);
+            attempt(print_ast_node(ec->target_type, ctx, pm, indent, buff));
             pc(')');
             break;
         }
         case EXPR_OP_UNARY: {
             expr_op_unary* u = (expr_op_unary*)n;
             if (is_unary_op_postfix(u->node.op_kind)) {
-                print_ast_node(u->child, cmdg, indent);
+                attempt(print_ast_node(u->child, ctx, pm, indent, buff));
                 p(op_to_str(u->node.op_kind));
             }
             else {
                 p(op_to_str(u->node.op_kind));
-                print_ast_node(u->child, cmdg, indent);
+                attempt(print_ast_node(u->child, ctx, pm, indent, buff));
             }
             break;
         }
         case EXPR_ARRAY: {
             expr_array* a = (expr_array*)n;
             pc('{');
-            print_expr_list(a->elements, a->elem_count, cmdg, indent);
+            attempt(
+                print_expr_list(a->elements, a->elem_count, ctx, indent, buff));
             pc('}');
         } break;
         case EXPR_ARRAY_TYPE: {
             expr_array_type* ate = (expr_array_type*)n;
             pc('[');
-            print_ast_node(ate->length_spec, cmdg, indent);
+            attempt(print_ast_node(ate->length_spec, ctx, pm, indent, buff));
             pc(']');
-            print_ast_node(ate->slice_type.base_type, cmdg, indent);
+            attempt(print_ast_node(
+                ate->slice_type.base_type, ctx, pm, indent, buff));
         } break;
         case EXPR_TUPLE: {
             expr_tuple* t = (expr_tuple*)n;
             pc('(');
-            print_expr_list(t->elements, t->elem_count, cmdg, indent);
+            attempt(
+                print_expr_list(t->elements, t->elem_count, ctx, indent, buff));
             if (t->elem_count == 1) {
                 pc(',');
             }
@@ -539,27 +697,28 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case EXPR_CALL: {
             expr_call* c = (expr_call*)n;
-            print_ast_node(c->lhs, cmdg, indent);
+            attempt(print_ast_node(c->lhs, ctx, pm, indent, buff));
             pc('(');
-            print_expr_list(c->args, c->arg_count, cmdg, indent);
+            attempt(print_expr_list(c->args, c->arg_count, ctx, indent, buff));
             pc(')');
         } break;
         case EXPR_ACCESS: {
             expr_access* acc = (expr_access*)n;
-            print_ast_node(acc->lhs, cmdg, indent);
+            attempt(print_ast_node(acc->lhs, ctx, pm, indent, buff));
             pc('[');
-            print_expr_list(acc->args, acc->arg_count, cmdg, indent);
+            attempt(
+                print_expr_list(acc->args, acc->arg_count, ctx, indent, buff));
             pc(']');
         } break;
         case EXPR_PARENTHESES: {
             expr_parentheses* pr = (expr_parentheses*)n;
-            print_expr_in_parens(pr->child, cmdg, indent);
+            attempt(print_expr_in_parens(pr->child, ctx, pm, indent, buff));
         } break;
         case EXPR_BREAK: {
             expr_break* b = (expr_break*)n;
             p("break");
             const char* name = NULL;
-            if (ast_node_get_resolved(n)) {
+            if (ast_node_get_resolved((ast_node*)n)) {
                 name = b->target.ebb->name;
             }
             else {
@@ -572,14 +731,14 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             }
             if (b->value) {
                 pc(' ');
-                print_ast_node(b->value, cmdg, indent);
+                attempt(print_ast_node(b->value, ctx, pm, indent, buff));
             }
         } break;
         case EXPR_CONTINUE: {
             expr_continue* c = (expr_continue*)n;
             p("continue");
             const char* name = NULL;
-            if (ast_node_get_resolved(n)) {
+            if (ast_node_get_resolved((ast_node*)n)) {
                 name = c->target.ebb->name;
             }
             else {
@@ -596,18 +755,19 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             p("return");
             if (r->value != NULL) {
                 pc(' ');
-                print_ast_node(r->value, cmdg, indent);
+                attempt(print_ast_node(r->value, ctx, pm, indent, buff));
             }
         } break;
         case EXPR_LOOP: {
             expr_loop* l = (expr_loop*)n;
             p("loop ");
-            print_namable_braced_body(&l->ebb.body, l->ebb.name, cmdg, indent);
+            attempt(print_namable_braced_body(
+                &l->ebb.body, l->ebb.name, ctx, indent, buff));
         } break;
         case EXPR_MATCH: {
             expr_match* m = (expr_match*)n;
             p("match ");
-            print_expr_in_parens(m->match_expr, cmdg, indent);
+            attempt(print_expr_in_parens(m->match_expr, ctx, pm, indent, buff));
             pc(' ');
             if (m->name != NULL) {
                 pc('@');
@@ -617,42 +777,43 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             match_arm** ma = (match_arm**)m->body.elements;
             indent++;
             while (*ma) {
-                print_indent(indent);
-                print_ast_node((**ma).condition, cmdg, indent);
+                attempt(print_indent(indent, buff));
+                attempt(
+                    print_ast_node((**ma).condition, ctx, pm, indent, buff));
                 p(" => ");
-                print_ast_node((**ma).value, cmdg, indent);
+                attempt(print_ast_node((**ma).value, ctx, pm, indent, buff));
                 if (!ast_node_may_drop_semicolon((**ma).value)) pc(';');
                 pc('\n');
                 ma++;
             }
             indent--;
-            print_indent(indent);
+            print_indent(indent, buff);
             pc('}');
         } break;
         case EXPR_IF: {
             expr_if* i = (expr_if*)n;
             p("if ");
-            print_expr_in_parens(i->condition, cmdg, indent);
+            attempt(print_expr_in_parens(i->condition, ctx, pm, indent, buff));
             pc(' ');
-            print_ast_node(i->if_body, cmdg, indent);
+            attempt(print_ast_node(i->if_body, ctx, pm, indent, buff));
             if (i->else_body) {
                 if (ast_node_may_drop_semicolon(i->if_body)) {
                     p("\n");
-                    print_indent(indent);
+                    print_indent(indent, buff);
                 }
                 else {
                     pc(' ');
                 }
                 p("else ");
-                print_ast_node(i->else_body, cmdg, indent);
+                attempt(print_ast_node(i->else_body, ctx, pm, indent, buff));
             }
         } break;
         case EXPR_MEMBER_ACCESS:
         case EXPR_SCOPE_ACCESS: {
             expr_scope_access* esa = (expr_scope_access*)n;
-            print_ast_node(esa->lhs, cmdg, indent);
+            attempt(print_ast_node(esa->lhs, ctx, pm, indent, buff));
             p(n->kind == EXPR_MEMBER_ACCESS ? "." : "::");
-            if (!ast_node_get_resolved(n)) {
+            if (!ast_node_get_resolved((ast_node*)n)) {
                 pu(esa->target.name);
             }
             else {
@@ -661,12 +822,41 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
         } break;
         case EXPR_PASTE_EVALUATION: {
             p("<pasted>(");
-            print_ast_node(((paste_evaluation*)n)->expr, cmdg, indent);
+            attempt(print_ast_node(
+                ((paste_evaluation*)n)->expr, ctx, pm, indent, buff));
             p(")");
         } break;
         case STMT_PASTE_EVALUATION: {
             p("<pasted>");
-            print_body_braced(&((paste_evaluation*)n)->body, cmdg, indent);
+            attempt(print_body_braced(
+                &((paste_evaluation*)n)->body, ctx, indent, buff));
+        } break;
+        case SYM_PRIMITIVE: {
+            assert(pm == PM_TYPE);
+            p(((symbol*)n)->name);
+        } break;
+        case TYPE_POINTER: {
+            assert(pm == PM_TYPE);
+            type_pointer* tp = (type_pointer*)n;
+            p("*");
+            if (tp->tb.is_const) p("const ");
+            return print_ast_elem(tp->base_type, ctx, pm, indent, buff);
+        } break;
+        case TYPE_SLICE: {
+            assert(pm == PM_TYPE);
+            type_slice* ts = (type_slice*)n;
+            p("[]");
+            if (ts->tb.is_const) p("const ");
+            return print_ast_elem(ts->ctype_members, ctx, pm, indent, buff);
+        } break;
+        case TYPE_ARRAY: {
+            assert(pm == PM_TYPE);
+            type_array* ta = (type_array*)n;
+            p("[");
+            attempt(p_ureg(ta->length, buff));
+            p("]");
+            return print_ast_elem(
+                ta->slice_type.ctype_members, ctx, pm, indent, buff);
         } break;
         case ELEM_DUMMY: {
             p("<dummy>");
@@ -675,11 +865,12 @@ void print_ast_node(ast_node* n, mdg_node* cmdg, ureg indent)
             p("<unknown expression>");
         } break;
     }
+    return OK;
 }
 
-void print_mdg_node(mdg_node* mdg, ureg indent)
+int print_mdg_node(mdg_node* mdg, ureg indent, sbuffer* buff)
 {
-    print_indent(indent);
+    attempt(print_indent(indent, buff));
     p("module ");
     p(mdg->name);
     p("{\n");
@@ -688,72 +879,25 @@ void print_mdg_node(mdg_node* mdg, ureg indent)
     aseglist_iterator_begin(&it, &mdg->module_frames);
     for (module_frame* mf = aseglist_iterator_next(&it); mf != NULL;
          mf = aseglist_iterator_next(&it)) {
-        print_requires(mf->requires, indent + 1);
+        attempt(print_requires(mf->requires, indent + 1, buff));
     }
     aseglist_iterator_begin(&it, &mdg->module_frames);
     for (module_frame* mf = aseglist_iterator_next(&it); mf != NULL;
          mf = aseglist_iterator_next(&it)) {
-        print_body_elements(&mf->body, mdg, indent + 1);
+        attempt(print_body_elements(&mf->body, &mf->body, indent + 1, buff));
     }
-    print_indent(indent);
+    attempt(print_indent(indent, buff));
     p("}");
-}
-
-int ctype_to_string_raw(sbuffer* buff, ast_body* ctx, ast_elem* ctype)
-{
-    // TODO: check if the type is shadowed and return the fully qualified name
-    // in that case
-    switch (ctype->kind) {
-        case SYM_PRIMITIVE:
-        case SC_TRAIT:
-        case SC_STRUCT: {
-            char* n = ((symbol*)ctype)->name;
-            ureg len = strlen(n);
-            char* t = sbuffer_append(buff, len);
-            if (!t) return ERR;
-            memcpy(t, n, len);
-        } break;
-        case TYPE_POINTER: {
-            char* v = sbuffer_append(buff, 1);
-            if (!v) return ERR;
-            *v = '*';
-            return ctype_to_string_raw(
-                buff, ctx, ((type_pointer*)ctype)->base_type);
-        } break;
-        case TYPE_SLICE: {
-            char* v = sbuffer_append(buff, 2);
-            if (!v) return ERR;
-            *v = '[';
-            v++;
-            *v = ']';
-            return ctype_to_string_raw(
-                buff, ctx, ((type_slice*)ctype)->ctype_members);
-        } break;
-        case TYPE_ARRAY: {
-            type_array* ta = (type_array*)ctype;
-            ureg len = ureg_get_decimal_digits_count(ta->length);
-            len += 2;
-            char* v = sbuffer_append(buff, len);
-            if (!v) return ERR;
-            *v = '[';
-            v[len + 1] = ']';
-            ureg res = ureg_to_decimal_string(ta->length, v + 1);
-            UNUSED(res);
-            assert(res == len);
-            return ctype_to_string_raw(buff, ctx, ta->slice_type.ctype_members);
-        } break;
-        default: assert("false"); panic("compiler error");
-    }
     return OK;
 }
-char* ctype_to_string(
-    thread_context* tc, pool* mem, ast_body* context, ast_elem* ctype,
-    ureg* str_len)
+char* ast_elem_to_string(
+    thread_context* tc, pool* mem, ast_elem* n, ast_body* context,
+    print_mode pm, ureg* str_len)
 {
     sbuffer* buff = &tc->temp_buffer;
     ureg size_prev = sbuffer_get_used_size(buff);
     sbuffer_iterator it = sbuffer_iterator_begin_at_end(buff);
-    if (ctype_to_string_raw(buff, context, ctype)) {
+    if (print_ast_elem(n, context, pm, 0, buff)) {
         sbuffer_set_end(buff, &it);
         return NULL;
     }
@@ -765,4 +909,10 @@ char* ctype_to_string(
     res[size] = '\0';
     if (str_len) *str_len = size + 1;
     return res;
+}
+
+int print_ast_node(
+    ast_node* n, ast_body* ctx, print_mode pm, ureg indent, sbuffer* buff)
+{
+    return print_ast_elem((ast_elem*)n, ctx, pm, indent, buff);
 }

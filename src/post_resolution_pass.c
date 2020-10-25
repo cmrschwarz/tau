@@ -487,10 +487,7 @@ void prp_free_owned_vars(post_resolution_pass* prp)
         if (p) {
             print_ast_node(
                 (ast_node*)vd->var_node->var,
-                (mdg_node*)ast_body_get_parent_module_body(
-                    vd->var_node->var->osym.sym.declaring_body)
-                    ->owning_node,
-                0);
+                vd->var_node->var->osym.sym.declaring_body, false, 0, NULL);
             tprintf(": ");
         }
         switch (vd->exit_states) {
