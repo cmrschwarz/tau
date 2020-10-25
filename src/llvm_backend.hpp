@@ -136,9 +136,9 @@ enum ValueState : char {
 };
 
 llvm_error processEscapeSymbols(char** str_ptr);
+typedef llvm::SmallVector<char, 128> ErrorsSV;
 
 struct LLVMBackend {
-
   public:
     thread_context* _tc;
 
@@ -207,6 +207,9 @@ struct LLVMBackend {
     void resetAfterEmit();
 
   private:
+    void reportLLVMErrors(ErrorsSV& errs_sv, const char* prepend_text);
+    void reportLLVMErrors(llvm::Error&& err, const char* prepend_text);
+
     void setupPasteHelpers();
     void setupPrimitives();
     void setupSliceStruct();

@@ -622,6 +622,44 @@ void LLVMBackend::resetAfterEmit()
     }
     _reset_after_emit.clear();
 }
+static void report_llvm_errors(
+    ErrorsSV& errs_sv, thread_context* tc, const char* prepend_text)
+{
+    assert(errs_sv.size());
+    while (true) { // trim trailing whitespace
+        if (errs_sv.empty()) break; // probably can't happen but eh
+        char b = errs_sv.back();
+        if (b == '\n' || b == '\r' || b == ' ') {
+            errs_sv.pop_back();
+        }
+        else {
+            break;
+        }
+    }
+    errs_sv.push_back('\0');
+
+    const char* e = prepend_text + strlen(prepend_text);
+    while (true) {
+        if (e == prepend_text) break;
+        e--;
+        errs_sv.insert(errs_sv.begin(), *e);
+    }
+    const char* begin = errs_sv.begin();
+    char* msg = error_log_cat_strings(tc->err_log, 1, &begin);
+    if (!msg) return;
+    error_log_report_general(tc->err_log, ES_LINKER, false, msg);
+}
+void LLVMBackend::reportLLVMErrors(ErrorsSV& errs_sv, const char* prepend_text)
+{
+    report_llvm_errors(errs_sv, _tc, prepend_text);
+}
+void LLVMBackend::reportLLVMErrors(llvm::Error&& err, const char* prepend_text)
+{
+    ErrorsSV errs_sv;
+    llvm::raw_svector_ostream errs_sv_stream{errs_sv};
+    errs_sv_stream << err;
+    reportLLVMErrors(errs_sv, prepend_text);
+}
 llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
 {
     // init id space
@@ -654,9 +692,10 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
               llvm::orc::JITDylibLookupFlags::MatchExportedSymbolsOnly}}),
         PP_RUNNER->exec_session.intern(pp_func_name));
     if (!mainfn) {
-        llvm::errs() << mainfn.takeError() << "\n";
+        reportLLVMErrors(
+            mainfn.takeError(), "llvm error during preprocessor:\n");
         debugbreak();
-        assert(false);
+        return LLE_ERROR;
     }
 
     auto jit_func = (void (*)())(mainfn.get()).getAddress();
@@ -2447,10 +2486,9 @@ llvm_error LLVMBackend::emitModuleToPP(
     }
     auto res = PP_RUNNER->obj_link_layer.add(
         *dl, std::move(obj_svmb), PP_RUNNER->exec_session.allocateVModule());
-    if (res.dynamicClassID() != NULL) {
-        llvm::errs() << res;
-        assert(false);
-        return LLE_FATAL;
+    if (res) {
+        reportLLVMErrors(std::move(res), "llvm error during preprocessor:\n");
+        return LLE_ERROR;
     }
     return LLE_OK;
 }
@@ -2651,7 +2689,7 @@ llvm_error linkLLVMModules(
 {
     // ureg args_count = 10 + (end - start);
     std::vector<const char*> args;
-    args.push_back("linker"); // argv[0] -> programm location
+    args.push_back("lld"); // argv[0] -> programm location
     for (LLVMModule** i = start; i != end; i++) {
         args.push_back((**i).module_obj.c_str());
     }
@@ -2707,7 +2745,7 @@ llvm_error linkLLVMModules(
         tflush();
     }
     llvm::ArrayRef<const char*> arr_ref(&args[0], args.size());
-    llvm::SmallVector<char, 128> errs_sv;
+    ErrorsSV errs_sv;
     llvm::raw_svector_ostream errs_sv_stream{errs_sv};
     bool res = OK;
     llvm_error lle = LLE_OK;
@@ -2732,21 +2770,7 @@ llvm_error linkLLVMModules(
     }
     tfree(libs);
     if (errs_sv.size()) {
-        while (true) { // trim trailing whitespace
-            if (errs_sv.empty()) break; // probably can't happen but eh
-            char b = errs_sv.back();
-            if (b == '\n' || b == '\r' || b == ' ') {
-                errs_sv.pop_back();
-            }
-            else {
-                break;
-            }
-        }
-        errs_sv.push_back('\0');
-        const char* begin = errs_sv.begin();
-        char* msg = error_log_cat_strings(tc->err_log, 1, &begin);
-        if (!msg) return LLE_FATAL;
-        error_log_report_general(tc->err_log, ES_LINKER, false, msg);
+        report_llvm_errors(errs_sv, tc, "");
         lle = LLE_ERROR;
     }
     else if (!res) {
