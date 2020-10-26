@@ -710,6 +710,7 @@ llvm_error LLVMBackend::runPP(ureg private_sym_count, ptrlist* resolve_nodes)
 }
 llvm_error LLVMBackend::emit(ureg startid, ureg endid, ureg private_sym_count)
 {
+    // while (true) false; // NOCKECKIN
     _mod_dylib = NULL;
     // init id space
     _pp_mode = false;
@@ -769,7 +770,7 @@ void LLVMBackend::remapLocalID(ureg old_id, ureg new_id)
 llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
 {
     llvm_error lle;
-    assert(n->first_unresolved_child || ast_node_get_resolved(n->node));
+    assert(n->first_child || ast_node_get_resolved(n->node));
     if (n->node->kind == EXPR_PP) {
         auto expr = (expr_pp*)n->node;
         if (ast_node_get_pp_expr_res_used(&expr->node) &&
@@ -807,9 +808,8 @@ llvm_error LLVMBackend::genPPRN(pp_resolve_node* n)
     else if (ast_elem_is_var((ast_elem*)n->node)) {
         return genVariable(n->node, NULL, NULL);
     }
-    else if (n->first_unresolved_child) {
-        for (pp_resolve_node* cn = n->first_unresolved_child; cn;
-             cn = cn->next) {
+    else if (n->first_child) {
+        for (pp_resolve_node* cn = n->first_child; cn; cn = cn->next) {
             lle = genPPRN(cn);
             if (lle) return lle;
         }
@@ -1559,6 +1559,7 @@ LLVMBackend::genAstNode(ast_node* n, llvm::Value** vl, llvm::Value** vl_loaded)
             }
             if (!vl && !vl_loaded) return LLE_OK;
             if (!ast_node_get_emitted_for_pp(n)) {
+                assert(_pp_mode);
                 return genAstNode(epp->pp_expr, vl, vl_loaded);
             }
             assert(!vl);

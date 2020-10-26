@@ -56,9 +56,11 @@ int p_ureg(ureg i, sbuffer* buff)
         if (!s) return ERR;
     }
     else {
-        s = alloca(len);
+        s = alloca(len + 1);
     }
-    ureg_to_decimal_string(i, s);
+    ureg res = ureg_to_decimal_string(i, s);
+    assert(res == len);
+    UNUSED(res);
     if (!buff) tput(s);
     return OK;
 }
@@ -71,9 +73,11 @@ int p_sreg(sreg i, sbuffer* buff)
         if (!s) return ERR;
     }
     else {
-        s = alloca(len);
+        s = alloca(len + 1);
     }
-    sreg_to_decimal_string(i, s);
+    ureg res = sreg_to_decimal_string(i, s);
+    assert(res == len);
+    UNUSED(res);
     if (!buff) tput(s);
     return OK;
 }

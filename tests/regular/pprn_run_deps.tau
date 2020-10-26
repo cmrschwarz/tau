@@ -1,0 +1,13 @@
+module foo{
+    public func foo() -> int{
+        return 0;
+    }
+}
+func bar(){
+    #paste("y:int;");
+}
+func main() -> int{
+    #bar();
+    return foo::foo();
+}   
+import foo;

@@ -41,24 +41,40 @@ typedef struct pp_resolve_node_s {
     // stores pointers to the pprn pointer inside the notifying node
     // this way if the notifying node's pprn gets fin'd we notice that
     list notified_by;
-    ast_node** continue_block;
+
     ureg resolve_dep_count;
     ureg run_dep_count;
-    // put in pending instead of ready when resolve_dep_count == 0
-    bool needs_further_resolution;
-    // used by expr_pp to decide on setting needs_further_resolution
+
+    // offset into a body's elements array where we left of
+    ast_node** continue_body;
+
+    bool activated;
+
+    // for detecting unreachable statements in continued blocks
+    bool body_pos_reachable;
+
+    // used by expr_pp to decide whether it's truly resolved
     bool pending_pastes;
-    bool activated; // prevent ready before resolve (-> dep adding)
-    // if this is false we don't change its state on ready
-    // false for exprs in functions (true in structs and mf)
-    bool run_individually;
-    bool block_pos_reachable; // for continuing blocks
-    bool notify_when_ready; // by default we notify when done
-    bool dummy; // no running required. set this to done once ready
+
+    // put in pending instead of ready when resolve_dep_count == 0
+    bool resolved;
+
+    // dont dispose once done, but put back in pending
+    bool needs_further_resolution;
+
+    // dependants of this can resolve without it, but need it for running
+    // it increases their run_dep_count instead of resolve_dep_count
+    bool run_dep;
+
+    bool dummy;
+
+    bool added_res_deps;
+    bool added_run_deps;
+    bool child;
     pprn_state state;
     struct pp_resolve_node_s** pprn_list_entry;
-    struct pp_resolve_node_s* first_unresolved_child;
-    struct pp_resolve_node_s* last_unresolved_child;
+    struct pp_resolve_node_s* first_child;
+    struct pp_resolve_node_s* last_child;
     struct pp_resolve_node_s* next;
 } pp_resolve_node;
 
@@ -163,7 +179,7 @@ pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress);
 resolve_error add_resolve_error(resolve_error res, resolve_error add);
 pp_resolve_node* pp_resolve_node_create(
     resolver* r, ast_node* n, ast_body* declaring_body, bool run_individually,
-    bool dummy, bool notify_when_ready);
+    bool run_dep, bool dummy);
 void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured);
 resolve_error curr_pprn_depend_on(
     resolver* r, ast_body* body, pp_resolve_node** dependency_p);

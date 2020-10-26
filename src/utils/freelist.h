@@ -2,7 +2,7 @@
 
 #include "pool.h"
 #if DEBUG
-   #include <assert.h>
+#include <assert.h>
 #endif
 
 typedef struct freelist_node_s {
@@ -37,6 +37,7 @@ static inline void* freelist_alloc(freelist* f)
     }
     else {
         // if this returns NULL, we propagate that
+        // this guy takes care of alignment for us
         res = pool_alloc(f->p, f->node_size);
     }
 #if DEBUG

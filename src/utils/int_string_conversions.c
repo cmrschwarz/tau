@@ -49,7 +49,7 @@ ureg sreg_to_decimal_string(sreg integer, char* str)
 #else
 #error
 #endif
-    ureg res = snprintf(str, len, msg, integer);
+    ureg res = snprintf(str, len + 1, msg, integer);
     assert(res == len);
     return len;
 }

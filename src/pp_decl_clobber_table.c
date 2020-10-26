@@ -84,7 +84,7 @@ waiting_users_sym_found(pp_decl_clobber_table* t, ppdct_waiting_users* wu_node)
         pp_resolve_node** ppp =
             (pp_resolve_node**)sbuffer_iterator_next(&pp_it, sizeof(void*));
         if (!ppp) break;
-        resolve_error re2 = pp_resolve_node_dep_done(t->r, *ppp, NULL);
+        resolve_error re2 = pp_resolve_node_dep_resolved(t->r, *ppp, NULL);
         re = add_resolve_error(re, re2);
     }
     if (re) {
@@ -163,7 +163,7 @@ waiting_users_scope_done(pp_decl_clobber_table* t, ppdct_waiting_users* wu)
     while (true) {
         while ((v = list_it_next(&it, &wu->waiting_users))) {
             if ((ureg)v & (ureg)1) {
-                resolve_error re2 = pp_resolve_node_dep_done(
+                resolve_error re2 = pp_resolve_node_dep_resolved(
                     t->r, (pp_resolve_node*)((ureg)v ^ (ureg)1), NULL);
                 re = add_resolve_error(re, re2);
             }

@@ -28,7 +28,7 @@ static inline resolve_error resolve_ast_node_raw(
     ast_elem** ctype);
 resolve_error resolve_func(
     resolver* r, ast_body* requesting_body, sc_func_base* fnb,
-    ast_node** continue_block);
+    ast_node** continue_body);
 resolve_error resolve_expr_body(
     resolver* r, ast_body* requesting_body, ast_node* expr, ast_body* b,
     bool* end_reachable);
@@ -294,6 +294,7 @@ pprn_set_state(resolver* r, pp_resolve_node* pprn, pprn_state state)
     if (pprn->state == PPRN_WAITING && state == PPRN_WAITING_UNCOMMITTED) {
         return RE_OK;
     }
+    assert(pprn->state != PPRN_READY || !pprn->child);
     if (pprn->state == state && pprn->pprn_list_entry) return RE_OK;
     if (pprn->pprn_list_entry) {
         remove_pprn_list_raw(r, pprn);
@@ -313,7 +314,7 @@ pprn_set_state(resolver* r, pp_resolve_node* pprn, pprn_state state)
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
         char* msg[5] = {"", "waiting", "waiting uncomitted", "pending",
                         "ready"};
-        tprintf("pprn %s: ", msg[state]);
+        tprintf("pprn %s: ", msg[pprn->state]);
         print_pprn(r, pprn, false, 0);
         tflush();
     }
@@ -337,8 +338,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
         (pprn->resolve_dep_count == 0 &&
          (pprn->run_dep_count == 0 || !ast_node_get_used_in_pp(n))) ||
         ast_node_get_contains_error(n));
-    for (pp_resolve_node* rn = pprn->first_unresolved_child; rn;
-         rn = rn->next) {
+    for (pp_resolve_node* rn = pprn->first_child; rn; rn = rn->next) {
         pprn_fin(r, rn, error_occured);
     }
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
@@ -357,7 +357,7 @@ void pprn_fin(resolver* r, pp_resolve_node* pprn, bool error_occured)
 }
 pp_resolve_node* pp_resolve_node_create(
     resolver* r, ast_node* n, ast_body* declaring_body, bool run_individually,
-    bool dummy, bool notify_when_ready)
+    bool run_dep, bool dummy)
 {
     pp_resolve_node* pprn = freelist_alloc(&r->pp_resolve_nodes);
     if (!pprn) return NULL;
@@ -372,21 +372,23 @@ pp_resolve_node* pp_resolve_node_create(
     }
     pprn->resolve_dep_count = 0;
     pprn->run_dep_count = 0;
+    pprn->resolved = false;
     pprn->activated = false;
+    pprn->dummy = dummy;
     pprn->needs_further_resolution = false;
-    pprn->notify_when_ready = notify_when_ready;
     pprn->pending_pastes = false;
     pprn->declaring_body = declaring_body;
     pprn->node = n;
     assert(n->kind != MF_MODULE);
-    pprn->continue_block = NULL;
+    pprn->continue_body = NULL;
     pprn->next = NULL;
-    // pprn->parent = NULL;
-    pprn->run_individually = run_individually;
-    pprn->block_pos_reachable = true;
-    pprn->first_unresolved_child = NULL;
+    pprn->child = false;
+    pprn->added_res_deps = false;
+    pprn->added_run_deps = false;
+    pprn->body_pos_reachable = true;
+    pprn->first_child = NULL;
     pprn->pprn_list_entry = NULL;
-    pprn->dummy = dummy;
+    pprn->run_dep = run_dep;
     pprn->state = PPRN_INFANT;
     if (r->tc->t->verbosity_flags & VERBOSITY_FLAGS_PPRNS) {
         tprintf("allocated pprn: ");
@@ -411,11 +413,14 @@ get_curr_block_pprn(resolver* r, ast_body* body, pp_resolve_node** curr_pprn)
     }
     // the only other non sequential blocks are module frames
     // for that case we already returned null earlier
-    bool is_struct = ast_elem_is_struct((ast_elem*)body->owning_node);
+
     // TODO: body->parent might be wrong here
+    bool is_struct = ast_elem_is_struct((ast_elem*)body->owning_node);
+    bool run_dep =
+        is_struct || ast_elem_is_func_base((ast_elem*)body->owning_node);
     body->pprn = pp_resolve_node_create(
-        r, (ast_node*)body->owning_node, body->parent, !is_struct, is_struct,
-        false);
+        r, (ast_node*)body->owning_node, body->parent, !is_struct, run_dep,
+        is_struct);
     if (!body->pprn) return RE_FATAL;
     if (is_struct) body->pprn->pending_pastes = true;
     *curr_pprn = body->pprn;
@@ -508,70 +513,74 @@ resolve_error pprn_set_used_in_pp(resolver* r, pp_resolve_node* pprn)
     return RE_OK;
 }
 static inline resolve_error
-pprn_depend_on_raw(pp_resolve_node** dependency_p, pp_resolve_node* depending)
+pprn_add_notifiers(pp_resolve_node** dependency_p, pp_resolve_node* depending)
 {
-    if (list_append(&(**dependency_p).notify, NULL, depending)) return RE_FATAL;
+    pp_resolve_node* dependency = *dependency_p;
+    if (list_append(&dependency->notify, NULL, depending)) return RE_FATAL;
     if (list_append(&depending->notified_by, NULL, dependency_p))
         return RE_FATAL;
-    depending->resolve_dep_count++;
+    return RE_OK;
+}
+resolve_error pprn_depend_on(
+    resolver* r, pp_resolve_node* depending, pp_resolve_node** dependency_p)
+{
+    pp_resolve_node* dependency = *dependency_p;
+    if (ast_node_get_used_in_pp(depending->node)) {
+        resolve_error re = pprn_set_used_in_pp(r, dependency);
+        if (re) return re;
+    }
+    if (ast_node_get_contains_error(dependency->node)) {
+        if (pprn_propagate_error(r, depending)) return RE_FATAL;
+    }
+
+    if (!dependency->run_dep && !dependency->resolved) {
+        depending->resolve_dep_count++;
+        assert(dependency->added_res_deps || list_empty(&dependency->notify));
+        dependency->added_res_deps = true;
+    }
+    depending->run_dep_count++;
+    assert(dependency->added_run_deps || list_empty(&dependency->notify));
+    dependency->added_run_deps = true;
+
+    if (pprn_add_notifiers(dependency_p, depending)) return RE_FATAL;
     return RE_OK;
 }
 resolve_error
 curr_pprn_depend_on(resolver* r, ast_body* body, pp_resolve_node** dependency_p)
 {
-    pp_resolve_node* dependency = *dependency_p;
     pp_resolve_node* depending;
     resolve_error re = get_curr_pprn(r, body, &depending);
     if (re) return re;
     if (!depending) return RE_OK;
-    if (ast_node_get_used_in_pp(depending->node)) {
-        re = pprn_set_used_in_pp(r, dependency);
-        if (re) return re;
-    }
-    if (ast_node_get_contains_error(dependency->node)) {
-        curr_pprn_propagate_error(r, body);
-    }
-    if (dependency->notify_when_ready && dependency->state == PPRN_READY)
-        return RE_OK;
-    return pprn_depend_on_raw(dependency_p, depending);
-}
-static resolve_error
-pprn_add_child_raw(pp_resolve_node* block_parent, pp_resolve_node** child_p)
-{
-    pp_resolve_node* child = *child_p;
-    child->run_individually = false;
-    child->notify_when_ready = true;
-    if (block_parent->first_unresolved_child == NULL) {
-        block_parent->first_unresolved_child = child;
-        block_parent->last_unresolved_child = child;
-    }
-    else {
-        block_parent->last_unresolved_child->next = child;
-        block_parent->last_unresolved_child = child;
-    }
-    if (child->resolve_dep_count) {
-        if (pprn_depend_on_raw(child_p, block_parent)) return RE_FATAL;
-    }
-    return RE_OK;
+    return pprn_depend_on(r, depending, dependency_p);
 }
 static resolve_error
 curr_pp_block_add_child(resolver* r, ast_body* body, pp_resolve_node** child_p)
 {
     pp_resolve_node* child = *child_p;
-    pp_resolve_node* block_parent;
-    assert(!child->activated);
-    if (child->next) return RE_OK;
-    resolve_error re = get_curr_block_pprn(r, body, &block_parent);
+    pp_resolve_node* parent_block_pprn;
+    assert(!child->child);
+    resolve_error re = get_curr_block_pprn(r, body, &parent_block_pprn);
     if (re) return re;
-    if (!block_parent) return RE_OK;
-    if (ast_elem_has_unordered_body((ast_elem*)block_parent->node)) {
-        if (pprn_depend_on_raw(child_p, block_parent)) return RE_FATAL;
-        if (ast_node_get_used_in_pp(block_parent->node)) {
-            pprn_set_used_in_pp(r, child);
-        }
-        return RE_OK;
+    if (!parent_block_pprn) return RE_OK;
+    if (ast_elem_has_unordered_body((ast_elem*)parent_block_pprn->node)) {
+        return pprn_depend_on(r, parent_block_pprn, child_p);
     }
-    return pprn_add_child_raw(block_parent, child_p);
+    child->child = true;
+    if (parent_block_pprn->first_child == NULL) {
+        parent_block_pprn->first_child = child;
+        parent_block_pprn->last_child = child;
+    }
+    else {
+        parent_block_pprn->last_child->next = child;
+        parent_block_pprn->last_child = child;
+    }
+    if (!child->resolved || child->run_dep_count) {
+        parent_block_pprn->resolve_dep_count++;
+        assert(child->added_res_deps || list_empty(&child->notify));
+        child->added_res_deps = true;
+    }
+    return pprn_add_notifiers(child_p, parent_block_pprn);
 }
 resolve_error pp_resolve_node_activate(
     resolver* r, ast_body* body, pp_resolve_node** pprn_p, bool resolved)
@@ -579,25 +588,15 @@ resolve_error pp_resolve_node_activate(
     pp_resolve_node* pprn = *pprn_p;
     pprn->activated = true;
     assert(!resolved || ast_node_get_resolved(pprn->node));
-    if (pprn->resolve_dep_count == 0 && r->module_group_constructor) {
-        // HACK: make sure the module group ctor runs first
-        // TODO: implement this properly
-        resolve_func_from_call(r, body, r->module_group_constructor, NULL);
+    if (resolved) {
+        assert(!pprn->resolved);
+        // TODO: handle module group constructor?
+        pprn->resolved = true;
+        return pp_resolve_node_resolved(r, pprn);
     }
-    if (pprn->resolve_dep_count == 0) {
-        if (resolved || ast_node_get_contains_error(pprn->node)) {
-            pprn->needs_further_resolution = false;
-            return pp_resolve_node_ready(r, pprn);
-        }
-        if (pprn->run_individually) {
-            if (pprn->first_unresolved_child) {
-                return pprn_set_state(r, pprn, PPRN_READY);
-            }
-            else {
-                return pprn_set_state(r, pprn, PPRN_PENDING);
-            }
-        }
-        return RE_OK;
+    if ((pprn->first_child && !pprn->resolve_dep_count) ||
+        ast_node_get_contains_error(pprn->node)) {
+        return pp_resolve_node_resolved(r, pprn);
     }
     return pprn_set_state(r, pprn, PPRN_WAITING_UNCOMMITTED);
 }
@@ -910,11 +909,7 @@ static resolve_error declare_ast_node(
             return RE_OK;
 
         case STMT_USE: {
-            pp_resolve_node* pprn =
-                pp_resolve_node_create(r, n, body, false, true, true);
-            if (!pprn) return RE_FATAL;
-            if (ptrlist_append(&r->pp_resolve_nodes_pending, pprn))
-                return RE_FATAL;
+            assert(false); // TODO
             return RE_OK;
         }
         case EXPR_PP: {
@@ -929,7 +924,7 @@ static resolve_error declare_ast_node(
                 assert(epp->pprn == NULL);
                 bool is_expr = ast_elem_is_expr((ast_elem*)epp->pp_expr);
                 pp_resolve_node* pprn = pp_resolve_node_create(
-                    r, is_expr ? n : epp->pp_expr, body, true, false, false);
+                    r, is_expr ? n : epp->pp_expr, body, true, true, false);
                 if (!pprn) return RE_FATAL;
                 epp->pprn = pprn;
                 re = pprn_set_state(r, epp->pprn, PPRN_PENDING);
@@ -1972,7 +1967,7 @@ static inline resolve_error resolve_var(
     }
     if ((comptime || public_symbol) && !v->pprn) {
         v->pprn = pp_resolve_node_create(
-            r, (ast_node*)v, declaring_body, true, !comptime, true);
+            r, (ast_node*)v, declaring_body, true, !comptime, !comptime);
         if (!v->pprn) return RE_FATAL;
         if (!ast_node_get_used_in_pp((ast_node*)v)) {
             resolver_set_ast_node_used_in_pp(r, (ast_node*)v);
@@ -2508,18 +2503,16 @@ static inline resolve_error resolve_expr_pp(
     resolver* r, ast_body* body, expr_pp* ppe, bool from_pprnlist,
     ast_elem** value, ast_elem** ctype)
 {
-    bool rerun = false;
     if (ppe->pprn) {
         if (ppe->pprn->pending_pastes) {
             return RE_UNREALIZED_COMPTIME;
         }
-        if (!from_pprnlist && ppe->pprn->run_individually &&
+        if (!from_pprnlist && ppe->pprn->child &&
             ast_elem_has_unordered_body((ast_elem*)body->owning_node)) {
             assert(ppe->pprn->activated);
             return RE_UNREALIZED_COMPTIME;
         }
         ppe->pprn->activated = false;
-        rerun = true;
     }
     resolve_error re;
     if (ppe->ctype == PASTED_EXPR_ELEM) {
@@ -2531,7 +2524,7 @@ static inline resolve_error resolve_expr_pp(
     }
     else {
         pprn =
-            pp_resolve_node_create(r, (ast_node*)ppe, body, true, false, false);
+            pp_resolve_node_create(r, (ast_node*)ppe, body, true, true, false);
         if (!pprn) return RE_FATAL;
         ppe->pprn = pprn;
         resolver_set_ast_node_used_in_pp(r, &ppe->node);
@@ -2562,7 +2555,7 @@ static inline resolve_error resolve_expr_pp(
         if (!re) {
             ast_node_set_resolved(&ppe->node);
         }
-        if (!rerun) {
+        if (!pprn->child) {
             if (curr_pp_block_add_child(r, body, &ppe->pprn)) return RE_FATAL;
         }
         if (pp_resolve_node_activate(r, body, &ppe->pprn, re == RE_OK)) {
@@ -2570,8 +2563,8 @@ static inline resolve_error resolve_expr_pp(
         }
         if (re) return re;
         // we just need to mark it for reexec, no specific value required
-        if (ppe->pprn && pprn->pending_pastes && pprn->run_individually) {
-            pprn->continue_block = (ast_node**)NULL_PTR_PTR;
+        if (ppe->pprn && pprn->pending_pastes && !pprn->child) {
+            pprn->continue_body = (ast_node**)NULL_PTR_PTR;
         }
     }
     if (re) {
@@ -2713,7 +2706,8 @@ resolve_error resolve_importing_node(
     }
     if (im_data->pprn) {
         if (available) {
-            re = pp_resolve_node_ready(r, im_data->pprn);
+            ast_node_set_resolved(im_data->pprn->node);
+            re = pp_resolve_node_activate(r, body, &im_data->pprn, true);
             if (re) return re;
         }
     }
@@ -3310,7 +3304,7 @@ static inline resolve_error resolve_ast_node_raw(
                 return re;
             }
             if (resolved && ppe->ctype != PASTED_EXPR_ELEM &&
-                (!ppe->pprn || !ppe->pprn->needs_further_resolution)) {
+                (!ppe->pprn || ppe->pprn->resolved)) {
                 assert(!value);
                 SET_THEN_RETURN(value, ctype, NULL, ppe->ctype);
             }
@@ -3583,8 +3577,8 @@ resolve_error resolve_expr_body(
 
     ast_node** continue_at = b->elements;
     if (pprn) {
-        continue_at = pprn->continue_block;
-        if (!pprn->block_pos_reachable) stmt_ctype_ptr = NULL;
+        continue_at = pprn->continue_body;
+        if (!pprn->body_pos_reachable) stmt_ctype_ptr = NULL;
     }
     ast_node** n = continue_at;
     for (; *n != NULL; n++) {
@@ -3613,7 +3607,7 @@ resolve_error resolve_expr_body(
             stmt_ctype_ptr = NULL;
         }
         if (b->pprn && b->pprn->pending_pastes) {
-            b->pprn->continue_block = n;
+            b->pprn->continue_body = n;
             re = RE_UNKNOWN_SYMBOL;
             break;
         }
@@ -3625,26 +3619,27 @@ resolve_error resolve_expr_body(
         return RE_TYPE_LOOP;
     }
     if (pprn) {
-        pprn->block_pos_reachable = *end_reachable;
+        pprn->body_pos_reachable = *end_reachable;
         pprn->declaring_body = parent_body;
         resolve_error re2;
-        if (!pprn->first_unresolved_child) {
+        if (!pprn->first_child) {
             // this is a rerun and everyting got resolved
             // detach this from parent and free it individually
-            pprn->dummy = true;
+            // TODO: FIXME
+            // pprn->dummy = true;
         }
         else {
             if (curr_pp_block_add_child(r, parent_body, &b->pprn))
                 return RE_FATAL;
         }
         if (re) {
-            pprn->continue_block = n;
+            pprn->continue_body = n;
             // so it gets freed on error
             re2 = pprn_set_state(r, pprn, PPRN_WAITING_UNCOMMITTED);
             if (re2) return re2;
         }
         else {
-            pprn->continue_block = NULL;
+            pprn->continue_body = NULL;
         }
         if (!re) {
             ast_node_set_resolved(expr);
@@ -3659,6 +3654,7 @@ resolve_error resolve_func_from_call(
     resolver* r, ast_body* body, sc_func* fn, ast_elem** ctype)
 {
     resolve_error re;
+    bool unresolved = false;
     if (ast_node_get_resolved((ast_node*)fn)) {
         if (ctype) *ctype = fn->fnb.return_ctype;
         // fn already fully ready
@@ -3670,10 +3666,11 @@ resolve_error resolve_func_from_call(
         }
     }
     else {
+        unresolved = true;
         ast_body* decl_body = fn->fnb.sc.osym.sym.declaring_body;
         if (!fn->fnb.sc.body.pprn) {
             fn->fnb.sc.body.pprn = pp_resolve_node_create(
-                r, (ast_node*)fn, decl_body, true, false, false);
+                r, (ast_node*)fn, decl_body, false, true, false);
             if (!fn->fnb.sc.body.pprn) return RE_FATAL;
         }
         if (fn->fnb.return_type) {
@@ -3694,8 +3691,8 @@ resolve_error resolve_func_from_call(
     if (ast_node_get_contains_error((ast_node*)fn)) {
         return curr_body_propagate_error(r, body);
     }
-    if (is_curr_resolution_for_pastes(r, body)) {
-        pp_resolve_node_activate(r, body, &fn->fnb.sc.body.pprn, false);
+    if (unresolved && is_curr_resolution_for_pastes(r, body)) {
+        return resolve_ast_node(r, (ast_node*)fn, body, NULL, NULL);
     }
     return RE_OK;
 }
@@ -3714,6 +3711,10 @@ resolve_error resolve_unordered_body(
     bool unknown_symbol = false;
     r->curr_pp_node = NULL;
     re = unordered_body_add_trait_decls(r, b);
+    if (b->pprn) {
+        b->pprn->activated = false;
+        b->pprn->needs_further_resolution = false;
+    }
     if (!re) {
         re = resolver_run_pp_resolve_nodes(r, NULL);
         if (!re && b->pprn) {
@@ -3774,11 +3775,22 @@ resolve_error resolve_unordered_body(
 // TODO: make sure we return!
 resolve_error resolve_func(
     resolver* r, ast_body* requesting_body, sc_func_base* fnb,
-    ast_node** continue_block)
+    ast_node** continue_body)
 {
     bool generic = (fnb->sc.osym.sym.node.kind == SC_FUNC_GENERIC);
+    pp_resolve_node* bpprn = fnb->sc.body.pprn;
     resolve_error re = RE_OK;
-    if (!continue_block) {
+    ast_node** n = fnb->sc.body.elements;
+    ast_elem* stmt_ctype;
+    ast_elem** stmt_ctype_ptr = &stmt_ctype;
+    if (continue_body) {
+        assert(bpprn);
+        n = continue_body;
+        if (!bpprn->body_pos_reachable) stmt_ctype_ptr = NULL;
+        bpprn->activated = false;
+        bpprn->needs_further_resolution = false;
+    }
+    if (!continue_body) {
         if (!ast_node_get_static((ast_node*)fnb)) {
             ast_body* npp =
                 ast_body_get_non_paste_parent(fnb->sc.osym.sym.declaring_body);
@@ -3823,20 +3835,13 @@ resolve_error resolve_func(
         re = resolver_mangle(r, (ast_node*)fnb, 0);
         if (re) return re;
     }
-    ast_elem* stmt_ctype;
-    ast_elem** stmt_ctype_ptr = &stmt_ctype;
-    ast_node** n = fnb->sc.body.elements;
-    if (continue_block) {
-        n = continue_block;
-        if (!fnb->sc.body.pprn->block_pos_reachable) stmt_ctype_ptr = NULL;
-    }
     // since curr_pprn is expression based we want to reset it so
     // we don't add children to the caller of our func
     pp_resolve_node* prev_pprn = r->curr_pp_node;
     r->curr_pp_node = NULL;
     while (*n) {
         // TODO: move this kind of error into the prp
-        if (stmt_ctype_ptr == NULL && n != continue_block) {
+        if (stmt_ctype_ptr == NULL && n != continue_body) {
             src_range_large srl;
             ast_node_get_src_range(*n, &fnb->sc.body, &srl);
             error_log_report_annotated(
@@ -3855,7 +3860,7 @@ resolve_error resolve_func(
         if (re) break;
         assert(r->curr_pp_node == NULL);
         if (fnb->sc.body.pprn && fnb->sc.body.pprn->pending_pastes) {
-            fnb->sc.body.pprn->continue_block = n;
+            fnb->sc.body.pprn->continue_body = n;
             re = RE_UNKNOWN_SYMBOL;
             break;
         }
@@ -3866,15 +3871,15 @@ resolve_error resolve_func(
     }
     r->curr_pp_node = prev_pprn;
     // this must be reset before we call add dependency
-    pp_resolve_node* bpprn = fnb->sc.body.pprn;
+    bpprn = fnb->sc.body.pprn;
     if (re == RE_UNREALIZED_COMPTIME || re == RE_UNKNOWN_SYMBOL) {
         assert(bpprn);
         bpprn->needs_further_resolution = true;
         resolve_error re2 = pp_resolve_node_activate(
             r, requesting_body, &fnb->sc.body.pprn, false);
         if (re2) return re2;
-        bpprn->continue_block = n;
-        bpprn->block_pos_reachable = (stmt_ctype_ptr != NULL);
+        bpprn->continue_body = n;
+        bpprn->body_pos_reachable = (stmt_ctype_ptr != NULL);
         ast_node_clear_resolving((ast_node*)fnb);
         return re;
     }
@@ -3895,13 +3900,17 @@ resolve_error resolve_func(
     }
     if (!re) ast_node_set_resolved((ast_node*)fnb);
     if (bpprn) {
-        if (!re) bpprn->continue_block = NULL;
-        if (!fnb->sc.body.pprn->first_unresolved_child &&
+        if (!re) {
+            bpprn->continue_body = NULL;
+            bpprn->needs_further_resolution = false;
+        }
+        if (!fnb->sc.body.pprn->first_child &&
             fnb != (sc_func_base*)r->module_group_constructor) {
-            fnb->sc.body.pprn->dummy = true;
+            bpprn->dummy = true;
         }
         resolve_error re2 = pp_resolve_node_activate(
-            r, requesting_body, &fnb->sc.body.pprn, re == RE_OK);
+            r, requesting_body, &fnb->sc.body.pprn,
+            re == RE_OK && !fnb->sc.body.pprn->first_child);
         if (re2) {
             assert(re2 == RE_FATAL);
             return re2;
@@ -4242,7 +4251,7 @@ void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident)
 {
     assert(pprn->node != NULL);
 
-    pp_resolve_node* child = pprn->first_unresolved_child;
+    pp_resolve_node* child = pprn->first_child;
     print_indent(ident, NULL);
     print_ast_node(pprn->node, NULL, PM_DECL, ident, NULL);
     tputs("");
@@ -4262,8 +4271,7 @@ void print_pprn(resolver* r, pp_resolve_node* pprn, bool verbose, ureg ident)
         ureg nots = list_length(&pprn->notify);
         print_indent(ident, NULL);
         tprintf(
-            "nofify when %s: %zu\n", pprn->notify_when_ready ? "ready" : "done",
-            nots);
+            "nofify when %s: %zu\n", pprn->run_dep ? "done" : "ready", nots);
         for (pp_resolve_node* p =
                  (pp_resolve_node*)list_it_next(&it, &pprn->notify);
              p; p = (pp_resolve_node*)list_it_next(&it, &pprn->notify)) {
@@ -4308,89 +4316,118 @@ void print_pprns(resolver* r, char* msg, bool verbose)
     print_pprnlist(r, &r->pp_resolve_nodes_waiting, "waiting:", verbose);
     tflush();
 }
-resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn)
+
+resolve_error pp_resolve_node_resolved(resolver* r, pp_resolve_node* pprn)
 {
     if (!pprn->activated) return RE_OK;
-    resolve_error re;
-    assert(pprn->state != PPRN_READY);
-    if (pprn->needs_further_resolution) {
+    if (pprn->needs_further_resolution && !pprn->first_child) {
         return pprn_set_state(r, pprn, PPRN_PENDING);
     }
-    if (pprn->notify_when_ready) {
+    bool err = ast_node_get_contains_error(pprn->node);
+    // that is the condition when this is supposed to be called
+    assert(pprn->resolved || pprn->first_child || err);
+    assert(pprn->resolve_dep_count == 0);
+    if (pprn->added_res_deps && !pprn->child) {
         list_it it;
         list_it_begin(&it, &pprn->notify);
         for (pp_resolve_node* rn = list_it_next(&it, &pprn->notify); rn;
              rn = list_it_next(&it, &pprn->notify)) {
-            re = pp_resolve_node_dep_ready(r, rn);
-            if (re) return re;
+            if (pp_resolve_node_dep_resolved(r, rn)) return RE_FATAL;
         }
-        list_clear(&pprn->notify);
+        pprn->added_res_deps = false;
     }
-    if (pprn->dummy ||
-        (pprn->run_individually && ast_node_get_contains_error(pprn->node))) {
-        re = pp_resolve_node_done(r, pprn, NULL);
-        if (re) return re;
+    if (pprn->run_dep_count == 0 || pprn->first_child || err) {
+        return pp_resolve_node_ready(r, pprn);
     }
-    else if (pprn->run_individually) {
-        re = pprn_set_state(r, pprn, PPRN_READY);
-    }
-    return RE_OK;
+    return pprn_set_state(r, pprn, PPRN_WAITING_UNCOMMITTED);
 }
-resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn)
+resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn)
 {
-    pprn->resolve_dep_count--;
-    if (pprn->resolve_dep_count == 0) {
-        resolve_error re = pp_resolve_node_ready(r, pprn);
-        if (re) return re;
+    resolve_error re;
+    assert(pprn->state != PPRN_READY);
+    if (pprn->added_res_deps && pprn->child) {
+        list_it it;
+        list_it_begin(&it, &pprn->notify);
+        for (pp_resolve_node* rn = list_it_next(&it, &pprn->notify); rn;
+             rn = list_it_next(&it, &pprn->notify)) {
+            pp_resolve_node_dep_resolved(r, rn);
+        }
+        pprn->added_res_deps = false;
+        return RE_OK;
+    }
+    if (pprn->dummy || ast_node_get_contains_error(pprn->node)) {
+        return pp_resolve_node_done(r, pprn, NULL);
+    }
+    if (!pprn->child) {
+        return pprn_set_state(r, pprn, PPRN_READY);
     }
     return RE_OK;
 }
-
 resolve_error
 pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
 {
     assert(pprn->node);
     resolve_error re;
-    if (pprn->first_unresolved_child) {
-        for (pp_resolve_node* rn = pprn->first_unresolved_child; rn;
-             rn = rn->next) {
+    if (pprn->first_child) {
+        for (pp_resolve_node* rn = pprn->first_child; rn; rn = rn->next) {
             re = pp_resolve_node_done(r, rn, progress);
             if (re) return re;
         }
-        pprn->first_unresolved_child = NULL;
-        pprn->last_unresolved_child = NULL;
+        pprn->first_child = NULL;
+        pprn->last_child = NULL;
     }
-    if (pprn->continue_block) {
-        if (pprn->run_individually) {
+    if (pprn->continue_body) {
+        if (!pprn->child) {
             if (progress) *progress = true;
             re = pprn_set_state(r, pprn, PPRN_PENDING);
             if (re) return re;
         }
-        pprn->activated = false;
+        // assert(pprn->resolved == false);
         pprn->needs_further_resolution = true;
+        pprn->child = false;
         return RE_OK;
     }
-    list_it it;
-    list_it_begin(&it, &pprn->notify);
-    for (pp_resolve_node* rn = list_it_next(&it, &pprn->notify); rn;
-         rn = list_it_next(&it, &pprn->notify)) {
-        assert(!pprn->notify_when_ready);
-        re = pp_resolve_node_dep_done(r, rn, progress);
-        if (re) return re;
+    bool err = ast_node_get_contains_error(pprn->node);
+    if (pprn->added_run_deps && (!pprn->run_dep_count || err)) {
+        list_it it;
+        list_it_begin(&it, &pprn->notify);
+        for (pp_resolve_node* rn = list_it_next(&it, &pprn->notify); rn;
+             rn = list_it_next(&it, &pprn->notify)) {
+            pp_resolve_node_dep_done(r, rn, progress);
+        }
+        pprn->added_run_deps = false;
+    }
+    if (pprn->run_dep_count) {
+        pprn->dummy = true;
+        return pprn_set_state(r, pprn, PPRN_WAITING_UNCOMMITTED);
     }
     pprn_fin(r, pprn, false);
+    return RE_OK;
+}
+resolve_error pp_resolve_node_dep_resolved(resolver* r, pp_resolve_node* pprn)
+{
+    assert(pprn->resolve_dep_count && !pprn->resolved);
+    pprn->resolve_dep_count--;
+    if (pprn->resolve_dep_count == 0) {
+        if (pprn->first_child) {
+            return pp_resolve_node_resolved(r, pprn);
+        }
+        else {
+            return pprn_set_state(r, pprn, PPRN_PENDING);
+        }
+    }
     return RE_OK;
 }
 resolve_error
 pp_resolve_node_dep_done(resolver* r, pp_resolve_node* pprn, bool* progress)
 {
-    assert(pprn->resolve_dep_count);
-    assert(pprn->node);
-    pprn->resolve_dep_count--;
-    if (pprn->resolve_dep_count == 0) {
+    assert(pprn->run_dep_count);
+    pprn->run_dep_count--;
+    if (pprn->run_dep_count == 0) {
         if (progress) *progress = true;
-        resolve_error re = pp_resolve_node_ready(r, pprn);
-        if (re) return re;
+        if (pprn->resolve_dep_count == 0) {
+            return pp_resolve_node_resolved(r, pprn);
+        }
     }
     return RE_OK;
 }
@@ -4436,14 +4473,14 @@ resolve_error handle_pending_pprns(resolver* r, bool* progress)
     while (!ptrlist_is_empty(&r->pp_resolve_nodes_pending)) {
         pp_resolve_node* rn = ptrlist_pop_back(&r->pp_resolve_nodes_pending);
         rn->pprn_list_entry = NULL;
-        if (rn->continue_block) {
+        if (rn->continue_body) {
             *progress = true;
             ast_node* node = rn->node;
             ast_body* body = rn->declaring_body;
             if (!ast_node_get_resolved(node)) ast_node_set_resolving(node);
             if (rn->node->kind == SC_FUNC) {
                 re = resolve_func(
-                    r, body, (sc_func_base*)node, rn->continue_block);
+                    r, body, (sc_func_base*)node, rn->continue_body);
             }
             else if (rn->node->kind == EXPR_BLOCK) {
                 re = resolve_expr_block(r, (expr_block*)node, body, NULL, NULL);
@@ -4456,7 +4493,7 @@ resolve_error handle_pending_pprns(resolver* r, bool* progress)
             }
             else if (rn->node->kind == EXPR_PP) {
                 rn->pending_pastes = false;
-                rn->continue_block = NULL;
+                rn->continue_body = NULL;
                 re = resolve_expr_pp(r, body, (expr_pp*)node, true, NULL, NULL);
             }
             else {
@@ -4514,34 +4551,6 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
         // we try to resolve pending nodes again
         re = handle_pending_pprns(r, &progress);
         if (re) return re;
-        if (!progress && r->committed_waiters != 0) {
-            pli it = pli_rbegin(&r->waiting_module_imports);
-            bool awaiting = false;
-            for (ast_node* n = pli_prev(&it); n; n = pli_prev(&it)) {
-                import_module_data* im_data = (import_module_data*)n;
-                ast_node* n = NULL;
-                if (im_data->pprn) {
-                    n = im_data->pprn->node;
-                    if (ast_node_get_used_in_pp(n)) {
-                        awaiting = true;
-                        if (atomic_boolean_load(&im_data->cmw.done)) {
-                            re = pp_resolve_node_ready(r, im_data->pprn);
-                            if (re) return re;
-                            progress = true;
-                        }
-                    }
-                }
-                if (!im_data->pprn) {
-                    progress = true;
-                    ptrlist_remove_next(&r->waiting_module_imports, &it);
-                }
-            }
-            if (!progress && awaiting) {
-                // hack: busy wait for now until we have proper suspend
-                // resume progress = true;
-                return resolver_suspend(r);
-            }
-        }
         if (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
             print_pprns(r, "running ", true);
             ureg priv_count = r->id_space - PRIV_SYMBOL_OFFSET;
@@ -4557,13 +4566,67 @@ resolve_error resolver_run_pp_resolve_nodes(resolver* r, bool* made_progress)
             lle = llvm_backend_run_pp(
                 r->backend, priv_count, &r->pp_resolve_nodes_ready);
             if (lle) return RE_FATAL;
-            while (!ptrlist_is_empty(&r->pp_resolve_nodes_ready)) {
-                pp_resolve_node* rn =
-                    ptrlist_pop_back(&r->pp_resolve_nodes_ready);
-                rn->pprn_list_entry = NULL;
-                pp_resolve_node_done(r, rn, &progress);
+
+            sbuffer_iterator sbi_end =
+                sbuffer_iterator_begin_at_end(&r->pp_resolve_nodes_ready);
+            sbuffer_iterator sbi =
+                sbuffer_iterator_begin(&r->pp_resolve_nodes_ready);
+
+            while (true) {
+                pp_resolve_node** rnp = sbuffer_iterator_next_until(
+                    &sbi, sizeof(pp_resolve_node*), &sbi_end);
+                if (!rnp) break;
+                (**rnp).pprn_list_entry = NULL;
+                re = pp_resolve_node_done(r, *rnp, &progress);
+                if (re) return re;
+                *rnp = NULL;
+            }
+            // since calling pprn_done might introduce new ready nodes
+            // we move these backwwards to the start over the old ones
+            // by doing this in a "forward" manner we preserve order
+            sbi = sbuffer_iterator_begin(&r->pp_resolve_nodes_ready);
+            while (true) {
+                pp_resolve_node** rn_new_p =
+                    sbuffer_iterator_next(&sbi_end, sizeof(pp_resolve_node*));
+                if (!rn_new_p) {
+                    sbuffer_set_end(&r->pp_resolve_nodes_ready, &sbi);
+                    break;
+                }
+                pp_resolve_node** rnp =
+                    sbuffer_iterator_next(&sbi, sizeof(pp_resolve_node*));
+                assert(rnp);
+                *rnp = *rn_new_p;
             }
             if (made_progress) *made_progress = true;
+        }
+        if (!progress && r->committed_waiters != 0) {
+            pli it = pli_rbegin(&r->waiting_module_imports);
+            bool awaiting = false;
+            for (ast_node* n = pli_prev(&it); n; n = pli_prev(&it)) {
+                import_module_data* im_data = (import_module_data*)n;
+                ast_node* n = NULL;
+                if (im_data->pprn) {
+                    n = im_data->pprn->node;
+                    if (ast_node_get_used_in_pp(n)) {
+                        awaiting = true;
+                        if (atomic_boolean_load(&im_data->cmw.done)) {
+                            im_data->pprn->resolved = true;
+                            re = pp_resolve_node_resolved(r, im_data->pprn);
+                            if (re) return re;
+                            progress = true;
+                        }
+                    }
+                }
+                if (!im_data->pprn) {
+                    progress = true;
+                    ptrlist_remove_next(&r->waiting_module_imports, &it);
+                }
+            }
+            if (!progress && awaiting) {
+                // hack: busy wait for now until we have proper suspend
+                // resume progress = true;
+                return resolver_suspend(r);
+            }
         }
     } while (progress);
     return RE_OK;
