@@ -13,10 +13,14 @@ linux:precompile:
     script: 
         - ./precompile_llvm.sh
     cache:
-        key: precompile
+        key: linux_precompile
         paths:
             - deps/llvm-project-prebuild/
             - precompile_llvm/
+    artifacts:
+      paths:
+        - deps/llvm-project-prebuild
+      expire_in: 1 year
     only:
         - master
         - testing
@@ -31,14 +35,14 @@ linux:build:debug:
         - cmake -DCMAKE_BUILD_TYPE=Debug ..
         - make -j$(nproc)
     cache:
-        key: precompile
+        key: linux_precompile
         paths:
             - deps/llvm-project-prebuild/
         policy: pull
     artifacts:
         paths:
             - ./build/tauc
-        expire_in: 20 minutes
+        expire_in: 60 minutes
     only:
         - master
         - testing
@@ -54,7 +58,7 @@ linux:build:release:
         - cmake -DCMAKE_BUILD_TYPE=Release ..
         - make -j$(nproc)
     cache:
-        key: precompile
+        key: linux_precompile
         paths:
             - deps/llvm-project-prebuild/
         policy: pull
