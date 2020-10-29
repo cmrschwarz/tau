@@ -4425,35 +4425,32 @@ resolve_error report_cyclic_pp_deps(resolver* r)
 {
     bool err = false;
     assert(ptrlist_is_empty(&r->pp_resolve_nodes_ready));
-    // we might have pending guys, but since they have no deps
-    // they can't cause a cycle
-    pli it = pli_rbegin(&r->pp_resolve_nodes_waiting);
-    for (pp_resolve_node* pprn = pli_prev(&it); pprn; pprn = pli_prev(&it)) {
-        if (pprn->dummy && !ast_node_get_used_in_pp(pprn->node)) {
-            pprn_fin(r, pprn, true);
-        }
-    }
 
+    // they can't cause a cycle
+    // we might have pending guys, but since they have no deps
     if (ptrlist_is_empty(&r->pp_resolve_nodes_waiting)) return RE_OK;
     // TODO: create a nice cycle display instead of dumping out everything
+    pli it = pli_rbegin(&r->pp_resolve_nodes_waiting);
     resolve_error re = RE_OK;
     it = pli_begin(&r->pp_resolve_nodes_waiting);
     for (pp_resolve_node* pprn = pli_next(&it); pprn; pprn = pli_next(&it)) {
-        if (!ast_elem_is_any_import((ast_elem*)pprn->node)) {
-            if (err == false) {
-                err = true;
-                print_pprns(r, "error: \n", true);
-            }
-            src_range_large srl;
-            ast_node_get_src_range(pprn->node, pprn->declaring_body, &srl);
-            error_log_report_annotated(
-                r->tc->err_log, ES_RESOLVER, false,
-                "encountered cyclic dependency during preprocessor "
-                "execution",
-                srl.smap, srl.start, srl.end, "loop contains this element");
-            re = RE_ERROR;
-            if (r->tc->t->trap_on_error) debugbreak();
+        if (pprn->dummy && !ast_node_get_used_in_pp(pprn->node) &&
+            !pprn->first_child && !pprn->resolve_dep_count)
+            continue;
+        if (ast_elem_is_any_import((ast_elem*)pprn->node)) continue;
+        if (err == false) {
+            err = true;
+            print_pprns(r, "error: \n", true);
         }
+        src_range_large srl;
+        ast_node_get_src_range(pprn->node, pprn->declaring_body, &srl);
+        error_log_report_annotated(
+            r->tc->err_log, ES_RESOLVER, false,
+            "encountered cyclic dependency during preprocessor "
+            "execution",
+            srl.smap, srl.start, srl.end, "loop contains this element");
+        re = RE_ERROR;
+        if (r->tc->t->trap_on_error) debugbreak();
     }
     return re;
 }
