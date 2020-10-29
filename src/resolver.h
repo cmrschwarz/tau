@@ -59,9 +59,6 @@ typedef struct pp_resolve_node_s {
     // put in pending instead of ready when resolve_dep_count == 0
     bool resolved;
 
-    // dont dispose once done, but put back in pending
-    bool needs_further_resolution;
-
     // dependants of this can resolve without it, but need it for running
     // it increases their run_dep_count instead of resolve_dep_count
     bool run_dep;

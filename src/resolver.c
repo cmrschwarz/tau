@@ -377,7 +377,6 @@ pp_resolve_node* pp_resolve_node_create(
     pprn->resolved = false;
     pprn->activated = false;
     pprn->dummy = dummy;
-    pprn->needs_further_resolution = false;
     pprn->pending_pastes = false;
     pprn->declaring_body = declaring_body;
     pprn->node = n;
@@ -2533,9 +2532,7 @@ static inline resolve_error resolve_expr_pp(
     }
     pp_resolve_node* parent_pprn = r->curr_pp_node;
     r->curr_pp_node = pprn;
-    pprn->needs_further_resolution = false;
     re = resolve_ast_node(r, ppe->pp_expr, body, value, &ppe->ctype);
-    if (re) pprn->needs_further_resolution = true;
     r->curr_pp_node = parent_pprn;
     if (pprn->pending_pastes) {
         if (ppe->ctype != VOID_ELEM) {
@@ -2576,7 +2573,6 @@ static inline resolve_error resolve_expr_pp(
     }
     if (ctype) *ctype = ppe->ctype;
     if (parent_pprn) {
-        parent_pprn->needs_further_resolution = true;
         return RE_UNREALIZED_COMPTIME;
     }
     if (pprn->pending_pastes) return RE_UNREALIZED_COMPTIME;
@@ -3635,7 +3631,6 @@ resolve_error resolve_expr_body(
         }
         else {
             pprn->continue_body = NULL;
-            pprn->needs_further_resolution = false;
         }
         if (!re) {
             ast_node_set_resolved(expr);
@@ -3709,13 +3704,11 @@ resolve_error resolve_unordered_body(
     re = unordered_body_add_trait_decls(r, b);
     if (b->pprn) {
         b->pprn->activated = false;
-        b->pprn->needs_further_resolution = false;
     }
     if (!re) {
         re = resolver_run_pp_resolve_nodes(r, NULL);
         if (!re && b->pprn) {
             if (b->pprn->resolve_dep_count) {
-                b->pprn->needs_further_resolution = true;
                 re = RE_UNREALIZED_COMPTIME;
             }
             else {
@@ -3750,7 +3743,6 @@ resolve_error resolve_unordered_body(
         if (unknown_symbol) re = RE_UNKNOWN_SYMBOL;
         if (re) {
             assert(b->pprn);
-            b->pprn->needs_further_resolution = true;
         }
     }
     if (!re) ast_node_set_resolved((ast_node*)owning_node);
@@ -3784,7 +3776,6 @@ resolve_error resolve_func(
         n = continue_body;
         if (!bpprn->body_pos_reachable) stmt_ctype_ptr = NULL;
         bpprn->activated = false;
-        bpprn->needs_further_resolution = false;
     }
     if (!continue_body) {
         if (!ast_node_get_static((ast_node*)fnb)) {
@@ -3870,7 +3861,6 @@ resolve_error resolve_func(
     bpprn = fnb->sc.body.pprn;
     if (re == RE_UNREALIZED_COMPTIME || re == RE_UNKNOWN_SYMBOL) {
         assert(bpprn);
-        bpprn->needs_further_resolution = true;
         resolve_error re2 = pp_resolve_node_activate(
             r, requesting_body, &fnb->sc.body.pprn, false);
         if (re2) return re2;
@@ -3898,7 +3888,6 @@ resolve_error resolve_func(
     if (bpprn) {
         if (!re) {
             bpprn->continue_body = NULL;
-            bpprn->needs_further_resolution = false;
         }
         if (!fnb->sc.body.pprn->first_child &&
             fnb != (sc_func_base*)r->module_group_constructor) {
@@ -4317,8 +4306,7 @@ resolve_error pp_resolve_node_resolved(resolver* r, pp_resolve_node* pprn)
 {
     if (!pprn->activated) return RE_OK;
     bool err = ast_node_get_contains_error(pprn->node);
-    assert(pprn->resolved || | pprn->first_child || err);
-    if (pprn->needs_further_resolution && !pprn->first_child) {
+    if (!pprn->resolved && !pprn->first_child && !err) {
         return pprn_set_state(r, pprn, PPRN_PENDING);
     }
     assert(pprn->resolve_dep_count == 0);
