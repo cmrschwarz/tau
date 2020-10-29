@@ -39,9 +39,11 @@ resolve_error
 get_resolved_symbol_body(resolver* r, symbol* s, ast_body** tgt_body);
 resolve_error resolve_func_from_call(
     resolver* r, ast_body* body, sc_func* fn, ast_elem** ctype);
+resolve_error pp_resolve_node_resolved(resolver* r, pp_resolve_node* pprn);
+resolve_error pp_resolve_node_dep_resolved(resolver* r, pp_resolve_node* pprn);
+resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn);
 resolve_error
 pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress);
-resolve_error pp_resolve_node_dep_ready(resolver* r, pp_resolve_node* pprn);
 resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn);
 resolve_error resolve_importing_node(
     resolver* r, import_module_data* im_data, ast_node* node, ast_body* body,
@@ -2558,14 +2560,14 @@ static inline resolve_error resolve_expr_pp(
         if (!pprn->child) {
             if (curr_pp_block_add_child(r, body, &ppe->pprn)) return RE_FATAL;
         }
-        if (pp_resolve_node_activate(r, body, &ppe->pprn, re == RE_OK)) {
-            return RE_FATAL;
-        }
-        if (re) return re;
         // we just need to mark it for reexec, no specific value required
         if (ppe->pprn && pprn->pending_pastes && !pprn->child) {
             pprn->continue_body = (ast_node**)NULL_PTR_PTR;
         }
+        if (pp_resolve_node_activate(r, body, &ppe->pprn, re == RE_OK)) {
+            return RE_FATAL;
+        }
+        if (re) return re;
     }
     if (re) {
         // so we can free it... sigh
@@ -3622,16 +3624,9 @@ resolve_error resolve_expr_body(
         pprn->body_pos_reachable = *end_reachable;
         pprn->declaring_body = parent_body;
         resolve_error re2;
-        if (!pprn->first_child) {
-            // this is a rerun and everyting got resolved
-            // detach this from parent and free it individually
-            // TODO: FIXME
-            // pprn->dummy = true;
-        }
-        else {
-            if (curr_pp_block_add_child(r, parent_body, &b->pprn))
-                return RE_FATAL;
-        }
+
+        if (curr_pp_block_add_child(r, parent_body, &b->pprn)) return RE_FATAL;
+
         if (re) {
             pprn->continue_body = n;
             // so it gets freed on error
@@ -3640,6 +3635,7 @@ resolve_error resolve_expr_body(
         }
         else {
             pprn->continue_body = NULL;
+            pprn->needs_further_resolution = false;
         }
         if (!re) {
             ast_node_set_resolved(expr);
@@ -4320,12 +4316,11 @@ void print_pprns(resolver* r, char* msg, bool verbose)
 resolve_error pp_resolve_node_resolved(resolver* r, pp_resolve_node* pprn)
 {
     if (!pprn->activated) return RE_OK;
+    bool err = ast_node_get_contains_error(pprn->node);
+    assert(pprn->resolved || | pprn->first_child || err);
     if (pprn->needs_further_resolution && !pprn->first_child) {
         return pprn_set_state(r, pprn, PPRN_PENDING);
     }
-    bool err = ast_node_get_contains_error(pprn->node);
-    // that is the condition when this is supposed to be called
-    assert(pprn->resolved || pprn->first_child || err);
     assert(pprn->resolve_dep_count == 0);
     if (pprn->added_res_deps && !pprn->child) {
         list_it it;
@@ -4343,7 +4338,6 @@ resolve_error pp_resolve_node_resolved(resolver* r, pp_resolve_node* pprn)
 }
 resolve_error pp_resolve_node_ready(resolver* r, pp_resolve_node* pprn)
 {
-    resolve_error re;
     assert(pprn->state != PPRN_READY);
     if (pprn->added_res_deps && pprn->child) {
         list_it it;
@@ -4377,15 +4371,16 @@ pp_resolve_node_done(resolver* r, pp_resolve_node* pprn, bool* progress)
         pprn->last_child = NULL;
     }
     if (pprn->continue_body) {
+        pprn->activated = false;
         if (!pprn->child) {
             if (progress) *progress = true;
-            re = pprn_set_state(r, pprn, PPRN_PENDING);
-            if (re) return re;
+            return pprn_set_state(r, pprn, PPRN_PENDING);
         }
         // assert(pprn->resolved == false);
-        pprn->needs_further_resolution = true;
+        assert(list_length(&pprn->notify) == 1);
+        list_clear(&pprn->notify);
         pprn->child = false;
-        return RE_OK;
+        return pprn_set_state(r, pprn, PPRN_WAITING_UNCOMMITTED);
     }
     bool err = ast_node_get_contains_error(pprn->node);
     if (pprn->added_run_deps && (!pprn->run_dep_count || err)) {
