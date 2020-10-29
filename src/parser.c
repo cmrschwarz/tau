@@ -1469,10 +1469,12 @@ parse_error parse_break(parser* p, ast_node** tgt)
         p, (ast_node*)g, start, end, &g->target.label, &end);
     if (pe) return pe;
     pe = parse_expression(p, &g->value);
+
     if (pe == PE_EOEX) {
         g->value = NULL;
     }
     else {
+        end = src_range_get_end(g->value->srange);
         if (pe) return pe;
     }
     if (ast_node_fill_srange(p, (ast_node*)g, start, end)) return PE_FATAL;

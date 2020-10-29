@@ -1,0 +1,17 @@
+parser error: invalid paste expression
+ ==> <pasted: ./tests/debug/test.tau:4:13>:1:8
+1 |break 3; <- token follows after end of expression
+  |^^^^^^^ pasted expression
+ ==> ./tests/debug/test.tau:4:13
+4 |    return #paste("break 3;");
+  |            ^^^^^^^^^^^^^^^^^ pasted in here
+
+resolver error: unreachable statement in function
+ ==> ./tests/debug/test.tau:9:5
+9 |    return 0;
+  |    ^^^^^^^^ after return statement
+
+resolver error: break expression has no valid target
+ ==> <pasted: ./tests/debug/test.tau:8:6>:1:1
+1 |break 5;
+  |^^^^^^^ no parent block is a valid target for this break

@@ -1757,28 +1757,34 @@ ast_elem** get_break_target_ctype(ast_elem* n)
     }
 }
 resolve_error resolve_break_target(
-    resolver* r, const char* name, ast_body* body, expr_block_base** tgt_ebb,
-    ast_elem*** ctype)
+    resolver* r, ast_node* break_node, const char* name, ast_body* body,
+    expr_block_base** tgt_ebb, ast_elem*** ctype)
 {
-    // TODO: error
-    while (body) {
-        body = ast_body_get_non_paste_parent(body);
-        if (body->owning_node->kind == SC_FUNC ||
-            body->owning_node->kind == SC_FUNC_GENERIC) {
-            assert(false); // TODO error
+    ast_body* b = body;
+    while (b) {
+        b = ast_body_get_non_paste_parent(b);
+        if (b->owning_node->kind == SC_FUNC ||
+            b->owning_node->kind == SC_FUNC_GENERIC) {
+            break;
         }
-        assert(ast_elem_is_expr_block_base((ast_elem*)body->owning_node));
-        expr_block_base* ebb = (expr_block_base*)body->owning_node;
+        assert(ast_elem_is_expr_block_base((ast_elem*)b->owning_node));
+        expr_block_base* ebb = (expr_block_base*)b->owning_node;
         if ((name && ebb->name && cstr_eq(ebb->name, name)) ||
             (name == ebb->name)) {
             *tgt_ebb = ebb;
             *ctype = get_break_target_ctype((ast_elem*)ebb);
             return RE_OK;
         }
-        body = body->parent;
+        b = b->parent;
     }
-    assert(false); // TODO: error
-    return RE_ERROR;
+    src_range_large srl;
+    ast_node_get_full_src_range(break_node, body, &srl);
+    error_log_report_annotated(
+        r->tc->err_log, ES_RESOLVER, false,
+        "break expression has no valid target", srl.smap, srl.start, srl.end,
+        "no parent block is a valid target for this break");
+    *ctype = NULL;
+    return RE_OK;
 }
 resolve_error
 get_resolved_symbol_body(resolver* r, symbol* s, ast_body** tgt_body)
@@ -2209,8 +2215,9 @@ resolve_break(resolver* r, ast_body* body, expr_break* b)
     ast_node_set_resolved(&b->node);
     ast_elem** tgt_ctype;
     re = resolve_break_target(
-        r, b->target.label, body, &b->target.ebb, &tgt_ctype);
+        r, (ast_node*)b, b->target.label, body, &b->target.ebb, &tgt_ctype);
     if (re) return re;
+    if (!tgt_ctype) RETURN_POISONED(r, RE_OK, b, body);
     if (*tgt_ctype) {
         type_cast_result tcr = type_cast(*tgt_ctype, b->value_ctype, &b->value);
         if (tcr) {
