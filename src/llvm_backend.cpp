@@ -1030,20 +1030,20 @@ LLVMBackend::lookupCType(ast_elem* e, llvm::Type** t, ureg* align, ureg* size)
             auto ta = (type_array*)e;
             auto llt =
                 (llvm::Type**)lookupAstElem(ta->slice_type.tb.backend_id);
-            if (*llt) {
-                *t = *llt;
-                return LLE_OK;
+
+            if (!*llt) {
+                llvm::Type* elem_type;
+                llvm_error lle = lookupCType(
+                    ta->slice_type.ctype_members, &elem_type, NULL, NULL);
+                if (lle) return lle;
+                auto arr = llvm::ArrayType::get(elem_type, ta->length);
+                if (!arr) return LLE_FATAL;
+                *t = arr;
+                *llt = arr;
             }
-            llvm::Type* elem_type;
-            llvm_error lle = lookupCType(
-                ta->slice_type.ctype_members, &elem_type, NULL, NULL);
-            if (lle) return lle;
-            auto arr = llvm::ArrayType::get(elem_type, ta->length);
-            if (!arr) return LLE_FATAL;
-            *t = arr;
-            *llt = arr;
-            if (align) *align = _data_layout->getPrefTypeAlignment(arr);
-            if (size) *size = _data_layout->getTypeAllocSize(arr);
+            *t = *llt;
+            if (align) *align = _data_layout->getPrefTypeAlignment(*t);
+            if (size) *size = _data_layout->getTypeAllocSize(*t);
             return LLE_OK;
         }
         case TYPE_SLICE: {
