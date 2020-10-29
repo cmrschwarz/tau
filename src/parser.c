@@ -2384,6 +2384,7 @@ parse_error init_paste_evaluation_parse(
     pe->body.owning_node = (ast_node*)pe;
     pe->body.pprn = NULL;
     pe->body.symtab = NULL;
+    pe->pasted_src = ps;
     pe->body.elements = (ast_node**)NULL_PTR_PTR; // in case we fail
     int r = lx_open_paste(&p->lx, ps);
     if (r) return PE_FATAL;
@@ -2433,6 +2434,7 @@ parse_error parser_parse_paste_expr(
     if (t->kind != TK_EOF) {
         src_range_large srl;
         src_range_unpack(eval->pasted_src->source_pp_srange, &srl);
+        srl.smap = ast_body_get_smap(parent_body);
         error_log_report_annotated_thrice(
             p->lx.tc->err_log, ES_PARSER, false, "invalid paste expression",
             p->lx.smap, t->start, t->end,
